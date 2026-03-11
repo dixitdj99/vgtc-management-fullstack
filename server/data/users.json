@@ -1,0 +1,18 @@
+[
+  {
+    "id": "3dc74f93-92b2-43db-93e3-e5577ddb84a2",
+    "name": "Vikas Admin",
+    "username": "admin",
+    "password": "$2b$10$VXCoDQDQsWacH7KLiZVKJeIQL3J2IUyavHlxiNK7iE3fpBytNTIzq",
+    "role": "admin",
+    "createdAt": "2026-02-23T10:04:27.981Z"
+  },
+  {
+    "id": "acbdca6e-408f-4ea9-8c23-630bf4f8b6a5",
+    "name": "Vikas",
+    "username": "vikas",
+    "password": "$2b$10$Gv9mydKjv/HlnrSVqauioe120MaUuS174ndO6Tzl3KTQ8kiGjVebS",
+    "role": "user",
+    "createdAt": "2026-03-04T14:48:47.711Z"
+  }
+]

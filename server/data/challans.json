@@ -1,0 +1,102 @@
+[
+  {
+    "id": "bb612839-b5a0-488a-82a2-f9bb3b1309cb",
+    "challanNo": "CH-0001",
+    "truckNo": "HR36AT9291",
+    "material": "PPC",
+    "quantity": 250,
+    "partyName": "RAvi",
+    "date": "2026-02-23",
+    "remark": "",
+    "status": "partially_loaded",
+    "createdAt": "2026-02-23T13:48:30.034Z",
+    "updatedAt": "2026-03-04T12:13:03.158Z",
+    "materials": [
+      {
+        "type": "PPC",
+        "totalBags": 250,
+        "loadedBags": 3
+      }
+    ]
+  },
+  {
+    "id": "8cd312e6-0d45-4a24-82bf-3fbc1206729e",
+    "challanNo": "CH-0002",
+    "truckNo": "HR45T4549",
+    "material": "PPC",
+    "quantity": 100,
+    "partyName": "Hisar",
+    "date": "2026-02-23",
+    "remark": "",
+    "status": "loaded",
+    "createdAt": "2026-02-23T13:54:07.857Z",
+    "updatedAt": "2026-03-04T10:08:56.683Z",
+    "materials": [
+      {
+        "type": "PPC",
+        "totalBags": 100,
+        "loadedBags": 0
+      }
+    ]
+  },
+  {
+    "id": "5ca0384f-6e9c-4772-affb-9c4a1aecf5ef",
+    "challanNo": "CH-0003",
+    "truckNo": "TEST-9999",
+    "material": "PPC",
+    "quantity": 500,
+    "partyName": "Test Party",
+    "date": "2026-02-27",
+    "remark": "Test Remark for New Challan",
+    "status": "loaded",
+    "createdAt": "2026-02-27T07:43:09.179Z",
+    "updatedAt": "2026-03-04T10:08:45.309Z",
+    "materials": [
+      {
+        "type": "PPC",
+        "totalBags": 500,
+        "loadedBags": 0
+      }
+    ]
+  },
+  {
+    "id": "d4681a5c-5493-428c-be0f-da59faa86e8f",
+    "challanNo": "CH-0004",
+    "truckNo": "HR47G0194",
+    "material": "PPC",
+    "quantity": 100,
+    "partyName": "VIKAS GOODS",
+    "date": "2026-03-04",
+    "remark": "1",
+    "status": "loaded",
+    "createdAt": "2026-03-04T08:32:28.392Z",
+    "materials": [
+      {
+        "type": "PPC",
+        "totalBags": 100,
+        "loadedBags": 100
+      }
+    ],
+    "updatedAt": "2026-03-04T12:24:37.161Z"
+  },
+  {
+    "id": "5dc5a369-86de-4409-ad44-0575f49e7f2a",
+    "challanNo": "CH-0005",
+    "truckNo": "HR36AT6787",
+    "material": "OPC43",
+    "quantity": 100,
+    "partyName": "Vikas",
+    "date": "2026-03-04",
+    "remark": "",
+    "status": "partially_loaded",
+    "createdAt": "2026-03-04T11:52:26.421Z",
+    "materials": [
+      {
+        "type": "OPC43",
+        "totalBags": 100,
+        "loadedBags": 50
+      }
+    ],
+    "updatedAt": "2026-03-04T12:24:37.166Z"
+  }
+]

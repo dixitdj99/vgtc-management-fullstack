@@ -1,0 +1,26 @@
+[
+  {
+    "id": "4175ed79-76be-4a05-b358-9adec9a3ab1b",
+    "material": "PPC",
+    "quantity": 500,
+    "date": "2026-02-23",
+    "remark": "",
+    "createdAt": "2026-02-23T13:34:17.277Z"
+  },
+  {
+    "id": "d1a3f0df-362f-4dc4-a81b-8c2a1ded5ac3",
+    "material": "OPC43",
+    "quantity": 500,
+    "date": "2026-03-04",
+    "remark": "",
+    "createdAt": "2026-03-04T11:52:46.923Z"
+  },
+  {
+    "id": "4cb2c473-7d3c-4d91-9a79-381d75203e79",
+    "material": "PPC",
+    "quantity": 501,
+    "date": "2026-03-04",
+    "remark": "",
+    "createdAt": "2026-03-04T12:41:31.156Z"
+  }
+]

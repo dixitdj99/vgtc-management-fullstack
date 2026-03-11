@@ -1,0 +1,45 @@
+const express = require('express');
+const router = express.Router();
+const voucherService = require('../services/voucherService');
+
+// Create
+router.post('/', async (req, res) => {
+    try {
+        const result = await voucherService.createVoucher(req.body);
+        res.status(201).json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get all by type
+router.get('/:type', async (req, res) => {
+    try {
+        const vouchers = await voucherService.getVouchersByType(req.params.type);
+        res.json(vouchers);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Full update
+router.patch('/:id', async (req, res) => {
+    try {
+        await voucherService.updateVoucher(req.params.id, req.body);
+        res.json({ message: 'Voucher updated' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Delete
+router.delete('/:id', async (req, res) => {
+    try {
+        await voucherService.deleteVoucher(req.params.id);
+        res.json({ message: 'Voucher deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+module.exports = router;

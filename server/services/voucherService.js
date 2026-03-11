@@ -1,0 +1,73 @@
+const localStore = require('../utils/localStore');
+
+let firebaseAvailable = false;
+let db, admin;
+
+try {
+    const fb = require('../firebase');
+    db = fb.db;
+    admin = fb.admin;
+    // _settings exists only on a real Firestore instance, not the mock
+    firebaseAvailable = !!(db && typeof db.collection === 'function' && db._settings);
+} catch { }
+
+const COLLECTION_VOUCHERS = 'vouchers';
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+const createVoucher = async (data) => {
+    const { type, ...voucherData } = data;
+    const finalData = { ...voucherData, type };
+
+    if (firebaseAvailable) {
+        const ref = db.collection(COLLECTION_VOUCHERS).doc();
+        await ref.set({ ...finalData, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        return { id: ref.id, ...finalData };
+    }
+    return localStore.insert(COLLECTION_VOUCHERS, finalData);
+};
+
+const getVouchersByType = async (type) => {
+    if (firebaseAvailable) {
+        // Use only a single-field where — no orderBy — to avoid requiring a composite index.
+        // Sort by createdAt in JS after fetching.
+        const snapshot = await db.collection(COLLECTION_VOUCHERS)
+            .where('type', '==', type)
+            .get();
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return docs.sort((a, b) => {
+            const aTime = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
+            const bTime = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+            return bTime - aTime;
+        });
+    }
+    return localStore.getAll(COLLECTION_VOUCHERS)
+        .filter(v => v.type === type)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+};
+
+const updateVoucher = async (id, data) => {
+    if (firebaseAvailable) {
+        await db.collection(COLLECTION_VOUCHERS).doc(id).update({
+            ...data,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    } else {
+        localStore.update(COLLECTION_VOUCHERS, id, data);
+    }
+};
+
+const deleteVoucher = async (id) => {
+    if (firebaseAvailable) {
+        await db.collection(COLLECTION_VOUCHERS).doc(id).delete();
+    } else {
+        localStore.delete(COLLECTION_VOUCHERS, id);
+    }
+};
+
+module.exports = {
+    createVoucher,
+    getVouchersByType,
+    updateVoucher,
+    deleteVoucher,
+};

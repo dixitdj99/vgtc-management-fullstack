@@ -1,0 +1,41 @@
+const express = require('express');
+const router = express.Router();
+const svc = require('../utils/cashbookService');
+
+const JKL_COL = 'jkl_cashbook';
+
+// GET  /api/jkl/cashbook
+router.get('/', async (req, res) => {
+    try {
+        const data = await svc.getAll(JKL_COL);
+        res.json(data);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/jkl/cashbook/deposit
+router.post('/deposit', async (req, res) => {
+    const { amount, remark, date } = req.body;
+    try {
+        const doc = await svc.addEntry('deposit', amount, remark, date, JKL_COL);
+        res.status(201).json(doc);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// POST /api/jkl/cashbook/cash-out
+router.post('/cash-out', async (req, res) => {
+    const { amount, remark, date } = req.body;
+    try {
+        const doc = await svc.addEntry('cash_out', amount, remark, date, JKL_COL);
+        res.status(201).json(doc);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// DELETE /api/jkl/cashbook/:id
+router.delete('/:id', async (req, res) => {
+    try {
+        await svc.deleteEntry(req.params.id, JKL_COL);
+        res.json({ message: 'Deleted' });
+    } catch (e) { res.status(404).json({ error: e.message }); }
+});
+
+module.exports = router;
