@@ -20,19 +20,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/lr', lrRoutes);
-app.use('/api/vouchers', voucherRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/cashbook', cashbookRoutes);
-app.use('/api/stock', stockRoutes);
-app.use('/api/jkl/lr', jklLrRoutes);
-app.use('/api/jkl/stock', jklStockRoutes);
-app.use('/api/jkl/cashbook', jklCashbookRoutes);
-app.use('/api/vehicles', vehicleRoutes);
+// Main router to handle various possible prefixes
+const apiRouter = express.Router();
 
-app.get('/api/health', (req, res) => {
+apiRouter.use('/lr', lrRoutes);
+apiRouter.use('/vouchers', voucherRoutes);
+apiRouter.use('/auth', authRoutes);
+apiRouter.use('/users', userRoutes);
+apiRouter.use('/cashbook', cashbookRoutes);
+apiRouter.use('/stock', stockRoutes);
+apiRouter.use('/jkl/lr', jklLrRoutes);
+apiRouter.use('/jkl/stock', jklStockRoutes);
+apiRouter.use('/jkl/cashbook', jklCashbookRoutes);
+apiRouter.use('/vehicles', vehicleRoutes);
+
+apiRouter.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Register the router under all possible base paths
+app.use('/api', apiRouter);
+app.use('/.netlify/functions/api', apiRouter);
+app.use('/', apiRouter); // Fallback
+
+// Catch-all for debugging
+app.use((req, res) => {
+    console.warn(`[Netlify] 404 at ${req.path}`);
+    res.status(404).json({ error: 'Not Found', path: req.path });
 });
 
 const handler = serverless(app);
