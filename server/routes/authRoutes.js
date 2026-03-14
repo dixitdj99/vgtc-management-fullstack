@@ -4,6 +4,17 @@ const jwt = require('jsonwebtoken');
 const authService = require('../utils/authService');
 const { SECRET } = require('../middleware/auth');
 
+const { isAvailable } = require('../firebase');
+
+// GET /api/auth/status (Diagnostic)
+router.get('/status', (req, res) => {
+    res.json({
+        firebase: isAvailable() ? 'connected' : 'disconnected',
+        environment: process.env.NETLIFY ? 'netlify' : 'local',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
     try {

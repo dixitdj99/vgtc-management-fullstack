@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
+require('dotenv').config();
 
 const lrRoutes = require('./routes/lrRoutes');
 const voucherRoutes = require('./routes/voucherRoutes');
@@ -18,8 +18,6 @@ const vehicleRoutes = require('./routes/vehicleRoutes');
 
 // Run migrations on startup
 stockService.init();
-
-dotenv.config();
 
 const app = express();
 app.use(cors());
