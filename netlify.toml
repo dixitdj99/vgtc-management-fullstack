@@ -1,5 +1,5 @@
 [build]
-  command = "cd client && npm install && npm run build"
+  command = "npm run build --workspace=client"
   publish = "client/dist"
 
 [functions]
