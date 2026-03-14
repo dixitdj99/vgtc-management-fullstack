@@ -8,11 +8,16 @@ const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// On AWS Lambda (Netlify), /var/task is read-only. Only /tmp is writable.
+// Locally, use the server/data directory as before.
+const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+const DATA_DIR = IS_LAMBDA
+    ? '/tmp/vgtc-data'
+    : path.join(__dirname, '..', 'data');
 try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 } catch (e) {
-    console.warn('[localStore] Could not create data directory (read-only filesystem?):', e.message);
+    console.warn('[localStore] Could not create data directory:', e.message);
 }
 
 function readCollection(name) {
