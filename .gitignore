@@ -6,5 +6,5 @@ dist-ssr/
 *.local
 .firebase/
 .firebaserc
-client/ /
+client/
 *.zip
