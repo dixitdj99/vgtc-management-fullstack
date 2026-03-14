@@ -7,9 +7,8 @@
   SECRETS_SCAN_OMIT_KEYS = "NODE_ENV"
 
 [functions]
-  directory = "server/functions"
+  directory = "netlify/functions"
   node_bundler = "zisi"
-  included_files = ["server/**"]
 
 [[redirects]]
   from = "/api/*"
