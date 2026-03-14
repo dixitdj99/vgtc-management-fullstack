@@ -4,6 +4,7 @@
 
 [build.environment]
   NPM_CONFIG_PRODUCTION = "false"
+  SECRETS_SCAN_OMIT_KEYS = "NODE_ENV"
 
 [functions]
   directory = "server/functions"
