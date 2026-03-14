@@ -9,7 +9,11 @@ const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch (e) {
+    console.warn('[localStore] Could not create data directory (read-only filesystem?):', e.message);
+}
 
 function readCollection(name) {
     const file = path.join(DATA_DIR, name + '.json');

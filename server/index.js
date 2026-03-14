@@ -16,8 +16,10 @@ const jklStockRoutes = require('./routes/jklStockRoutes');
 const jklCashbookRoutes = require('./routes/jklCashbookRoutes');
 const vehicleRoutes = require('./routes/vehicleRoutes');
 
-// Run migrations on startup
-stockService.init();
+// Run migrations on startup (local only — Netlify filesystem is read-only)
+if (!process.env.NETLIFY) {
+    stockService.init();
+}
 
 const app = express();
 app.use(cors());
