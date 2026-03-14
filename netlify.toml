@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build --workspace=client"
+  command = "npm install && npm run build -w vgtc-client"
   publish = "client/dist"
 
 [functions]
