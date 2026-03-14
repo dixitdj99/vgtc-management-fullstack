@@ -1,20 +1,12 @@
 const localStore = require('../utils/localStore');
 
-let firebaseAvailable = false;
-let db, admin;
-
-try {
-    const fb = require('../firebase');
-    db = fb.db;
-    admin = fb.admin;
-    // _settings exists only on a real Firestore instance, not the mock
-    firebaseAvailable = !!(db && typeof db.collection === 'function' && db._settings);
-} catch { }
+const { db, admin, isAvailable } = require('../firebase');
+const firebaseAvailable = () => isAvailable();
 
 const DEFAULT_COLLECTION = 'cashbook';
 
 const getAll = async (collection = DEFAULT_COLLECTION) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         const snapshot = await db.collection(collection).orderBy('createdAt', 'desc').get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
@@ -32,7 +24,7 @@ const addEntry = async (type, amount, remark = '', date = '', collection = DEFAU
         date: date || new Date().toISOString().slice(0, 10),
     };
 
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         const ref = db.collection(collection).doc();
         await ref.set({ ...entryData, createdAt: admin.firestore.FieldValue.serverTimestamp() });
         return { id: ref.id, ...entryData };
@@ -42,7 +34,7 @@ const addEntry = async (type, amount, remark = '', date = '', collection = DEFAU
 };
 
 const deleteEntry = async (id, collection = DEFAULT_COLLECTION) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await db.collection(collection).doc(id).delete();
     } else {
         const entry = localStore.getAll(collection).find(e => e.id === id);

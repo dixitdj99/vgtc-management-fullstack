@@ -582,7 +582,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
 
         if (chDeductions.length > 0) {
           await axios.post(API_CHAL.replace('/challans', '') + '/challans/deduct', {
-            challanNo: ch.challanNo,
+            id: ch.id,
             deductions: chDeductions
           });
         }

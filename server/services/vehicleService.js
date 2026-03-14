@@ -1,14 +1,7 @@
 const localStore = require('../utils/localStore');
 
-let firebaseAvailable = false;
-let db, admin;
-
-try {
-    const fb = require('../firebase');
-    db = fb.db;
-    admin = fb.admin;
-    firebaseAvailable = !!(db && typeof db.collection === 'function' && db._settings);
-} catch { }
+const { db, admin, isAvailable } = require('../firebase');
+const firebaseAvailable = () => isAvailable();
 
 const COLLECTION_VEHICLES = 'vehicles';
 
@@ -56,12 +49,12 @@ const localGetAll = () => {
 
 const createVehicle = async (data) => {
     // Expected fields: truckNo, ownerName, ownerContact, driverName, driverContact, type, bankDetails, etc.
-    if (firebaseAvailable) return await firestoreCreate(data);
+    if (firebaseAvailable()) return await firestoreCreate(data);
     return localCreate(data);
 };
 
 const getAllVehicles = async () => {
-    if (firebaseAvailable) return await firestoreGetAll();
+    if (firebaseAvailable()) return await firestoreGetAll();
     return localGetAll();
 };
 
@@ -70,7 +63,7 @@ const updateVehicle = async (id, data) => {
     delete allowed.id;
     delete allowed.createdAt;
 
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await firestoreUpdate(id, allowed);
     } else {
         localStore.update(COLLECTION_VEHICLES, id, allowed);
@@ -78,7 +71,7 @@ const updateVehicle = async (id, data) => {
 };
 
 const deleteVehicle = async (id) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await firestoreDelete(id);
     } else {
         localStore.delete(COLLECTION_VEHICLES, id);

@@ -11,44 +11,53 @@ const JKL_MATERIALS = ['PPC', 'OPC43', 'Pro+'];
 svc.init(JKL_CHAL_COL);
 
 /* ── Overview ── */
-router.get('/', (req, res) => res.json(svc.getOverview(JKL_STOCK_COL, JKL_CHAL_COL)));
+router.get('/', async (req, res) => {
+    try { res.json(await svc.getOverview(JKL_STOCK_COL, JKL_CHAL_COL)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 /* ── Stock Additions ── */
-router.get('/additions', (req, res) => res.json(svc.getHistory(JKL_STOCK_COL)));
-router.post('/additions', (req, res) => {
-    try { res.status(201).json(svc.addStock(req.body, JKL_STOCK_COL, JKL_MATERIALS)); }
+router.get('/additions', async (req, res) => {
+    try { res.json(await svc.getHistory(JKL_STOCK_COL)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/additions', async (req, res) => {
+    try { res.status(201).json(await svc.addStock(req.body, JKL_STOCK_COL, JKL_MATERIALS)); }
     catch (e) { res.status(400).json({ error: e.message }); }
 });
-router.delete('/additions/:id', (req, res) => {
-    try { svc.deleteAddition(req.params.id, JKL_STOCK_COL); res.json({ ok: true }); }
+router.delete('/additions/:id', async (req, res) => {
+    try { await svc.deleteAddition(req.params.id, JKL_STOCK_COL); res.json({ ok: true }); }
     catch (e) { res.status(404).json({ error: e.message }); }
 });
 
 /* ── Challans ── */
-router.get('/challans', (req, res) => res.json(svc.getAllChallans(JKL_CHAL_COL)));
-router.post('/challans', (req, res) => {
-    try { res.status(201).json(svc.createChallan(req.body, JKL_CHAL_COL, JKL_MATERIALS)); }
+router.get('/challans', async (req, res) => {
+    try { res.json(await svc.getAllChallans(JKL_CHAL_COL)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/challans', async (req, res) => {
+    try { res.status(201).json(await svc.createChallan(req.body, JKL_CHAL_COL, JKL_MATERIALS)); }
     catch (e) { res.status(400).json({ error: e.message }); }
 });
-router.post('/challans/deduct', (req, res) => {
+router.post('/challans/deduct', async (req, res) => {
     try {
-        const { challanNo, deductions } = req.body;
-        if (!challanNo || !deductions) throw new Error('Missing deduct data');
-        res.json(svc.deductChallanQuantities(challanNo, deductions, JKL_CHAL_COL));
+        const { id, deductions } = req.body;
+        if (!id || !deductions) throw new Error('Missing deduct data');
+        res.json(await svc.deductChallanQuantities(id, deductions, JKL_CHAL_COL));
     } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });
-router.put('/challans/:id', (req, res) => {
-    try { res.json(svc.updateChallan(req.params.id, req.body, JKL_CHAL_COL)); }
+router.put('/challans/:id', async (req, res) => {
+    try { res.json(await svc.updateChallan(req.params.id, req.body, JKL_CHAL_COL)); }
     catch (e) { res.status(400).json({ error: e.message }); }
 });
-router.patch('/challans/:id/status', (req, res) => {
-    try { res.json(svc.updateChallanStatus(req.params.id, req.body.status, JKL_CHAL_COL)); }
+router.patch('/challans/:id/status', async (req, res) => {
+    try { res.json(await svc.updateChallanStatus(req.params.id, req.body.status, JKL_CHAL_COL)); }
     catch (e) { res.status(400).json({ error: e.message }); }
 });
-router.delete('/challans/:id', (req, res) => {
-    try { svc.deleteChallan(req.params.id, JKL_CHAL_COL); res.json({ ok: true }); }
+router.delete('/challans/:id', async (req, res) => {
+    try { await svc.deleteChallan(req.params.id, JKL_CHAL_COL); res.json({ ok: true }); }
     catch (e) { res.status(404).json({ error: e.message }); }
 });
 

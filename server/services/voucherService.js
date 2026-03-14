@@ -1,15 +1,7 @@
 const localStore = require('../utils/localStore');
 
-let firebaseAvailable = false;
-let db, admin;
-
-try {
-    const fb = require('../firebase');
-    db = fb.db;
-    admin = fb.admin;
-    // _settings exists only on a real Firestore instance, not the mock
-    firebaseAvailable = !!(db && typeof db.collection === 'function' && db._settings);
-} catch { }
+const { db, admin, isAvailable } = require('../firebase');
+const firebaseAvailable = () => isAvailable();
 
 const COLLECTION_VOUCHERS = 'vouchers';
 
@@ -19,7 +11,7 @@ const createVoucher = async (data) => {
     const { type, ...voucherData } = data;
     const finalData = { ...voucherData, type };
 
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         const ref = db.collection(COLLECTION_VOUCHERS).doc();
         await ref.set({ ...finalData, createdAt: admin.firestore.FieldValue.serverTimestamp() });
         return { id: ref.id, ...finalData };
@@ -28,7 +20,7 @@ const createVoucher = async (data) => {
 };
 
 const getVouchersByType = async (type) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         // Use only a single-field where — no orderBy — to avoid requiring a composite index.
         // Sort by createdAt in JS after fetching.
         const snapshot = await db.collection(COLLECTION_VOUCHERS)

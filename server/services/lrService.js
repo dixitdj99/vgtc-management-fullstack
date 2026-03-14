@@ -1,15 +1,7 @@
 const localStore = require('../utils/localStore');
 
-let firebaseAvailable = false;
-let db, admin;
-
-try {
-    const fb = require('../firebase');
-    db = fb.db;
-    admin = fb.admin;
-    // Test if firebase is actually working (not a mock)
-    firebaseAvailable = !!(db && typeof db.collection === 'function' && db._settings);
-} catch { }
+const { db, admin, isAvailable } = require('../firebase');
+const firebaseAvailable = () => isAvailable();
 
 const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
@@ -82,19 +74,19 @@ const localGetAll = (lrCollection = COLLECTION_LR) => {
 // ── Public API — auto-selects Firebase or local ────────────────────────────────
 
 const createLoadingReceipt = async (data, lrCollection = COLLECTION_LR, counterCollection = COLLECTION_METADATA) => {
-    if (firebaseAvailable) return await firestoreCreate(data, lrCollection, counterCollection);
+    if (firebaseAvailable()) return await firestoreCreate(data, lrCollection, counterCollection);
     // for local store, if the collection is jkl_loading_receipts, use jkl_lr_no for counter
     const localCounter = lrCollection === COLLECTION_LR ? 'lr_no' : lrCollection + '_counter';
     return localCreate(data, lrCollection, localCounter);
 };
 
 const getAllLoadingReceipts = async (lrCollection = COLLECTION_LR) => {
-    if (firebaseAvailable) return await firestoreGetAll(lrCollection);
+    if (firebaseAvailable()) return await firestoreGetAll(lrCollection);
     return localGetAll(lrCollection);
 };
 
 const updateBillingStatus = async (id, billing, lrCollection = COLLECTION_LR) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await db.collection(lrCollection).doc(id).update({ billing });
     } else {
         localStore.update(lrCollection, id, { billing });
@@ -112,7 +104,7 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.weight !== undefined) allowed.weight = parseFloat(data.weight) || 0;
     if (data.totalBags !== undefined) allowed.totalBags = parseInt(data.totalBags) || 0;
 
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await db.collection(lrCollection).doc(id).update({
             ...allowed,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -123,7 +115,7 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
 };
 
 const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await db.collection(lrCollection).doc(id).delete();
     } else {
         localStore.delete(lrCollection, id);
