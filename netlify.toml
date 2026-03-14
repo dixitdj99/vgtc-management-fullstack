@@ -2,6 +2,9 @@
   command = "npm install && npm run build -w vgtc-client"
   publish = "client/dist"
 
+[build.environment]
+  NPM_CONFIG_PRODUCTION = "false"
+
 [functions]
   directory = "server/functions"
   node_bundler = "esbuild"

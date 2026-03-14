@@ -4,9 +4,5 @@
   "workspaces": [
     "client",
     "server"
-  ],
-  "devDependencies": {
-    "vite": "^5.2.0",
-    "@vitejs/plugin-react": "^4.2.1"
-  }
+  ]
 }
