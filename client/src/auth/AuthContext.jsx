@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import ax, { setAuthToken } from '../api';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -13,13 +13,13 @@ export function AuthProvider({ children }) {
   // Set axios default auth header and verify token on mount
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
-      axios.get(`/api/auth/me`)
+      setAuthToken(token);
+      ax.get(`/auth/me`)
         .then(r => { setUser(r.data); })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
     } else {
-      delete axios.defaults.headers.common['Authorization'];
+      setAuthToken(null);
       setReady(true);
     }
   }, [token]);
@@ -30,14 +30,14 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (username, password, selectedPlant) => {
-    const res = await axios.post(`/api/auth/login`, { username, password });
+    const res = await ax.post(`/auth/login`, { username, password });
     const { token: t, user: u } = res.data;
     localStorage.setItem('vgtc-token', t);
     if (selectedPlant) {
       localStorage.setItem('vgtc-plant', selectedPlant);
       setPlantState(selectedPlant);
     }
-    axios.defaults.headers.common['Authorization'] = 'Bearer ' + t;
+    setAuthToken(t);
     setToken(t);
     setUser(u);
     return u;
@@ -46,7 +46,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('vgtc-token');
     localStorage.removeItem('vgtc-plant');
-    delete axios.defaults.headers.common['Authorization'];
+    setAuthToken(null);
     setToken(null);
     setUser(null);
     setPlantState('');

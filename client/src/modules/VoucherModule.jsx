@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const API_V = `/api/vouchers`;
-const API_LR = `/api/lr`;
+const API_V = `/vouchers`;
+const API_LR = `/lr`;
 const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
 
@@ -81,7 +81,7 @@ function EditModal({ v, onClose, onSave }) {
         setSaving(true); setIsConfirming(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await axios.patch(API_V + '/' + v.id, { ...form, ...calc });
+            await ax.patch(API_V + '/' + v.id, { ...form, ...calc });
             onSave();
         } catch { alert('Update failed'); } finally { setSaving(false); }
     };
@@ -147,7 +147,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
     const [deleting, setDeleting] = useState(false);
     const go = async () => {
         setDeleting(true);
-        try { await axios.delete(API_V + '/' + v.id); onConfirm(); }
+        try { await ax.delete(API_V + '/' + v.id); onConfirm(); }
         catch { alert('Delete failed'); } finally { setDeleting(false); }
     };
     return (
@@ -204,7 +204,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
     useEffect(() => { fetchVouchers(); }, [vType]);
 
     const fetchVouchers = async () => {
-        try { setVouchers((await axios.get(API_V + '/' + vType)).data); } catch { }
+        try { setVouchers((await ax.get(API_V + '/' + vType)).data); } catch { }
     };
 
     /* LR search — fetch all materials for same LR */
@@ -213,10 +213,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
         if (!val) { setLrMaterials([]); return; }
         // Use the correct LR API based on voucher type
         const lrApi = vType === 'JK_Lakshmi'
-            ? `/api/jkl/lr`
-            : `/api/lr`; // Dump and JK_Super both use the standard LR endpoint
+            ? `/jkl/lr`
+            : `/lr`; 
         try {
-            const all = (await axios.get(lrApi)).data;
+            const all = (await ax.get(lrApi)).data;
             const rows = all.filter(l => String(l.lrNo) === String(val));
             if (rows.length > 0) {
                 setLrMaterials(rows);
@@ -236,7 +236,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
         setSaving(true); setIsConfirmingSave(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await axios.post(API_V, { ...form, type: vType, ...calc });
+            await ax.post(API_V, { ...form, type: vType, ...calc });
             fetchVouchers(); setLrMaterials([]);
             setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }

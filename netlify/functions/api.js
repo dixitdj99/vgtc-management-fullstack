@@ -34,13 +34,28 @@ apiRouter.use('/jkl/stock', jklStockRoutes);
 apiRouter.use('/jkl/cashbook', jklCashbookRoutes);
 apiRouter.use('/vehicles', vehicleRoutes);
 
+// Root route for base URL pings
+apiRouter.all('/', (req, res) => {
+    res.json({
+        message: 'VGTC API is running',
+        endpoints: [
+            '/auth/status',
+            '/vouchers',
+            '/lr',
+            '/stock',
+            '/cashbook',
+            '/vehicles'
+        ]
+    });
+});
+
 apiRouter.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Register the router under all possible base paths
-app.use('/api', apiRouter);
 app.use('/.netlify/functions/api', apiRouter);
+app.use('/api', apiRouter);
 app.use('/', apiRouter); // Fallback
 
 // Catch-all for debugging

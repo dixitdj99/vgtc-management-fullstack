@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search
@@ -7,7 +7,7 @@ import {
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const API_V = `/api/vouchers`;
+const API_V = `/vouchers`;
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v) {
@@ -115,7 +115,7 @@ function VoucherRow({ v, idx, onSave, checked, onCheck }) {
   };
   const executeSave = async () => {
     setSaving(true); setIsConfirming(false);
-    try { await axios.patch(API_V + '/' + v.id, form); setEditing(false); onSave(); }
+    try { await ax.patch(API_V + '/' + v.id, form); setEditing(false); onSave(); }
     catch { alert('Save failed'); } finally { setSaving(false); }
   };
   const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
@@ -238,7 +238,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
     const date = paymentClearedDate;
     setConfirmMarkRows(null);
     try {
-      await Promise.all(unpaid.map(v => axios.patch(API_V + '/' + v.id, {
+      await Promise.all(unpaid.map(v => ax.patch(API_V + '/' + v.id, {
         paidBalance: String(calcNet(v).toFixed(2)),
         paymentClearedDate: date
       })));
@@ -386,7 +386,7 @@ export default function BalanceSheet({ initialTab, lockedType }) {
   useEffect(() => { setSelected(new Set()); }, [selTruck, fFrom, fTo]);
 
   const fetchVouchers = async () => {
-    try { setVouchers((await axios.get(API_V + '/' + tab)).data); } catch { }
+    try { setVouchers((await ax.get(API_V + '/' + tab)).data); } catch { }
   };
 
   const truckGroups = useMemo(() => {
@@ -445,7 +445,7 @@ export default function BalanceSheet({ initialTab, lockedType }) {
     const date = paymentClearedDate;
     setConfirmMarkPaid(null);
     try {
-      await Promise.all(unpaid.map(v => axios.patch(API_V + '/' + v.id, {
+      await Promise.all(unpaid.map(v => ax.patch(API_V + '/' + v.id, {
         paidBalance: String(calcNet(v).toFixed(2)),
         paymentClearedDate: date
       })));

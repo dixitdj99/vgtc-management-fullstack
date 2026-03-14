@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 
-const API = `/api/vehicles`;
+const API = `/vehicles`;
 
 const getEmptyForm = () => ({
     truckNo: '',
@@ -30,7 +30,7 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
     const [deleting, setDeleting] = useState(false);
     const handleDelete = async () => {
         setDeleting(true);
-        try { await axios.delete(`${API}/${vehicle.id}`); onConfirm(); }
+        try { await ax.delete(`${API}/${vehicle.id}`); onConfirm(); }
         catch { alert('Delete failed'); } finally { setDeleting(false); }
     };
     return (
@@ -73,7 +73,7 @@ export default function VehicleModule() {
 
     const fetchData = async () => {
         try {
-            const { data } = await axios.get(API);
+            const { data } = await ax.get(API);
             setVehicles(data);
         } catch (error) {
             console.error("Failed to load vehicles", error);
@@ -136,9 +136,9 @@ export default function VehicleModule() {
         setSaving(true); setIsConfirmingSave(false);
         try {
             if (editId) {
-                await axios.patch(`${API}/${editId}`, form);
+                await ax.patch(`${API}/${editId}`, form);
             } else {
-                await axios.post(API, form);
+                await ax.post(API, form);
             }
             await fetchData();
             setForm(getEmptyForm());

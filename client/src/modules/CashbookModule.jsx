@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Plus, ArrowDownCircle, ArrowUpCircle, Trash2,
@@ -12,14 +12,14 @@ import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 const fmtRs = n => 'Rs.' + Math.abs(Math.round(n)).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-const API_V = `/api/vouchers`;
+const API_V = `/vouchers`;
 
 
 
 /* ══════ MAIN ══════ */
 export default function CashbookModule({ initialTab, moduleType }) {
   /* ── local state ── */
-  const API_CB = moduleType === 'jkl' ? `/api/jkl/cashbook` : `/api/cashbook`;
+  const API_CB = moduleType === 'jkl' ? `/jkl/cashbook` : `/cashbook`;
   const VTYPES = moduleType === 'jkl' ? ['JK_Lakshmi'] : ['Dump', 'JK_Super'];
 
   /* ── sub-components ── */
@@ -27,7 +27,7 @@ export default function CashbookModule({ initialTab, moduleType }) {
     const [busy, setBusy] = useState(false);
     const go = async () => {
       setBusy(true);
-      try { await axios.delete(API_CB + '/' + id); onDone(); }
+      try { await ax.delete(API_CB + '/' + id); onDone(); }
       catch (e) { alert(e.response?.data?.error || 'Delete failed'); }
       finally { setBusy(false); }
     };
@@ -61,7 +61,7 @@ export default function CashbookModule({ initialTab, moduleType }) {
     };
     const executeSave = async () => {
       setSaving(true); setIsConfirming(false);
-      try { await axios.post(API_CB + (isDeposit ? '/deposit' : '/cash-out'), form); setForm({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '' }); onSave(); }
+      try { await ax.post(API_CB + (isDeposit ? '/deposit' : '/cash-out'), form); setForm({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '' }); onSave(); }
       catch (e) { setErr(e.response?.data?.error || 'Error'); }
       finally { setSaving(false); }
     };
@@ -114,8 +114,8 @@ export default function CashbookModule({ initialTab, moduleType }) {
     setLoading(true);
     try {
       const [cb, ...voucherArrays] = await Promise.all([
-        axios.get(API_CB).then(r => r.data),
-        ...VTYPES.map(t => axios.get(`/api/vouchers/${t}`).then(r =>
+        ax.get(API_CB).then(r => r.data),
+        ...VTYPES.map(t => ax.get(`/vouchers/${t}`).then(r =>
           r.data.map(v => ({ ...v, vType: t }))
         )),
       ]);
@@ -264,7 +264,7 @@ export default function CashbookModule({ initialTab, moduleType }) {
       } else if (currentStatus) {
         payload.onlinePaidDate = null; // Clear it if marking unpaid
       }
-      await axios.patch(`${API_V}/${voucherId}`, payload);
+      await ax.patch(`${API_V}/${voucherId}`, payload);
       fetchAll();
       setOnlinePaidTarget(null);
     } catch (e) {

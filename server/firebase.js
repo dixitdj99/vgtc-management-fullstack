@@ -6,31 +6,48 @@ let isFirebaseInitialized = false;
 try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         // Load from environment variable (Netlify)
-        console.log('[Firebase] Attempting initialization via environment variable...');
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
-        db = admin.firestore();
-        isFirebaseInitialized = true;
-        console.log('[Firebase] Success: Connected to Firestore via environment variable');
-    } else {
-        // Load from local file (Local Dev)
         try {
-            const serviceAccount = require('./serviceAccountKey.json');
+            console.log('[Firebase] Attempting initialization via environment variable...');
+            const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount)
             });
             db = admin.firestore();
             isFirebaseInitialized = true;
-            console.log('[Firebase] Success: Connected to Firestore via local serviceAccountKey.json');
+            console.log('[Firebase] Success: Connected to Firestore via environment variable');
         } catch (e) {
-            console.warn('[Firebase] Warning: serviceAccountKey.json not found or invalid.');
+            console.error('[Firebase] Critical: Failed to parse FIREBASE_SERVICE_ACCOUNT. Ensure it is a valid JSON string.');
+            throw e;
+        }
+    } else {
+        // Load from local file (Local Dev)
+        try {
+            const path = require('path');
+            const keyPath = path.join(__dirname, 'serviceAccountKey.json');
+            const fs = require('fs');
+            
+            if (fs.existsSync(keyPath)) {
+                const serviceAccount = require(keyPath);
+                admin.initializeApp({
+                    credential: admin.credential.cert(serviceAccount)
+                });
+                db = admin.firestore();
+                isFirebaseInitialized = true;
+                console.log('[Firebase] Success: Connected to Firestore via local serviceAccountKey.json');
+            } else {
+                console.warn('[Firebase] Warning: serviceAccountKey.json not found locally.');
+                throw new Error('Local service account key missing');
+            }
+        } catch (e) {
+            console.warn('[Firebase] Warning: Using local JSON fallback (Development Mode)');
             throw e;
         }
     }
 } catch (error) {
-    console.error('[Firebase] Critical: Initialization failed. Falling back to local JSON.', error.message);
+    if (process.env.NETLIFY) {
+        console.error('[Firebase] Serverless Error: Cannot initialize cloud database.');
+        console.error('[Firebase] INSTRUCTIONS: Add your serviceAccountKey.json content to the "FIREBASE_SERVICE_ACCOUNT" environment variable in Netlify Site Settings.');
+    }
     // ... rest of mock db
     db = {
         collection: () => ({

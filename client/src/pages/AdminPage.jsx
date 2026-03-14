@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, Users } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
-const API = `/api/users`;
+const API = `/users`;
 const ROLES = ['user', 'admin'];
 const ROLE_COLOR = { admin: '#6366f1', user: '#10b981' };
 const ROLE_ICON = { admin: Crown, user: Users };
@@ -13,7 +13,7 @@ function DeleteConfirm({ u, onClose, onConfirm }) {
   const [busy, setBusy] = useState(false);
   const go = async () => {
     setBusy(true);
-    try { await axios.delete(API + '/' + u.id); onConfirm(); }
+    try { await ax.delete(API + '/' + u.id); onConfirm(); }
     catch (e) { alert(e.response?.data?.error || 'Delete failed'); }
     finally { setBusy(false); }
   };
@@ -61,14 +61,14 @@ export default function AdminPage() {
 
   const fetchUsers = async () => {
     setLoading(true);
-    try { setUsers((await axios.get(API)).data); }
+    try { setUsers((await ax.get(API)).data); }
     catch { } finally { setLoading(false); }
   };
 
   const handleCreate = async e => {
     e.preventDefault(); setFormError(''); setCreating(true);
     try {
-      await axios.post(API, form);
+      await ax.post(API, form);
       setForm({ name: '', username: '', password: '', role: 'user' });
       fetchUsers();
     } catch (e) { setFormError(e.response?.data?.error || 'Failed to create user'); }

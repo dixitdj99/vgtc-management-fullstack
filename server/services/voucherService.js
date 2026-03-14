@@ -39,7 +39,7 @@ const getVouchersByType = async (type) => {
 };
 
 const updateVoucher = async (id, data) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await db.collection(COLLECTION_VOUCHERS).doc(id).update({
             ...data,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -50,7 +50,7 @@ const updateVoucher = async (id, data) => {
 };
 
 const deleteVoucher = async (id) => {
-    if (firebaseAvailable) {
+    if (firebaseAvailable()) {
         await db.collection(COLLECTION_VOUCHERS).doc(id).delete();
     } else {
         localStore.delete(COLLECTION_VOUCHERS, id);

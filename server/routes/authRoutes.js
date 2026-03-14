@@ -8,10 +8,14 @@ const { isAvailable } = require('../firebase');
 
 // GET /api/auth/status (Diagnostic)
 router.get('/status', (req, res) => {
+    const firebaseConnected = isAvailable();
     res.json({
-        firebase: isAvailable() ? 'connected' : 'disconnected',
+        status: 'ok',
+        database: firebaseConnected ? 'Firestore' : 'Local JSON (Fallback)',
+        firebase: firebaseConnected ? 'connected' : 'disconnected',
         environment: process.env.NETLIFY ? 'netlify' : 'local',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        note: !firebaseConnected ? 'To enable Firestore, add server/serviceAccountKey.json (local) or FIREBASE_SERVICE_ACCOUNT (Netlify)' : 'Firestore is active'
     });
 });
 

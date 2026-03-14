@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
@@ -9,7 +9,7 @@ import {
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const BASE_API = `/api`;
+const BASE_API = ``;
 const MATS_DUMP = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
 const MATS_JKL = ["PPC", "OPC43", "Pro+"];
 const MCOL = { "PPC": "#6366f1", "OPC43": "#f59e0b", "Pro+": "#10b981", "Adstar": "#10b981", "OPC FS": "#0ea5e9", "OPC53 FS": "#a855f7", "Weather": "#f43f5e" };
@@ -112,10 +112,10 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
     setLoading(true);
     try {
       const [ad, ch, lr, vh] = await Promise.all([
-        axios.get(API + '/additions').then(r => r.data),
-        axios.get(API + '/challans').then(r => r.data),
-        axios.get(API_LR).then(r => r.data),
-        axios.get(`/api/vehicles`).then(r => r.data).catch(() => []),
+        ax.get(API + '/additions').then(r => r.data),
+        ax.get(API + '/challans').then(r => r.data),
+        ax.get(API_LR).then(r => r.data),
+        ax.get(`/vehicles`).then(r => r.data).catch(() => []),
       ]);
       setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh);
     } catch (e) { console.error(e); }
@@ -160,7 +160,7 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
   };
   const executeAdd = async () => {
     setSaving(true); setIsConfirmingAdd(false);
-    try { await axios.post(API + '/additions', addForm); setAddForm(getEmptyAdd()); fetchAll(); }
+    try { await ax.post(API + '/additions', addForm); setAddForm(getEmptyAdd()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
 
@@ -183,20 +183,20 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
 
   const executeChallan = async () => {
     setSaving(true); setIsConfirmingChallan(false);
-    try { await axios.post(API + '/challans', chalForm); setChalForm(getEmptyChal()); fetchAll(); }
+    try { await ax.post(API + '/challans', chalForm); setChalForm(getEmptyChal()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
 
   const updateStatus = async (id, status) => {
-    try { await axios.patch(API + '/challans/' + id, { status }); fetchAll(); }
+    try { await ax.patch(API + '/challans/' + id, { status }); fetchAll(); }
     catch (er) { alert(er.response?.data?.error || 'Error'); }
   };
 
   const deleteItem = async () => {
     if (!delTarget) return;
     try {
-      if (delTarget.type === 'addition') await axios.delete(API + '/additions/' + delTarget.id);
-      else await axios.delete(API + '/challans/' + delTarget.id);
+      if (delTarget.type === 'addition') await ax.delete(API + '/additions/' + delTarget.id);
+      else await ax.delete(API + '/challans/' + delTarget.id);
       fetchAll();
     } catch (er) { alert('Delete failed'); }
     setDelTarget(null);

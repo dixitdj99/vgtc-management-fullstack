@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const BASE_API = `/api`;
+const BASE_API = ``;
 const MATS_DUMP = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
 const MATS_JKL = ['PPC', 'OPC43', 'Pro+'];
 
@@ -128,11 +128,11 @@ function EditModal({ row, openChallans, onClose, onSave }) {
       if (form.billing) {
         payload.billing = form.billing;
         if (form.billing !== row.billing) {
-          try { await axios.patch(`${ENDPOINT}/${row.id}/billing`, { billing: payload.billing }); }
+          try { await ax.patch(`${ENDPOINT}/${row.id}/billing`, { billing: payload.billing }); }
           catch (e) { console.warn('Failed to update billing', e); }
         }
       }
-      await axios.put(`${ENDPOINT.replace('/stock/challans', '/lr')}/${row.id}`, payload);
+      await ax.put(`${ENDPOINT.replace('/stock/challans', '/lr')}/${row.id}`, payload);
       onSave();
     } catch (e) { alert('Update failed'); } finally { setLoading(false); }
   };
@@ -263,7 +263,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const executeCreate = async () => {
     setSaving(true); setIsConfirming(false);
     try {
-      await axios.post(ENDPOINT, chalForm);
+      await ax.post(ENDPOINT, chalForm);
       // Go back to select tab so user can see newly created challan
       setTab('select');
       setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', remark: '' });
@@ -445,7 +445,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
   const [deleting, setDeleting] = useState(false);
   const handleDelete = async () => {
     setDeleting(true);
-    try { await axios.delete(apiUrl + '/' + row.id); onConfirm(); }
+    try { await ax.delete(apiUrl + '/' + row.id); onConfirm(); }
     catch { alert('Delete failed'); } finally { setDeleting(false); }
   };
   return (
@@ -501,14 +501,14 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
 
   const fetchData = async () => {
     try {
-      const data = (await axios.get(API)).data;
+      const data = (await ax.get(API)).data;
       setReceipts([...data].sort((a, b) => b.lrNo - a.lrNo));
     } catch { }
   };
 
   const fetchChallans = async () => {
     try {
-      const data = (await axios.get(API_CHAL)).data;
+      const data = (await ax.get(API_CHAL)).data;
       setAllChallans(data);
       setOpenChallans(data.filter(c => c.status === 'open' || c.status === 'partially_loaded'));
     } catch { }
@@ -516,7 +516,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
 
   const fetchVehicles = async () => {
     try {
-      const data = (await axios.get(`/api/vehicles`)).data;
+      const data = (await ax.get(`/vehicles`)).data;
       setVehicles(data);
     } catch { }
   };
@@ -555,7 +555,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
         billing: form.usedChallans.map(c => c.challanNo).join(', ')
       };
 
-      const res = await axios.post(API, payload);
+      const res = await ax.post(API, payload);
 
       // 2. Perform challan deductions
       for (const ch of form.usedChallans) {
@@ -581,7 +581,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
         }
 
         if (chDeductions.length > 0) {
-          await axios.post(API_CHAL.replace('/challans', '') + '/challans/deduct', {
+          await ax.post(API_CHAL.replace('/challans', '') + '/challans/deduct', {
             id: ch.id,
             deductions: chDeductions
           });
