@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, Users } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
-const API = `http://${window.location.hostname}:5000/api/users`;
+const API = `/api/users`;
 const ROLES = ['user', 'admin'];
 const ROLE_COLOR = { admin: '#6366f1', user: '#10b981' };
 const ROLE_ICON = { admin: Crown, user: Users };

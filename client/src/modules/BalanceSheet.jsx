@@ -7,7 +7,7 @@ import {
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const API_V = `http://${window.location.hostname}:5000/api/vouchers`;
+const API_V = `/api/vouchers`;
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v) {

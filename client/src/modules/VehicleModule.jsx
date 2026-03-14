@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 
-const API = `http://${window.location.hostname}:5000/api/vehicles`;
+const API = `/api/vehicles`;
 
 const getEmptyForm = () => ({
     truckNo: '',

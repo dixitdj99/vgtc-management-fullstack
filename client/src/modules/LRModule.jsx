@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const BASE_API = `http://${window.location.hostname}:5000/api`;
+const BASE_API = `/api`;
 const MATS_DUMP = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
 const MATS_JKL = ['PPC', 'OPC43', 'Pro+'];
 
@@ -516,7 +516,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
 
   const fetchVehicles = async () => {
     try {
-      const data = (await axios.get(`http://${window.location.hostname}:5000/api/vehicles`)).data;
+      const data = (await axios.get(`/api/vehicles`)).data;
       setVehicles(data);
     } catch { }
   };

@@ -9,7 +9,7 @@ import {
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const BASE_API = `http://${window.location.hostname}:5000/api`;
+const BASE_API = `/api`;
 const MATS_DUMP = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
 const MATS_JKL = ["PPC", "OPC43", "Pro+"];
 const MCOL = { "PPC": "#6366f1", "OPC43": "#f59e0b", "Pro+": "#10b981", "Adstar": "#10b981", "OPC FS": "#0ea5e9", "OPC53 FS": "#a855f7", "Weather": "#f43f5e" };
@@ -115,7 +115,7 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
         axios.get(API + '/additions').then(r => r.data),
         axios.get(API + '/challans').then(r => r.data),
         axios.get(API_LR).then(r => r.data),
-        axios.get(`http://${window.location.hostname}:5000/api/vehicles`).then(r => r.data).catch(() => []),
+        axios.get(`/api/vehicles`).then(r => r.data).catch(() => []),
       ]);
       setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh);
     } catch (e) { console.error(e); }

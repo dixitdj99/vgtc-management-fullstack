@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
-      axios.get(`http://${window.location.hostname}:5000/api/auth/me`)
+      axios.get(`/api/auth/me`)
         .then(r => { setUser(r.data); })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (username, password, selectedPlant) => {
-    const res = await axios.post(`http://${window.location.hostname}:5000/api/auth/login`, { username, password });
+    const res = await axios.post(`/api/auth/login`, { username, password });
     const { token: t, user: u } = res.data;
     localStorage.setItem('vgtc-token', t);
     if (selectedPlant) {

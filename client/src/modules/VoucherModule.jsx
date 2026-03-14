@@ -5,8 +5,8 @@ import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Pri
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
-const API_V = `http://${window.location.hostname}:5000/api/vouchers`;
-const API_LR = `http://${window.location.hostname}:5000/api/lr`;
+const API_V = `/api/vouchers`;
+const API_LR = `/api/lr`;
 const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
 
@@ -213,8 +213,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
         if (!val) { setLrMaterials([]); return; }
         // Use the correct LR API based on voucher type
         const lrApi = vType === 'JK_Lakshmi'
-            ? `http://${window.location.hostname}:5000/api/jkl/lr`
-            : API_LR; // Dump and JK_Super both use the standard LR endpoint
+            ? `/api/jkl/lr`
+            : `/api/lr`; // Dump and JK_Super both use the standard LR endpoint
         try {
             const all = (await axios.get(lrApi)).data;
             const rows = all.filter(l => String(l.lrNo) === String(val));

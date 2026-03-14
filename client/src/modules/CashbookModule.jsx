@@ -12,14 +12,14 @@ import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 const fmtRs = n => 'Rs.' + Math.abs(Math.round(n)).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-const API_V = `http://${window.location.hostname}:5000/api/vouchers`;
+const API_V = `/api/vouchers`;
 
 
 
 /* ══════ MAIN ══════ */
 export default function CashbookModule({ initialTab, moduleType }) {
   /* ── local state ── */
-  const API_CB = moduleType === 'jkl' ? `http://${window.location.hostname}:5000/api/jkl/cashbook` : `http://${window.location.hostname}:5000/api/cashbook`;
+  const API_CB = moduleType === 'jkl' ? `/api/jkl/cashbook` : `/api/cashbook`;
   const VTYPES = moduleType === 'jkl' ? ['JK_Lakshmi'] : ['Dump', 'JK_Super'];
 
   /* ── sub-components ── */
@@ -115,7 +115,7 @@ export default function CashbookModule({ initialTab, moduleType }) {
     try {
       const [cb, ...voucherArrays] = await Promise.all([
         axios.get(API_CB).then(r => r.data),
-        ...VTYPES.map(t => axios.get(`http://${window.location.hostname}:5000/api/vouchers/${t}`).then(r =>
+        ...VTYPES.map(t => axios.get(`/api/vouchers/${t}`).then(r =>
           r.data.map(v => ({ ...v, vType: t }))
         )),
       ]);
