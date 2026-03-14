@@ -1,5 +1,5 @@
 [build]
-  command = "npm install && npm run build -w vgtc-client"
+  command = "npm install && cd server && npm install && cd .. && npm run build -w vgtc-client"
   publish = "client/dist"
 
 [build.environment]
