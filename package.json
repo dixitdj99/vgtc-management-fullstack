@@ -1,0 +1,8 @@
+{
+  "name": "vgtc-management-fullstack",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ]
+}
