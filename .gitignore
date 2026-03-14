@@ -8,3 +8,4 @@ dist-ssr/
 .firebaserc
 client/
 *.zip
+server/serviceAccountKey.json
