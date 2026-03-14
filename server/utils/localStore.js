@@ -8,16 +8,23 @@ const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
 
-// On AWS Lambda (Netlify), /var/task is read-only. Only /tmp is writable.
-// Locally, use the server/data directory as before.
-const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.LAMBDA_TASK_ROOT);
 const DATA_DIR = IS_LAMBDA
     ? '/tmp/vgtc-data'
     : path.join(__dirname, '..', 'data');
-try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-} catch (e) {
-    console.warn('[localStore] Could not create data directory:', e.message);
+
+console.log(`[localStore] Init: environment=${IS_LAMBDA ? 'serverless' : 'local'}, path=${DATA_DIR}`);
+
+function ensureDir() {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+            console.log(`[localStore] Created directory: ${DATA_DIR}`);
+        }
+    } catch (e) {
+        // Only log if it's not a read-only error we expect on serverless
+        if (!IS_LAMBDA) console.warn('[localStore] Directory error:', e.message);
+    }
 }
 
 function readCollection(name) {
@@ -28,8 +35,13 @@ function readCollection(name) {
 }
 
 function writeCollection(name, docs) {
+    ensureDir();
     const file = path.join(DATA_DIR, name + '.json');
-    fs.writeFileSync(file, JSON.stringify(docs, null, 2), 'utf8');
+    try {
+        fs.writeFileSync(file, JSON.stringify(docs, null, 2), 'utf8');
+    } catch (e) {
+        if (!IS_LAMBDA) console.error('[localStore] Write failed:', e.message);
+    }
 }
 
 const localStore = {
@@ -65,13 +77,18 @@ const localStore = {
     },
 
     getCounter(name) {
+        ensureDir();
         const file = path.join(DATA_DIR, '_counters.json');
         let counters = {};
         if (fs.existsSync(file)) {
             try { counters = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { }
         }
         counters[name] = (counters[name] || 0) + 1;
-        fs.writeFileSync(file, JSON.stringify(counters, null, 2), 'utf8');
+        try {
+            fs.writeFileSync(file, JSON.stringify(counters, null, 2), 'utf8');
+        } catch (e) {
+            if (!IS_LAMBDA) console.error('[localStore] Counter write failed:', e.message);
+        }
         return counters[name];
     }
 };
