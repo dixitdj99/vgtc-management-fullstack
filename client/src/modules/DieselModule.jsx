@@ -1,0 +1,207 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import ax from '../api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Fuel, Search, Filter, Calendar, Check, X, Pencil, Droplet, ArrowRight, Save, AlertCircle } from 'lucide-react';
+import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import { useAuth } from '../auth/AuthContext';
+
+const API_V = `/vouchers`;
+const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
+
+export default function DieselModule() {
+    const { plant } = useAuth();
+    const [vouchers, setVouchers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    
+    // Filters
+    const [fPump, setFPump] = useState('');
+    const [fDateFrom, setFDateFrom] = useState('');
+    const [fDateTo, setFDateTo] = useState('');
+    const [fTruck, setFTruck] = useState('');
+
+    // Edit state
+    const [editingId, setEditingId] = useState(null);
+    const [editForm, setEditForm] = useState({ advanceDiesel: '', isFullTank: false });
+
+    useEffect(() => {
+        fetchData();
+    }, [plant]);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            // Types change based on plant
+            const types = plant === 'jklakshmi' ? ['Dump', 'JK_Lakshmi'] : ['Dump', 'JK_Super'];
+            const all = await Promise.all(types.map(t => ax.get(`${API_V}/${t}`)));
+            const combined = all.flatMap(res => res.data)
+                .filter(v => v.advanceDiesel || v.isFullTank); // Only show those with diesel advances
+            
+            // Sort by date desc
+            combined.sort((a, b) => new Date(b.date) - new Date(a.date));
+            setVouchers(combined);
+        } catch (err) {
+            console.error('Failed to fetch diesel records', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEdit = (v) => {
+        setEditingId(v.id);
+        setEditForm({ 
+            advanceDiesel: v.advanceDiesel === 'FULL' ? '' : v.advanceDiesel, 
+            isFullTank: v.advanceDiesel === 'FULL' || v.isFullTank 
+        });
+    };
+
+    const handleSave = async (id) => {
+        setSaving(true);
+        try {
+            const finalValue = editForm.isFullTank ? 'FULL' : editForm.advanceDiesel;
+            await ax.patch(`${API_V}/${id}`, { 
+                advanceDiesel: finalValue,
+                isFullTank: editForm.isFullTank 
+            });
+            setEditingId(null);
+            fetchData();
+        } catch (err) {
+            alert('Update failed');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const filtered = useMemo(() => {
+        return vouchers.filter(v => {
+            const matchPump = !fPump || v.pump === fPump;
+            const matchDateFrom = !fDateFrom || v.date >= fDateFrom;
+            const matchDateTo = !fDateTo || v.date <= fDateTo;
+            const matchTruck = !fTruck || v.truckNo.toLowerCase().includes(fTruck.toLowerCase());
+            return matchPump && matchDateFrom && matchDateTo && matchTruck;
+        });
+    }, [vouchers, fPump, fDateFrom, fDateTo, fTruck]);
+
+    const TH = { padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)' };
+    const TD = { padding: '12px 16px', fontSize: '13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)' };
+
+    return (
+        <div className="page-container">
+            <div className="page-hd">
+                <div>
+                    <h1><Droplet size={20} color="#3b82f6" /> Diesel Management</h1>
+                    <p>Reconcile and update fuel records manually</p>
+                </div>
+            </div>
+
+            {/* Filters */}
+            <div className="card" style={{ marginBottom: '20px' }}>
+                <div className="card-body" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'flex-end' }}>
+                    <div className="field" style={{ flex: '1 1 200px' }}>
+                        <label><Fuel size={12} /> Fuel Pump</label>
+                        <select className="fi" value={fPump} onChange={e => setFPump(e.target.value)}>
+                            <option value="">All Pumps</option>
+                            {PUMPS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </div>
+                    <div className="field" style={{ flex: '1 1 150px' }}>
+                        <label><Calendar size={12} /> From Date</label>
+                        <input type="date" className="fi" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} />
+                    </div>
+                    <div className="field" style={{ flex: '1 1 150px' }}>
+                        <label><Calendar size={12} /> To Date</label>
+                        <input type="date" className="fi" value={fDateTo} onChange={e => setFDateTo(e.target.value)} />
+                    </div>
+                    <div className="field" style={{ flex: '1 1 150px' }}>
+                        <label><Search size={12} /> Truck No.</label>
+                        <input type="text" className="fi" placeholder="Search Truck..." value={fTruck} onChange={e => setFTruck(e.target.value)} />
+                    </div>
+                    <button className="btn btn-g" onClick={() => { setFPump(''); setFDateFrom(''); setFDateTo(''); setFTruck(''); }}>Clear</button>
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="card">
+                <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
+                    <div className="card-title-block">
+                        <div className="card-icon ci-blue"><Droplet size={17} /></div>
+                        <div className="card-title-text">
+                            <h3>Fuel Advance Records</h3>
+                            <p>{filtered.length} entries found</p>
+                        </div>
+                    </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                    {loading ? (
+                        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading records...</div>
+                    ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: 'var(--bg-th)' }}>
+                                    <th style={TH}>Date</th>
+                                    <th style={TH}>Truck No.</th>
+                                    <th style={TH}>Pump Name</th>
+                                    <th style={TH}>Type</th>
+                                    <th style={TH}>Diesel Advance</th>
+                                    <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.length === 0 ? (
+                                    <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No records matching filters</td></tr>
+                                ) : (
+                                    filtered.map(v => (
+                                        <tr key={v.id} style={{ transition: 'background 0.2s' }}>
+                                            <td style={TD}>{v.date}</td>
+                                            <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo}</td>
+                                            <td style={TD}>{v.pump}</td>
+                                            <td style={TD}><span className="badge badge-tag">{v.type.replace('_', ' ')}</span></td>
+                                            <td style={TD}>
+                                                {editingId === v.id ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <input 
+                                                            type="text" 
+                                                            className="fi" 
+                                                            style={{ width: '100px', height: '32px' }}
+                                                            placeholder="Amount"
+                                                            value={editForm.advanceDiesel}
+                                                            disabled={editForm.isFullTank}
+                                                            onChange={e => setEditForm(f => ({ ...f, advanceDiesel: e.target.value }))}
+                                                        />
+                                                        <button 
+                                                            className={`btn btn-sm ${editForm.isFullTank ? 'btn-p' : 'btn-g'}`}
+                                                            onClick={() => setEditForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? '' : f.advanceDiesel }))}
+                                                        >
+                                                            Full
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ fontWeight: 800, color: v.advanceDiesel === 'FULL' ? '#3b82f6' : 'var(--text)' }}>
+                                                            {v.advanceDiesel === 'FULL' ? 'FULL TANK' : (v.advanceDiesel || '0')}
+                                                        </span>
+                                                        {v.advanceDiesel === 'FULL' && <Droplet size={14} color="#3b82f6" />}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'center' }}>
+                                                {editingId === v.id ? (
+                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                                        <button className="btn btn-p btn-icon btn-sm" onClick={() => handleSave(v.id)} disabled={saving}><Save size={14} /></button>
+                                                        <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditingId(null)} disabled={saving}><X size={14} /></button>
+                                                    </div>
+                                                ) : (
+                                                    <button className="btn btn-g btn-icon btn-sm" onClick={() => handleEdit(v)}><Pencil size={14} /></button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
