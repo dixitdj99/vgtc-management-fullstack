@@ -32,7 +32,7 @@ function AppInner() {
     } catch { return {}; }
   });
   const [col, setCol] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);

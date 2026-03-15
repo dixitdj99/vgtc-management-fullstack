@@ -665,7 +665,8 @@ textarea {
 }
 
 select.fi option {
-  background: #0f172a;
+  background: var(--bg-card);
+  color: var(--text);
 }
 
 .fi-row {
@@ -804,7 +805,7 @@ select.fi option {
 
 .tab-grp {
   display: flex;
-  background: rgba(8, 12, 28, 0.9);
+  background: var(--bg-th);
   border: 1px solid var(--border);
   border-radius: 11px;
   padding: 3px;
@@ -920,7 +921,7 @@ select.fi option {
 }
 
 .t-inp {
-  background: rgba(8, 12, 28, 0.8);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 7px;
   padding: 6px 9px;
@@ -1010,7 +1011,7 @@ select.fi option {
 }
 
 .mat-row {
-  background: rgba(8, 12, 28, 0.6);
+  background: var(--bg-filter);
   border: 1px solid var(--border);
   border-radius: 11px;
   padding: 14px;
@@ -1069,7 +1070,7 @@ select.fi option {
 
 .rec-item {
   padding: 11px 13px;
-  background: rgba(8, 12, 28, 0.6);
+  background: var(--bg-filter);
   border: 1px solid var(--border);
   border-radius: 9px;
   margin-bottom: 7px;
