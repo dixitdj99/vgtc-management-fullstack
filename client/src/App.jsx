@@ -10,7 +10,8 @@ import BalanceSheet from './modules/BalanceSheet';
 import CashbookModule from './modules/CashbookModule';
 import StockModule from './modules/StockModule';
 import VehicleModule from './modules/VehicleModule';
-import { Truck } from 'lucide-react';
+import DieselModule from './modules/DieselModule';
+import { Truck, Fuel } from 'lucide-react';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -84,6 +85,7 @@ function AppInner() {
       ]
     },
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper' },
+    { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper' },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi' },
@@ -117,6 +119,7 @@ function AppInner() {
       ]
     },
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi' },
+    { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi' },
 
     ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: 'jksuper' }] : []),
   ];
@@ -282,6 +285,7 @@ function AppInner() {
               {active === 'stock_dump' && <StockModule role={user.role} initialTab={subActive || 'overview'} brand="dump" />}
               {active === 'stock_jkl' && <StockModule role={user.role} initialTab={subActive || 'overview'} brand="jkl" />}
               {(active === 'vehicles_dump' || active === 'vehicles_jkl') && <VehicleModule />}
+              {(active === 'diesel_dump' || active === 'diesel_jkl') && <DieselModule />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
             </motion.div>
           </AnimatePresence>

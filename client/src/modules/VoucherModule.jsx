@@ -175,6 +175,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
+    const [lrAlreadyUsed, setLrAlreadyUsed] = useState(false);
     const [editVoucher, setEditVoucher] = useState(null);
     const [delVoucher, setDelVoucher] = useState(null);
     const [formOpen, setFormOpen] = useState(true);
@@ -207,28 +208,61 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
         try { setVouchers((await ax.get(API_V + '/' + vType)).data); } catch { }
     };
 
-    /* LR search — fetch all materials for same LR */
+    // For JK types: compute next LR number from existing voucher list
+    const nextLrNo = useMemo(() => {
+        if (vType === 'Dump') return '';
+        if (vouchers.length === 0) return '1';
+        const max = Math.max(...vouchers.map(v => parseInt(v.lrNo) || 0));
+        return String(max + 1);
+    }, [vType, vouchers]);
+
+    // Auto-fill LR No when switching to JK tabs (after vouchers load)
+    useEffect(() => {
+        if (vType === 'JK_Super' || vType === 'JK_Lakshmi') {
+            setForm(f => ({ ...f, lrNo: nextLrNo }));
+            setLrAlreadyUsed(false);
+        } else {
+            // Dump — clear LR field on tab switch
+            setForm(f => ({ ...f, lrNo: '' }));
+            setLrAlreadyUsed(false);
+        }
+    }, [nextLrNo]);
+
+    /* LR search — only Dump vouchers auto-fetch from /lr receipts */
+    /* JK_Super and JK_Lakshmi have custom LR numbers — no auto-fetch, but still prevent duplicates */
     const handleLrSearch = async val => {
         setForm(f => ({ ...f, lrNo: val }));
-        if (!val) { setLrMaterials([]); return; }
-        // Use the correct LR API based on voucher type
-        const lrApi = vType === 'JK_Lakshmi'
-            ? `/jkl/lr`
-            : `/lr`; 
+        setLrAlreadyUsed(false);
+        setLrMaterials([]);
+        if (!val) return;
+
+        // Check if this LR is already assigned to an existing voucher of the same type
+        const alreadyUsed = vouchers.some(v => String(v.lrNo) === String(val));
+        if (alreadyUsed) {
+            setLrAlreadyUsed(true);
+            return;
+        }
+
+        // JK_Super and JK_Lakshmi use fully custom LR numbers — skip LR receipt lookup
+        if (vType === 'JK_Super' || vType === 'JK_Lakshmi') return;
+
+        // Dump voucher only: Fetch LR details from receipts
         try {
-            const all = (await ax.get(lrApi)).data;
+            const all = (await ax.get(`/lr`)).data;
             const rows = all.filter(l => String(l.lrNo) === String(val));
             if (rows.length > 0) {
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
                 const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
                 setForm(f => ({ ...f, truckNo: rows[0].truckNo || '', date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb) }));
-            } else { setLrMaterials([]); }
+            }
         } catch (err) { console.error(err); }
     };
 
+
     const handleFormRequest = e => {
         e.preventDefault();
+        if (lrAlreadyUsed) return;  // Block save if LR is already assigned
         setIsConfirmingSave(true);
     };
 
@@ -237,7 +271,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
             await ax.post(API_V, { ...form, type: vType, ...calc });
-            fetchVouchers(); setLrMaterials([]);
+            fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false);
             setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
@@ -330,7 +364,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                         <div className="fg fg-4">
                                             <div className="field">
                                                 <label><Search size={11} /> LR Number</label>
-                                                <input className="fi" type="text" placeholder="e.g. 42" value={form.lrNo} onChange={e => handleLrSearch(e.target.value)} required />
+                                                <input
+                                                    className="fi" type="text" placeholder="e.g. 42"
+                                                    value={form.lrNo}
+                                                    onChange={e => handleLrSearch(e.target.value)}
+                                                    style={lrAlreadyUsed ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.18)' } : {}}
+                                                    required
+                                                />
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
@@ -345,6 +385,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                                 <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} />
                                             </div>
                                         </div>
+
+                                        {lrAlreadyUsed && (
+                                            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '9px', padding: '9px 14px' }}>
+                                                <AlertTriangle size={15} color="#f43f5e" style={{ flexShrink: 0 }} />
+                                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#f43f5e' }}>LR #{form.lrNo} is already assigned to a {vType.replace('_', ' ')} voucher. Please use a different LR number.</span>
+                                            </div>
+                                        )}
 
                                         {lrMaterials.length > 0 && (
                                             <div style={{ marginTop: '12px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: '10px', padding: '10px 14px' }}>
@@ -396,7 +443,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
-                                            <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving}>
+                                            <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving || lrAlreadyUsed}>
                                                 {saving ? 'Saving...' : <><Check size={15} /> Save Voucher</>}
                                             </button>
                                         </div>
