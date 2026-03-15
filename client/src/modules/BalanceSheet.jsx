@@ -12,6 +12,7 @@ const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+  // If v.advanceDiesel is 'FULL', use the 4000 fallback, otherwise use the actual value
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
@@ -153,7 +154,14 @@ function VoucherRow({ v, idx, onSave, checked, onCheck }) {
         {editing ? FI('total', '75px') : fmtRs((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0))}
       </td>
       <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>
-        {editing ? FI('advanceDiesel', '70px', true) : (v.advanceDiesel === 'FULL' ? '4000(F)' : (v.advanceDiesel || '—'))}
+        {editing ? FI('advanceDiesel', '70px', true) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+            <span style={{ fontWeight: v.isDieselVerified ? 800 : 400 }}>
+              {v.advanceDiesel === 'FULL' ? '4000 (Est.)' : (v.advanceDiesel || '—')}
+            </span>
+            {v.isFullTank && <span style={{ fontSize: '8px', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '1px 3px', borderRadius: '3px', fontWeight: 800 }}>FULL TANK</span>}
+          </div>
+        )}
       </td>
       <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>{editing ? FI('advanceCash') : (v.advanceCash || '—')}</td>
       <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>

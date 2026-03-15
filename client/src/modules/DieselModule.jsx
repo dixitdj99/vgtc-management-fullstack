@@ -51,19 +51,31 @@ export default function DieselModule() {
     const handleEdit = (v) => {
         setEditingId(v.id);
         setEditForm({ 
-            advanceDiesel: v.advanceDiesel === 'FULL' ? '' : v.advanceDiesel, 
-            isFullTank: v.advanceDiesel === 'FULL' || v.isFullTank 
+            advanceDiesel: v.advanceDiesel === 'FULL' ? '' : (v.advanceDiesel || ''), 
+            isFullTank: !!v.isFullTank || v.advanceDiesel === 'FULL'
         });
+    };
+
+    const handleQuickVerify = async (id) => {
+        try {
+            await ax.patch(`${API_V}/${id}`, { isDieselVerified: true });
+            fetchData();
+        } catch (err) {
+            alert('Verification failed');
+        }
     };
 
     const handleSave = async (id) => {
         setSaving(true);
         try {
-            const finalValue = editForm.isFullTank ? 'FULL' : editForm.advanceDiesel;
+            // Save the actual amount entered, even if it's a full tank
+            // If it's a full tank but they haven't entered an amount yet, keep it as 'FULL' for fallback
+            const finalValue = editForm.advanceDiesel || (editForm.isFullTank ? 'FULL' : '0');
+            
             await ax.patch(`${API_V}/${id}`, { 
                 advanceDiesel: finalValue,
                 isFullTank: editForm.isFullTank,
-                isDieselVerified: true // Set as verified when manually updated
+                isDieselVerified: true // Mark as verified when manually updated
             });
             setEditingId(null);
             fetchData();
@@ -197,24 +209,26 @@ export default function DieselModule() {
                                                             type="text" 
                                                             className="fi" 
                                                             style={{ width: '100px', height: '32px' }}
-                                                            placeholder="Amount"
+                                                            placeholder="Actual Rs."
                                                             value={editForm.advanceDiesel}
-                                                            disabled={editForm.isFullTank}
                                                             onChange={e => setEditForm(f => ({ ...f, advanceDiesel: e.target.value }))}
                                                         />
                                                         <button 
                                                             className={`btn btn-sm ${editForm.isFullTank ? 'btn-p' : 'btn-g'}`}
-                                                            onClick={() => setEditForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? '' : f.advanceDiesel }))}
+                                                            style={{ fontSize: '10px', height: '32px' }}
+                                                            onClick={() => setEditForm(f => ({ ...f, isFullTank: !f.isFullTank }))}
                                                         >
-                                                            Full
+                                                            {editForm.isFullTank ? 'Full ✓' : 'Full?'}
                                                         </button>
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <span style={{ fontWeight: 800, color: v.advanceDiesel === 'FULL' ? '#3b82f6' : 'var(--text)' }}>
-                                                            {v.advanceDiesel === 'FULL' ? 'FULL TANK' : (v.advanceDiesel || '0')}
+                                                        <span style={{ fontWeight: 800, color: 'var(--text)' }}>
+                                                            {v.advanceDiesel === 'FULL' ? 'PENDING COST' : (v.advanceDiesel || '0')}
                                                         </span>
-                                                        {v.advanceDiesel === 'FULL' && <Droplet size={14} color="#3b82f6" />}
+                                                        {v.isFullTank && <span title="Full Tank" style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '9px', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '1px 4px', borderRadius: '4px', fontWeight: 700 }}>
+                                                            <Droplet size={10} /> FULL
+                                                        </span>}
                                                     </div>
                                                 )}
                                             </td>
@@ -225,7 +239,19 @@ export default function DieselModule() {
                                                         <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditingId(null)} disabled={saving}><X size={14} /></button>
                                                     </div>
                                                 ) : (
-                                                    <button className="btn btn-g btn-icon btn-sm" title="Reconcile Details" onClick={() => handleEdit(v)}><Pencil size={14} /></button>
+                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                                        {!v.isDieselVerified && (
+                                                            <button 
+                                                                className="btn btn-p btn-icon btn-sm" 
+                                                                title="Quick Verify" 
+                                                                style={{ background: '#10b981', borderColor: '#10b981' }}
+                                                                onClick={() => handleQuickVerify(v.id)}
+                                                            >
+                                                                <Check size={14} />
+                                                            </button>
+                                                        )}
+                                                        <button className="btn btn-g btn-icon btn-sm" title="Reconcile Details" onClick={() => handleEdit(v)}><Pencil size={14} /></button>
+                                                    </div>
                                                 )}
                                             </td>
                                         </tr>
