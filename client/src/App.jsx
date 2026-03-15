@@ -11,8 +11,7 @@ import CashbookModule from './modules/CashbookModule';
 import StockModule from './modules/StockModule';
 import VehicleModule from './modules/VehicleModule';
 import DieselModule from './modules/DieselModule';
-import DashboardModule from './modules/DashboardModule';
-import { Truck, Fuel, Home } from 'lucide-react';
+import { Truck, Fuel } from 'lucide-react';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -21,9 +20,10 @@ const THEMES = [
 ];
 
 function AppInner() {
-  const { user, logout, ready, plant, setPlant } = useAuth();
-  // Default to dashboard
-  const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || 'dashboard');
+  const { user, logout, ready, plant } = useAuth();
+  // Default to first module of the selected plant
+  // Persistence for navigation
+  const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || (plant === 'jklakshmi' ? 'lr_jkl' : 'lr_dump'));
   const [subActive, setSubActive] = useState(() => localStorage.getItem('vgtc-subactive') || '');
   const [expanded, setExpanded] = useState(() => {
     try {
@@ -51,16 +51,8 @@ function AppInner() {
     setTheme(THEMES[(idx + 1) % THEMES.length].id);
   };
 
-  const navigateToModule = (p, act, sub = '') => {
-    setPlant(p);
-    setActive(act);
-    setSubActive(sub);
-    setExpanded(e => ({ ...e, [act]: true }));
-  };
-
   // Build nav items based on role
   const NAV = [
-    { id: 'dashboard', label: 'Dashboard', Icon: Home, color: 'var(--primary)', section: 'all' },
     // ── JK Super ──
     { id: 'lr_dump', label: 'Loading Receipt', Icon: Receipt, color: '#6366f1', section: 'jksuper' },
     {
@@ -133,7 +125,7 @@ function AppInner() {
   ];
 
   // Only show modules for the selected plant
-  const FILTERED_NAV = NAV.filter(n => n.section === 'all' || n.section === (plant || 'jksuper'));
+  const FILTERED_NAV = NAV.filter(n => n.section === (plant || 'jksuper'));
 
 
   // Redirect away from admin if not admin
@@ -282,7 +274,6 @@ function AppInner() {
           <AnimatePresence mode="wait">
             <motion.div key={active + subActive} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="page-content">
-              {active === 'dashboard' && <DashboardModule onNavigate={navigateToModule} />}
               {active === 'lr_dump' && <LRModule role={user.role} brand="dump" />}
               {active === 'lr_jkl' && <LRModule role={user.role} brand="jkl" />}
               {active === 'voucher_dump' && <VoucherModule role={user.role} lockedType={subActive || 'Dump'} />}
