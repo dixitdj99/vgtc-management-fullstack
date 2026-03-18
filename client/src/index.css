@@ -1180,3 +1180,71 @@ select.fi option {
   flex-direction: column;
   gap: 16px;
 }
+.filter-popover {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+}
+
+.filter-action-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.filter-action-btn:hover {
+  text-decoration: underline;
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.filter-item:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.filter-item.active {
+  background: var(--primary-glow);
+}
+
+.filter-checkbox {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  color: #fff;
+  transition: all 0.1s;
+}
+
+.filter-checkbox.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.fi-sm {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 1s linear infinite;
+}

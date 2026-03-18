@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { User, Lock, LogIn, Truck, Building2 } from 'lucide-react';
+import { User, Lock, LogIn, Truck, Building2, KeyRound, ArrowLeft } from 'lucide-react';
 
 const PLANTS = [
   {
@@ -24,12 +24,19 @@ const PLANTS = [
 ];
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, verifyOtp, resendOtp } = useAuth();
   const [plant, setPlant] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // OTP States
+  const [otpMode, setOtpMode] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [userId, setUserId] = useState(null);
+  const [userEmail, setUserEmail] = useState('');
+  const [resending, setResending] = useState(false);
 
   const selectedPlant = PLANTS.find(p => p.id === plant);
 
@@ -39,11 +46,35 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(username, password, plant);
+      if (otpMode) {
+        await verifyOtp(userId, otp, plant);
+      } else {
+        const result = await login(username, password, plant);
+        if (result && result.requireOtp) {
+          setOtpMode(true);
+          setUserId(result.userId);
+          setUserEmail(result.email);
+          setOtp('');
+        }
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!userId) return;
+    setResending(true);
+    setError('');
+    try {
+      await resendOtp(userId);
+      setError('A new OTP has been sent to your email.'); // Using error area for success message temporarily
+    } catch (err) {
+      setError('Failed to resend OTP');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -92,104 +123,153 @@ export default function LoginPage() {
           padding: '28px 28px 32px', boxShadow: '0 24px 60px rgba(0,0,0,0.4)'
         }}>
 
-          {/* Plant selection */}
-          <div style={{ marginBottom: '22px' }}>
-            <div style={{
-              fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-              textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center',
-              gap: '6px', marginBottom: '10px'
-            }}>
-              <Building2 size={12} /> Select Plant
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              {PLANTS.map(p => (
-                <button key={p.id} type="button" onClick={() => { setPlant(p.id); setError(''); }}
-                  style={{
-                    background: plant === p.id ? p.bg : 'var(--bg-input)',
-                    border: `2px solid ${plant === p.id ? p.border : 'var(--border)'}`,
-                    borderRadius: '12px', padding: '12px 14px', cursor: 'pointer',
-                    textAlign: 'left', transition: 'all 0.18s',
-                    outline: plant === p.id ? `0px solid ${p.color}30` : 'none',
-                  }}>
-                  <div style={{ fontSize: '13.5px', fontWeight: 800, color: plant === p.id ? p.color : 'var(--text)' }}>
-                    {p.label}
-                  </div>
-                  <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '3px', lineHeight: 1.4 }}>
-                    {p.desc}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          {!otpMode && (
+            <>
+              {/* Plant selection */}
+              <div style={{ marginBottom: '22px' }}>
+                <div style={{
+                  fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
+                  textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center',
+                  gap: '6px', marginBottom: '10px'
+                }}>
+                  <Building2 size={12} /> Select Plant
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {PLANTS.map(p => (
+                    <button key={p.id} type="button" onClick={() => { setPlant(p.id); setError(''); }}
+                      style={{
+                        background: plant === p.id ? p.bg : 'var(--bg-input)',
+                        border: `2px solid ${plant === p.id ? p.border : 'var(--border)'}`,
+                        borderRadius: '12px', padding: '12px 14px', cursor: 'pointer',
+                        textAlign: 'left', transition: 'all 0.18s',
+                        outline: plant === p.id ? `0px solid ${p.color}30` : 'none',
+                      }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: plant === p.id ? p.color : 'var(--text)' }}>
+                        {p.label}
+                      </div>
+                      <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '3px', lineHeight: 1.4 }}>
+                        {p.desc}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div style={{ borderTop: '1px solid var(--border)', marginBottom: '20px' }} />
+              <div style={{ borderTop: '1px solid var(--border)', marginBottom: '20px' }} />
+            </>
+          )}
 
-          <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>
-            Sign in {selectedPlant ? `— ${selectedPlant.label}` : ''}
-          </div>
-          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-            Enter your credentials to continue
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>
+                {otpMode ? 'Enter Security Code' : `Sign in ${selectedPlant ? `— ${selectedPlant.label}` : ''}`}
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                {otpMode ? `Authentication code sent to ${userEmail.replace(/(.{3})(.*)(@.*)/, '$1***$3')}` : 'Enter your credentials to continue'}
+              </div>
+            </div>
+            {otpMode && (
+              <button onClick={() => setOtpMode(false)} style={{
+                background: 'none', border: 'none', color: accentColor, fontSize: '11.5px', fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0'
+              }}>
+                <ArrowLeft size={12} /> Back
+              </button>
+            )}
           </div>
 
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{
-                fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
-              }}>
-                Username
-              </label>
-              <div style={{ position: 'relative' }}>
-                <User size={14} style={{
-                  position: 'absolute', left: '12px', top: '50%',
-                  transform: 'translateY(-50%)', color: 'var(--text-muted)'
-                }} />
-                <input
-                  type="text" value={username} onChange={e => setUsername(e.target.value)}
-                  placeholder="e.g. admin" autoFocus required
-                  style={{
-                    width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
-                    fontSize: '13.5px', outline: 'none', transition: 'border 0.18s',
-                    fontFamily: 'inherit', boxSizing: 'border-box'
-                  }}
-                  onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                />
-              </div>
-            </div>
+            {!otpMode ? (
+              <>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{
+                    fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
+                    textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
+                  }}>
+                    Username
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <User size={14} style={{
+                      position: 'absolute', left: '12px', top: '50%',
+                      transform: 'translateY(-50%)', color: 'var(--text-muted)'
+                    }} />
+                    <input
+                      type="text" value={username} onChange={e => setUsername(e.target.value)}
+                      placeholder="e.g. admin" autoFocus required
+                      style={{
+                        width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
+                        fontSize: '13.5px', outline: 'none', transition: 'border 0.18s',
+                        fontFamily: 'inherit', boxSizing: 'border-box'
+                      }}
+                      onFocus={e => e.target.style.borderColor = accentColor + '80'}
+                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    />
+                  </div>
+                </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
-              }}>
-                Password
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={14} style={{
-                  position: 'absolute', left: '12px', top: '50%',
-                  transform: 'translateY(-50%)', color: 'var(--text-muted)'
-                }} />
-                <input
-                  type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••" required
-                  style={{
-                    width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
-                    fontSize: '13.5px', outline: 'none', transition: 'border 0.18s',
-                    fontFamily: 'inherit', boxSizing: 'border-box'
-                  }}
-                  onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                />
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{
+                    fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
+                    textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
+                  }}>
+                    Password
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Lock size={14} style={{
+                      position: 'absolute', left: '12px', top: '50%',
+                      transform: 'translateY(-50%)', color: 'var(--text-muted)'
+                    }} />
+                    <input
+                      type="password" value={password} onChange={e => setPassword(e.target.value)}
+                      placeholder="••••••••" required
+                      style={{
+                        width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
+                        fontSize: '13.5px', outline: 'none', transition: 'border 0.18s',
+                        fontFamily: 'inherit', boxSizing: 'border-box'
+                      }}
+                      onFocus={e => e.target.style.borderColor = accentColor + '80'}
+                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
+                  textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
+                }}>
+                  6-Digit OTP
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <KeyRound size={14} style={{
+                    position: 'absolute', left: '12px', top: '50%',
+                    transform: 'translateY(-50%)', color: 'var(--text-muted)'
+                  }} />
+                  <input
+                    type="text" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="123456" autoFocus required maxLength={6}
+                    style={{
+                      width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                      borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
+                      fontSize: '18px', fontWeight: 800, letterSpacing: '0.2em', outline: 'none', 
+                      transition: 'border 0.18s', fontFamily: 'inherit', boxSizing: 'border-box'
+                    }}
+                    onFocus={e => e.target.style.borderColor = accentColor + '80'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {error && (
               <div style={{
-                background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)',
-                borderRadius: '10px', padding: '10px 14px', fontSize: '12.5px', color: 'var(--danger)',
+                background: error.includes('sent') ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)', 
+                border: `1px solid ${error.includes('sent') ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`,
+                borderRadius: '10px', padding: '10px 14px', fontSize: '12.5px', 
+                color: error.includes('sent') ? '#10b981' : 'var(--danger)',
                 fontWeight: 600, marginBottom: '16px'
               }}>
                 {error}
@@ -206,14 +286,24 @@ export default function LoginPage() {
               opacity: loading ? 0.7 : 1, transition: 'all 0.3s',
               fontFamily: 'inherit',
             }}>
-              {loading ? 'Signing in…' : <><LogIn size={16} /> Sign In</>}
+              {loading ? (otpMode ? 'Verifying…' : 'Signing in…') : (
+                <>{otpMode ? <><KeyRound size={16} /> Verify OTP</> : <><LogIn size={16} /> Sign In</>}</>
+              )}
             </button>
+
+            {otpMode && (
+              <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                <button type="button" onClick={handleResendOtp} disabled={resending} style={{
+                  background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px',
+                  fontWeight: 600, cursor: resending ? 'not-allowed' : 'pointer', textDecoration: 'underline'
+                }}>
+                  {resending ? 'Sending...' : "Didn't receive code? Resend"}
+                </button>
+              </div>
+            )}
           </form>
         </div>
 
-        <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '11px', color: 'var(--text-muted)' }}>
-          Default: <strong style={{ color: 'var(--text-sub)' }}>admin</strong> / <strong style={{ color: 'var(--text-sub)' }}>admin123</strong>
-        </div>
       </div>
     </div>
   );

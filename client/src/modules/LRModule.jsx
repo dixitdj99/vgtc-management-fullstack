@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import ColumnFilter from '../components/ColumnFilter';
 
 const BASE_API = ``;
 const MATS_DUMP = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
@@ -103,7 +104,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, onClose, onSave }) {
+function EditModal({ row, openChallans, onClose, onSave, brand }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
@@ -217,8 +218,8 @@ function EditModal({ row, openChallans, onClose, onSave }) {
         {/* Modal footer */}
         <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.07)', justifyContent: 'flex-end' }}>
           <button className="btn btn-g" onClick={onClose} disabled={loading}>Cancel</button>
-          <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading}>
-            {loading ? 'Saving...' : <><Check size={14} /> Save Changes</>}
+          <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading} title="Save Changes">
+            {loading ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}
           </button>
         </div>
       </motion.div>
@@ -422,8 +423,8 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
         {tab === 'create' && (
           <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.07)', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.2)' }}>
             <button className="btn btn-g" onClick={() => setTab('select')} disabled={saving}>Cancel</button>
-            <button type="submit" form="createChalForm" className="btn btn-p" disabled={saving}>
-              {saving ? 'Creating...' : <><Tag size={14} /> Create Challan</>}
+            <button type="submit" form="createChalForm" className="btn btn-p" disabled={saving} title="Create Challan">
+              {saving ? <Loader2 size={14} className="spin" /> : <><Tag size={14} /> Create Challan</>}
             </button>
           </div>
         )}
@@ -464,8 +465,8 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
         <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '22px' }}>This action cannot be undone.</div>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
           <button className="btn btn-g" onClick={onClose}>Cancel</button>
-          <button className="btn btn-d" onClick={handleDelete} disabled={deleting}>
-            {deleting ? 'Deleting...' : <><Trash2 size={13} /> Delete</>}
+          <button className="btn btn-d" onClick={handleDelete} disabled={deleting} title="Confirm Delete">
+            {deleting ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}
           </button>
         </div>
       </motion.div>
@@ -474,7 +475,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 }
 
 /* ── Main LR Module ── */
-export default function LRModule({ role = 'user', brand = 'dump' }) {
+export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
   const API = brand === 'jkl' ? `${BASE_API}/jkl/lr` : `${BASE_API}/lr`;
   const API_CHAL = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
   const MATERIALS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
@@ -495,9 +496,9 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
     materials: [{ type: MATERIALS[0], weight: '', bags: '' }],
   });
 
-  const [fSearch, setFSearch] = useState('');
-  const [fFrom, setFFrom] = useState('');
-  const [fTo, setFTo] = useState('');
+  /* Excel-style filters */
+  const [filters, setFilters] = useState({});
+  const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
   const fetchData = async () => {
     try {
@@ -599,16 +600,18 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
   };
 
   const filteredReceipts = useMemo(() => {
-    return receipts.filter(r => {
-      if (fFrom && r.date < fFrom) return false;
-      if (fTo && r.date > fTo) return false;
-      if (fSearch) {
-        const q = fSearch.toLowerCase();
-        if (!`${r.lrNo} ${r.truckNo} ${r.partyName} ${r.material} ${r.billing || ''} `.toLowerCase().includes(q)) return false;
-      }
-      return true;
+    let list = [...receipts];
+    
+    // Dynamic filtering
+    Object.keys(filters).forEach(key => {
+        const vals = filters[key];
+        if (vals && vals.length > 0) {
+            list = list.filter(r => vals.includes(String(r[key] ?? '')));
+        }
     });
-  }, [receipts, fFrom, fTo, fSearch]);
+
+    return list;
+  }, [receipts, filters]);
 
   const exportExcel = () => {
     exportToExcel(filteredReceipts.map(r => ({ LR_No: r.lrNo, Date: r.date, Truck: r.truckNo, Material: r.material, Weight_MT: r.weight, Bags: r.totalBags, Party: r.partyName, Challan: r.billing || '' })), `Receipts_${new Date().toISOString().slice(0, 10)} `);
@@ -631,7 +634,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={editRow} openChallans={openChallans} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={editRow} brand={brand} openChallans={openChallans} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -710,9 +713,9 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
             <p>Create and manage loading receipts</p>
           </div>
           <div className="page-hd-right" style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn btn-p" onClick={() => setShowChalPopup('create')}><Plus size={15} /> Add New Challan</button>
-            <button className="btn btn-s" onClick={exportExcel}><Download size={15} /> Export Excel</button>
-            <button className="btn btn-s" onClick={dlPDF}><Printer size={15} /> Export PDF</button>
+            <button className="btn btn-p" onClick={() => setShowChalPopup('create')} title="Add a new Challan"><Plus size={15} /> Add New Challan</button>
+            <button className="btn btn-s" onClick={exportExcel} title="Export to Excel Spreadsheet"><Download size={15} /> Export Excel</button>
+            <button className="btn btn-s" onClick={dlPDF} title="Export to PDF Document"><Printer size={15} /> Export PDF</button>
           </div>
         </div>
         <div className="tc-form-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -776,7 +779,7 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
                 <hr className="sep" />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Materials <span style={{ textTransform: 'none', color: '#10b981', marginLeft: '6px' }}>(You can edit quantities for partial loading)</span></span>
-                  <button type="button" className="btn btn-g btn-sm" onClick={addMat}><Plus size={13} /> Add</button>
+                  <button type="button" className="btn btn-g btn-sm" onClick={addMat} title="Add Material"><Plus size={13} /> Add</button>
                 </div>
                 {form.materials.map((m, i) => (
                   <motion.div key={i} className="mat-row" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
@@ -809,32 +812,38 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', padding: '10px 14px', background: 'var(--bg-tf)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-              <div className="field" style={{ flex: 1, minWidth: '150px', marginBottom: 0 }}>
-                <div style={{ position: 'relative' }}>
-                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                  <input className="fi" type="text" placeholder="Search LR, truck, party..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '32px' }} />
+            {Object.keys(filters).some(k => filters[k].length > 0) && (
+              <div style={{ display: 'flex', gap: '8px', padding: '10px 14px', background: 'var(--bg-filter)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {Object.keys(filters).map(k => filters[k].length > 0 && (
+                        <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
+                            {k}: {filters[k].length} selected
+                        </span>
+                    ))}
                 </div>
+                <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto', height: '24px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear All Filters</button>
               </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <input className="fi" type="date" value={fFrom} onChange={e => setFFrom(e.target.value)} title="From Date" />
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <input className="fi" type="date" value={fTo} onChange={e => setFTo(e.target.value)} title="To Date" />
-              </div>
-              {(fSearch || fFrom || fTo) && (
-                <button className="btn btn-g" onClick={() => { setFSearch(''); setFFrom(''); setFTo(''); }}>Clear Filters</button>
-              )}
-            </div>
+            )}
 
             <div style={{ overflowX: 'auto' }}>
               <table className="tbl">
                 <thead><tr>
-                  <th>LR No.</th>
-                  <th>Vehicle & Party</th>
-                  <th>Material & Usage</th>
-                  <th className="c">Source Challan</th>
-                  <th className="c">Actions</th>
+                  <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={{ padding: '8px 12px' }}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                    </div>
+                  </th>
+                  <th style={{ padding: '8px 12px' }}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                    </div>
+                  </th>
+                  <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr></thead>
                 <tbody>
                   {filteredReceipts.length === 0 ? <tr><td colSpan={5} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
@@ -877,9 +886,11 @@ export default function LRModule({ role = 'user', brand = 'dump' }) {
                             <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans)}>
                               <Printer size={14} />
                             </button>
-                            <button className="btn btn-g btn-icon" title="Edit" onClick={() => setEditRow(lr)}>
-                              <Pencil size={14} />
-                            </button>
+                            {(role === 'admin' || permissions?.lr === 'edit') && (
+                              <button className="btn btn-g btn-icon" title="Edit" onClick={() => setEditRow(lr)}>
+                                <Pencil size={14} />
+                              </button>
+                            )}
                             {role === 'admin' && (
                               <button className="btn btn-d btn-icon" title="Delete" onClick={() => setDeleteRow(lr)}>
                                 <Trash2 size={14} />

@@ -31,6 +31,12 @@ export function AuthProvider({ children }) {
 
   const login = async (username, password, selectedPlant) => {
     const res = await ax.post(`/auth/login`, { username, password });
+    
+    // Check if OTP is required
+    if (res.data.requireOtp) {
+      return res.data; // { requireOtp: true, userId, email }
+    }
+
     const { token: t, user: u } = res.data;
     localStorage.setItem('vgtc-token', t);
     if (selectedPlant) {
@@ -43,6 +49,25 @@ export function AuthProvider({ children }) {
     return u;
   };
 
+  const verifyOtp = async (userId, code, selectedPlant) => {
+    const res = await ax.post(`/auth/verify-otp`, { userId, code });
+    const { token: t, user: u } = res.data;
+    
+    localStorage.setItem('vgtc-token', t);
+    if (selectedPlant) {
+      localStorage.setItem('vgtc-plant', selectedPlant);
+      setPlantState(selectedPlant);
+    }
+    setAuthToken(t);
+    setToken(t);
+    setUser(u);
+    return u;
+  };
+
+  const resendOtp = async (userId) => {
+    await ax.post(`/auth/resend-otp`, { userId });
+  };
+
   const logout = () => {
     localStorage.removeItem('vgtc-token');
     localStorage.removeItem('vgtc-plant');
@@ -53,7 +78,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, plant, setPlant, login, logout, ready }}>
+    <AuthContext.Provider value={{ user, token, plant, setPlant, login, verifyOtp, resendOtp, logout, ready }}>
       {children}
     </AuthContext.Provider>
   );

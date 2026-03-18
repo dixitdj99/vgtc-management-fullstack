@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon } from 'lucide-react';
+import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
@@ -127,7 +128,7 @@ function EditModal({ v, onClose, onSave }) {
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
-                    <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={saving}>{saving ? 'Saving...' : <><Check size={14} /> Save Changes</>}</button>
+                    <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Changes">{saving ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}</button>
                 </div>
             </motion.div>
             <ConfirmSaveModal
@@ -160,7 +161,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This cannot be undone.</div>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                     <button className="btn btn-g" onClick={onClose}>Cancel</button>
-                    <button className="btn btn-d" onClick={go} disabled={deleting}>{deleting ? '...' : <><Trash2 size={13} /> Delete</>}</button>
+                    <button className="btn btn-d" onClick={go} disabled={deleting} title="Confirm Delete">{deleting ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}</button>
                 </div>
             </motion.div>
         </div>
@@ -170,7 +171,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 /* ══════════════════════════════════════════════════
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
-export default function VoucherModule({ role = 'user', initialTab, lockedType }) {
+export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {} }) {
     const [vType, setVType] = useState(lockedType || initialTab || 'Dump');
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -182,13 +183,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
 
     // Filters
-    const [fLr, setFLr] = useState('');
-    const [fTruck, setFTruck] = useState('');
-    const [fFrom, setFFrom] = useState('');
-    const [fTo, setFTo] = useState('');
-    const [fDest, setFDest] = useState('');
+    const [filters, setFilters] = useState({});
     const [sortCol, setSortCol] = useState('date');
     const [sortDir, setSortDir] = useState('desc');
+
+    const handleFilterChange = (key, val) => {
+        setFilters(f => ({ ...f, [key]: val }));
+    };
 
     const [form, setForm] = useState({
         lrNo: '', date: new Date().toISOString().split('T')[0],
@@ -290,11 +291,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
     /* Filtered + sorted vouchers */
     const filtered = useMemo(() => {
         let list = [...vouchers];
-        if (fLr) list = list.filter(v => String(v.lrNo).includes(fLr));
-        if (fTruck) list = list.filter(v => (v.truckNo || '').toLowerCase().includes(fTruck.toLowerCase()));
-        if (fDest) list = list.filter(v => (v.destination || '').toLowerCase().includes(fDest.toLowerCase()));
-        if (fFrom) list = list.filter(v => v.date >= fFrom);
-        if (fTo) list = list.filter(v => v.date <= fTo);
+        
+        // Dynamic filtering based on active column filters
+        Object.keys(filters).forEach(key => {
+            const selectedValues = filters[key];
+            if (selectedValues && selectedValues.length > 0) {
+                list = list.filter(v => selectedValues.includes(String(v[key] ?? '')));
+            }
+        });
+
         list.sort((a, b) => {
             let av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
             if (sortCol === 'total' || sortCol === 'weight' || sortCol === 'lrNo') { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; }
@@ -303,7 +308,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
             return 0;
         });
         return list;
-    }, [vouchers, fLr, fTruck, fDest, fFrom, fTo, sortCol, sortDir]);
+    }, [vouchers, filters, sortCol, sortDir]);
 
     /* Totals row */
     const totals = useMemo(() => ({
@@ -443,8 +448,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
-                                            <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving || lrAlreadyUsed}>
-                                                {saving ? 'Saving...' : <><Check size={15} /> Save Voucher</>}
+                                            <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving || lrAlreadyUsed} title="Save Voucher">
+                                                {saving ? <Loader2 size={15} className="spin" /> : <><Check size={15} /> Save Voucher</>}
                                             </button>
                                         </div>
                                     </form>
@@ -466,38 +471,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                             </div>
                         </div>
                         <div style={{ display: 'flex', gap: '6px' }}>
-                            <button className="btn btn-g btn-sm" onClick={exportVoucherExcel}><Download size={13} /> Excel</button>
-                            <button className="btn btn-g btn-sm" onClick={exportVoucherPDF}><Printer size={13} /> PDF</button>
+                            <button className="btn btn-g btn-sm" onClick={exportVoucherExcel} title="Export to Excel Spreadsheet"><Download size={13} /> Excel</button>
+                            <button className="btn btn-g btn-sm" onClick={exportVoucherPDF} title="Export to PDF Document"><Printer size={13} /> PDF</button>
                         </div>
                     </div>
 
-                    {/* Filter bar */}
-                    <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', background: 'var(--bg-filter)' }}>
-                        <div style={{ position: 'relative', flex: '0 0 130px' }}>
-                            <Search size={11} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input className="fi" style={{ paddingLeft: '26px', height: '32px', fontSize: '12px' }} type="text" placeholder="LR No." value={fLr} onChange={e => setFLr(e.target.value)} />
+                    {/* Filter summary */}
+                    {Object.keys(filters).some(k => filters[k].length > 0) && (
+                        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-filter)' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {Object.keys(filters).map(k => filters[k].length > 0 && (
+                                    <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
+                                        {k}: {filters[k].length} selected
+                                    </span>
+                                ))}
+                            </div>
+                            <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto', height: '24px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear All Filters</button>
                         </div>
-                        <div style={{ position: 'relative', flex: '0 0 140px' }}>
-                            <input className="fi" style={{ height: '32px', fontSize: '12px' }} type="text" placeholder="Truck No." value={fTruck} onChange={e => setFTruck(e.target.value)} />
-                        </div>
-                        <div style={{ position: 'relative', flex: '0 0 140px' }}>
-                            <MapPin size={11} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input className="fi" style={{ paddingLeft: '26px', height: '32px', fontSize: '12px' }} type="text" placeholder="Destination" value={fDest} onChange={e => setFDest(e.target.value)} />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>From</label>
-                            <input className="fi" style={{ width: '130px', height: '32px', fontSize: '12px' }} type="date" value={fFrom} onChange={e => setFFrom(e.target.value)} />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>To</label>
-                            <input className="fi" style={{ width: '130px', height: '32px', fontSize: '12px' }} type="date" value={fTo} onChange={e => setFTo(e.target.value)} />
-                        </div>
-                        {(fLr || fTruck || fDest || fFrom || fTo) && (
-                            <button className="btn btn-sm btn-d" onClick={() => { setFLr(''); setFTruck(''); setFDest(''); setFFrom(''); setFTo(''); }}>
-                                <X size={12} /> Clear
-                            </button>
-                        )}
-                    </div>
+                    )}
 
                     {/* Sheet table */}
                     <div style={{ overflowX: 'auto' }}>
@@ -510,7 +502,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                         { key: 'date', label: 'Date' },
                                         { key: 'truckNo', label: 'Truck' },
                                         { key: 'destination', label: 'Destination' },
-                                        { key: 'weight', label: 'Weight (MT)' },
+                                        { key: 'weight', label: 'Weight' },
                                         { key: 'bags', label: 'Bags' },
                                         { key: 'rate', label: 'Rate' },
                                         { key: 'pump', label: 'Pump' },
@@ -520,8 +512,19 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                         { key: 'munshi', label: 'Munshi' },
                                         { key: 'total', label: 'Total (Rs)' },
                                     ].map(col => (
-                                        <th key={col.key} style={{ ...TH, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.key)}>
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{col.label}<SortIcon col={col.key} /></span>
+                                        <th key={col.key} style={{ ...TH, userSelect: 'none' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div onClick={() => toggleSort(col.key)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    {col.label} <SortIcon col={col.key} />
+                                                </div>
+                                                <ColumnFilter 
+                                                    label="" 
+                                                    colKey={col.key} 
+                                                    data={vouchers} 
+                                                    activeFilters={filters} 
+                                                    onFilterChange={handleFilterChange} 
+                                                />
+                                            </div>
                                         </th>
                                     ))}
                                     <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
@@ -554,7 +557,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType })
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
                                                 <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v)}><Printer size={13} /></button>
-                                                <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
+                                                {(role === 'admin' || permissions?.voucher === 'edit') && (
+                                                    <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
+                                                )}
                                                 {role === 'admin' && (
                                                     <button className="btn btn-d btn-icon btn-sm" title="Delete" onClick={() => setDelVoucher(v)}><Trash2 size={13} /></button>
                                                 )}

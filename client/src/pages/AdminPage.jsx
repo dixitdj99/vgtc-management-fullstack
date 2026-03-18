@@ -9,6 +9,16 @@ const ROLES = ['user', 'admin'];
 const ROLE_COLOR = { admin: '#6366f1', user: '#10b981' };
 const ROLE_ICON = { admin: Crown, user: Users };
 
+const MODULES = [
+    { key: 'lr', label: 'LR Module' },
+    { key: 'voucher', label: 'Voucher Module' },
+    { key: 'balance', label: 'Balance Sheet' },
+    { key: 'stock', label: 'Stock Module' },
+    { key: 'cashbook', label: 'Cashbook' },
+    { key: 'diesel', label: 'Diesel Module' },
+    { key: 'vehicle', label: 'Vehicle Management' },
+];
+
 function DeleteConfirm({ u, onClose, onConfirm }) {
   const [busy, setBusy] = useState(false);
   const go = async () => {
@@ -52,9 +62,14 @@ export default function AdminPage() {
   const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
-  const [form, setForm] = useState({ name: '', username: '', password: '', role: 'user' });
+  const [editTarget, setEditTarget] = useState(null);
+  
+  const [form, setForm] = useState({ 
+    name: '', username: '', password: '', role: 'user', 
+    email: '', isOtpEnabled: false, permissions: {} 
+  });
   const [formError, setFormError] = useState('');
 
   useEffect(() => { fetchUsers(); }, []);
@@ -66,16 +81,56 @@ export default function AdminPage() {
   };
 
   const handleCreate = async e => {
-    e.preventDefault(); setFormError(''); setCreating(true);
+    e.preventDefault(); setFormError(''); setBusy(true);
     try {
       await ax.post(API, form);
-      setForm({ name: '', username: '', password: '', role: 'user' });
+      setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
       fetchUsers();
     } catch (e) { setFormError(e.response?.data?.error || 'Failed to create user'); }
-    finally { setCreating(false); }
+    finally { setBusy(false); }
+  };
+
+  const handleUpdate = async (id, data) => {
+    setBusy(true); setFormError('');
+    try {
+      await ax.patch(`${API}/${id}`, data);
+      fetchUsers();
+      setEditTarget(null);
+      setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
+    } catch (e) { setFormError(e.response?.data?.error || 'Update failed'); }
+    finally { setBusy(false); }
   };
 
   const S = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const SPerm = (mod, val) => setForm(f => ({
+      ...f, permissions: { ...f.permissions, [mod]: val }
+  }));
+
+  const PermissionToggle = ({ moduleKey, current, onChange }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-input)', padding: '6px 10px', borderRadius: '8px' }}>
+        <span style={{ flex: 1, fontSize: '11.5px', fontWeight: 600, color: 'var(--text-sub)' }}>
+            {MODULES.find(m => m.key === moduleKey)?.label}
+        </span>
+        <div style={{ display: 'flex', gap: '4px' }}>
+            {['None', 'View', 'Edit'].map(opt => {
+                const val = opt === 'None' ? null : opt.toLowerCase();
+                const isActive = current === val;
+                return (
+                    <button key={opt} type="button" onClick={() => onChange(moduleKey, val)}
+                        style={{
+                            fontSize: '9.5px', fontWeight: 800, padding: '4px 8px', borderRadius: '5px',
+                            border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border)',
+                            background: isActive ? 'var(--accent)20' : 'transparent',
+                            color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                            cursor: 'pointer', transition: 'all 0.15s'
+                        }}>
+                        {opt || 'None'}
+                    </button>
+                );
+            })}
+        </div>
+    </div>
+  );
 
   return (
     <>
@@ -83,39 +138,58 @@ export default function AdminPage() {
         {delTarget && <DeleteConfirm u={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { setDelTarget(null); fetchUsers(); }} />}
       </AnimatePresence>
 
-      <div>
+      <div style={{ padding: '0 20px 40px' }}>
         <div className="page-hd">
           <div>
             <h1><Shield size={20} color="#6366f1" /> Admin Panel</h1>
             <p>User accounts & permissions</p>
           </div>
-          <button className="btn btn-g btn-sm" onClick={fetchUsers}><RefreshCw size={14} /> Refresh</button>
+          <button className="btn btn-g btn-sm" onClick={fetchUsers}><RefreshCw size={14} className={loading ? 'ani-spin' : ''} /> Refresh</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '18px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
 
-          {/* ── Create User Form ── */}
+          {/* ── User Form (Create/Edit) ── */}
           <div className="card">
             <div className="card-header">
               <div className="card-title-block">
-                <div className="card-icon ci-indigo"><Plus size={17} /></div>
-                <div className="card-title-text"><h3>Create User</h3><p>Add a new account</p></div>
+                <div className={`card-icon ${editTarget ? 'ci-amber' : 'ci-indigo'}`}>
+                    {editTarget ? <Users size={17} /> : <Plus size={17} />}
+                </div>
+                <div className="card-title-text">
+                    <h3>{editTarget ? 'Edit User' : 'Create User'}</h3>
+                    <p>{editTarget ? `Modifying @${editTarget.username}` : 'Add a new account'}</p>
+                </div>
               </div>
+              {editTarget && (
+                  <button className="btn-icon" onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }} style={{ color: 'var(--text-muted)' }}>
+                      <X size={16} />
+                  </button>
+              )}
             </div>
             <div className="card-body">
-              <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate} 
+                    style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="field">
                   <label>Full Name</label>
                   <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
                 </div>
-                <div className="field">
-                  <label><User size={11} /> Username</label>
-                  <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div className="field">
+                        <label><User size={11} /> Username</label>
+                        <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
+                    </div>
+                    <div className="field">
+                        <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
+                        <input className="fi" type="password" placeholder={editTarget ? 'Leave blank to keep' : '••••••••'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
+                    </div>
                 </div>
+
                 <div className="field">
-                  <label><Lock size={11} /> Password</label>
-                  <input className="fi" type="password" placeholder="••••••••" value={form.password} onChange={e => S('password', e.target.value)} required />
+                    <label>Email Address</label>
+                    <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
                 </div>
+
                 <div className="field">
                   <label>Role</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -138,6 +212,31 @@ export default function AdminPage() {
                     })}
                   </div>
                 </div>
+
+                <div style={{ 
+                    marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
+                    background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
+                        <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                        Requires two-step verification using a code sent to the email above.
+                    </div>
+                </div>
+
+                <div style={{ marginTop: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+                        Modular Permissions
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {MODULES.map(m => (
+                            <PermissionToggle key={m.key} moduleKey={m.key} current={form.permissions[m.key]} onChange={SPerm} />
+                        ))}
+                    </div>
+                </div>
+
                 {formError && (
                   <div style={{
                     background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)',
@@ -146,9 +245,14 @@ export default function AdminPage() {
                     {formError}
                   </div>
                 )}
-                <button type="submit" className="btn btn-p" style={{ width: '100%', padding: '11px' }} disabled={creating}>
-                  {creating ? 'Creating...' : <><Check size={14} /> Create User</>}
-                </button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                    {editTarget && (
+                        <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
+                    )}
+                    <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
+                    {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : <><Plus size={14} /> Create User</>)}
+                    </button>
+                </div>
               </form>
             </div>
           </div>
@@ -168,7 +272,7 @@ export default function AdminPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-th)' }}>
-                      {['User', 'Username', 'Role', 'Actions'].map(h => (
+                      {['User', 'Username', 'Email', 'OTP', 'Role', 'Actions'].map(h => (
                         <th key={h} style={{
                           padding: '10px 16px', textAlign: 'left', fontSize: '10px',
                           fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase',
@@ -204,6 +308,12 @@ export default function AdminPage() {
                           <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)', fontFamily: 'monospace', fontWeight: 600 }}>
                             @{u.username}
                           </td>
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)' }}>
+                            {u.email || <span style={{ opacity: 0.3 }}>—</span>}
+                          </td>
+                          <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}>
+                            {u.isOtpEnabled ? <Check size={14} color="#10b981" /> : <X size={14} color="var(--text-muted)" style={{ opacity: 0.5 }} />}
+                          </td>
                           <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}>
                             <span style={{
                               display: 'inline-flex', alignItems: 'center', gap: '5px',
@@ -214,13 +324,23 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}>
-                            {!isMe ? (
-                              <button className="btn btn-d btn-sm btn-icon" onClick={() => setDelTarget(u)} title="Delete user">
-                                <Trash2 size={13} />
-                              </button>
-                            ) : (
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
-                            )}
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                                <button className="btn btn-g btn-sm btn-icon" title="Edit user" onClick={() => {
+                                    setEditTarget(u);
+                                    setForm({
+                                        name: u.name, username: u.username, password: '', role: u.role,
+                                        email: u.email || '', isOtpEnabled: !!u.isOtpEnabled,
+                                        permissions: u.permissions || {}
+                                    });
+                                }}>
+                                    <Users size={13} />
+                                </button>
+                                {!isMe && (
+                                    <button className="btn btn-d btn-sm btn-icon" onClick={() => setDelTarget(u)} title="Delete user">
+                                        <Trash2 size={13} />
+                                    </button>
+                                )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -229,33 +349,6 @@ export default function AdminPage() {
                 </table>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Permissions legend */}
-        <div className="card" style={{ marginTop: '18px' }}>
-          <div className="card-header">
-            <div className="card-title-block">
-              <div className="card-icon" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}><Shield size={17} /></div>
-              <div className="card-title-text"><h3>Permission Levels</h3><p>What each role can do</p></div>
-            </div>
-          </div>
-          <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            {[
-              { role: 'User', color: '#10b981', perms: ['View Loading Receipts', 'Create Loading Receipts', 'Edit Loading Receipts', 'View Vouchers', 'Create Vouchers', 'Edit Vouchers', 'View Balance Sheet'] },
-              { role: 'Admin', color: '#6366f1', perms: ['Everything a User can do', 'Delete Loading Receipts', 'Delete Vouchers', 'Access Admin Panel', 'Create & Delete Users'] },
-            ].map(({ role, color, perms }) => (
-              <div key={role} style={{ background: 'var(--bg-input)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 800, color, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                  {role === 'Admin' ? <Crown size={14} /> : <Users size={14} />} {role}
-                </div>
-                {perms.map(p => (
-                  <div key={p} style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px', fontSize: '12.5px', color: 'var(--text-sub)' }}>
-                    <Check size={12} color={color} /> {p}
-                  </div>
-                ))}
-              </div>
-            ))}
           </div>
         </div>
       </div>

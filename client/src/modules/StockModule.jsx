@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import ColumnFilter from '../components/ColumnFilter';
 
 const BASE_API = ``;
 const MATS_DUMP = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -68,7 +69,7 @@ function MatCard({ mat, added, lrUsed, held }) {
 /* ═════════════════════════════════════════════════
    MAIN
 ═════════════════════════════════════════════════ */
-export default function StockModule({ initialTab, brand = 'dump' }) {
+export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
   const API = brand === 'jkl' ? `${BASE_API}/jkl/stock` : `${BASE_API}/stock`;
   const API_LR = brand === 'jkl' ? `${BASE_API}/jkl/lr` : `${BASE_API}/lr`;
   const MATS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
@@ -82,11 +83,9 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
   const [challanFilter, setChallanFilter] = useState('open'); // open|loaded|cancelled|all
   const [delTarget, setDelTarget] = useState(null);
 
-  /* Filter states for history & challans */
-  const [fFrom, setFFrom] = useState('');
-  const [fTo, setFTo] = useState('');
-  const [fMaterial, setFMaterial] = useState('');
-  const [fSearch, setFSearch] = useState(''); // text search (truck, remark, challanNo)
+  /* Excel-style filters */
+  const [filters, setFilters] = useState({});
+  const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
   /* forms */
   const getEmptyAdd = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '' });
@@ -188,6 +187,10 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
   };
 
   const updateStatus = async (id, status) => {
+    if (!(role === 'admin' || permissions?.stock === 'edit')) {
+      alert('Permission denied (Edit access required)');
+      return;
+    }
     try { await ax.patch(API + '/challans/' + id, { status }); fetchAll(); }
     catch (er) { alert(er.response?.data?.error || 'Error'); }
   };
@@ -199,6 +202,10 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
       else await ax.delete(API + '/challans/' + delTarget.id);
       fetchAll();
     } catch (er) { alert('Delete failed'); }
+    if (role !== 'admin') {
+      alert('Only administrators can delete entries');
+      return;
+    }
     setDelTarget(null);
   };
 
@@ -213,32 +220,34 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
       if (challanFilter === 'open') return c.status === 'open' || c.status === 'partially_loaded';
       return c.status === challanFilter;
     });
-    return list.filter(c => {
-      if (fFrom && c.date < fFrom) return false;
-      if (fTo && c.date > fTo) return false;
-      if (fMaterial && c.material !== fMaterial) return false;
-      if (fSearch) {
-        const q = fSearch.toLowerCase();
-        if (!`${c.truckNo} ${c.challanNo} ${c.partyName} ${c.remark}`.toLowerCase().includes(q)) return false;
-      }
-      return true;
+
+    // Dynamic filtering
+    Object.keys(filters).forEach(key => {
+        const vals = filters[key];
+        if (vals && vals.length > 0) {
+            list = list.filter(c => vals.includes(String(c[key] ?? '')));
+        }
     });
-  }, [challans, challanFilter, fFrom, fTo, fMaterial, fSearch]);
+
+    return list;
+  }, [challans, challanFilter, filters]);
 
   const historyRows = useMemo(() => {
-    const rows = [
+    let rows = [
       ...additions.map(a => ({ ...a, txType: 'add', debit: 0, credit: a.quantity, label: `Stock Added — ${a.remark || 'Manual entry'}`, displayType: 'Stock In' })),
       ...lrs.map(l => ({ ...l, txType: 'lr', debit: l.totalBags || 0, credit: 0, label: `LR #${l.lrNo} — Truck ${l.truckNo || '?'}`, displayType: 'LR Use' })),
     ].sort((a, b) => (a.date || '') > (b.date || '') ? -1 : 1);
 
-    return rows.filter(r => {
-      if (fFrom && r.date < fFrom) return false;
-      if (fTo && r.date > fTo) return false;
-      if (fMaterial && r.material !== fMaterial) return false;
-      if (fSearch && !`${r.truckNo} ${r.label} ${r.remark}`.toLowerCase().includes(fSearch.toLowerCase())) return false;
-      return true;
+    // Dynamic filtering
+    Object.keys(filters).forEach(key => {
+        const vals = filters[key];
+        if (vals && vals.length > 0) {
+            rows = rows.filter(r => vals.includes(String(r[key] ?? '')));
+        }
     });
-  }, [additions, lrs, fFrom, fTo, fMaterial, fSearch]);
+
+    return rows;
+  }, [additions, lrs, filters]);
 
   const exportChallanExcel = () => exportToExcel(filteredChallans.map(c => ({ ChallanNo: c.challanNo, Date: c.date, Truck: c.truckNo, Material: c.material, Qty: c.quantity, Party: c.partyName, Status: c.status, Remark: c.remark })), `Challans_${new Date().toISOString().slice(0, 10)}`);
   const exportChallanPDF = () => exportToPDF(filteredChallans, 'Challan List', ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'partyName', 'status', 'remark']);
@@ -301,11 +310,13 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {[
           { id: 'overview', label: 'Overview', icon: <Package size={13} /> },
-          { id: 'add', label: 'Add Stock', icon: <Plus size={13} /> },
-          { id: 'challan', label: 'Create Challan', icon: <Tag size={13} /> },
-          { id: 'history', label: 'History', icon: <FileText size={13} /> },
-        ].map(({ id, label, icon }) => (
-          <button key={id} onClick={() => setTab(id)}
+          {id: 'add', label: 'Add Stock', icon: <Plus size={13} />, restricted: true},
+          {id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true},
+          {id: 'history', label: 'History', icon: <FileText size={13} />},
+        ].map(({ id, label, icon, restricted }) => {
+          if (restricted && !(role === 'admin' || permissions?.stock === 'edit')) return null;
+          return (
+            <button key={id} onClick={() => setTab(id)}
             style={{
               padding: '7px 14px', borderRadius: '9px', border: '1px solid', cursor: 'pointer', fontFamily: 'inherit',
               fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s',
@@ -315,32 +326,21 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
             }}>
             {icon}{label}
           </button>
-        ))}
+        );
+      })}
       </div>
 
-      {(tab === 'challan' || tab === 'history') && (
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          <div className="field" style={{ flex: 1, minWidth: '150px', marginBottom: 0 }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input className="fi" type="text" placeholder="Search truck, remarks..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '32px' }} />
-            </div>
+      {Object.keys(filters).some(k => filters[k].length > 0) && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', background: 'var(--bg-filter)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)', alignItems: 'center' }}>
+          <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {Object.keys(filters).map(k => filters[k].length > 0 && (
+                  <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
+                      {k}: {filters[k].length} selected
+                  </span>
+              ))}
           </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <select className="fi" value={fMaterial} onChange={e => setFMaterial(e.target.value)}>
-              <option value="">All Materials</option>
-              {MATS.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <input className="fi" type="date" value={fFrom} onChange={e => setFFrom(e.target.value)} title="From Date" />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <input className="fi" type="date" value={fTo} onChange={e => setFTo(e.target.value)} title="To Date" />
-          </div>
-          {(fSearch || fFrom || fTo || fMaterial) && (
-            <button className="btn btn-g" onClick={() => { setFSearch(''); setFFrom(''); setFTo(''); setFMaterial(''); }}>Clear Filters</button>
-          )}
+          <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto', height: '24px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear All Filters</button>
         </div>
       )}
 
@@ -407,7 +407,7 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
                 {fi('Date', <input className="fi" type="date" value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
                   value={addForm.remark} onChange={e => setAddForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-a" disabled={saving} style={{ height: '38px', alignSelf: 'flex-end' }}>
+                <button type="submit" className="btn btn-a" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end' }}>
                   {saving ? '…' : <><Check size={14} /> Add {brand === 'jkl' ? 'JK Lakshmi' : ''} Stock</>}
                 </button>
               </div>
@@ -447,9 +447,11 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
                       <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</td>
                       <td style={{ ...TD, color: 'var(--text-muted)' }}>{a.remark || '—'}</td>
                       <td style={{ ...TD, textAlign: 'center' }}>
-                        <button className="btn btn-d btn-icon btn-sm" onClick={() => setDelTarget({ id: a.id, type: 'addition', label: a.material + ' — ' + a.quantity + ' bags' })}>
-                          <Trash2 size={13} />
-                        </button>
+                        {role === 'admin' && (
+                          <button className="btn btn-d btn-icon btn-sm" onClick={() => setDelTarget({ id: a.id, type: 'addition', label: a.material + ' — ' + a.quantity + ' bags' })}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -486,7 +488,7 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Notes"
                   value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-p" disabled={saving} style={{ height: '38px', alignSelf: 'flex-end' }}>
+                <button type="submit" className="btn btn-p" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end' }}>
                   {saving ? '…' : <><Tag size={14} /> Create Challan</>}
                 </button>
               </div>
@@ -538,9 +540,15 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
-                  {['Challan#', 'Date', 'Truck', 'Material', 'Qty (bags)', 'Party', 'Remark', 'Status', 'Actions'].map(h => (
-                    <th key={h} style={TH}>{h}</th>
-                  ))}
+                  <th style={TH}><ColumnFilter label="Challan #" colKey="challanNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}><ColumnFilter label="Date" colKey="date" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}><ColumnFilter label="Material" colKey="material" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}>Qty (bags)</th>
+                  <th style={TH}><ColumnFilter label="Party" colKey="partyName" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}>Remark</th>
+                  <th style={TH}>Status</th>
+                  <th style={TH}>Actions</th>
                 </tr></thead>
                 <tbody>
                   {filteredChallans.length === 0 && <tr><td colSpan={9} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No challans</td></tr>}
@@ -602,10 +610,12 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
                               <button className="btn btn-g btn-sm btn-icon" title="Re-open"
                                 onClick={() => updateStatus(c.id, 'open')}><RefreshCw size={12} /></button>
                             )}
-                            <button className="btn btn-d btn-sm btn-icon" title="Delete"
-                              onClick={() => setDelTarget({ id: c.id, type: 'challan', label: c.challanNo + ' — ' + c.truckNo })}>
-                              <Trash2 size={13} />
-                            </button>
+                            {role === 'admin' && (
+                              <button className="btn btn-d btn-sm btn-icon" title="Delete"
+                                onClick={() => setDelTarget({ id: c.id, type: 'challan', label: c.challanNo + ' — ' + c.truckNo })}>
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -634,8 +644,13 @@ export default function StockModule({ initialTab, brand = 'dump' }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
-                {['Date', 'Type', 'LR/Ref', 'Truck', 'Material', 'In (bags)', 'Out (bags)'].map(h =>
-                  <th key={h} style={TH}>{h}</th>)}
+                <th style={TH}><ColumnFilter label="Date" colKey="date" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Type" colKey="displayType" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="LR/Ref" colKey="lrNo" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Material" colKey="material" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                <th style={TH}>In (bags)</th>
+                <th style={TH}>Out (bags)</th>
               </tr></thead>
               <tbody>
                 {historyRows.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No history</td></tr>}

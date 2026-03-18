@@ -5,6 +5,16 @@ const COLLECTION = 'users';
 
 const isFirebaseAvailable = () => isAvailable();
 
+const DEFAULT_PERMISSIONS = {
+    lr: 'edit',
+    voucher: 'edit',
+    balance: 'edit',
+    stock: 'edit',
+    cashbook: 'edit',
+    diesel: 'edit',
+    vehicle: 'edit'
+};
+
 // Seed a default admin on first run (Local or Firestore)
 const seed = async () => {
     try {
@@ -17,6 +27,9 @@ const seed = async () => {
                     username: 'admin',
                     password: hash,
                     role: 'admin',
+                    email: '',
+                    isOtpEnabled: false,
+                    permissions: DEFAULT_PERMISSIONS,
                     createdAt: new Date().toISOString()
                 });
                 console.log('[Auth] Default admin created in Firestore → admin/admin123');
@@ -30,6 +43,9 @@ const seed = async () => {
                     username: 'admin',
                     password: hash,
                     role: 'admin',
+                    email: '',
+                    isOtpEnabled: false,
+                    permissions: DEFAULT_PERMISSIONS,
                 });
                 console.log('[Auth] Default admin created locally → admin/admin123');
             }
@@ -43,9 +59,9 @@ seed();
 const getAll = async () => {
     if (isFirebaseAvailable()) {
         const snapshot = await db.collection(COLLECTION).get();
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), password: undefined }));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), password: undefined, otpCode: undefined }));
     }
-    return localStore.getAll(COLLECTION).map(u => ({ ...u, password: undefined }));
+    return localStore.getAll(COLLECTION).map(u => ({ ...u, password: undefined, otpCode: undefined }));
 };
 
 const findByUsername = async (username) => {
@@ -58,22 +74,62 @@ const findByUsername = async (username) => {
     return localStore.getAll(COLLECTION).find(u => u.username === username);
 };
 
-const createUser = async (name, username, password, role = 'user') => {
+const findById = async (id) => {
+    if (isFirebaseAvailable()) {
+        const doc = await db.collection(COLLECTION).doc(id).get();
+        if (!doc.exists) return null;
+        return { id: doc.id, ...doc.data() };
+    }
+    return localStore.getAll(COLLECTION).find(u => u.id === id);
+};
+
+const createUser = async (name, username, password, role = 'user', email = '', permissions = null) => {
     const existing = await findByUsername(username);
     if (existing) throw new Error('Username already exists');
     const hash = bcrypt.hashSync(password, 10);
+    
+    const userPerms = permissions || (role === 'admin' ? DEFAULT_PERMISSIONS : {});
+
+    const userData = {
+        name,
+        username,
+        password: hash,
+        role,
+        email,
+        isOtpEnabled: false,
+        permissions: userPerms,
+        createdAt: new Date().toISOString()
+    };
 
     if (isFirebaseAvailable()) {
-        const docRef = await db.collection(COLLECTION).add({
-            name, username, password: hash, role,
-            createdAt: new Date().toISOString()
-        });
-        return { id: docRef.id, name, username, role };
+        const docRef = await db.collection(COLLECTION).add(userData);
+        return { id: docRef.id, ...userData, password: undefined };
     }
 
-    const doc = localStore.insert(COLLECTION, { name, username, password: hash, role });
+    const doc = localStore.insert(COLLECTION, userData);
     return { ...doc, password: undefined };
 };
+
+const updateUser = async (id, data) => {
+    // Only allow updating specific fields to prevent security issues
+    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'password', 'otpCode', 'otpExpiry'];
+    const filteredData = {};
+    Object.keys(data).forEach(k => {
+        if (allowedFields.includes(k)) {
+            if (k === 'password') {
+                filteredData[k] = bcrypt.hashSync(data[k], 10);
+            } else {
+                filteredData[k] = data[k];
+            }
+        }
+    });
+
+    if (isFirebaseAvailable()) {
+        await db.collection(COLLECTION).doc(id).update(filteredData);
+        return;
+    }
+    localStore.update(COLLECTION, id, filteredData);
+}
 
 const deleteUser = async (id) => {
     if (isFirebaseAvailable()) {
@@ -96,6 +152,30 @@ const deleteUser = async (id) => {
     localStore.delete(COLLECTION, id);
 };
 
+const generateOTP = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const saveUserOTP = async (id, otp) => {
+    const expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 mins
+    await updateUser(id, { otpCode: otp, otpExpiry: expiry });
+};
+
+const verifyOTP = async (id, code) => {
+    const user = await findById(id);
+    if (!user || !user.otpCode || user.otpCode !== code) return false;
+    
+    const expiry = new Date(user.otpExpiry);
+    if (expiry < new Date()) return false;
+
+    // Clear OTP after success
+    await updateUser(id, { otpCode: null, otpExpiry: null });
+    return true;
+};
+
 const verifyPassword = (plain, hash) => bcrypt.compareSync(plain, hash);
 
-module.exports = { getAll, findByUsername, createUser, deleteUser, verifyPassword };
+module.exports = { 
+    getAll, findByUsername, findById, createUser, updateUser, deleteUser, 
+    verifyPassword, generateOTP, saveUserOTP, verifyOTP 
+};

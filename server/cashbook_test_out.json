@@ -1,0 +1,30 @@
+{
+  "cb_length": 1,
+  "jkl_length": 1,
+  "cb": [
+    {
+      "id": "bFXOvBG2xwo1YlZq7Xim",
+      "type": "deposit",
+      "amount": 100000,
+      "remark": "",
+      "date": "2026-02-23",
+      "createdAt": {
+        "_seconds": 1771852531,
+        "_nanoseconds": 519000000
+      }
+    }
+  ],
+  "jkl": [
+    {
+      "id": "3p9aDV9aywJGkz35yJNm",
+      "type": "deposit",
+      "amount": 100000,
+      "remark": "",
+      "date": "2026-03-15",
+      "createdAt": {
+        "_seconds": 1773568540,
+        "_nanoseconds": 174000000
+      }
+    }
+  ]
+}

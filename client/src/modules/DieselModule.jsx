@@ -4,22 +4,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Fuel, Search, Filter, Calendar, Check, X, Pencil, Droplet, ArrowRight, Save, AlertCircle } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { useAuth } from '../auth/AuthContext';
+import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
 const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
 
-export default function DieselModule() {
+export default function DieselModule({ role = 'user', permissions = {} }) {
     const { plant } = useAuth();
     const [vouchers, setVouchers] = useState([]);
+    // Default filter to Pending status as requested previously
+    const [filters, setFilters] = useState({ status: ['Pending'] });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     
     // Filters
-    const [fPump, setFPump] = useState('');
-    const [fDateFrom, setFDateFrom] = useState('');
-    const [fDateTo, setFDateTo] = useState('');
-    const [fTruck, setFTruck] = useState('');
-    const [fStatus, setFStatus] = useState('Pending'); // Default to Pending (Unverified)
+    const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
     // Edit state
     const [editingId, setEditingId] = useState(null);
@@ -87,32 +86,25 @@ export default function DieselModule() {
     };
 
     const filtered = useMemo(() => {
-        // Check if any specific search filters are active
-        const hasSearch = fPump || fDateFrom || fDateTo || fTruck;
+        let list = [...vouchers];
         
-        return vouchers.filter(v => {
-            const matchPump = !fPump || v.pump === fPump;
-            const matchDateFrom = !fDateFrom || v.date >= fDateFrom;
-            const matchDateTo = !fDateTo || v.date <= fDateTo;
-            const matchTruck = !fTruck || v.truckNo.toLowerCase().includes(fTruck.toLowerCase());
-            
-            // If no search filter is active, respect the fStatus filter
-            // If any search filter is active, show All except if fStatus is explicitly changed (or just show All)
-            // Based on user: "if we use filter show all the data verified or unverified also"
-            let matchStatus = true;
-            if (!hasSearch) {
-                if (fStatus === 'Pending') matchStatus = !v.isDieselVerified;
-                if (fStatus === 'Verified') matchStatus = !!v.isDieselVerified;
-            } else {
-                // If they explicitly chose a status while searching, respect it, otherwise show All
-                if (fStatus === 'Pending') matchStatus = !v.isDieselVerified;
-                else if (fStatus === 'Verified') matchStatus = !!v.isDieselVerified;
-                else matchStatus = true;
+        Object.keys(filters).forEach(key => {
+            const vals = filters[key];
+            if (vals && vals.length > 0) {
+                if (key === 'status') {
+                    // Map "Verified" / "Pending" back to isDieselVerified
+                    list = list.filter(v => {
+                        const s = v.isDieselVerified ? 'Verified' : 'Pending';
+                        return vals.includes(s);
+                    });
+                } else {
+                    list = list.filter(v => vals.includes(String(v[key] ?? '')));
+                }
             }
-
-            return matchPump && matchDateFrom && matchDateTo && matchTruck && matchStatus;
         });
-    }, [vouchers, fPump, fDateFrom, fDateTo, fTruck, fStatus]);
+
+        return list;
+    }, [vouchers, filters]);
 
     const TH = { padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)' };
     const TD = { padding: '12px 16px', fontSize: '13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)' };
@@ -126,39 +118,21 @@ export default function DieselModule() {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="card" style={{ marginBottom: '20px' }}>
-                <div className="card-body" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'flex-end' }}>
-                    <div className="field" style={{ flex: '1 1 150px' }}>
-                        <label><Check size={12} /> Verification Status</label>
-                        <select className="fi" value={fStatus} onChange={e => setFStatus(e.target.value)}>
-                            <option value="All">All Data</option>
-                            <option value="Pending">Unverified (Pending)</option>
-                            <option value="Verified">Verified</option>
-                        </select>
+            {/* Active Filters Summary */}
+            {Object.keys(filters).some(k => filters[k].length > 0) && (
+                <div className="card" style={{ marginBottom: '20px' }}>
+                    <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {Object.keys(filters).map(k => filters[k].length > 0 && (
+                                <span key={k} className="badge badge-tag">{k}: {filters[k].length}</span>
+                            ))}
+                        </div>
+                        <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto' }} onClick={() => setFilters({ status: ['Pending'] })}>Reset to Pending</button>
+                        <button className="btn btn-sm btn-d" onClick={() => setFilters({})}>Clear All</button>
                     </div>
-                    <div className="field" style={{ flex: '1 1 180px' }}>
-                        <label><Fuel size={12} /> Fuel Pump</label>
-                        <select className="fi" value={fPump} onChange={e => setFPump(e.target.value)}>
-                            <option value="">All Pumps</option>
-                            {PUMPS.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                    </div>
-                    <div className="field" style={{ flex: '1 1 140px' }}>
-                        <label><Calendar size={12} /> From Date</label>
-                        <input type="date" className="fi" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} />
-                    </div>
-                    <div className="field" style={{ flex: '1 1 140px' }}>
-                        <label><Calendar size={12} /> To Date</label>
-                        <input type="date" className="fi" value={fDateTo} onChange={e => setFDateTo(e.target.value)} />
-                    </div>
-                    <div className="field" style={{ flex: '1 1 140px' }}>
-                        <label><Search size={12} /> Truck No.</label>
-                        <input type="text" className="fi" placeholder="Search Truck..." value={fTruck} onChange={e => setFTruck(e.target.value)} />
-                    </div>
-                    <button className="btn btn-g" onClick={() => { setFPump(''); setFDateFrom(''); setFDateTo(''); setFTruck(''); setFStatus('Pending'); }}>Clear</button>
                 </div>
-            </div>
+            )}
 
             {/* List */}
             <div className="card">
@@ -178,10 +152,10 @@ export default function DieselModule() {
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ background: 'var(--bg-th)' }}>
-                                    <th style={TH}>Date</th>
-                                    <th style={TH}>Truck No.</th>
-                                    <th style={TH}>Pump Name</th>
-                                    <th style={TH}>Status</th>
+                                    <th style={TH}><ColumnFilter label="Date" colKey="date" data={vouchers} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                                    <th style={TH}><ColumnFilter label="Truck No." colKey="truckNo" data={vouchers} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                                    <th style={TH}><ColumnFilter label="Pump Name" colKey="pump" data={vouchers} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                                    <th style={TH}><ColumnFilter label="Status" colKey="status" data={vouchers.map(v => ({ ...v, status: v.isDieselVerified ? 'Verified' : 'Pending' }))} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                                     <th style={TH}>Details</th>
                                     <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                                 </tr>
@@ -235,12 +209,12 @@ export default function DieselModule() {
                                             <td style={{ ...TD, textAlign: 'center' }}>
                                                 {editingId === v.id ? (
                                                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                                        <button className="btn btn-p btn-icon btn-sm" title="Save & Verify" onClick={() => handleSave(v.id)} disabled={saving}><Save size={14} /></button>
+                                                        <button className="btn btn-p btn-icon btn-sm" title="Save & Verify" onClick={() => handleSave(v.id)} disabled={saving || !(role === 'admin' || permissions?.diesel === 'edit')}><Save size={14} /></button>
                                                         <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditingId(null)} disabled={saving}><X size={14} /></button>
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                                        {!v.isDieselVerified && (
+                                                        {!v.isDieselVerified && (role === 'admin' || permissions?.diesel === 'edit') && (
                                                             <button 
                                                                 className="btn btn-p btn-icon btn-sm" 
                                                                 title="Quick Verify" 
@@ -250,7 +224,9 @@ export default function DieselModule() {
                                                                 <Check size={14} />
                                                             </button>
                                                         )}
-                                                        <button className="btn btn-g btn-icon btn-sm" title="Reconcile Details" onClick={() => handleEdit(v)}><Pencil size={14} /></button>
+                                                        {(role === 'admin' || permissions?.diesel === 'edit') && (
+                                                            <button className="btn btn-g btn-icon btn-sm" title="Reconcile Details" onClick={() => handleEdit(v)}><Pencil size={14} /></button>
+                                                        )}
                                                     </div>
                                                 )}
                                             </td>

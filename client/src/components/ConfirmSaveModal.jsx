@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Check, X } from 'lucide-react';
+import { AlertTriangle, Check, X, Loader2 } from 'lucide-react';
 
 export default function ConfirmSaveModal({ isOpen, onClose, onConfirm, title, message, isSaving, confirmText }) {
     return (
@@ -21,7 +21,7 @@ export default function ConfirmSaveModal({ isOpen, onClose, onConfirm, title, me
                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                             <button type="button" className="btn btn-g" onClick={onClose} disabled={isSaving}>Cancel</button>
                             <button type="button" className="btn btn-p" onClick={onConfirm} disabled={isSaving}>
-                                {isSaving ? 'Saving...' : <><Check size={13} /> {confirmText || 'Yes, Save'}</>}
+                                {isSaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> {confirmText || 'Yes, Save'}</>}
                             </button>
                         </div>
                     </motion.div>

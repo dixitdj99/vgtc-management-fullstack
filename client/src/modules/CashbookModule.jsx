@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Plus, ArrowDownCircle, ArrowUpCircle, Trash2,
   AlertTriangle, X, Check, RefreshCw, Wallet, CreditCard,
-  TrendingDown, Smartphone, FileText, Filter, Download, Printer, Search
+  TrendingDown, Smartphone, FileText, Filter, Download, Printer, Search, Loader2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -17,7 +17,7 @@ const API_V = `/vouchers`;
 
 
 /* ══════ MAIN ══════ */
-export default function CashbookModule({ initialTab, moduleType }) {
+export default function CashbookModule({ initialTab, moduleType, role = 'user', permissions = {} }) {
   /* ── local state ── */
   const API_CB = moduleType === 'jkl' ? `/jkl/cashbook` : `/cashbook`;
   const VTYPES = moduleType === 'jkl' ? ['JK_Lakshmi'] : ['Dump', 'JK_Super'];
@@ -40,8 +40,8 @@ export default function CashbookModule({ initialTab, moduleType }) {
           <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Delete Entry?</div>
           <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '20px' }}>{label}</div>
           <div style={{ display: 'flex', gap: '9px', justifyContent: 'center' }}>
-            <button className="btn btn-g" onClick={onClose}>Cancel</button>
-            <button className="btn btn-d" onClick={go} disabled={busy}>{busy ? '…' : <><Trash2 size={13} /> Delete</>}</button>
+            <button className="btn btn-g" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn btn-d" onClick={go} disabled={busy} title="Confirm Delete">{busy ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}</button>
           </div>
         </motion.div>
       </div>
@@ -79,8 +79,8 @@ export default function CashbookModule({ initialTab, moduleType }) {
             <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
             <div className="field"><label>Remark</label><input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office expenses'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} /></div>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <button type="submit" className={`btn ${isDeposit ? 'btn-a' : 'btn-d'}`} disabled={saving}>{saving ? '…' : <Check size={14} />}</button>
-              <button type="button" className="btn btn-g btn-icon" onClick={onCancel}><X size={14} /></button>
+              <button type="submit" className={`btn ${isDeposit ? 'btn-a' : 'btn-d'}`} disabled={saving} title="Save Entry">{saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />}</button>
+              <button type="button" className="btn btn-g btn-icon" onClick={onCancel} title="Cancel"><X size={14} /></button>
             </div>
           </div>
           {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600, marginTop: '6px' }}>{err}</div>}
@@ -334,13 +334,13 @@ export default function CashbookModule({ initialTab, moduleType }) {
                   </td>
                 )}
                 <td style={{ ...TD, textAlign: 'center' }}>
-                  {r.deletable !== false ? (
+                  {r.deletable !== false && role === 'admin' ? (
                     <button className="btn btn-d btn-icon btn-sm" title="Delete entry"
                       onClick={() => setDelTarget({ id: r.id, label: r.label })}>
                       <Trash2 size={13} />
                     </button>
                   ) : (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Auto</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.deletable !== false ? 'Restricted' : 'Auto'}</span>
                   )}
                 </td>
               </tr>
@@ -368,53 +368,82 @@ export default function CashbookModule({ initialTab, moduleType }) {
     </div>
   );
 
-  /* Online advances table (no balance col) */
-  const OnlineTable = ({ rows }) => (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-        <thead><tr>
-          <th style={TH}>#</th>
-          <th style={TH}>Date</th>
-          <th style={TH}>Truck</th>
-          <th style={TH}>LR No.</th>
-          <th style={TH}>Type</th>
-          <th style={{ ...TH, textAlign: 'right' }}>Online Amount</th>
-          <th style={{ ...TH, textAlign: 'center' }}>Status</th>
-        </tr></thead>
-        <tbody>
-          {rows.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No online advances in vouchers</td></tr>}
-          {rows.map((r, i) => (
-            <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-              <td style={{ ...TD, color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>{i + 1}</td>
-              <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
-              <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>{r.truckNo || '—'}</td>
-              <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{r.lrNo}</span></td>
-              <td style={{ ...TD }}><span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{r.vType}</span></td>
-              <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(r.amount)}</td>
-              <td style={{ ...TD, textAlign: 'center' }}>
-                <button
-                  onClick={() => r.isOnlinePaid ? toggleOnlinePaid(r.id.replace('v_online_', ''), true) : setOnlinePaidTarget({ id: r.id.replace('v_online_', ''), defaultDate: new Date().toISOString().slice(0, 10), date: new Date().toISOString().slice(0, 10) })}
-                  className={`btn btn-sm ${r.isOnlinePaid ? 'btn-g' : 'btn-a'}`}
-                  style={{ fontSize: '11px', padding: '4px 8px' }}
-                >
-                  {r.isOnlinePaid ? <><Check size={12} /> Paid{r.onlinePaidDate ? ` (${fmtDate(r.onlinePaidDate)})` : ''}</> : 'Mark Paid'}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        {rows.length > 0 && (
-          <tfoot>
-            <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-tf)' }}>
-              <td colSpan={2} style={{ ...TD, fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Total Online Advance</td>
-              <td style={{ ...TD, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: '#0ea5e9' }}>{fmtRs(filteredOnline.reduce((sum, r) => sum + r.amount, 0))}</td>
-              <td style={TD}></td>
-            </tr>
-          </tfoot>
+  /* Online advances table (grouped by date) */
+  const OnlineTable = ({ rows }) => {
+    const groupedRows = rows.reduce((acc, r) => {
+      const d = r.date || 'Unknown Date';
+      if (!acc[d]) acc[d] = [];
+      acc[d].push(r);
+      return acc;
+    }, {});
+    
+    const sortedDates = Object.keys(groupedRows).sort((a, b) => b > a ? 1 : -1);
+
+    return (
+      <div style={{ overflowX: 'auto' }}>
+        {sortedDates.length === 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+            <tbody>
+              <tr><td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No online advances in vouchers</td></tr>
+            </tbody>
+          </table>
         )}
-      </table>
-    </div>
-  );
+        
+        {sortedDates.map(date => {
+          const dateRows = groupedRows[date];
+          const dailyTotal = dateRows.reduce((s, r) => s + r.amount, 0);
+          return (
+            <div key={date} style={{ marginBottom: '24px' }}>
+              <div style={{ padding: '8px 14px', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>
+                  {date === 'Unknown Date' ? date : fmtDate(date)}
+                </span>
+                <span style={{ fontWeight: 800, fontSize: '13px', color: '#0ea5e9' }}>Daily Total: {fmtRs(dailyTotal)}</span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                <thead><tr>
+                  <th style={TH}>#</th>
+                  <th style={TH}>Truck</th>
+                  <th style={TH}>LR No.</th>
+                  <th style={TH}>Type</th>
+                  <th style={{ ...TH, textAlign: 'right' }}>Online Amount</th>
+                  <th style={{ ...TH, textAlign: 'center' }}>Status</th>
+                </tr></thead>
+                <tbody>
+                  {dateRows.map((r, i) => (
+                    <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                      <td style={{ ...TD, color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>{i + 1}</td>
+                      <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>{r.truckNo || '—'}</td>
+                      <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{r.lrNo}</span></td>
+                      <td style={{ ...TD }}><span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{r.vType}</span></td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(r.amount)}</td>
+                      <td style={{ ...TD, textAlign: 'center' }}>
+                          <button
+                            onClick={() => r.isOnlinePaid ? toggleOnlinePaid(r.id.replace('v_online_', ''), true) : setOnlinePaidTarget({ id: r.id.replace('v_online_', ''), defaultDate: new Date().toISOString().slice(0, 10), date: new Date().toISOString().slice(0, 10) })}
+                            className={`btn btn-sm ${r.isOnlinePaid ? 'btn-g' : 'btn-a'}`}
+                            disabled={!(role === 'admin' || permissions?.cashbook === 'edit' || permissions?.voucher === 'edit')}
+                            style={{ fontSize: '11px', padding: '4px 8px' }}
+                          >
+                            {r.isOnlinePaid ? <><Check size={12} /> Paid{r.onlinePaidDate ? ` (${fmtDate(r.onlinePaidDate)})` : ''}</> : 'Mark Paid'}
+                          </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+
+        {rows.length > 0 && (
+          <div style={{ padding: '12px 14px', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)', borderBottom: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-24px', marginBottom: '24px' }}>
+            <span style={{ fontWeight: 800, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Grand Total Online Advance</span>
+            <span style={{ fontWeight: 900, fontSize: '15px', color: '#0ea5e9' }}>{fmtRs(rows.reduce((sum, r) => sum + r.amount, 0))}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const tabRows = {
     ledger: ledgerWithBalance,
@@ -507,13 +536,17 @@ export default function CashbookModule({ initialTab, moduleType }) {
           <p>Cash flow tracking & ledger</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button className="btn btn-g btn-sm" onClick={fetchAll}><RefreshCw size={13} /> Refresh</button>
-          <button className="btn btn-a btn-sm" onClick={() => setShowForm(f => f === 'deposit' ? null : 'deposit')}>
-            <ArrowDownCircle size={14} /> Deposit
-          </button>
-          <button className="btn btn-d btn-sm" onClick={() => setShowForm(f => f === 'cash_out' ? null : 'cash_out')}>
-            <ArrowUpCircle size={14} /> Cash Out
-          </button>
+          <button className="btn btn-g btn-sm" onClick={fetchAll} title="Refresh Cashbook"><RefreshCw size={13} /> Refresh</button>
+          {(role === 'admin' || permissions?.cashbook === 'edit') && (
+            <>
+              <button className="btn btn-a btn-sm" onClick={() => setShowForm(f => f === 'deposit' ? null : 'deposit')} title="Add Deposit Entry">
+                <ArrowDownCircle size={14} /> Deposit
+              </button>
+              <button className="btn btn-d btn-sm" onClick={() => setShowForm(f => f === 'cash_out' ? null : 'cash_out')} title="Add Cash Out Entry">
+                <ArrowUpCircle size={14} /> Cash Out
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -594,8 +627,8 @@ export default function CashbookModule({ initialTab, moduleType }) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <button className="btn btn-g btn-sm" onClick={handleExportExcel}><Download size={13} /> Excel</button>
-              <button className="btn btn-g btn-sm" onClick={handleExportPDF}><Printer size={13} /> PDF</button>
+              <button className="btn btn-g btn-sm" onClick={handleExportExcel} title="Export to Excel Form"><Download size={13} /> Excel</button>
+              <button className="btn btn-g btn-sm" onClick={handleExportPDF} title="Export to PDF File"><Printer size={13} /> PDF</button>
             </div>
           </div>
         </div>

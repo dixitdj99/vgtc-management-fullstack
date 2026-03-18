@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
@@ -99,7 +100,7 @@ function doPrint(rows, truckNo, label, tabName) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, role, permissions }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -195,12 +196,14 @@ function VoucherRow({ v, idx, onSave, checked, onCheck }) {
           : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>}
       </td>
       <td style={{ ...TD, textAlign: 'center' }}>
-        {editing
-          ? <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-            <button className="btn btn-p btn-icon btn-sm" onClick={() => setIsConfirming(true)} disabled={saving}>{saving ? '…' : <Save size={12} />}</button>
-            <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditing(false)}><X size={12} /></button>
+        {editing ? (
+          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+            <button className="btn btn-p btn-icon btn-sm" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Edit">{saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}</button>
+            <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditing(false)} title="Cancel"><X size={12} /></button>
           </div>
-          : <button className="btn btn-g btn-icon btn-sm" onClick={startEdit}><Pencil size={12} /></button>}
+        ) : (role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') ? (
+          <button className="btn btn-g btn-icon btn-sm" onClick={startEdit}><Pencil size={12} /></button>
+        ) : null}
       </td>
       <ConfirmSaveModal
         isOpen={isConfirming}
@@ -215,7 +218,7 @@ function VoucherRow({ v, idx, onSave, checked, onCheck }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName, selTruck }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName, selTruck, filters, onFilterChange, role, permissions }) {
   const [open, setOpen] = useState(true);
 
   const monthChecked = rows.filter(v => selected.has(v.id));
@@ -282,11 +285,13 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
             ? <span style={{ fontSize: '12px', color: 'var(--warn)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={13} />{fmtRs(totals.out)} due</span>
             : <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} />Cleared</span>}
           {/* Mark all in month */}
-          <button className="btn btn-g btn-sm" onClick={() => triggerMarkPaid(rows)} disabled={marking}>
-            {marking ? '…' : <><CheckCircle2 size={12} /> Mark Month Paid</>}
-          </button>
+          {(role === 'admin' || permissions?.balance === 'edit') && (
+            <button className="btn btn-g btn-sm" onClick={() => triggerMarkPaid(rows)} disabled={marking} title="Mark all rows in this month as Paid">
+              {marking ? <Loader2 size={12} className="spin" /> : <><CheckCircle2 size={12} /> Mark Month Paid</>}
+            </button>
+          )}
           {/* Mark selected in month */}
-          {monthChecked.length > 0 && (
+          {monthChecked.length > 0 && (role === 'admin' || permissions?.balance === 'edit') && (
             <button className="btn btn-p btn-sm" onClick={() => triggerMarkPaid(monthChecked)}>
               <CheckCircle2 size={12} /> Mark {monthChecked.length} Paid
             </button>
@@ -316,15 +321,28 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
                     onChange={() => onCheckAll(rows, !allSelected)}
                     style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
                 </th>
-                {['#', 'Date', 'LR No.', 'Destination', 'Weight', 'Rate', 'Gross (Rs.)', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status', 'Edit'].map(h => (
-                  <th key={h} style={TH}>{h}</th>
-                ))}
+                <th style={TH}>#</th>
+                <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}>Gross (Rs.)</th>
+                <th style={TH}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}>Net Bal</th>
+                <th style={TH}>Paid</th>
+                <th style={TH}>Status</th>
+                <th style={TH}>Edit</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} />
+                  checked={selected.has(v.id)} onCheck={onCheck} role={role} permissions={permissions} />
               ))}
             </tbody>
             <tfoot>
@@ -362,8 +380,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
               </div>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                 <button type="button" className="btn btn-g" onClick={() => setConfirmMarkRows(null)} disabled={marking}>Cancel</button>
-                <button type="button" className="btn btn-p" onClick={executeMarkPaid} disabled={marking}>
-                  {marking ? 'Processing...' : <><Check size={13} /> Confirm Paid</>}
+                <button type="button" className="btn btn-p" onClick={executeMarkPaid} disabled={marking} title="Confirm Marking Paid">
+                  {marking ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Confirm Paid</>}
                 </button>
               </div>
             </motion.div>
@@ -375,23 +393,25 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
 }
 
 /* ══════ MAIN ══════ */
-export default function BalanceSheet({ initialTab, lockedType }) {
+export default function BalanceSheet({ initialTab, lockedType, role = 'user', permissions = {} }) {
   const [tab, setTab] = useState(lockedType || initialTab || 'Dump');
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
   const [truckSearch, setTruckSearch] = useState('');
-  const [fFrom, setFFrom] = useState('');
-  const [fTo, setFTo] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [marking, setMarking] = useState(false);
   const [paymentClearedDate, setPaymentClearedDate] = useState(new Date().toISOString().slice(0, 10));
+
+  // Excel-style filters
+  const [filters, setFilters] = useState({});
+  const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
 
   useEffect(() => { fetchVouchers(); setSelTruck(null); setTruckSearch(''); setSelected(new Set()); }, [tab]);
-  useEffect(() => { setSelected(new Set()); }, [selTruck, fFrom, fTo]);
+  useEffect(() => { setSelected(new Set()); }, [selTruck, filters]);
 
   const fetchVouchers = async () => {
     try { setVouchers((await ax.get(API_V + '/' + tab)).data); } catch { }
@@ -405,21 +425,27 @@ export default function BalanceSheet({ initialTab, lockedType }) {
 
   const allTrucks = useMemo(() =>
     Object.keys(truckGroups)
-      .filter(t => !truckSearch || t.toLowerCase().includes(truckSearch.toLowerCase()))
       .sort(),
-    [truckGroups, truckSearch]);
+    [truckGroups]);
 
   /* filtered + grouped by month */
   const monthMap = useMemo(() => {
     if (!selTruck) return {};
     let rows = [...(truckGroups[selTruck] || [])];
-    if (fFrom) rows = rows.filter(v => v.date >= fFrom);
-    if (fTo) rows = rows.filter(v => v.date <= fTo);
+    
+    // Apply dynamic column filters
+    Object.keys(filters).forEach(key => {
+      const selectedValues = filters[key];
+      if (selectedValues && selectedValues.length > 0) {
+        rows = rows.filter(v => selectedValues.includes(String(v[key] ?? '')));
+      }
+    });
+
     rows.sort((a, b) => a.date < b.date ? 1 : -1);
     const map = {};
     rows.forEach(v => { const ym = (v.date || '').slice(0, 7) || 'Unknown'; (map[ym] = map[ym] || []).push(v); });
     return map;
-  }, [selTruck, truckGroups, fFrom, fTo]);
+  }, [selTruck, truckGroups, filters]);
 
   const sortedMonths = Object.keys(monthMap).sort((a, b) => b.localeCompare(a));
   const allVisibleRows = useMemo(() => sortedMonths.flatMap(ym => monthMap[ym]), [monthMap]);
@@ -471,12 +497,32 @@ export default function BalanceSheet({ initialTab, lockedType }) {
     return { trips: rows.length, net, paid, outstanding: Math.max(0, net - paid) };
   }, [selTruck, truckGroups]);
 
-  const truckSummaries = useMemo(() => allTrucks.map(truck => {
-    const rows = truckGroups[truck] || [];
-    const net = rows.reduce((s, v) => s + calcNet(v), 0);
-    const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
-    return { truck, trips: rows.length, gross: rows.reduce((s, v) => s + (parseFloat(v.total) || 0), 0), net, paid, outstanding: Math.max(0, net - paid) };
-  }), [allTrucks, truckGroups]);
+  const truckSummaries = useMemo(() => {
+    let list = allTrucks.map(truck => {
+      const rows = truckGroups[truck] || [];
+      const net = rows.reduce((s, v) => s + calcNet(v), 0);
+      const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
+      return { 
+        truck, 
+        trips: String(rows.length), 
+        gross: rows.reduce((s, v) => s + (parseFloat(v.total) || 0), 0), 
+        net, 
+        paid, 
+        outstanding: Math.max(0, net - paid),
+        status: (Math.max(0, net - paid) <= 0 ? 'Cleared' : 'Pending')
+      };
+    });
+
+    // Apply overview filters
+    Object.keys(filters).forEach(key => {
+      const selectedValues = filters[key];
+      if (selectedValues && selectedValues.length > 0) {
+        list = list.filter(t => selectedValues.includes(String(t[key] ?? '')));
+      }
+    });
+
+    return list;
+  }, [allTrucks, truckGroups, filters]);
 
   return (
     <div>
@@ -515,24 +561,22 @@ export default function BalanceSheet({ initialTab, lockedType }) {
             ))}
           </div>
 
-          {/* Filter bar */}
-          <div className="card" style={{ marginBottom: '14px' }}>
-            <div style={{ padding: '11px 16px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-              <Calendar size={13} style={{ color: 'var(--text-muted)' }} />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Date Range:</span>
-              <input className="fi" style={{ width: '130px', height: '32px', fontSize: '12px' }} type="date" value={fFrom} onChange={e => setFFrom(e.target.value)} placeholder="From" />
-              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>to</span>
-              <input className="fi" style={{ width: '130px', height: '32px', fontSize: '12px' }} type="date" value={fTo} onChange={e => setFTo(e.target.value)} placeholder="To" />
-              {(fFrom || fTo) && <button className="btn btn-g btn-sm" onClick={() => { setFFrom(''); setFTo(''); }}>✕ Clear</button>}
-              <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                Showing {allVisibleRows.length} trips across {sortedMonths.length} month(s)
-              </span>
-              {/* Print all visible with date range */}
-              <button className="btn btn-g btn-sm" onClick={() => doPrint(allVisibleRows, selTruck, (fFrom || fTo) ? `${fFrom || 'start'} to ${fTo || 'now'}` : `All time`, tab)}>
-                <Printer size={13} /> Print Filtered ({allVisibleRows.length})
-              </button>
+          {/* Active Filters Summary */}
+          {Object.keys(filters).some(k => filters[k].length > 0) && (
+            <div className="card" style={{ marginBottom: '14px' }}>
+              <div style={{ padding: '10px 16px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', background: 'var(--bg-filter)' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {Object.keys(filters).map(k => filters[k].length > 0 && (
+                    <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
+                      {k}: {filters[k].length} selected
+                    </span>
+                  ))}
+                </div>
+                <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto', height: '24px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear All Filters</button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Select-all action bar */}
           {allVisibleRows.length > 0 && (
@@ -554,9 +598,11 @@ export default function BalanceSheet({ initialTab, lockedType }) {
                   Due: {selOut > 0 ? fmtRs(selOut) : 'Cleared ✓'}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '7px' }}>
-                  <button className="btn btn-p btn-sm" onClick={triggerMarkSelectedPaid} disabled={marking}>
-                    {marking ? '…' : <><CheckCircle2 size={13} /> Mark {selected.size} as Paid</>}
+                {(role === 'admin' || permissions?.balance === 'edit') && (
+                  <button className="btn btn-p btn-sm" onClick={triggerMarkSelectedPaid} disabled={marking} title="Mark selected entries as Paid">
+                    {marking ? <Loader2 size={13} className="spin" /> : <><CheckCircle2 size={13} /> Mark {selected.size} as Paid</>}
                   </button>
+                )}
                   <button className="btn btn-g btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab)}>
                     <Printer size={13} /> Print {selected.size} Selected
                   </button>
@@ -569,11 +615,10 @@ export default function BalanceSheet({ initialTab, lockedType }) {
           )}
 
           {sortedMonths.length === 0 && <div style={{ color: 'var(--text-muted)', padding: '40px', textAlign: 'center', fontSize: '13px' }}>No vouchers in this period</div>}
-          {sortedMonths.map(ym => (
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll}
-              tabName={tab} selTruck={selTruck} />
-          ))}
+              tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
+              role={role} permissions={permissions} />
 
           <AnimatePresence>
             {confirmMarkPaid && (
@@ -590,8 +635,8 @@ export default function BalanceSheet({ initialTab, lockedType }) {
                   </div>
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                     <button type="button" className="btn btn-g" onClick={() => setConfirmMarkPaid(null)} disabled={marking}>Cancel</button>
-                    <button type="button" className="btn btn-p" onClick={executeMarkSelectedPaid} disabled={marking}>
-                      {marking ? 'Processing...' : <><Check size={13} /> Confirm Paid</>}
+                    <button type="button" className="btn btn-p" onClick={executeMarkSelectedPaid} disabled={marking} title="Confirm Marking Paid">
+                      {marking ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Confirm Paid</>}
                     </button>
                   </div>
                 </motion.div>
@@ -610,12 +655,10 @@ export default function BalanceSheet({ initialTab, lockedType }) {
                 <p>{allTrucks.length} trucks · click a row to view monthly details</p>
               </div>
             </div>
-            <div style={{ position: 'relative' }}>
-              <Search size={12} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input className="fi" style={{ paddingLeft: '27px', height: '32px', width: '165px', fontSize: '12px' }}
-                type="text" placeholder="Search truck..." value={truckSearch} onChange={e => setTruckSearch(e.target.value)} />
-            </div>
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              {Object.keys(filters).length > 0 && (
+                <button className="btn btn-sm btn-g" style={{ height: '32px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear Filters</button>
+              )}
               <button className="btn btn-g btn-sm" onClick={() => exportToExcel(truckSummaries.map(t => ({ Truck: t.truck, Trips: t.trips, Gross: t.gross, Net: t.net, Paid: t.paid, Outstanding: t.outstanding, Status: t.outstanding <= 0 ? 'Cleared' : 'Pending' })), `Balance_Overview_${tab}`)}><Download size={13} /> Excel</button>
               <button className="btn btn-g btn-sm" onClick={() => exportToPDF(truckSummaries, `Balance Sheet Overview - ${tab.replace('_', ' ')}`, ['truck', 'trips', 'gross', 'net', 'paid', 'outstanding'])}><Printer size={13} /> PDF</button>
             </div>
@@ -623,9 +666,16 @@ export default function BalanceSheet({ initialTab, lockedType }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
-                <tr>{['#', 'Truck No.', 'Trips', 'Gross', 'Net Balance', 'Paid', 'Outstanding', 'Status'].map(h => (
-                  <th key={h} style={{ ...TH, cursor: 'default' }}>{h}</th>
-                ))}</tr>
+                <tr>
+                  <th style={TH}>#</th>
+                  <th style={TH}><ColumnFilter label="Truck No." colKey="truck" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}><ColumnFilter label="Trips" colKey="trips" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}>Gross</th>
+                  <th style={TH}>Net Balance</th>
+                  <th style={TH}>Paid</th>
+                  <th style={TH}>Outstanding</th>
+                  <th style={TH}><ColumnFilter label="Status" colKey="status" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                </tr>
               </thead>
               <tbody>
                 {truckSummaries.length === 0 && <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No records</td></tr>}

@@ -15,11 +15,21 @@ router.get('/', requireAdmin, async (req, res) => {
 
 // POST /api/users  (admin only)
 router.post('/', requireAdmin, async (req, res) => {
-    const { name, username, password, role } = req.body;
+    const { name, username, password, role, email, permissions } = req.body;
     if (!name || !username || !password) return res.status(400).json({ error: 'name, username and password are required' });
     try {
-        const user = await authService.createUser(name, username, password, role || 'user');
+        const user = await authService.createUser(name, username, password, role || 'user', email || '', permissions);
         res.status(201).json(user);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// PATCH /api/users/:id (admin only)
+router.patch('/:id', requireAdmin, async (req, res) => {
+    try {
+        await authService.updateUser(req.params.id, req.body);
+        res.json({ message: 'User updated successfully' });
     } catch (e) {
         res.status(400).json({ error: e.message });
     }

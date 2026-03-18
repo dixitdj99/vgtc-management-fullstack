@@ -54,7 +54,7 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
     );
 }
 
-export default function VehicleModule() {
+export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [vehicles, setVehicles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -136,8 +136,18 @@ export default function VehicleModule() {
         setSaving(true); setIsConfirmingSave(false);
         try {
             if (editId) {
+                if (!(role === 'admin' || permissions?.vehicle === 'edit')) {
+                    setErr('Permission denied (Edit access required)');
+                    setSaving(false);
+                    return;
+                }
                 await ax.patch(`${API}/${editId}`, form);
             } else {
+                if (!(role === 'admin' || permissions?.vehicle === 'edit')) {
+                    setErr('Permission denied (Add access required)');
+                    setSaving(false);
+                    return;
+                }
                 await ax.post(API, form);
             }
             await fetchData();
@@ -170,6 +180,10 @@ export default function VehicleModule() {
     };
 
     const toggleToNew = () => {
+        if (!(role === 'admin' || permissions?.vehicle === 'edit')) {
+            alert('Permission denied');
+            return;
+        }
         setForm(getEmptyForm());
         setEditId(null);
         setTab('add');
@@ -392,8 +406,12 @@ export default function VehicleModule() {
                                                             {owner.vehicles.map(v => (
                                                                 <div key={v.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', position: 'relative' }}>
                                                                     <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '4px' }}>
-                                                                        <button className="btn btn-g btn-icon btn-sm" onClick={() => handleEdit(v)} title="Edit"><Edit3 size={12} /></button>
-                                                                        <button className="btn btn-d btn-icon btn-sm" onClick={() => setDeleteTarget(v)} title="Delete"><Trash2 size={12} /></button>
+                                                                        {(role === 'admin' || permissions?.vehicle === 'edit') && (
+                                                                            <button className="btn btn-g btn-icon btn-sm" onClick={() => handleEdit(v)} title="Edit"><Edit3 size={12} /></button>
+                                                                        )}
+                                                                        {role === 'admin' && (
+                                                                            <button className="btn btn-d btn-icon btn-sm" onClick={() => setDeleteTarget(v)} title="Delete"><Trash2 size={12} /></button>
+                                                                        )}
                                                                     </div>
 
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
