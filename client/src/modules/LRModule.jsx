@@ -843,10 +843,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </div>
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  {role === 'admin' && <th style={{ padding: '8px 12px' }}>Created By</th>}
+                  {role === 'admin' && <th style={{ padding: '8px 12px' }}>Updated By</th>}
                   <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredReceipts.length === 0 ? <tr><td colSpan={5} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
+                  {filteredReceipts.length === 0 ? <tr><td colSpan={7} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : filteredReceipts.map(lr => (
                       <tr key={lr.id}>
                         <td><span className="t-lr">#{lr.lrNo}</span></td>
@@ -881,6 +883,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             </div>
                           ) : <span className="badge badge-n">None</span>}
                         </td>
+                        {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
+                        {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
                         <td className="c">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                             <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans)}>

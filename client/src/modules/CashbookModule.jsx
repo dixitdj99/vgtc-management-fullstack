@@ -139,6 +139,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         truckNo: v.truckNo,
         lrNo: v.lrNo,
         vType: v.vType,
+        createdBy: v.createdBy,
+        updatedBy: v.updatedBy
       }))
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
@@ -156,6 +158,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         vType: v.vType,
         isOnlinePaid: v.isOnlinePaid || false,
         onlinePaidDate: v.onlinePaidDate || null,
+        createdBy: v.createdBy,
+        updatedBy: v.updatedBy
       }))
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
@@ -290,6 +294,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           <th style={{ ...TH, textAlign: 'right', color: 'var(--accent)' }}>Credit (In)</th>
           <th style={{ ...TH, textAlign: 'right', color: 'var(--danger)' }}>Debit (Out)</th>
           {showBalance && <th style={{ ...TH, textAlign: 'right' }}>Balance</th>}
+          {role === 'admin' && <th style={TH}>Created By</th>}
+          {role === 'admin' && <th style={TH}>Updated By</th>}
           <th style={{ ...TH, textAlign: 'center' }}>Action</th>
         </tr></thead>
         <tbody>
@@ -333,6 +339,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                     {fmtRs(r.balance)}
                   </td>
                 )}
+                {role === 'admin' && <td style={TD}>{r.createdBy || '—'}</td>}
+                {role === 'admin' && <td style={TD}>{r.updatedBy || '—'}</td>}
                 <td style={{ ...TD, textAlign: 'center' }}>
                   {r.deletable !== false && role === 'admin' ? (
                     <button className="btn btn-d btn-icon btn-sm" title="Delete entry"
@@ -359,7 +367,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totCr)}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)', fontSize: '13px' }}>{fmtRs(totDb)}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: last.balance >= 0 ? 'var(--accent)' : 'var(--danger)' }}>{fmtRs(last.balance)}</td>
-                <td style={TD}></td>
+                <td colSpan={role === 'admin' ? 3 : 1} style={TD}></td>
               </tr>
             </tfoot>
           );
@@ -407,6 +415,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   <th style={TH}>LR No.</th>
                   <th style={TH}>Type</th>
                   <th style={{ ...TH, textAlign: 'right' }}>Online Amount</th>
+                  {role === 'admin' && <th style={TH}>Created By</th>}
+                  {role === 'admin' && <th style={TH}>Updated By</th>}
                   <th style={{ ...TH, textAlign: 'center' }}>Status</th>
                 </tr></thead>
                 <tbody>
@@ -417,6 +427,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                       <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{r.lrNo}</span></td>
                       <td style={{ ...TD }}><span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{r.vType}</span></td>
                       <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(r.amount)}</td>
+                      {role === 'admin' && <td style={TD}>{r.createdBy || '—'}</td>}
+                      {role === 'admin' && <td style={TD}>{r.updatedBy || '—'}</td>}
                       <td style={{ ...TD, textAlign: 'center' }}>
                           <button
                             onClick={() => r.isOnlinePaid ? toggleOnlinePaid(r.id.replace('v_online_', ''), true) : setOnlinePaidTarget({ id: r.id.replace('v_online_', ''), defaultDate: new Date().toISOString().slice(0, 10), date: new Date().toISOString().slice(0, 10) })}

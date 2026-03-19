@@ -195,6 +195,8 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, role, permissions }) {
           </div>
           : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>}
       </td>
+      {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
+      {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
       <td style={{ ...TD, textAlign: 'center' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -336,6 +338,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
                 <th style={TH}>Net Bal</th>
                 <th style={TH}>Paid</th>
                 <th style={TH}>Status</th>
+                {role === 'admin' && <th style={TH}>Created By</th>}
+                {role === 'admin' && <th style={TH}>Updated By</th>}
                 <th style={TH}>Edit</th>
               </tr>
             </thead>
@@ -359,7 +363,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
                 <td style={{ ...TDF, textAlign: 'center', color: totals.out > 0 ? 'var(--warn)' : 'var(--accent)', fontSize: '13px' }}>
                   {totals.out > 0 ? fmtRs(totals.out) : <><Check size={11} /> Cleared</>}
                 </td>
-                <td style={TDF}></td>
+                <td colSpan={role === 'admin' ? 3 : 1} style={TDF}></td>
               </tr>
             </tfoot>
           </table>

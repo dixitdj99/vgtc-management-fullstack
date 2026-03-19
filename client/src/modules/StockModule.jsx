@@ -431,7 +431,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             </div></div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr>{['#', 'Date', 'Material', 'Quantity', 'Remark', 'Action'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                <thead><tr>
+                  {['#', 'Date', 'Material', 'Quantity', 'Remark'].map(h => <th key={h} style={TH}>{h}</th>)}
+                  {role === 'admin' && <th style={TH}>Created By</th>}
+                  {role === 'admin' && <th style={TH}>Updated By</th>}
+                  <th style={TH}>Action</th>
+                </tr></thead>
                 <tbody>
                   {additions.length === 0 && <tr><td colSpan={6} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No additions yet</td></tr>}
                   {[...additions].sort((a, b) => a.date > b.date ? -1 : 1).map((a, i) => (
@@ -446,6 +451,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                       </td>
                       <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</td>
                       <td style={{ ...TD, color: 'var(--text-muted)' }}>{a.remark || '—'}</td>
+                      {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{a.createdBy || '—'}</td>}
+                      {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{a.updatedBy || '—'}</td>}
                       <td style={{ ...TD, textAlign: 'center' }}>
                         {role === 'admin' && (
                           <button className="btn btn-d btn-icon btn-sm" onClick={() => setDelTarget({ id: a.id, type: 'addition', label: a.material + ' — ' + a.quantity + ' bags' })}>
@@ -548,6 +555,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   <th style={TH}><ColumnFilter label="Party" colKey="partyName" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Remark</th>
                   <th style={TH}>Status</th>
+                  {role === 'admin' && <th style={TH}>Created By</th>}
+                  {role === 'admin' && <th style={TH}>Updated By</th>}
                   <th style={TH}>Actions</th>
                 </tr></thead>
                 <tbody>
@@ -598,6 +607,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                             <sm.Icon size={11} />{sm.label}
                           </span>
                         </td>
+                        {role === 'admin' && <td style={{ ...TD, fontSize: '12px' }}>{c.createdBy || '—'}</td>}
+                        {role === 'admin' && <td style={{ ...TD, fontSize: '12px' }}>{c.updatedBy || '—'}</td>}
                         <td style={{ ...TD }}>
                           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                             {c.status !== 'loaded' && c.status !== 'cancelled' && (<>
@@ -651,6 +662,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 <th style={TH}><ColumnFilter label="Material" colKey="material" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                 <th style={TH}>In (bags)</th>
                 <th style={TH}>Out (bags)</th>
+                {role === 'admin' && <th style={TH}>Created By</th>}
+                {role === 'admin' && <th style={TH}>Updated By</th>}
               </tr></thead>
               <tbody>
                 {historyRows.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No history</td></tr>}
@@ -678,6 +691,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>
                       {r.debit > 0 ? (r.debit || 0).toLocaleString() : '—'}
                     </td>
+                    {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{r.createdBy || '—'}</td>}
+                    {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{r.updatedBy || '—'}</td>}
                   </tr>
                 ))}
               </tbody>

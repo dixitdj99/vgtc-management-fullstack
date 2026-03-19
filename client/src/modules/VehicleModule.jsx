@@ -426,6 +426,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                             {v.driverContact && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '18px' }}><Phone size={10} /> {v.driverContact}</div>}
                                                                         </div>
                                                                     )}
+                                                                    {(role === 'admin' && (v.createdBy || v.updatedBy)) && (
+                                                                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)', fontSize: '10px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                                                                            <span>Created: {v.createdBy || '—'}</span>
+                                                                            <span>Updated: {v.updatedBy || '—'}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>

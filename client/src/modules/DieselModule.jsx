@@ -157,6 +157,8 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                     <th style={TH}><ColumnFilter label="Pump Name" colKey="pump" data={vouchers} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                                     <th style={TH}><ColumnFilter label="Status" colKey="status" data={vouchers.map(v => ({ ...v, status: v.isDieselVerified ? 'Verified' : 'Pending' }))} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                                     <th style={TH}>Details</th>
+                                    {role === 'admin' && <th style={TH}>Created By</th>}
+                                    {role === 'admin' && <th style={TH}>Updated By</th>}
                                     <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                                 </tr>
                             </thead>
@@ -206,6 +208,8 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                                     </div>
                                                 )}
                                             </td>
+                                            {role === 'admin' && <td style={TD}>{v.createdBy || '—'}</td>}
+                                            {role === 'admin' && <td style={TD}>{v.updatedBy || '—'}</td>}
                                             <td style={{ ...TD, textAlign: 'center' }}>
                                                 {editingId === v.id ? (
                                                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>

@@ -511,6 +511,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         { key: 'advanceOnline', label: 'Online Adv.' },
                                         { key: 'munshi', label: 'Munshi' },
                                         { key: 'total', label: 'Total (Rs)' },
+                                        ...(role === 'admin' ? [
+                                            { key: 'createdBy', label: 'Created By' },
+                                            { key: 'updatedBy', label: 'Updated By' }
+                                        ] : []),
                                     ].map(col => (
                                         <th key={col.key} style={{ ...TH, userSelect: 'none' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -554,6 +558,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--accent)' }}>
                                             {((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)).toLocaleString()}
                                         </td>
+                                        {role === 'admin' && <td style={{ ...TD }}>{v.createdBy || '—'}</td>}
+                                        {role === 'admin' && <td style={{ ...TD }}>{v.updatedBy || '—'}</td>}
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
                                                 <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v)}><Printer size={13} /></button>
@@ -580,7 +586,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td colSpan={2} style={{ ...TD, textAlign: 'right', fontWeight: 900, color: 'var(--accent)', fontSize: '14px' }}>
                                             Rs.{totals.total.toLocaleString()}
                                         </td>
-                                        <td style={{ ...TD }}></td>
+                                        <td colSpan={role === 'admin' ? 3 : 1} style={{ ...TD }}></td>
                                     </tr>
                                 </tfoot>
                             )}

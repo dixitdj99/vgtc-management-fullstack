@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import ax, { setAuthToken } from '../api';
+import ax, { setAuthToken, setCurrentUser } from '../api';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
     if (token) {
       setAuthToken(token);
       ax.get(`/auth/me`)
-        .then(r => { setUser(r.data); })
+        .then(r => { setUser(r.data); setCurrentUser(r.data); })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
     } else {
@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
     setAuthToken(t);
     setToken(t);
     setUser(u);
+    setCurrentUser(u);
     return u;
   };
 
@@ -61,6 +62,7 @@ export function AuthProvider({ children }) {
     setAuthToken(t);
     setToken(t);
     setUser(u);
+    setCurrentUser(u);
     return u;
   };
 
@@ -74,6 +76,7 @@ export function AuthProvider({ children }) {
     setAuthToken(null);
     setToken(null);
     setUser(null);
+    setCurrentUser(null);
     setPlantState('');
   };
 
