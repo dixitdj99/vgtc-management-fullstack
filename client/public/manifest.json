@@ -1,0 +1,17 @@
+{
+  "short_name": "Loading App",
+  "name": "VGTC Loading Status",
+  "description": "App for laborers to manage VGTC Loading Status",
+  "icons": [
+    {
+      "src": "/user_truck.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/loading-status",
+  "background_color": "#1e293b",
+  "theme_color": "#1e293b",
+  "display": "standalone"
+}

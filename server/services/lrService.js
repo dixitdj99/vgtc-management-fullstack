@@ -103,6 +103,7 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.material !== undefined) allowed.material = data.material;
     if (data.weight !== undefined) allowed.weight = parseFloat(data.weight) || 0;
     if (data.totalBags !== undefined) allowed.totalBags = parseInt(data.totalBags) || 0;
+    if (data.status !== undefined) allowed.status = data.status;
 
     if (firebaseAvailable()) {
         await db.collection(lrCollection).doc(id).update({

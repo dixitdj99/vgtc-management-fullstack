@@ -32,11 +32,20 @@ router.patch('/:id/billing', async (req, res) => {
     }
 });
 
-// Full update of a single receipt row
+// Full update of a single receipt row (Support both PATCH and PUT)
 router.patch('/:id', async (req, res) => {
     try {
         await lrService.updateLoadingReceipt(req.params.id, req.body);
-        res.json({ message: 'Receipt updated' });
+        res.json({ message: 'Receipt updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/:id', async (req, res) => {
+    try {
+        await lrService.updateLoadingReceipt(req.params.id, req.body);
+        res.json({ message: 'Receipt updated successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

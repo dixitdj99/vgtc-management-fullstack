@@ -11,6 +11,9 @@ import CashbookModule from './modules/CashbookModule';
 import StockModule from './modules/StockModule';
 import VehicleModule from './modules/VehicleModule';
 import DieselModule from './modules/DieselModule';
+import TruckAnimation from './components/TruckAnimation';
+import PublicLoadingStatus from './modules/PublicLoadingStatus';
+import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import { Truck, Fuel } from 'lucide-react';
 
 const THEMES = [
@@ -121,7 +124,10 @@ function AppInner() {
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi', permKey: 'vehicle' },
     { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi', permKey: 'diesel' },
 
-    ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' }] : []),
+    ...(user?.role === 'admin' ? [
+      { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' },
+      { id: 'admin_loading_status', label: 'Loading Status (Live)', Icon: Truck, color: '#ef4444', section: plant || 'jksuper' }
+    ] : []),
   ];
 
   // Filter by plant AND permissions
@@ -148,6 +154,9 @@ function AppInner() {
   React.useEffect(() => {
     if (active === 'admin' && user?.role !== 'admin') setActive('lr_dump');
   }, [user]);
+
+  const isPublicLoading = window.location.pathname === '/loading-status';
+  if (isPublicLoading) return <PublicLoadingStatus />;
 
   if (!ready) return (
     <div style={{
@@ -266,6 +275,7 @@ function AppInner() {
           <div className="topbar-left">
             <div className="app-title">{FILTERED_NAV.find(n => n.id === active)?.label}</div>
           </div>
+          <TruckAnimation />
           <div className="topbar-right">
             <button className="notif-btn theme-toggle-btn" onClick={cycleTheme}
               title={`Theme: ${currentTheme.label} (click to switch)`}>
@@ -303,6 +313,7 @@ function AppInner() {
               {(active === 'vehicles_dump' || active === 'vehicles_jkl') && <VehicleModule permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl') && <DieselModule permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
+              {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus />}
             </motion.div>
           </AnimatePresence>
         </div>

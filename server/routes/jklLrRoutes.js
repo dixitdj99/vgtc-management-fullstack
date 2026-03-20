@@ -35,8 +35,17 @@ router.patch('/:id/billing', async (req, res) => {
     }
 });
 
-// Update full LR
+// Update full LR (Support both PUT and PATCH)
 router.put('/:id', async (req, res) => {
+    try {
+        await lrService.updateLoadingReceipt(req.params.id, req.body, JKL_LR_COL);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.patch('/:id', async (req, res) => {
     try {
         await lrService.updateLoadingReceipt(req.params.id, req.body, JKL_LR_COL);
         res.json({ success: true });

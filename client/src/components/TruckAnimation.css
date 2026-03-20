@@ -1,0 +1,825 @@
+.ta-container {
+  flex: 1;
+  height: 60px;
+  position: relative;
+  margin: 0 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  container-type: inline-size;
+}
+
+/* 3D Road */
+.ta-road-3d {
+  position: absolute;
+  bottom: 0px;
+  left: -5vw;
+  width: 110vw;
+  height: 20px;
+  background: linear-gradient(180deg, #6b7280 0%, #1f2937 100%);
+  border-top: 2px solid #9ca3af;
+  border-bottom: 3px solid #111827;
+  transform: perspective(300px) rotateX(40deg);
+  transform-origin: bottom center;
+  z-index: 2;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+}
+
+.ta-road-stripes {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent 40px, #fcd34d 40px, #fcd34d 80px);
+  transform: translateY(-50%);
+  opacity: 0.7;
+}
+
+/* Background elements */
+.ta-scenery {
+  position: absolute;
+  z-index: 1;
+}
+
+.ta-cloud {
+  color: #fff;
+}
+
+[data-theme="light"] .ta-cloud {
+  color: #0f172a;
+}
+
+[data-theme="sepia"] .ta-cloud {
+  color: #5a3e28;
+}
+
+/* ── Truck ── */
+.ta-truck {
+  position: absolute;
+  bottom: 5px;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  animation: driveCycle 40s linear infinite;
+  z-index: 10;
+  width: 240px;
+  will-change: transform;
+}
+
+.ta-bag-stack {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 11;
+}
+
+.ta-stacked-bag {
+  position: absolute;
+  opacity: 0;
+}
+
+/* Opacity steps: 0%, 2.49% { opacity: 0; } 2.5%, 82.49% { opacity: 1; } 82.5%, 100% { opacity: 0; } */
+.ta-stacked-bag-1 {
+  animation: bagAnim1 40s linear infinite;
+}
+
+.ta-stacked-bag-2 {
+  animation: bagAnim2 40s linear infinite;
+}
+
+.ta-stacked-bag-3 {
+  animation: bagAnim3 40s linear infinite;
+}
+
+.ta-stacked-bag-4 {
+  animation: bagAnim4 40s linear infinite;
+}
+
+.ta-stacked-bag-5 {
+  animation: bagAnim5 40s linear infinite;
+}
+
+.ta-stacked-bag-6 {
+  animation: bagAnim6 40s linear infinite;
+}
+
+.ta-wheel {
+  /* Safely transforms a perfect dashed circle without bouncing */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wheelSpin 40s linear infinite;
+  will-change: transform;
+}
+
+/* ── Labor & Boxes ── */
+.ta-labor-load {
+  position: absolute;
+  bottom: 5px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  animation: laborLoadAnim 40s linear infinite;
+  z-index: 15;
+  will-change: transform;
+}
+
+.ta-box-load {
+  position: absolute;
+  bottom: 15px;
+  left: 4px;
+  animation: laborLoadBag 40s linear infinite;
+}
+
+.ta-labor-unload {
+  position: absolute;
+  bottom: 5px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  animation: laborUnloadAnim 40s linear infinite;
+  z-index: 15;
+  will-change: transform;
+}
+
+.ta-box-unload {
+  position: absolute;
+  bottom: 15px;
+  right: 4px;
+  animation: laborUnloadBag 40s linear infinite;
+}
+
+/* Animations */
+@keyframes driveCycle {
+  0% {
+    transform: translate3d(30px, 0, 0);
+    opacity: 1;
+  }
+
+  30% {
+    transform: translate3d(30px, 0, 0);
+    opacity: 1;
+  }
+
+  55% {
+    transform: translate3d(calc(100cqi - 280px), 0, 0);
+    opacity: 1;
+  }
+
+  85% {
+    transform: translate3d(calc(100cqi - 280px), 0, 0);
+    opacity: 1;
+  }
+
+  94% {
+    transform: translate3d(100cqi, 0, 0);
+    opacity: 1;
+  }
+
+  94.1% {
+    transform: translate3d(100cqi, 0, 0);
+    opacity: 0;
+  }
+
+  95% {
+    transform: translate3d(-300px, 0, 0);
+    opacity: 0;
+  }
+
+  95.1% {
+    transform: translate3d(-300px, 0, 0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate3d(30px, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes wheelSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  30% {
+    transform: rotate(0deg);
+  }
+
+  55% {
+    transform: rotate(1080deg);
+  }
+
+  85% {
+    transform: rotate(1080deg);
+  }
+
+  94% {
+    transform: rotate(2160deg);
+  }
+
+  94.1% {
+    transform: rotate(2160deg);
+  }
+
+  95% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Labor Pathing Left */
+@keyframes laborLoadAnim {
+  0% {
+    transform: translate3d(-40px, 0, 0) scaleX(1);
+    opacity: 1;
+  }
+
+  1.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  2.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  2.6% {
+    transform: translate3d(20px, 0, 0) scaleX(-1);
+  }
+
+  4.5% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+  }
+
+  4.9% {
+    transform: translate3d(-40px, 0, 0) scaleX(1);
+  }
+
+  6.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  7.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  7.6% {
+    transform: translate3d(20px, 0, 0) scaleX(-1);
+  }
+
+  9.5% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+  }
+
+  9.9% {
+    transform: translate3d(-40px, 0, 0) scaleX(1);
+  }
+
+  11.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  12.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  12.6% {
+    transform: translate3d(20px, 0, 0) scaleX(-1);
+  }
+
+  14.5% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+  }
+
+  14.9% {
+    transform: translate3d(-40px, 0, 0) scaleX(1);
+  }
+
+  16.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  17.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  17.6% {
+    transform: translate3d(20px, 0, 0) scaleX(-1);
+  }
+
+  19.5% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+  }
+
+  19.9% {
+    transform: translate3d(-40px, 0, 0) scaleX(1);
+  }
+
+  21.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  22.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  22.6% {
+    transform: translate3d(20px, 0, 0) scaleX(-1);
+  }
+
+  24.5% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+  }
+
+  24.9% {
+    transform: translate3d(-40px, 0, 0) scaleX(1);
+  }
+
+  26.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  27.5% {
+    transform: translate3d(20px, 0, 0) scaleX(1);
+  }
+
+  27.6% {
+    transform: translate3d(20px, 0, 0) scaleX(-1);
+  }
+
+  29.5% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+    opacity: 1;
+  }
+
+  30% {
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(-40px, 0, 0) scaleX(-1);
+  }
+}
+
+@keyframes laborLoadBag {
+  0% {
+    opacity: 1;
+  }
+
+  2.49% {
+    opacity: 1;
+  }
+
+  2.5% {
+    opacity: 0;
+  }
+
+  4.99% {
+    opacity: 0;
+  }
+
+  5% {
+    opacity: 1;
+  }
+
+  7.49% {
+    opacity: 1;
+  }
+
+  7.5% {
+    opacity: 0;
+  }
+
+  9.99% {
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  12.49% {
+    opacity: 1;
+  }
+
+  12.5% {
+    opacity: 0;
+  }
+
+  14.99% {
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  17.49% {
+    opacity: 1;
+  }
+
+  17.5% {
+    opacity: 0;
+  }
+
+  19.99% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  22.49% {
+    opacity: 1;
+  }
+
+  22.5% {
+    opacity: 0;
+  }
+
+  24.99% {
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  27.49% {
+    opacity: 1;
+  }
+
+  27.5% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Labor Pathing Right */
+@keyframes laborUnloadAnim {
+  0% {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  54.9% {
+    opacity: 0;
+  }
+
+  55% {
+    opacity: 1;
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  56.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  57.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  57.6% {
+    transform: translate3d(-10px, 0, 0) scaleX(-1);
+  }
+
+  59.5% {
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+  }
+
+  59.9% {
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  61.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  62.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  62.6% {
+    transform: translate3d(-10px, 0, 0) scaleX(-1);
+  }
+
+  64.5% {
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+  }
+
+  64.9% {
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  66.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  67.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  67.6% {
+    transform: translate3d(-10px, 0, 0) scaleX(-1);
+  }
+
+  69.5% {
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+  }
+
+  69.9% {
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  71.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  72.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  72.6% {
+    transform: translate3d(-10px, 0, 0) scaleX(-1);
+  }
+
+  74.5% {
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+  }
+
+  74.9% {
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  76.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  77.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  77.6% {
+    transform: translate3d(-10px, 0, 0) scaleX(-1);
+  }
+
+  79.5% {
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+  }
+
+  79.9% {
+    transform: translate3d(40px, 0, 0) scaleX(1);
+  }
+
+  81.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  82.5% {
+    transform: translate3d(-10px, 0, 0) scaleX(1);
+  }
+
+  82.6% {
+    transform: translate3d(-10px, 0, 0) scaleX(-1);
+  }
+
+  84.5% {
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0) scaleX(-1);
+  }
+}
+
+@keyframes laborUnloadBag {
+  0% {
+    opacity: 0;
+  }
+
+  57.49% {
+    opacity: 0;
+  }
+
+  57.5% {
+    opacity: 1;
+  }
+
+  59.99% {
+    opacity: 1;
+  }
+
+  60% {
+    opacity: 0;
+  }
+
+  62.49% {
+    opacity: 0;
+  }
+
+  62.5% {
+    opacity: 1;
+  }
+
+  64.99% {
+    opacity: 1;
+  }
+
+  65% {
+    opacity: 0;
+  }
+
+  67.49% {
+    opacity: 0;
+  }
+
+  67.5% {
+    opacity: 1;
+  }
+
+  69.99% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0;
+  }
+
+  72.49% {
+    opacity: 0;
+  }
+
+  72.5% {
+    opacity: 1;
+  }
+
+  74.99% {
+    opacity: 1;
+  }
+
+  75% {
+    opacity: 0;
+  }
+
+  77.49% {
+    opacity: 0;
+  }
+
+  77.5% {
+    opacity: 1;
+  }
+
+  79.99% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 0;
+  }
+
+  82.49% {
+    opacity: 0;
+  }
+
+  82.5% {
+    opacity: 1;
+  }
+
+  84.99% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Trailer Bags Stacked (Instant Steps) */
+@keyframes bagAnim1 {
+
+  0%,
+  2.49% {
+    opacity: 0;
+  }
+
+  2.5%,
+  82.49% {
+    opacity: 1;
+  }
+
+  82.5%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bagAnim2 {
+
+  0%,
+  7.49% {
+    opacity: 0;
+  }
+
+  7.5%,
+  77.49% {
+    opacity: 1;
+  }
+
+  77.5%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bagAnim3 {
+
+  0%,
+  12.49% {
+    opacity: 0;
+  }
+
+  12.5%,
+  72.49% {
+    opacity: 1;
+  }
+
+  72.5%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bagAnim4 {
+
+  0%,
+  17.49% {
+    opacity: 0;
+  }
+
+  17.5%,
+  67.49% {
+    opacity: 1;
+  }
+
+  67.5%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bagAnim5 {
+
+  0%,
+  22.49% {
+    opacity: 0;
+  }
+
+  22.5%,
+  62.49% {
+    opacity: 1;
+  }
+
+  62.5%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bagAnim6 {
+
+  0%,
+  27.49% {
+    opacity: 0;
+  }
+
+  27.5%,
+  57.49% {
+    opacity: 1;
+  }
+
+  57.5%,
+  100% {
+    opacity: 0;
+  }
+}
