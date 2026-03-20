@@ -236,7 +236,7 @@ function EditModal({ row, openChallans, onClose, onSave, brand }) {
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select' }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', onRefetch }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
 
   // For 'create' tab
