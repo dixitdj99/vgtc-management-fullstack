@@ -85,9 +85,16 @@ export default function AdminLoadingStatus() {
                   return { width: '10%', color: '#94a3b8', label: 'Pending' };
                 };
                 const prog = getProgress();
+                const isLoaded = r.status === 'Loaded';
 
                 return (
-                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s', ':hover': { background: 'rgba(0,0,0,0.01)' } }}>
+                  <tr key={r.id} style={{ 
+                    borderBottom: '1px solid var(--border)', 
+                    transition: 'background 0.2s', 
+                    opacity: isLoaded ? 0.6 : 1,
+                    backgroundColor: isLoaded ? 'rgba(0,0,0,0.01)' : 'transparent',
+                    ':hover': { background: 'rgba(0,0,0,0.01)' } 
+                  }}>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text-muted)' }}>{index + 1}</td>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text)', fontSize: '15px' }}>{r.truckNo}</td>
                     <td style={{ padding: '16px', color: 'var(--text-muted)', fontWeight: '600' }}>{r.lrNo}</td>
