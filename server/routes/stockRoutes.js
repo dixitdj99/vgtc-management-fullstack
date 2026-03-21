@@ -44,4 +44,12 @@ router.delete('/challans/:id', async (req, res) => {
 /* ── Meta ── */
 router.get('/materials', (req, res) => res.json(svc.MATERIALS));
 
+router.post('/sync-lr', async (req, res) => {
+    try {
+        const { oldChallanNos, newChallanNos, material, quantity } = req.body;
+        await svc.syncLRWithChallans(oldChallanNos, newChallanNos, material, quantity);
+        res.json({ ok: true });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 module.exports = router;

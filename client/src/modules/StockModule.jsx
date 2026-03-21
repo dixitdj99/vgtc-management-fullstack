@@ -51,8 +51,9 @@ function MatCard({ mat, added, lrUsed, held }) {
         </div>
         <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{mat}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
         {[
+          { label: 'Total Present', val: available + held, color: 'var(--text)' },
           { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
           { label: 'On Hold', val: held, color: 'var(--warn)' },
         ].map(({ label, val, color }) => (
@@ -294,6 +295,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* Quick summary strip */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {[
+          { label: 'Total Present', val: totalAvailable + totalHeld, color: '#10b981' },
           { label: 'Total Available', val: totalAvailable, color: '#a855f7' },
           { label: 'Total On Hold', val: totalHeld, color: 'var(--warn)' },
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
@@ -356,7 +358,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
-                {['Material', 'Available', 'On Hold', 'Status'].map(h => (
+                {['Material', 'Total Present', 'Available', 'On Hold', 'Status'].map(h => (
                   <th key={h} style={TH}>{h}</th>
                 ))}
               </tr></thead>
@@ -372,6 +374,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                           {mat}
                         </div>
                       </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800 }}>{((available || 0) + (held || 0)).toLocaleString()}</td>
                       <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px', color: available < 0 ? 'var(--danger)' : col }}>{(available || 0).toLocaleString()}</td>
                       <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>{(held || 0).toLocaleString()}</td>
                       <td style={{ ...TD }}>

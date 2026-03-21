@@ -104,7 +104,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, onClose, onSave, brand }) {
+function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap = {} }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
@@ -124,18 +124,48 @@ function EditModal({ row, openChallans, onClose, onSave, brand }) {
   const executeSave = async () => {
     setLoading(true);
     setIsConfirming(false);
-    try {
-      const payload = { ...form };
-      if (form.billing) {
-        payload.billing = form.billing;
-        if (form.billing !== row.billing) {
-          try { await ax.patch(`${ENDPOINT}/${row.id}/billing`, { billing: payload.billing }); }
-          catch (e) { console.warn('Failed to update billing', e); }
+
+    const oldBags = parseInt(row.totalBags || 0);
+    const newBags = parseInt(form.totalBags || 0);
+    
+    // Validate physical stock if increasing bags or changing material
+    if (form.material === row.material) {
+      if (newBags > oldBags) {
+        const extraNeeded = newBags - oldBags;
+        const limit = physicalStockMap[form.material] || 0;
+        if (extraNeeded > limit) {
+          alert(`Low Stock! Cannot increase loading receipt.\nYou need ${extraNeeded} more bags of ${form.material}, but only ${limit} bags are physically available in the godown.`);
+          setLoading(false);
+          return;
         }
       }
+    } else {
+      const limit = physicalStockMap[form.material] || 0;
+      if (newBags > limit) {
+        alert(`Low Stock! Cannot change material type to ${form.material}.\nYou need ${newBags} bags of ${form.material}, but only ${limit} bags are physically available in the godown.`);
+        setLoading(false);
+        return;
+      }
+    }
+
+    try {
+      const payload = { ...form };
+      
+      // Sync stock first
+      const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+      await ax.post(SYNC_API, {
+        oldChallanNos: row.billing,
+        newChallanNos: form.billing,
+        material: form.material,
+        quantity: form.totalBags
+      });
+
       await ax.put(`${ENDPOINT.replace('/stock/challans', '/lr')}/${row.id}`, payload);
       onSave();
-    } catch (e) { alert('Update failed'); } finally { setLoading(false); }
+    } catch (e) { 
+      console.error(e);
+      alert('Update failed: ' + (e.response?.data?.error || e.message)); 
+    } finally { setLoading(false); }
   };
 
   const S = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -205,13 +235,17 @@ function EditModal({ row, openChallans, onClose, onSave, brand }) {
             <label><Tag size={11} /> Challan</label>
             <select className="fi" value={form.billing} onChange={e => S('billing', e.target.value)}>
               <option value="">— No Challan —</option>
-              {/* Include current challan even if it's loaded */}
               {form.billing && !openChallans.find(c => c.challanNo === form.billing) && (
                 <option value={form.billing}>{form.billing} (current)</option>
               )}
-              {openChallans.map(c => (
-                <option key={c.id} value={c.challanNo}>{c.challanNo} — {c.truckNo} ({c.material})</option>
-              ))}
+              {openChallans.map(c => {
+                let matText = c.material ? `${c.material} (${c.quantity} bags)` : '';
+                if (c.materials) {
+                    matText = c.materials.map(m => `${m.type}: ${m.totalBags - m.loadedBags} bags left`).join(', ');
+                }
+                const destText = c.destination ? ` · ${c.destination}` : '';
+                return <option key={c.id} value={c.challanNo}>{c.challanNo} — {c.truckNo}{destText} ({matText})</option>
+              })}
             </select>
           </div>
         </div>
@@ -248,7 +282,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
-    truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', remark: ''
+    truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: ''
   });
 
   const S = (k, v) => setChalForm(f => ({ ...f, [k]: v }));
@@ -267,7 +301,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
       await ax.post(ENDPOINT, chalForm);
       // Go back to select tab so user can see newly created challan
       setTab('select');
-      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', remark: '' });
+      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
     } catch (er) {
@@ -337,7 +371,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                               <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 700 }}>{c.truckNo}</span>
                               {isSelected && <span style={{ padding: '2px 6px', background: '#f59e0b', color: '#000', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
                             </div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>{c.partyName || 'No Party'} · {new Date(c.date).toLocaleDateString('en-IN')}</div>
+                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              {c.partyName || 'No Party'} {c.destination ? ` · ${c.destination}` : ''} · {new Date(c.date).toLocaleDateString('en-IN')}
+                            </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             {c.materials ? (
@@ -395,9 +431,15 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       <input className="fi" type="number" step="1" min="1" placeholder="0" value={chalForm.quantity} onChange={e => S('quantity', e.target.value)} required />
                     </div>
                   </div>
-                  <div className="field">
-                    <label><User size={11} /> Party Name</label>
-                    <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', e.target.value)} />
+                  <div className="fg fg-2">
+                    <div className="field">
+                      <label><User size={11} /> Party Name</label>
+                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', e.target.value)} />
+                    </div>
+                    <div className="field">
+                      <label>Destination</label>
+                      <input className="fi" type="text" placeholder="Delivery location" value={chalForm.destination} onChange={e => S('destination', e.target.value)} />
+                    </div>
                   </div>
                   <div className="field">
                     <label>Remark / Notes</label>
@@ -446,8 +488,23 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
   const [deleting, setDeleting] = useState(false);
   const handleDelete = async () => {
     setDeleting(true);
-    try { await ax.delete(apiUrl + '/' + row.id); onConfirm(); }
-    catch { alert('Delete failed'); } finally { setDeleting(false); }
+    try {
+      // Refund stock first
+      const SYNC_API = apiUrl.includes('/jkl/lr') ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+      if (row.billing) {
+        await ax.post(SYNC_API, {
+          oldChallanNos: row.billing,
+          newChallanNos: "",
+          material: row.material,
+          quantity: row.totalBags
+        });
+      }
+      await ax.delete(apiUrl + '/' + row.id);
+      onConfirm();
+    } catch (e) { 
+      console.error(e);
+      alert('Delete failed: ' + (e.response?.data?.error || e.message)); 
+    } finally { setDeleting(false); }
   };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
@@ -484,6 +541,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [openChallans, setOpenChallans] = useState([]);
   const [allChallans, setAllChallans] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [additions, setAdditions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
@@ -522,10 +580,28 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     } catch { }
   };
 
+  const fetchAdditions = async () => {
+    try {
+      const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/additions` : `${BASE_API}/stock/additions`;
+      const data = (await ax.get(ENDPOINT)).data;
+      setAdditions(data);
+    } catch { }
+  };
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchData(), fetchChallans(), fetchVehicles()]).finally(() => setLoading(false));
+    Promise.all([fetchData(), fetchChallans(), fetchVehicles(), fetchAdditions()]).finally(() => setLoading(false));
   }, [brand]);
+
+  const physicalStockMap = useMemo(() => {
+    const m = {};
+    MATERIALS.forEach(mat => {
+      const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
+      const lrUsed = receipts.filter(l => l.material === mat).reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      m[mat] = added - lrUsed;
+    });
+    return m;
+  }, [additions, receipts, MATERIALS]);
 
   const updMat = (i, field, val) => {
     const m = [...form.materials]; m[i] = { ...m[i], [field]: val };
@@ -537,20 +613,22 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const handleFormRequest = e => {
     e.preventDefault();
+    // Validate physical stock
+    for (const mat of form.materials) {
+      if (!mat.bags) continue;
+      const needed = parseInt(mat.bags);
+      const limit = physicalStockMap[mat.type] || 0;
+      if (needed > limit) {
+        alert(`Low Stock! Cannot create loading receipt.\nYou need ${needed} bags of ${mat.type}, but only ${limit} bags are physically available in the godown.`);
+        return;
+      }
+    }
     setIsConfirmingSave(true);
   };
 
   const executeSaveLR = async () => {
     setLoading(true); setIsConfirmingSave(false);
     try {
-      // 1. Calculate how much of each material is used
-      // Since an LR might only load a subset of what's attached to the challan
-      // We will try to deduct from the attached challans in order
-      const matDeductions = {};
-      form.materials.forEach(m => {
-        matDeductions[m.type] = (matDeductions[m.type] || 0) + parseInt(m.bags);
-      });
-
       const payload = {
         ...form,
         billing: form.usedChallans.map(c => c.challanNo).join(', ')
@@ -558,33 +636,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       const res = await ax.post(API, payload);
 
-      // 2. Perform challan deductions
-      for (const ch of form.usedChallans) {
-        const chDeductions = [];
-        if (ch.materials) {
-          ch.materials.forEach(m => {
-            let availableInReq = matDeductions[m.type] || 0;
-            if (availableInReq > 0) {
-              let amountToDeduct = Math.min(availableInReq, m.totalBags - m.loadedBags);
-              if (amountToDeduct > 0) {
-                chDeductions.push({ type: m.type, bags: amountToDeduct });
-                matDeductions[m.type] -= amountToDeduct;
-              }
-            }
-          });
-        } else {
-          // Legacy fallback
-          let availableInReq = matDeductions[ch.material] || 0;
-          if (availableInReq > 0) {
-            chDeductions.push({ type: ch.material, bags: availableInReq });
-            matDeductions[ch.material] -= availableInReq;
-          }
-        }
-
-        if (chDeductions.length > 0) {
-          await ax.post(API_CHAL.replace('/challans', '') + '/challans/deduct', {
-            id: ch.id,
-            deductions: chDeductions
+      // Sync stock for each material
+      const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+      for (const m of form.materials) {
+        if (m.bags && payload.billing) {
+          await ax.post(SYNC_API, {
+            oldChallanNos: "",
+            newChallanNos: payload.billing,
+            material: m.type,
+            quantity: m.bags
           });
         }
       }
@@ -634,7 +694,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={editRow} brand={brand} openChallans={openChallans} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={editRow} brand={brand} openChallans={openChallans} physicalStockMap={physicalStockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -793,7 +853,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
                         </select>
                       </div>
-                      <div className="field"><label>Bags</label><input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} /></div>
+                      <div className="field">
+                        <label>
+                          Bags 
+                          {m.type && <span style={{color: 'var(--primary)', marginLeft: '4px', fontSize: '10px'}}>(Max {physicalStockMap[m.type] || 0} in godown)</span>}
+                        </label>
+                        <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
+                      </div>
                       <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
                     </div>
                   </motion.div>

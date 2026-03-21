@@ -6,7 +6,7 @@ const path = require('path');
 const COLLECTIONS = [
   'vouchers', 'lr', 'jkl_lr', 'cashbook', 'jkl_cashbook',
   'stock_additions', 'jkl_stock_additions', 'challans', 'jkl_challans',
-  'vehicles', 'diesel_entries'
+  'vehicles', 'diesel_entries', 'metadata', 'users', 'settings'
 ];
 
 async function clearFirebaseCollection(collectionName) {

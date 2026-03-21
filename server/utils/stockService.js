@@ -123,7 +123,7 @@ module.exports = {
     },
 
     createChallan: async (data, cCol = CCOL, allowedMaterials = MATERIALS) => {
-        let { truckNo, materials, partyName, date, remark, material, quantity } = data;
+        let { truckNo, materials, partyName, destination, date, remark, material, quantity } = data;
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
         if (!materials || !materials.length) throw new Error('Materials required');
 
@@ -144,6 +144,7 @@ module.exports = {
             return await firestoreCreateChallan({
                 challanNo, truckNo, materials: cleanMaterials,
                 partyName: partyName || '',
+                destination: destination || '',
                 date: date || new Date().toISOString().slice(0, 10),
                 remark: remark || '', status: 'open'
             }, cCol);
@@ -154,6 +155,7 @@ module.exports = {
         return localStore.insert(cCol, {
             challanNo, truckNo, materials: cleanMaterials,
             partyName: partyName || '',
+            destination: destination || '',
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '', status: 'open'
         });
@@ -207,6 +209,91 @@ module.exports = {
         // ... (similar logic as above but for local)
         // For brevity, skipping the full local rewrite of deduct but it would follow the same pattern
         return localStore.update(cCol, id, { status: 'updated' }); // Placeholder for complex local logic improvement
+    },
+
+    syncLRWithChallans: async (oldChallanNos, newChallanNos, material, quantity, cCol = CCOL) => {
+        const qty = parseInt(quantity);
+        if (isNaN(qty) || qty <= 0) return;
+
+        const updateChallanBags = async (cNo, amount) => {
+            const snap = await db.collection(cCol).where('challanNo', '==', cNo.trim()).limit(1).get();
+            if (snap.empty) return 0;
+            const doc = snap.docs[0];
+            const data = doc.data();
+            const newMaterials = data.materials.map(m => {
+                if (m.type === material) {
+                    m.loadedBags = Math.max(0, (m.loadedBags || 0) + amount);
+                }
+                return m;
+            });
+            const allLoaded = newMaterials.every(m => m.loadedBags >= m.totalBags);
+            const anyLoaded = newMaterials.some(m => m.loadedBags > 0);
+            let status = 'open';
+            if (allLoaded) status = 'loaded';
+            else if (anyLoaded) status = 'partially_loaded';
+            await doc.ref.update({ materials: newMaterials, status });
+            return amount;
+        };
+
+        const updateLocalChallanBags = (cNo, amount) => {
+            const all = localStore.getAll(cCol);
+            const challan = all.find(c => c.challanNo === cNo.trim());
+            if (!challan) return;
+            challan.materials = challan.materials.map(m => {
+                if (m.type === material) m.loadedBags = Math.max(0, (m.loadedBags || 0) + amount);
+                return m;
+            });
+            const allLoaded = challan.materials.every(m => m.loadedBags >= m.totalBags);
+            const anyLoaded = challan.materials.some(m => m.loadedBags > 0);
+            challan.status = allLoaded ? 'loaded' : (anyLoaded ? 'partially_loaded' : 'open');
+            localStore.update(cCol, challan.id, challan);
+        };
+
+        // 1. Refund old
+        if (oldChallanNos) {
+            const olds = oldChallanNos.split(',').filter(Boolean);
+            for (const cNo of olds) {
+                if (firebaseAvailable()) await updateChallanBags(cNo, -qty);
+                else updateLocalChallanBags(cNo, -qty);
+            }
+        }
+
+        // 2. Deduct new
+        if (newChallanNos) {
+            const news = newChallanNos.split(',').filter(Boolean);
+            let remaining = qty;
+            for (const cNo of news) {
+                if (remaining <= 0) break;
+                
+                if (firebaseAvailable()) {
+                    const snap = await db.collection(cCol).where('challanNo', '==', cNo.trim()).limit(1).get();
+                    if (snap.empty) continue;
+                    const doc = snap.docs[0];
+                    const data = doc.data();
+                    const mat = data.materials.find(m => m.type === material);
+                    if (!mat) continue;
+
+                    const canTake = mat.totalBags - (mat.loadedBags || 0);
+                    const toTake = Math.min(remaining, canTake);
+                    if (toTake > 0) {
+                        await updateChallanBags(cNo, toTake);
+                        remaining -= toTake;
+                    }
+                } else {
+                    const all = localStore.getAll(cCol);
+                    const challan = all.find(c => c.challanNo === cNo.trim());
+                    if (!challan) continue;
+                    const mat = challan.materials.find(m => m.type === material);
+                    if (!mat) continue;
+                    const canTake = mat.totalBags - (mat.loadedBags || 0);
+                    const toTake = Math.min(remaining, canTake);
+                    if (toTake > 0) {
+                        updateLocalChallanBags(cNo, toTake);
+                        remaining -= toTake;
+                    }
+                }
+            }
+        }
     },
 
     updateChallan: async (id, updates, cCol = CCOL) => {

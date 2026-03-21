@@ -11,7 +11,6 @@ import CashbookModule from './modules/CashbookModule';
 import StockModule from './modules/StockModule';
 import VehicleModule from './modules/VehicleModule';
 import DieselModule from './modules/DieselModule';
-import TruckAnimation from './components/TruckAnimation';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import { Truck, Fuel } from 'lucide-react';
@@ -275,7 +274,6 @@ function AppInner() {
           <div className="topbar-left">
             <div className="app-title">{FILTERED_NAV.find(n => n.id === active)?.label}</div>
           </div>
-          <TruckAnimation />
           <div className="topbar-right">
             <button className="notif-btn theme-toggle-btn" onClick={cycleTheme}
               title={`Theme: ${currentTheme.label} (click to switch)`}>
