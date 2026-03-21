@@ -619,10 +619,12 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
           )}
 
           {sortedMonths.length === 0 && <div style={{ color: 'var(--text-muted)', padding: '40px', textAlign: 'center', fontSize: '13px' }}>No vouchers in this period</div>}
+          {sortedMonths.map(ym => (
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
               role={role} permissions={permissions} />
+          ))}
 
           <AnimatePresence>
             {confirmMarkPaid && (
