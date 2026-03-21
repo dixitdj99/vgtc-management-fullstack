@@ -34,8 +34,8 @@ const fi = (label, node) => (
 /* ─────────────────────────────────────────────
    MATERIAL CARD
 ───────────────────────────────────────────── */
-function MatCard({ mat, added, lrUsed, held }) {
-  const available = added - lrUsed - held;
+function MatCard({ mat, added, lrUsed, sold, held }) {
+  const available = added - lrUsed - sold - held;
   const col = MCOL[mat] || '#6366f1';
   return (
     <div style={{
@@ -51,15 +51,19 @@ function MatCard({ mat, added, lrUsed, held }) {
         </div>
         <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{mat}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
         {[
-          { label: 'Total Present', val: available + held, color: 'var(--text)' },
-          { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
+          { label: 'Total In', val: (added || 0), color: 'var(--text)' },
+          { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col, wt: available },
           { label: 'On Hold', val: held, color: 'var(--warn)' },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ textAlign: 'center', padding: '8px 6px', background: 'var(--bg)', borderRadius: '8px' }}>
-            <div style={{ fontSize: '18px', fontWeight: 900, color, lineHeight: 1 }}>{val.toLocaleString('en-IN')}</div>
-            <div style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '3px' }}>{label}</div>
+          { label: 'Sold', val: (sold || 0), color: 'var(--accent)' },
+        ].map(({ label, val, color, wt }) => (
+          <div key={label} style={{ textAlign: 'center', padding: '10px 6px', background: 'var(--bg)', borderRadius: '10px', border: label === 'Available' ? `1px solid ${col}44` : '1px solid transparent' }}>
+            <div style={{ fontSize: '18px', fontWeight: 900, color, lineHeight: 1 }}>
+              {val.toLocaleString('en-IN')}
+            </div>
+            {wt !== undefined && <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', marginTop: '2px' }}>{(wt * 0.05).toFixed(2)} MT</div>}
+            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '4px' }}>{label}</div>
           </div>
         ))}
       </div>
@@ -78,9 +82,10 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [additions, setAdditions] = useState([]);
   const [challans, setChallans] = useState([]);
   const [lrs, setLrs] = useState([]);
+  const [sales, setSales] = useState([]);
   const [vehicles, setVehicles] = useState([]); // Added vehicles state
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState(initialTab || 'overview'); // overview|add|challan|history
+  const [tab, setTab] = useState(initialTab || 'overview'); // overview|history|add|challan
   const [challanFilter, setChallanFilter] = useState('open'); // open|loaded|cancelled|all
   const [delTarget, setDelTarget] = useState(null);
 
@@ -111,13 +116,14 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [ad, ch, lr, vh] = await Promise.all([
+      const [ad, ch, lr, vh, sl] = await Promise.all([
         ax.get(API + '/additions').then(r => r.data),
         ax.get(API + '/challans').then(r => r.data),
         ax.get(API_LR).then(r => r.data),
         ax.get(`/vehicles`).then(r => r.data).catch(() => []),
+        ax.get(`/sell?brand=${brand}`).then(r => r.data).catch(() => []),
       ]);
-      setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh);
+      setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh); setSales(sl);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -128,6 +134,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     MATS.forEach(mat => {
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
       const lrUsed = lrs.filter(l => l.material === mat).reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      const sold = sales.filter(s => s.material === mat).reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
 
       let held = 0;
       challans.forEach(c => {
@@ -143,10 +150,10 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         }
       });
 
-      m[mat] = { added, lrUsed, held, available: added - lrUsed - held };
+      m[mat] = { added, lrUsed, sold, held, available: added - lrUsed - sold - held };
     });
     return m;
-  }, [additions, challans, lrs]);
+  }, [additions, challans, lrs, sales, MATS]);
 
   const totalAvailable = MATS.reduce((s, mat) => s + (stockMap[mat]?.available || 0), 0);
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
@@ -237,6 +244,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     let rows = [
       ...additions.map(a => ({ ...a, txType: 'add', debit: 0, credit: a.quantity, label: `Stock Added — ${a.remark || 'Manual entry'}`, displayType: 'Stock In' })),
       ...lrs.map(l => ({ ...l, txType: 'lr', debit: l.totalBags || 0, credit: 0, label: `LR #${l.lrNo} — Truck ${l.truckNo || '?'}`, displayType: 'LR Use' })),
+      ...sales.map(s => ({ ...s, txType: 'sell', debit: s.quantity, credit: 0, label: `Direct Sale — ${s.customerName || 'Cash'}`, displayType: 'Sale' })),
     ].sort((a, b) => (a.date || '') > (b.date || '') ? -1 : 1);
 
     // Dynamic filtering
@@ -248,7 +256,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     });
 
     return rows;
-  }, [additions, lrs, filters]);
+  }, [additions, lrs, sales, filters]);
 
   const exportChallanExcel = () => exportToExcel(filteredChallans.map(c => ({ ChallanNo: c.challanNo, Date: c.date, Truck: c.truckNo, Material: c.material, Qty: c.quantity, Party: c.partyName, Status: c.status, Remark: c.remark })), `Challans_${new Date().toISOString().slice(0, 10)}`);
   const exportChallanPDF = () => exportToPDF(filteredChallans, 'Challan List', ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'partyName', 'status', 'remark']);
@@ -279,7 +287,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* Header */}
       <div className="page-hd">
         <div>
-          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'J.K Lakshmi' : 'Dump'} Stock</h1>
+          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : 'Dump'} Stock</h1>
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -287,17 +295,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         </div>
       </div>
 
-      {/* Material cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: '12px', marginBottom: '18px' }}>
-        {MATS.map(mat => <MatCard key={mat} mat={mat} {...(stockMap[mat] || { added: 0, lrUsed: 0, held: 0 })} />)}
-      </div>
 
       {/* Quick summary strip */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {[
-          { label: 'Total Present', val: totalAvailable + totalHeld, color: '#10b981' },
-          { label: 'Total Available', val: totalAvailable, color: '#a855f7' },
-          { label: 'Total On Hold', val: totalHeld, color: 'var(--warn)' },
+          { label: 'Total In (All Time)', val: additions.reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0), color: '#10b981' },
+          { label: 'Net Available', val: totalAvailable, color: '#a855f7' },
+          { label: 'Current On Hold', val: totalHeld, color: 'var(--warn)' },
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
         ].map(({ label, val, color, unit = 'bags' }) => (
           <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '150px' }}>
@@ -312,9 +316,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {[
           { id: 'overview', label: 'Overview', icon: <Package size={13} /> },
-          {id: 'add', label: 'Add Stock', icon: <Plus size={13} />, restricted: true},
-          {id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true},
-          {id: 'history', label: 'History', icon: <FileText size={13} />},
+          {id: 'history', label: 'Stock History', icon: <FileText size={13} />},
+          {id: 'add', label: 'Stock Entry', icon: <Plus size={13} />, restricted: true},
+          {id: 'challan', label: 'Challan / Dispatch', icon: <Tag size={13} />, restricted: true},
         ].map(({ id, label, icon, restricted }) => {
           if (restricted && !(role === 'admin' || permissions?.stock === 'edit')) return null;
           return (
@@ -331,6 +335,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         );
       })}
       </div>
+      
+      {/* ── OVERVIEW TAB (Cards only, no list) ── */}
+      {tab === 'overview' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: '12px', marginBottom: '18px' }}>
+          {MATS.map(mat => <MatCard key={mat} mat={mat} {...(stockMap[mat] || { added: 0, lrUsed: 0, sold: 0, held: 0 })} />)}
+        </div>
+      )}
 
       {Object.keys(filters).some(k => filters[k].length > 0) && (
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', background: 'var(--bg-filter)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)', alignItems: 'center' }}>
@@ -346,52 +357,6 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         </div>
       )}
 
-      {/* ── OVERVIEW TAB ── */}
-      {tab === 'overview' && (
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title-block">
-              <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><Package size={17} /></div>
-              <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi Stock Summary' : 'Stock Summary by Material'}</h3><p>Current inventory levels</p></div>
-            </div>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>
-                {['Material', 'Total Present', 'Available', 'On Hold', 'Status'].map(h => (
-                  <th key={h} style={TH}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {MATS.map((mat, i) => {
-                  const { held, available } = stockMap[mat] || {};
-                  const col = MCOL[mat];
-                  return (
-                    <tr key={mat} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                      <td style={{ ...TD, fontWeight: 800 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: col, flexShrink: 0 }} />
-                          {mat}
-                        </div>
-                      </td>
-                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800 }}>{((available || 0) + (held || 0)).toLocaleString()}</td>
-                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px', color: available < 0 ? 'var(--danger)' : col }}>{(available || 0).toLocaleString()}</td>
-                      <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>{(held || 0).toLocaleString()}</td>
-                      <td style={{ ...TD }}>
-                        {available < 0
-                          ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(244,63,94,0.1)', color: 'var(--danger)', fontSize: '11px', fontWeight: 700 }}>⚠ Deficit</span>
-                          : available === 0
-                            ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>Empty</span>
-                            : <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}>✓ In Stock</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* ── ADD STOCK TAB ── */}
       {tab === 'add' && (
@@ -558,6 +523,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   <th style={TH}><ColumnFilter label="Party" colKey="partyName" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Remark</th>
                   <th style={TH}>Status</th>
+                  <th style={TH}>Sold</th>
                   {role === 'admin' && <th style={TH}>Created By</th>}
                   {role === 'admin' && <th style={TH}>Updated By</th>}
                   <th style={TH}>Actions</th>
@@ -648,7 +614,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div className="card-header">
             <div className="card-title-block">
               <div className="card-icon" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}><FileText size={17} /></div>
-              <div className="card-title-text" style={{ flex: 1 }}><h3>Full Stock History</h3><p>{historyRows.length} entries (Additions + LRs)</p></div>
+              <div className="card-title-text" style={{ flex: 1 }}><h3>Full Stock History</h3><p>{historyRows.length} entries (In + Out + Sales)</p></div>
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button className="btn btn-g btn-sm" onClick={exportHistoryExcel}><Download size={13} /> Excel</button>

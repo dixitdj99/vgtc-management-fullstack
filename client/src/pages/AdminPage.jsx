@@ -10,13 +10,14 @@ const ROLE_COLOR = { admin: '#6366f1', user: '#10b981' };
 const ROLE_ICON = { admin: Crown, user: Users };
 
 const MODULES = [
-    { key: 'lr', label: 'LR Module' },
-    { key: 'voucher', label: 'Voucher Module' },
-    { key: 'balance', label: 'Balance Sheet' },
-    { key: 'stock', label: 'Stock Module' },
-    { key: 'cashbook', label: 'Cashbook' },
-    { key: 'diesel', label: 'Diesel Module' },
-    { key: 'vehicle', label: 'Vehicle Management' },
+  { key: 'lr', label: 'LR Module' },
+  { key: 'voucher', label: 'Voucher Module' },
+  { key: 'balance', label: 'Balance Sheet' },
+  { key: 'stock', label: 'Stock Module' },
+  { key: 'cashbook', label: 'Cashbook' },
+  { key: 'diesel', label: 'Diesel Module' },
+  { key: 'vehicle', label: 'Vehicle Management' },
+  { key: 'sell', label: 'Sell' },
 ];
 
 function DeleteConfirm({ u, onClose, onConfirm }) {
@@ -65,10 +66,10 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
-  
-  const [form, setForm] = useState({ 
-    name: '', username: '', password: '', role: 'user', 
-    email: '', isOtpEnabled: false, permissions: {} 
+
+  const [form, setForm] = useState({
+    name: '', username: '', password: '', role: 'user',
+    email: '', isOtpEnabled: false, permissions: {}
   });
   const [formError, setFormError] = useState('');
 
@@ -103,32 +104,32 @@ export default function AdminPage() {
 
   const S = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const SPerm = (mod, val) => setForm(f => ({
-      ...f, permissions: { ...f.permissions, [mod]: val }
+    ...f, permissions: { ...f.permissions, [mod]: val }
   }));
 
   const PermissionToggle = ({ moduleKey, current, onChange }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-input)', padding: '6px 10px', borderRadius: '8px' }}>
-        <span style={{ flex: 1, fontSize: '11.5px', fontWeight: 600, color: 'var(--text-sub)' }}>
-            {MODULES.find(m => m.key === moduleKey)?.label}
-        </span>
-        <div style={{ display: 'flex', gap: '4px' }}>
-            {['None', 'View', 'Edit'].map(opt => {
-                const val = opt === 'None' ? null : opt.toLowerCase();
-                const isActive = current === val;
-                return (
-                    <button key={opt} type="button" onClick={() => onChange(moduleKey, val)}
-                        style={{
-                            fontSize: '9.5px', fontWeight: 800, padding: '4px 8px', borderRadius: '5px',
-                            border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border)',
-                            background: isActive ? 'var(--accent)20' : 'transparent',
-                            color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                            cursor: 'pointer', transition: 'all 0.15s'
-                        }}>
-                        {opt || 'None'}
-                    </button>
-                );
-            })}
-        </div>
+      <span style={{ flex: 1, fontSize: '11.5px', fontWeight: 600, color: 'var(--text-sub)' }}>
+        {MODULES.find(m => m.key === moduleKey)?.label}
+      </span>
+      <div style={{ display: 'flex', gap: '4px' }}>
+        {['None', 'View', 'Edit'].map(opt => {
+          const val = opt === 'None' ? null : opt.toLowerCase();
+          const isActive = current === val;
+          return (
+            <button key={opt} type="button" onClick={() => onChange(moduleKey, val)}
+              style={{
+                fontSize: '9.5px', fontWeight: 800, padding: '4px 8px', borderRadius: '5px',
+                border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border)',
+                background: isActive ? 'var(--accent)20' : 'transparent',
+                color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                cursor: 'pointer', transition: 'all 0.15s'
+              }}>
+              {opt || 'None'}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -154,40 +155,40 @@ export default function AdminPage() {
             <div className="card-header">
               <div className="card-title-block">
                 <div className={`card-icon ${editTarget ? 'ci-amber' : 'ci-indigo'}`}>
-                    {editTarget ? <Users size={17} /> : <Plus size={17} />}
+                  {editTarget ? <Users size={17} /> : <Plus size={17} />}
                 </div>
                 <div className="card-title-text">
-                    <h3>{editTarget ? 'Edit User' : 'Create User'}</h3>
-                    <p>{editTarget ? `Modifying @${editTarget.username}` : 'Add a new account'}</p>
+                  <h3>{editTarget ? 'Edit User' : 'Create User'}</h3>
+                  <p>{editTarget ? `Modifying @${editTarget.username}` : 'Add a new account'}</p>
                 </div>
               </div>
               {editTarget && (
-                  <button className="btn-icon" onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }} style={{ color: 'var(--text-muted)' }}>
-                      <X size={16} />
-                  </button>
+                <button className="btn-icon" onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }} style={{ color: 'var(--text-muted)' }}>
+                  <X size={16} />
+                </button>
               )}
             </div>
             <div className="card-body">
-              <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate} 
-                    style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate}
+                style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="field">
                   <label>Full Name</label>
                   <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div className="field">
-                        <label><User size={11} /> Username</label>
-                        <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
-                    </div>
-                    <div className="field">
-                        <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
-                        <input className="fi" type="password" placeholder={editTarget ? 'Leave blank to keep' : '••••••••'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
-                    </div>
+                  <div className="field">
+                    <label><User size={11} /> Username</label>
+                    <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
+                  </div>
+                  <div className="field">
+                    <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
+                    <input className="fi" type="password" placeholder={editTarget ? 'Leave blank to keep' : '••••••••'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
+                  </div>
                 </div>
 
                 <div className="field">
-                    <label>Email Address</label>
-                    <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
+                  <label>Email Address</label>
+                  <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
                 </div>
 
                 <div className="field">
@@ -213,28 +214,28 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div style={{ 
-                    marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
-                    background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
+                <div style={{
+                  marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
+                  background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
-                        <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                        Requires two-step verification using a code sent to the email above.
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
+                    <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    Requires two-step verification using a code sent to the email above.
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '4px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
-                        Modular Permissions
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {MODULES.map(m => (
-                            <PermissionToggle key={m.key} moduleKey={m.key} current={form.permissions[m.key]} onChange={SPerm} />
-                        ))}
-                    </div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+                    Modular Permissions
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {MODULES.map(m => (
+                      <PermissionToggle key={m.key} moduleKey={m.key} current={form.permissions[m.key]} onChange={SPerm} />
+                    ))}
+                  </div>
                 </div>
 
                 {formError && (
@@ -246,12 +247,12 @@ export default function AdminPage() {
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                    {editTarget && (
-                        <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
-                    )}
-                    <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
+                  {editTarget && (
+                    <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
+                  )}
+                  <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
                     {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : <><Plus size={14} /> Create User</>)}
-                    </button>
+                  </button>
                 </div>
               </form>
             </div>
@@ -325,21 +326,21 @@ export default function AdminPage() {
                           </td>
                           <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                                <button className="btn btn-g btn-sm btn-icon" title="Edit user" onClick={() => {
-                                    setEditTarget(u);
-                                    setForm({
-                                        name: u.name, username: u.username, password: '', role: u.role,
-                                        email: u.email || '', isOtpEnabled: !!u.isOtpEnabled,
-                                        permissions: u.permissions || {}
-                                    });
-                                }}>
-                                    <Users size={13} />
+                              <button className="btn btn-g btn-sm btn-icon" title="Edit user" onClick={() => {
+                                setEditTarget(u);
+                                setForm({
+                                  name: u.name, username: u.username, password: '', role: u.role,
+                                  email: u.email || '', isOtpEnabled: !!u.isOtpEnabled,
+                                  permissions: u.permissions || {}
+                                });
+                              }}>
+                                <Users size={13} />
+                              </button>
+                              {!isMe && (
+                                <button className="btn btn-d btn-sm btn-icon" onClick={() => setDelTarget(u)} title="Delete user">
+                                  <Trash2 size={13} />
                                 </button>
-                                {!isMe && (
-                                    <button className="btn btn-d btn-sm btn-icon" onClick={() => setDelTarget(u)} title="Delete user">
-                                        <Trash2 size={13} />
-                                    </button>
-                                )}
+                              )}
                             </div>
                           </td>
                         </tr>

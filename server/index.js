@@ -15,6 +15,7 @@ const jklLrRoutes = require('./routes/jklLrRoutes');
 const jklStockRoutes = require('./routes/jklStockRoutes');
 const jklCashbookRoutes = require('./routes/jklCashbookRoutes');
 const vehicleRoutes = require('./routes/vehicleRoutes');
+const sellRoutes = require('./routes/sellRoutes');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
@@ -22,7 +23,6 @@ if (!process.env.NETLIFY) {
 }
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 
 app.use('/api/lr', lrRoutes);
@@ -31,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/cashbook', cashbookRoutes);
 app.use('/api/stock', stockRoutes);
+app.use('/api/sell', sellRoutes);
 
 // JKL Routes
 app.use('/api/jkl/lr', jklLrRoutes);

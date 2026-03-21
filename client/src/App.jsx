@@ -13,7 +13,8 @@ import VehicleModule from './modules/VehicleModule';
 import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
-import { Truck, Fuel } from 'lucide-react';
+import SellModule from './modules/SellModule';
+import { Truck, Fuel, ShoppingCart } from 'lucide-react';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -101,6 +102,7 @@ function AppInner() {
     },
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
+    { id: 'sell_dump', label: 'Sell Register', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
@@ -135,6 +137,7 @@ function AppInner() {
     },
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi', permKey: 'vehicle' },
     { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi', permKey: 'diesel' },
+    { id: 'sell_jkl', label: 'Sell Register', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
 
     ...(user?.role === 'admin' ? [
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' },
@@ -327,6 +330,7 @@ function AppInner() {
               {active === 'stock_jkl' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jkl" />}
               {(active === 'vehicles_dump' || active === 'vehicles_jkl') && <VehicleModule permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl') && <DieselModule permissions={user.permissions} />}
+              {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
               {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus />}
             </motion.div>
