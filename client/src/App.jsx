@@ -36,6 +36,19 @@ function AppInner() {
   const [col, setCol] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
 
+  const [isWakingUp, setIsWakingUp] = useState(false);
+
+  useEffect(() => {
+    const handleSlow = () => setIsWakingUp(true);
+    const handleFast = () => setIsWakingUp(false);
+    window.addEventListener('api-slow', handleSlow);
+    window.addEventListener('api-fast', handleFast);
+    return () => {
+      window.removeEventListener('api-slow', handleSlow);
+      window.removeEventListener('api-fast', handleFast);
+    };
+  }, []);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('vgtc-theme', theme);
@@ -159,10 +172,14 @@ function AppInner() {
 
   if (!ready) return (
     <div style={{
-      height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
-      color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase'
+      height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
+      color: 'var(--text-muted)'
     }}>
-      Loading…
+      <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
+      <div style={{ fontSize: '13px', fontWeight: 800, letterSpacing: '0.05em', color: isWakingUp ? '#f59e0b' : 'var(--text)' }}>
+        {isWakingUp ? 'Waking up database server... (this can take ~50 seconds)' : 'AUTHENTICATING...'}
+      </div>
+      {isWakingUp && <div style={{ fontSize: '11px', marginTop: '8px', opacity: 0.7 }}>Render free tiers spin down after 15 minutes of inactivity. Please wait.</div>}
     </div>
   );
 
@@ -316,6 +333,21 @@ function AppInner() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Global Waking Up indicator for inside the app */}
+      <AnimatePresence>
+        {isWakingUp && ready && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            style={{ position: 'fixed', bottom: '24px', left: '50%', background: '#f59e0b', color: '#000', padding: '12px 24px', borderRadius: '30px', fontSize: '13px', fontWeight: 800, zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 25px rgba(245,158,11,0.4)', pointerEvents: 'none' }}
+          >
+            <div style={{ width: '16px', height: '16px', border: '3px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            Waking up remote server... (up to 50s)
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -25,23 +25,50 @@ export const setCurrentUser = (user) => {
     currentUser = user;
 };
 
-// Interceptor to attach createdBy and updatedBy for mutations
+let pendingRequests = 0;
+let slowRequestTimer = null;
+
 ax.interceptors.request.use(config => {
     if (currentUser && (config.method === 'post' || config.method === 'patch' || config.method === 'put')) {
-        // Only attach if config.data is a plain object or array (skip FormData etc. if any)
         if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
             const userName = currentUser.name || currentUser.username || 'System';
-            
-            // For POST requests, attach createdBy if it doesn't exist
             if (config.method === 'post' && !config.data.createdBy) {
                 config.data.createdBy = userName;
             }
-            // Always attach updatedBy for any mutation
             config.data.updatedBy = userName;
         }
     }
+
+    pendingRequests++;
+    if (pendingRequests === 1) {
+        slowRequestTimer = setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('api-slow'));
+        }, 3000); // 3 seconds threshold for cold start Warning
+    }
+
     return config;
 }, error => {
+    pendingRequests = Math.max(0, pendingRequests - 1);
+    if (pendingRequests === 0) {
+        clearTimeout(slowRequestTimer);
+        window.dispatchEvent(new CustomEvent('api-fast'));
+    }
+    return Promise.reject(error);
+});
+
+ax.interceptors.response.use(res => {
+    pendingRequests = Math.max(0, pendingRequests - 1);
+    if (pendingRequests === 0) {
+        clearTimeout(slowRequestTimer);
+        window.dispatchEvent(new CustomEvent('api-fast'));
+    }
+    return res;
+}, error => {
+    pendingRequests = Math.max(0, pendingRequests - 1);
+    if (pendingRequests === 0) {
+        clearTimeout(slowRequestTimer);
+        window.dispatchEvent(new CustomEvent('api-fast'));
+    }
     return Promise.reject(error);
 });
 
