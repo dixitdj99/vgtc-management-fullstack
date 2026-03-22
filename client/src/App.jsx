@@ -14,8 +14,7 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
-import CCTVModule from './modules/CCTVModule';
-import { Truck, Fuel, ShoppingCart, Camera } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart } from 'lucide-react';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -104,7 +103,6 @@ function AppInner() {
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'sell_dump', label: 'Sell Register', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'cctv_dump', label: 'CCTV Live', Icon: Camera, color: '#a855f7', section: 'jksuper', permKey: 'cctv' },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
@@ -140,7 +138,6 @@ function AppInner() {
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi', permKey: 'vehicle' },
     { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi', permKey: 'diesel' },
     { id: 'sell_jkl', label: 'Sell Register', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
-    { id: 'cctv_jkl', label: 'CCTV Live', Icon: Camera, color: '#a855f7', section: 'jklakshmi', permKey: 'cctv' },
 
     ...(user?.role === 'admin' ? [
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' },
@@ -336,7 +333,6 @@ function AppInner() {
               {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
               {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus />}
-              {(active === 'cctv_dump' || active === 'cctv_jkl') && <CCTVModule />}
             </motion.div>
           </AnimatePresence>
         </div>
