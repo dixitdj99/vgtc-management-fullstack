@@ -4,8 +4,11 @@ const driveService = require('../utils/driveService');
 const backupService = require('../utils/backupService');
 
 // GET /api/backup/auth-status
-router.get('/auth-status', (req, res) => {
-    res.json({ authorized: driveService.isAuthorized() });
+router.get('/auth-status', async (req, res) => {
+    res.json({ 
+        authorized: await driveService.isAuthorized(),
+        configured: driveService.isConfigured()
+    });
 });
 
 // GET /api/backup/auth-url

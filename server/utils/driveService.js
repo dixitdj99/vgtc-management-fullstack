@@ -14,10 +14,12 @@ function getClientTemplate() {
     // 1. Check environment variable first (for Production)
     if (process.env.GOOGLE_CREDENTIALS) {
         try {
-            const keys = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+            // Sanitize in case of weird whitespace/newlines in env var
+            const sanitized = process.env.GOOGLE_CREDENTIALS.trim();
+            const keys = JSON.parse(sanitized);
             return keys.web || keys.installed || keys;
         } catch (e) {
-            console.error('[Drive] Invalid GOOGLE_CREDENTIALS Env Var');
+            console.error('[Drive] Critical: Failed to parse GOOGLE_CREDENTIALS environment variable. Ensure it is a valid JSON string.');
         }
     }
 
@@ -47,6 +49,10 @@ function createOAuthClient() {
         keys.client_secret,
         redirectUri
     );
+}
+
+function isConfigured() {
+    return getClientTemplate() !== null;
 }
 
 async function isAuthorized() {
@@ -156,4 +162,4 @@ async function uploadFile(filePath, fileName, folderId) {
     return res.data.id;
 }
 
-module.exports = { isAuthorized, getAuthUrl, saveToken, getOrCreateFolder, uploadFile };
+module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getOrCreateFolder, uploadFile };
