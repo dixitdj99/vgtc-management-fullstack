@@ -13,10 +13,10 @@ const AdminModule = () => {
         setLoading(true);
         setStatus(null);
         try {
-            const res = await ax.get('/backup/auth-status');
+            const res = await ax.get('backup/auth-status');
             setAuthStatus(res.data);
         } catch (e) {
-            console.error('Failed to fetch auth status');
+            console.error('API Error (auth-status):', e.message);
             setAuthStatus({ authorized: false, configured: false, error: true });
         } finally {
             setLoading(false);
@@ -30,12 +30,13 @@ const AdminModule = () => {
     const handleConnect = async () => {
         setLoading(true);
         try {
-            const res = await ax.get('/backup/auth-url');
+            const res = await ax.get('backup/auth-url');
             window.open(res.data.url, '_blank');
             setAuthUrl(res.data.url);
             setStatus({ type: 'info', msg: 'Please authorize on the new tab and paste the code below.' });
         } catch (e) {
-            setStatus({ type: 'error', msg: e.response?.data?.error || 'Failed to get auth URL' });
+            console.error('API Error (auth-url):', e.message);
+            setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Failed to get auth URL' });
         } finally {
             setLoading(false);
         }
@@ -44,13 +45,14 @@ const AdminModule = () => {
     const handleSubmitCode = async () => {
         setLoading(true);
         try {
-            await ax.post('/backup/submit-code', { code });
+            await ax.post('backup/submit-code', { code });
             setStatus({ type: 'success', msg: 'Authorized successfully!' });
             fetchStatus();
             setAuthUrl('');
             setCode('');
         } catch (e) {
-            setStatus({ type: 'error', msg: e.response?.data?.error || 'Authorization failed' });
+            console.error('API Error (submit-code):', e.message);
+            setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Authorization failed' });
         } finally {
             setLoading(false);
         }
@@ -60,12 +62,11 @@ const AdminModule = () => {
         setLoading(true);
         setStatus({ type: 'info', msg: 'Backup requested. Please wait...' });
         try {
-            const res = await ax.post('/now'); // Note: if backupRoutes.js exports to /backup/now, this might need /backup/now
-            // But usually this module is mounted under /api/backup so ax is configured or we use full path
-            const backupRes = await ax.post('/backup/now');
+            const backupRes = await ax.post('backup/now');
             setStatus({ type: 'success', msg: backupRes.data.message });
         } catch (e) {
-            setStatus({ type: 'error', msg: e.response?.data?.error || 'Backup request failed' });
+            console.error('API Error (backup/now):', e.message);
+            setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Backup request failed' });
         } finally {
             setLoading(false);
         }
