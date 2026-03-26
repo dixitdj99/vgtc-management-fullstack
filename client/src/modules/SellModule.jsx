@@ -30,6 +30,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     customerName: '',
     remark: '',
     paymentType: 'cash',
+    paymentStatus: 'paid',
     date: new Date().toISOString().slice(0, 10),
     brand: brand
   });
@@ -71,6 +72,17 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     }
   };
 
+  const updatePaymentStatus = async (id, status, pType) => {
+    try {
+      const data = { paymentStatus: status };
+      if (pType) data.paymentType = pType;
+      await ax.patch(`${BASE_API}/${id}`, data);
+      fetchSales();
+    } catch (e) {
+      alert('Update failed');
+    }
+  };
+
   const deleteSale = async (id) => {
     if (role !== 'admin') return alert('Only admins can delete sales');
     if (!window.confirm('Are you sure you want to delete this sale?')) return;
@@ -96,8 +108,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
 
   const totalBags = filteredSales.reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
   const totalVal = filteredSales.reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
-  const totalCash = filteredSales.filter(s => s.paymentType === 'cash').reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
-  const totalOnline = filteredSales.filter(s => s.paymentType === 'online').reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
+  const totalCash = filteredSales.filter(s => s.paymentType === 'cash' && s.paymentStatus !== 'pending').reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
+  const totalOnline = filteredSales.filter(s => s.paymentType === 'online' && s.paymentStatus !== 'pending').reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
+  const totalPending = filteredSales.filter(s => s.paymentStatus === 'pending').reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
 
   const TH = { padding: '10px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', textAlign: 'left' };
   const TD = { padding: '10px 12px', fontSize: '13px', color: 'var(--text-sub)', borderBottom: '1px solid var(--border-row)', verticalAlign: 'middle' };
@@ -119,6 +132,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             .label { font-weight: bold; color: #666; }
             .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #999; }
             .stamp { text-align: right; margin-top: 30px; font-weight: bold; color: #10b981; text-transform: uppercase; border: 2px solid #10b981; display: inline-block; padding: 5px 15px; border-radius: 4px; transform: rotate(-5deg); }
+            .stamp.pending { color: #f43f5e; border-color: #f43f5e; }
           </style>
         </head>
         <body>
@@ -132,14 +146,16 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             <div class="row"><span class="label">Material:</span> <span>${s.material}</span></div>
             <div class="row"><span class="label">Quantity:</span> <span>${s.quantity} Bags (${(s.quantity * 0.05).toFixed(2)} MT)</span></div>
             <div class="row"><span class="label">Rate per Bag:</span> <span>₹${s.rate}</span></div>
-            <div class="row"><span class="label">Payment Mode:</span> <span style="text-transform: capitalize;">${s.paymentType}</span></div>
+            <div class="row"><span class="label">Payment Mode:</span> <span style="text-transform: capitalize;">${s.paymentStatus === 'pending' ? 'Not Paid (Pending)' : s.paymentType}</span></div>
             <div class="row" style="border-top: 2px solid #333; padding-top: 10px; margin-top: 20px;">
               <span class="label" style="font-size: 1.2em; color: #000;">Total Amount:</span> 
               <span style="font-size: 1.2em; font-weight: 900; color: #000;">₹${s.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
           <div style="text-align: right;">
-            <div class="stamp">PAID BY ${s.paymentType}</div>
+            <div class="stamp ${s.paymentStatus === 'pending' ? 'pending' : ''}">
+              ${s.paymentStatus === 'pending' ? 'NOT PAID / PENDING' : `PAID BY ${s.paymentType.toUpperCase()}`}
+            </div>
           </div>
           <div class="footer">
             <p>Thank you for your business!</p>
@@ -168,26 +184,33 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
       </div>
 
       {/* ── COLLECTION SUMMARY ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' }}>
-         <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '15px', borderLeft: '4px solid #6366f1' }}>
-            <div style={{ padding: '10px', background: 'rgba(99,102,241,0.1)', borderRadius: '12px', color: '#6366f1' }}><ShoppingCart size={24} /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' }}>
+         <div className="card" style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '12px', borderLeft: '4px solid #6366f1' }}>
+            <div style={{ padding: '8px', background: 'rgba(99,102,241,0.1)', borderRadius: '10px', color: '#6366f1' }}><ShoppingCart size={20} /></div>
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Sales</div>
-              <div style={{ fontSize: '20px', fontWeight: 800 }}>₹{totalVal.toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Sales</div>
+              <div style={{ fontSize: '16px', fontWeight: 800 }}>₹{totalVal.toLocaleString('en-IN')}</div>
             </div>
          </div>
-         <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '15px', borderLeft: '4px solid #10b981' }}>
-            <div style={{ padding: '10px', background: 'rgba(16,185,129,0.1)', borderRadius: '12px', color: '#10b981' }}><Banknote size={24} /></div>
+         <div className="card" style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '12px', borderLeft: '4px solid #10b981' }}>
+            <div style={{ padding: '8px', background: 'rgba(16,185,129,0.1)', borderRadius: '10px', color: '#10b981' }}><Banknote size={20} /></div>
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cash Collected</div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#10b981' }}>₹{totalCash.toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cash (Paid)</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#10b981' }}>₹{totalCash.toLocaleString('en-IN')}</div>
             </div>
          </div>
-         <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '15px', borderLeft: '4px solid #0ea5e9' }}>
-            <div style={{ padding: '10px', background: 'rgba(14,165,233,0.1)', borderRadius: '12px', color: '#0ea5e9' }}><CreditCard size={24} /></div>
+         <div className="card" style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '12px', borderLeft: '4px solid #0ea5e9' }}>
+            <div style={{ padding: '8px', background: 'rgba(14,165,233,0.1)', borderRadius: '10px', color: '#0ea5e9' }}><CreditCard size={20} /></div>
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Online Collection</div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#0ea5e9' }}>₹{totalOnline.toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Online (Paid)</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#0ea5e9' }}>₹{totalOnline.toLocaleString('en-IN')}</div>
+            </div>
+         </div>
+         <div className="card" style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '12px', borderLeft: '4px solid #f43f5e' }}>
+            <div style={{ padding: '8px', background: 'rgba(244,63,94,0.1)', borderRadius: '10px', color: '#f43f5e' }}><RefreshCw size={20} /></div>
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pending Pay</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#f43f5e' }}>₹{totalPending.toLocaleString('en-IN')}</div>
             </div>
          </div>
       </div>
@@ -212,8 +235,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                 <tr>
                   <th style={TH}>Date <ColumnFilter label="" colKey="date" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
                   <th style={TH}>Material <ColumnFilter label="" colKey="material" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                  <th style={TH}>Customer <ColumnFilter label="" colKey="customerName" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                  <th style={{ ...TH, textAlign: 'center' }}>Pay <ColumnFilter label="" colKey="paymentType" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                   <th style={TH}>Customer <ColumnFilter label="" colKey="customerName" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                  <th style={{ ...TH, textAlign: 'center' }}>Type <ColumnFilter label="" colKey="paymentType" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                  <th style={{ ...TH, textAlign: 'center' }}>Status <ColumnFilter label="" colKey="paymentStatus" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
                   <th style={{ ...TH, textAlign: 'right' }}>Bags</th>
                   <th style={{ ...TH, textAlign: 'right' }}>Total</th>
                   <th style={{ ...TH, textAlign: 'center' }}>Action</th>
@@ -238,8 +262,14 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                         <div style={{ fontWeight: 600, color: 'var(--text)' }}>{s.customerName}</div>
                         <div style={{ fontSize: '10px', opacity: 0.7 }}>{s.remark}</div>
                       </td>
+                       <td style={{ ...TD, textAlign: 'center' }}>
+                         {s.paymentType === 'cash' ? <span style={{ color: '#10b981', fontSize: '11px', fontWeight: 700 }}>CASH</span> : <span style={{ color: '#0ea5e9', fontSize: '11px', fontWeight: 700 }}>ONLINE</span>}
+                      </td>
                       <td style={{ ...TD, textAlign: 'center' }}>
-                         {s.paymentType === 'cash' ? <span style={{ padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: '10px', fontWeight: 700 }}>CASH</span> : <span style={{ padding: '2px 8px', borderRadius: '10px', background: 'rgba(14,165,233,0.1)', color: '#0ea5e9', fontSize: '10px', fontWeight: 700 }}>ONLINE</span>}
+                         {s.paymentStatus === 'pending' 
+                            ? <span style={{ padding: '2px 8px', borderRadius: '10px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', fontSize: '10px', fontWeight: 800 }}>PENDING</span>
+                            : <span style={{ padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: '10px', fontWeight: 800 }}>PAID</span>
+                         }
                       </td>
                       <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
                         {s.quantity}
@@ -247,12 +277,18 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                       </td>
                       <td style={{ ...TD, textAlign: 'right', color: 'var(--accent)', fontWeight: 800 }}>₹{s.totalAmount.toLocaleString('en-IN')}</td>
                       <td style={{ ...TD, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-                          <button className="btn-icon" title="Print Receipt" style={{ color: 'var(--accent)' }} onClick={() => printReceipt(s)}><ReceiptText size={14} /></button>
-                          {role === 'admin' && (
-                            <button className="btn-icon" style={{ color: 'var(--danger)' }} onClick={() => deleteSale(s.id)}><Trash2 size={14} /></button>
-                          )}
-                        </div>
+                         <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                           {s.paymentStatus === 'pending' && (
+                             <>
+                               <button className="btn-icon" title="Mark as Cash Paid" style={{ color: '#10b981' }} onClick={() => updatePaymentStatus(s.id, 'paid', 'cash')}><Banknote size={14} /></button>
+                               <button className="btn-icon" title="Mark as Online Paid" style={{ color: '#0ea5e9' }} onClick={() => updatePaymentStatus(s.id, 'paid', 'online')}><CreditCard size={14} /></button>
+                             </>
+                           )}
+                           <button className="btn-icon" title="Print Receipt" style={{ color: 'var(--accent)' }} onClick={() => printReceipt(s)}><ReceiptText size={14} /></button>
+                           {role === 'admin' && (
+                             <button className="btn-icon" style={{ color: 'var(--danger)' }} onClick={() => deleteSale(s.id)}><Trash2 size={14} /></button>
+                           )}
+                         </div>
                       </td>
                     </tr>
                   ))
@@ -310,16 +346,26 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                   <input className="fi" type="number" step="0.01" placeholder="420.00" value={form.rate} onChange={e => setForm({...form, rate: e.target.value})} />
                 </div>
 
-                <div className="field">
-                    <label><CreditCard size={13} /> Payment Mode</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                        <button type="button" onClick={() => setForm({...form, paymentType: 'cash'})} className={`btn btn-sm ${form.paymentType === 'cash' ? 'btn-p' : 'btn-g'}`} style={{ height: '36px' }}>
-                           <Banknote size={14} /> Cash
+                 <div className="field">
+                    <label><CreditCard size={13} /> Payment & Status</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                        <button type="button" onClick={() => setForm({...form, paymentStatus: 'paid'})} className={`btn btn-sm ${form.paymentStatus === 'paid' ? 'btn-s' : 'btn-g'}`} style={{ height: '36px' }}>
+                           <Check size={14} /> Paid
                         </button>
-                        <button type="button" onClick={() => setForm({...form, paymentType: 'online'})} className={`btn btn-sm ${form.paymentType === 'online' ? 'btn-p' : 'btn-g'}`} style={{ height: '36px' }}>
-                           <CreditCard size={14} /> Online
+                        <button type="button" onClick={() => setForm({...form, paymentStatus: 'pending'})} className={`btn btn-sm ${form.paymentStatus === 'pending' ? 'btn-d' : 'btn-g'}`} style={{ height: '36px' }}>
+                           <RefreshCw size={14} /> Pending
                         </button>
                     </div>
+                    {form.paymentStatus === 'paid' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <button type="button" onClick={() => setForm({...form, paymentType: 'cash'})} className={`btn btn-sm ${form.paymentType === 'cash' ? 'btn-p' : 'btn-g'}`} style={{ height: '36px' }}>
+                             <Banknote size={14} /> Cash
+                          </button>
+                          <button type="button" onClick={() => setForm({...form, paymentType: 'online'})} className={`btn btn-sm ${form.paymentType === 'online' ? 'btn-p' : 'btn-g'}`} style={{ height: '36px' }}>
+                             <CreditCard size={14} /> Online
+                          </button>
+                      </div>
+                    )}
                 </div>
 
                 <div className="field">

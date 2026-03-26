@@ -79,7 +79,7 @@ module.exports = {
     },
 
     addStock: async (data, sCol = SCOL, allowedMaterials = MATERIALS) => {
-        const { material, quantity, date, remark } = data;
+        const { material, quantity, date, remark, truckNo } = data;
         if (!allowedMaterials.includes(material)) throw new Error('Invalid material: ' + material);
         const qty = parseFloat(quantity);
         if (!qty || qty <= 0) throw new Error('Quantity must be positive');
@@ -89,6 +89,7 @@ module.exports = {
             quantity: qty,
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '',
+            truckNo: truckNo || '',
         };
 
         if (firebaseAvailable()) return await firestoreAddStock(payload, sCol);

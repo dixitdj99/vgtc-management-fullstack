@@ -158,8 +158,8 @@ const FactoryIcon = () => (
 );
 
 const CloudIcon = () => (
-  <svg width="40" height="20" viewBox="0 0 30 15">
-    <path d="M10 15 a5 5 0 0 1 -5 -5 a5 5 0 0 1 10 0 a7 7 0 0 1 14 0 a5 5 0 0 1 -5 5 Z" fill="currentColor" />
+  <svg width="55" height="22" viewBox="0 0 32 16" style={{ opacity: 0.9 }}>
+    <path d="M5,14 a4,4 0 0,1 0,-8 a5,5 0 0,1 7,-3 a7,7 0 0,1 11,0 a5,5 0 0,1 4,4 a4,4 0 0,1 0,7 Z" fill="currentColor" />
   </svg>
 );
 

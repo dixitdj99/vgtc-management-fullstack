@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut } from 'lucide-react';
+import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain } from 'lucide-react';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import ax from './api';
 import LoginPage from './pages/LoginPage';
 import AdminPage from './pages/AdminPage';
 import LRModule from './modules/LRModule';
@@ -14,7 +15,9 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
-import { Truck, Fuel, ShoppingCart } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge } from 'lucide-react';
+import MileageModule from './modules/MileageModule';
+import AdminModule from './modules/AdminModule';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -38,6 +41,47 @@ function AppInner() {
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
 
   const [isWakingUp, setIsWakingUp] = useState(false);
+  const [weather, setWeather] = useState({ temp: null, cond: 'Clear', isRain: false, advice: 'Loading weather...' });
+  const [currentHour, setCurrentHour] = useState(new Date().getHours());
+  const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
+  const city = 'Jharli, Jhajjar, Haryana';
+
+  // Tick every minute to keep day/night animation in sync
+  useEffect(() => {
+    const tick = setInterval(() => setCurrentHour(new Date().getHours()), 60000);
+    return () => clearInterval(tick);
+  }, []);
+
+  const fetchWeather = async () => {
+    try {
+      const res = await ax.get(`/weather?city=${encodeURIComponent(city)}`);
+      if (res.data && res.data.current_condition) {
+        const cur = res.data.current_condition[0];
+        const temp = parseFloat(cur.temp_C);   // parse to number
+        const cond = cur.weatherDesc[0].value;
+        const isRain = cond.toLowerCase().includes('rain') || cond.toLowerCase().includes('drizzle');
+        const isHaze = cond.toLowerCase().includes('fog') || cond.toLowerCase().includes('haze') || cond.toLowerCase().includes('mist');
+
+        let advice = '✅ Clear skies — the world is working and so are we!';
+        if (isRain) advice = '🌧 The sky is weeping — stay dry and keep those trucks safe!';
+        else if (isHaze) advice = '🌫 A ghostly mist has settled — drive slow, we value your safety!';
+        else if (temp > 38) advice = '🔥 The sun is fierce today — hydrate the team, let\'s stay cool!';
+        else if (temp > 32) advice = '☀️ Golden hour vibes — it\'s a glorious day for a long haul!';
+        else if (temp < 10) advice = '🥶 Crisp and cold — a warm engine and a hot tea is all we need!';
+        else if (temp < 22) advice = '🌤 Emerald skies — the birds are literally cheering for our fleet!';
+
+        setWeather({ temp, cond, isRain, isHaze, advice });
+      }
+    } catch (err) {
+      console.error('Weather fetch failed:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchWeather();
+    const wInt = setInterval(fetchWeather, 300000);
+    return () => clearInterval(wInt);
+  }, []);
 
   useEffect(() => {
     const handleSlow = () => setIsWakingUp(true);
@@ -86,7 +130,7 @@ function AppInner() {
     {
       id: 'stock_dump', label: 'Dump Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock', sub: [
         { id: 'overview', label: 'Overview' },
-        { id: 'add', label: 'Add Stock' },
+        { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
       ]
@@ -102,7 +146,8 @@ function AppInner() {
     },
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
-    { id: 'sell_dump', label: 'Sell Register', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
+    { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'diesel', adminOnly: true },
+    { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
@@ -121,7 +166,7 @@ function AppInner() {
     {
       id: 'stock_jkl', label: 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jklakshmi', permKey: 'stock', sub: [
         { id: 'overview', label: 'Overview' },
-        { id: 'add', label: 'Add Stock' },
+        { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
       ]
@@ -137,11 +182,13 @@ function AppInner() {
     },
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi', permKey: 'vehicle' },
     { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi', permKey: 'diesel' },
-    { id: 'sell_jkl', label: 'Sell Register', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
+    { id: 'mileage_jkl', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jklakshmi', permKey: 'diesel', adminOnly: true },
+    { id: 'sell_jkl', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
 
     ...(user?.role === 'admin' ? [
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' },
-      { id: 'admin_loading_status', label: 'Loading Status (Live)', Icon: Truck, color: '#ef4444', section: plant || 'jksuper' }
+      { id: 'admin_loading_status', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: plant || 'jksuper', adminOnly: true },
+      { id: 'admin_backup', label: 'Backup Settings', Icon: Cloud, color: '#6366f1', section: plant || 'jksuper', adminOnly: true },
     ] : []),
   ];
 
@@ -152,6 +199,9 @@ function AppInner() {
 
     // Admin panel always visible for admins
     if (n.id === 'admin') return true;
+
+    // Check if item is restricted to admins only
+    if (n.adminOnly && user?.role !== 'admin') return false;
 
     // Admins see everything else too
     if (user?.role === 'admin') return true;
@@ -290,11 +340,73 @@ function AppInner() {
       </aside>
 
       <div className="main-content">
-        <header className="topbar">
-          <div className="topbar-left">
+        <header className="topbar" style={{ position: 'relative', overflow: 'hidden' }}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setMousePos({
+              x: (e.clientX - rect.left) / rect.width,
+              y: (e.clientY - rect.top) / rect.height
+            });
+          }}
+        >
+          {/* Dynamic Weather Background — driven by currentHour state (ticks every minute) */}
+          {(() => {
+            const isNight = currentHour >= 18 || currentHour < 6;
+            const cond = weather.cond.toLowerCase();
+            const isRain = weather.isRain;
+            const isCloudy = cond.includes('cloud') || cond.includes('overcast');
+            const isHaze = cond.includes('fog') || cond.includes('haze') || cond.includes('mist');
+
+            let weatherClass = 'weather-sunny';
+            if (isRain) weatherClass = 'weather-rain';
+            else if (isNight) weatherClass = 'weather-night';
+            else if (isCloudy || isHaze) weatherClass = 'weather-clouds';
+
+            const isDay = currentHour >= 6 && currentHour <= 18;
+            const style = { 
+              '--mx': mousePos.x, 
+              '--my': mousePos.y 
+            };
+
+            return (
+              <div 
+                className={`weather-bg ${weatherClass}`} 
+                style={style}
+              >
+                {isNight && <div className="weather-night-shooting" />}
+                {isRain && <div className="wx-lightning" />}
+                {(isCloudy || isHaze) && <div className="wx-cloud-sm" />}
+                {isDay && !isRain && (
+                  <>
+                    <div className="wx-bird bird-1" />
+                    <div className="wx-bird bird-2" />
+                  </>
+                )}
+                {weatherClass.includes('sunny') && <div className="wx-sun-flare" />}
+              </div>
+            );
+          })()}
+
+          <div className="topbar-left" style={{ position: 'relative', zIndex: 1 }}>
             <div className="app-title">{FILTERED_NAV.find(n => n.id === active)?.label}</div>
           </div>
-          <div className="topbar-right">
+          <div className="topbar-right" style={{ position: 'relative', zIndex: 1 }}>
+            {/* Global Weather Widget */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '12px', background: 'rgba(255,255,255,0.1)', padding: '4px 10px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {weather.isRain
+                  ? <CloudRain size={12} color="white" />
+                  : weather.temp > 30
+                    ? <Sun size={12} color="#fcd34d" />
+                    : <Cloud size={12} color="white" />}
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'white' }}>
+                  {weather.temp !== null ? `${weather.temp}°C` : '—°C'} • Jharli
+                </span>
+              </div>
+              <div style={{ fontSize: '9px', fontWeight: 900, color: 'rgba(255,255,255,0.9)', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {weather.advice}
+              </div>
+            </div>
             <button className="notif-btn theme-toggle-btn" onClick={cycleTheme}
               title={`Theme: ${currentTheme.label} (click to switch)`}>
               <ThemeIcon size={17} />
@@ -330,9 +442,11 @@ function AppInner() {
               {active === 'stock_jkl' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jkl" />}
               {(active === 'vehicles_dump' || active === 'vehicles_jkl') && <VehicleModule permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl') && <DieselModule permissions={user.permissions} />}
+              {(active === 'mileage_dump' || active === 'mileage_jkl') && <MileageModule />}
               {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
               {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus />}
+              {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>
           </AnimatePresence>
         </div>

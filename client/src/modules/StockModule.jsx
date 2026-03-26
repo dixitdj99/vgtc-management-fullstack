@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
   XCircle, AlertCircle, Clock, Trash2, RefreshCw, ChevronDown,
-  ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter
+  ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -54,15 +54,15 @@ function MatCard({ mat, added, lrUsed, sold, held }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
         {[
           { label: 'Total In', val: (added || 0), color: 'var(--text)' },
-          { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col, wt: available },
+          { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
           { label: 'On Hold', val: held, color: 'var(--warn)' },
           { label: 'Sold', val: (sold || 0), color: 'var(--accent)' },
-        ].map(({ label, val, color, wt }) => (
+        ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: 'center', padding: '10px 6px', background: 'var(--bg)', borderRadius: '10px', border: label === 'Available' ? `1px solid ${col}44` : '1px solid transparent' }}>
             <div style={{ fontSize: '18px', fontWeight: 900, color, lineHeight: 1 }}>
               {val.toLocaleString('en-IN')}
             </div>
-            {wt !== undefined && <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', marginTop: '2px' }}>{(wt * 0.05).toFixed(2)} MT</div>}
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', marginTop: '2px' }}>{(val * 0.05).toFixed(2)} MT</div>
             <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '4px' }}>{label}</div>
           </div>
         ))}
@@ -85,7 +85,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [sales, setSales] = useState([]);
   const [vehicles, setVehicles] = useState([]); // Added vehicles state
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState(initialTab || 'overview'); // overview|history|add|challan
+  const [tab, setTab] = useState(initialTab || 'overview'); // overview|history|migo|challan
+  const [showMigoForm, setShowMigoForm] = useState(false);
+  const [showChallanForm, setShowChallanForm] = useState(false);
   const [challanFilter, setChallanFilter] = useState('open'); // open|loaded|cancelled|all
   const [delTarget, setDelTarget] = useState(null);
 
@@ -94,9 +96,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
   /* forms */
-  const getEmptyAdd = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
   const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', date: new Date().toISOString().slice(0, 10), remark: '' });
-  const [addForm, setAddForm] = useState(getEmptyAdd());
+  const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -108,7 +110,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   // Update form defaults when navigating between brands
   useEffect(() => {
-    setAddForm(f => ({ ...f, material: MATS[0] }));
+    setMigoForm(f => ({ ...f, material: MATS[0] }));
     setChalForm(f => ({ ...f, material: MATS[0] }));
   }, [brand]);
 
@@ -159,15 +161,15 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
 
   /* ── handlers ── */
-  const [isConfirmingAdd, setIsConfirmingAdd] = useState(false);
-  const triggerAdd = e => {
+  const [isConfirmingMigo, setIsConfirmingMigo] = useState(false);
+  const triggerMigo = e => {
     e.preventDefault(); setErr('');
-    if (!addForm.quantity || parseFloat(addForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
-    setIsConfirmingAdd(true);
+    if (!migoForm.quantity || parseFloat(migoForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
+    setIsConfirmingMigo(true);
   };
-  const executeAdd = async () => {
-    setSaving(true); setIsConfirmingAdd(false);
-    try { await ax.post(API + '/additions', addForm); setAddForm(getEmptyAdd()); fetchAll(); }
+  const executeMigo = async () => {
+    setSaving(true); setIsConfirmingMigo(false);
+    try { await ax.post(API + '/additions', migoForm); setMigoForm(getEmptyMigo()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
 
@@ -264,6 +266,54 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const exportHistoryExcel = () => exportToExcel(historyRows.map(r => ({ Date: r.date, Type: r.displayType, Details: r.label, Truck: r.truckNo, Material: r.material, In_Bags: r.credit, Out_Bags: r.debit })), `Stock_History_${new Date().toISOString().slice(0, 10)}`);
   const exportHistoryPDF = () => exportToPDF(historyRows, 'Stock History', ['date', 'displayType', 'label', 'truckNo', 'material', 'credit', 'debit']);
 
+  const renderHistoryTable = (rows) => (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>
+          <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+          <th style={TH}><ColumnFilter label="Type" colKey="displayType" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+          <th style={TH}><ColumnFilter label="Reference / Details" colKey="label" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+          <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+          <th style={TH}><ColumnFilter label="Material" colKey="material" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+          <th style={TH}>In (bags)</th>
+          <th style={TH}>Out (bags)</th>
+          {role === 'admin' && <th style={TH}>By</th>}
+        </tr></thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No records found</td></tr>}
+          {rows.map((r, i) => (
+            <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+              <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+              <td style={{ ...TD }}>
+                {r.txType === 'add'
+                  ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '10px', fontWeight: 800 }}>MIGO In</span>
+                  : r.txType === 'lr' 
+                    ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 800 }}>LR Use</span>
+                    : <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(236,72,153,0.1)', color: '#ec4899', fontSize: '10px', fontWeight: 800 }}>Sale</span>
+                }
+              </td>
+              <td style={{ ...TD, fontWeight: 600, color: 'var(--text-sub)' }}>{r.label || '—'}</td>
+              <td style={{ ...TD, fontWeight: 700 }}>{r.truckNo || '—'}</td>
+              <td style={{ ...TD }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: MCOL[r.material], display: 'inline-block' }} />
+                  {r.material || '—'}
+                </span>
+              </td>
+              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>
+                {r.credit > 0 ? (r.credit || 0).toLocaleString() : '—'}
+              </td>
+              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>
+                {r.debit > 0 ? (r.debit || 0).toLocaleString() : '—'}
+              </td>
+              {role === 'admin' && <td style={{ ...TD, fontSize: '11px', color: 'var(--text-muted)' }}>{r.createdBy || '—'}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div>
       {/* Delete confirm */}
@@ -291,6 +341,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button onClick={() => setTab('migo')} className="btn btn-a btn-sm" style={{ fontWeight: 800 }}>
+             <Plus size={13} /> MIGO Entry
+          </button>
+          <button onClick={() => setTab('challan')} className="btn btn-p btn-sm" style={{ fontWeight: 800 }}>
+             <Tag size={13} /> Create Challan
+          </button>
           <button className="btn btn-g btn-sm" onClick={fetchAll}><RefreshCw size={13} /> Refresh</button>
         </div>
       </div>
@@ -316,9 +372,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {[
           { id: 'overview', label: 'Overview', icon: <Package size={13} /> },
-          {id: 'history', label: 'Stock History', icon: <FileText size={13} />},
-          {id: 'add', label: 'Stock Entry', icon: <Plus size={13} />, restricted: true},
-          {id: 'challan', label: 'Challan / Dispatch', icon: <Tag size={13} />, restricted: true},
+          { id: 'history', label: 'Full History', icon: <FileText size={13} /> },
+          { id: 'migo', label: 'MIGO (Stock Entry)', icon: <Plus size={13} />, restricted: true },
+          { id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true },
         ].map(({ id, label, icon, restricted }) => {
           if (restricted && !(role === 'admin' || permissions?.stock === 'edit')) return null;
           return (
@@ -336,10 +392,25 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       })}
       </div>
       
-      {/* ── OVERVIEW TAB (Cards only, no list) ── */}
+      {/* ── OVERVIEW TAB ── */}
       {tab === 'overview' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: '12px', marginBottom: '18px' }}>
-          {MATS.map(mat => <MatCard key={mat} mat={mat} {...(stockMap[mat] || { added: 0, lrUsed: 0, sold: 0, held: 0 })} />)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: '12px' }}>
+            {MATS.map(mat => <MatCard key={mat} mat={mat} {...(stockMap[mat] || { added: 0, lrUsed: 0, sold: 0, held: 0 })} />)}
+          </div>
+
+          {/* Inline History in Overview */}
+          <div className="card">
+            <div className="card-header">
+               <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}><Clock size={17} /></div>
+                  <div className="card-title-text"><h3>Recent Movements</h3><p>Last 10 entries across all materials</p></div>
+               </div>
+               <button onClick={() => setTab('history')} className="btn btn-g btn-sm">View Full History <ChevronRight size={14} /></button>
+            </div>
+            {renderHistoryTable(historyRows.slice(0, 10))}
+          </div>
         </div>
       )}
 
@@ -358,81 +429,92 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       )}
 
 
-      {/* ── ADD STOCK TAB ── */}
-      {tab === 'add' && (
+      {/* ── MIGO TAB ── */}
+      {tab === 'migo' && (
         <div>
           <div className="card" style={{ marginBottom: '14px' }}>
             <div className="card-header"><div className="card-title-block">
               <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent)' }}><Plus size={17} /></div>
-              <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi Stock Entry' : 'Add Stock Entry'}</h3><p>Record new material delivery</p></div>
+              <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi MIGO (Stock Entry)' : 'MIGO — Stock Entry'}</h3><p>Record new material delivery into inventory</p></div>
             </div></div>
-            <form onSubmit={triggerAdd} style={{ padding: '14px 18px' }}>
+            <form onSubmit={triggerMigo} style={{ padding: '14px 18px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
-                {fi('Material', <select className="fi" value={addForm.material} onChange={e => setAddForm(f => ({ ...f, material: e.target.value }))}>
+                {fi('Truck Number', <>
+                  <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="migo-truck-list"
+                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: e.target.value.toUpperCase() }))} />
+                  <datalist id="migo-truck-list">
+                    {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
+                  </datalist>
+                </>)}
+                {fi('Material', <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
                 {fi('Quantity (bags)', <input className="fi" type="number" step="1" min="1" required placeholder="e.g. 500"
-                  value={addForm.quantity} onChange={e => setAddForm(f => ({ ...f, quantity: e.target.value }))} />)}
-                {fi('Date', <input className="fi" type="date" value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} />)}
+                  value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />)}
+                {fi('Date', <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
-                  value={addForm.remark} onChange={e => setAddForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-a" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end' }}>
-                  {saving ? '…' : <><Check size={14} /> Add {brand === 'jkl' ? 'JK Lakshmi' : ''} Stock</>}
+                  value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />)}
+                <button type="submit" className="btn btn-a" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end', fontWeight: 800 }}>
+                  {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
                 </button>
               </div>
               {err && <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '7px', fontWeight: 600 }}>{err}</div>}
             </form>
           </div>
           <ConfirmSaveModal
-            isOpen={isConfirmingAdd}
-            onClose={() => setIsConfirmingAdd(false)}
-            onConfirm={executeAdd}
-            title="Add Stock"
-            message={`Are you sure you want to add ${addForm.quantity} bags of ${addForm.material}?`}
+            isOpen={isConfirmingMigo}
+            onClose={() => setIsConfirmingMigo(false)}
+            onConfirm={executeMigo}
+            title="MIGO (Stock Entry)"
+            message={`Are you sure you want to add ${migoForm.quantity} bags of ${migoForm.material} from Truck ${migoForm.truckNo}?`}
             isSaving={saving}
           />
+        </div>
+      )}
 
-          {/* Additions history */}
-          <div className="card">
-            <div className="card-header"><div className="card-title-block">
-              <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><Archive size={17} /></div>
-              <div className="card-title-text"><h3>Stock Addition History</h3><p>{additions.length} entries</p></div>
-            </div></div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr>
-                  {['#', 'Date', 'Material', 'Quantity', 'Remark'].map(h => <th key={h} style={TH}>{h}</th>)}
-                  {role === 'admin' && <th style={TH}>Created By</th>}
-                  {role === 'admin' && <th style={TH}>Updated By</th>}
-                  <th style={TH}>Action</th>
-                </tr></thead>
-                <tbody>
-                  {additions.length === 0 && <tr><td colSpan={6} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No additions yet</td></tr>}
-                  {[...additions].sort((a, b) => a.date > b.date ? -1 : 1).map((a, i) => (
-                    <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                      <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                      <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(a.date)}</td>
-                      <td style={{ ...TD }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: MCOL[a.material], display: 'inline-block' }} />
-                          {a.material}
-                        </span>
-                      </td>
-                      <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</td>
-                      <td style={{ ...TD, color: 'var(--text-muted)' }}>{a.remark || '—'}</td>
-                      {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{a.createdBy || '—'}</td>}
-                      {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{a.updatedBy || '—'}</td>}
-                      <td style={{ ...TD, textAlign: 'center' }}>
-                        {role === 'admin' && (
-                          <button className="btn btn-d btn-icon btn-sm" onClick={() => setDelTarget({ id: a.id, type: 'addition', label: a.material + ' — ' + a.quantity + ' bags' })}>
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      {/* ── MIGO TAB ── */}
+      {tab === 'migo' && (
+        <div className="card">
+          <div className="card-header"><div className="card-title-block">
+            <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><Archive size={17} /></div>
+            <div className="card-title-text"><h3>Stock Arrival History (MIGO)</h3><p>{additions.length} total entries</p></div>
+          </div></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={TH}>Date</th>
+                <th style={TH}>Truck #</th>
+                <th style={TH}>Material</th>
+                <th style={TH}>Quantity</th>
+                <th style={TH}>Remark</th>
+                {role === 'admin' && <th style={TH}>By</th>}
+                <th style={TH}>Action</th>
+              </tr></thead>
+              <tbody>
+                {additions.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No arrivals yet</td></tr>}
+                {[...additions].sort((a, b) => a.date > b.date ? -1 : 1).map((a, i) => (
+                  <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(a.date)}</td>
+                    <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>{a.truckNo || '—'}</td>
+                    <td style={{ ...TD }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: MCOL[a.material], display: 'inline-block' }} />
+                        {a.material}
+                      </span>
+                    </td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</td>
+                    <td style={{ ...TD, color: 'var(--text-muted)' }}>{a.remark || '—'}</td>
+                    {role === 'admin' && <td style={{ ...TD, fontSize: '11px', color: 'var(--text-muted)' }}>{a.createdBy || '—'}</td>}
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      {role === 'admin' && (
+                        <button className="btn btn-d btn-icon btn-sm" onClick={() => setDelTarget({ id: a.id, type: 'addition', label: a.material + ' — ' + a.quantity + ' bags' })}>
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -614,59 +696,14 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div className="card-header">
             <div className="card-title-block">
               <div className="card-icon" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}><FileText size={17} /></div>
-              <div className="card-title-text" style={{ flex: 1 }}><h3>Full Stock History</h3><p>{historyRows.length} entries (In + Out + Sales)</p></div>
+              <div className="card-title-text" style={{ flex: 1 }}><h3>Full Stock History</h3><p>{historyRows.length} total activity entries</p></div>
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button className="btn btn-g btn-sm" onClick={exportHistoryExcel}><Download size={13} /> Excel</button>
               <button className="btn btn-g btn-sm" onClick={exportHistoryPDF}><Printer size={13} /> PDF</button>
             </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>
-                <th style={TH}><ColumnFilter label="Date" colKey="date" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Type" colKey="displayType" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="LR/Ref" colKey="lrNo" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Material" colKey="material" data={historyRows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                <th style={TH}>In (bags)</th>
-                <th style={TH}>Out (bags)</th>
-                {role === 'admin' && <th style={TH}>Created By</th>}
-                {role === 'admin' && <th style={TH}>Updated By</th>}
-              </tr></thead>
-              <tbody>
-                {historyRows.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No history</td></tr>}
-                {historyRows.map((r, i) => (
-                  <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
-                    <td style={{ ...TD }}>
-                      {r.txType === 'add'
-                        ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}>Stock In</span>
-                        : <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(244,63,94,0.1)', color: 'var(--danger)', fontSize: '11px', fontWeight: 700 }}>LR Use</span>}
-                    </td>
-                    <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
-                      {r.txType === 'lr' ? `#${r.lrNo}` : r.remark || '—'}
-                    </td>
-                    <td style={{ ...TD }}>{r.truckNo || '—'}</td>
-                    <td style={{ ...TD }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: MCOL[r.material], display: 'inline-block' }} />
-                        {r.material || '—'}
-                      </span>
-                    </td>
-                    <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>
-                      {r.credit > 0 ? (r.credit || 0).toLocaleString() : '—'}
-                    </td>
-                    <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>
-                      {r.debit > 0 ? (r.debit || 0).toLocaleString() : '—'}
-                    </td>
-                    {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{r.createdBy || '—'}</td>}
-                    {role === 'admin' && <td style={{ ...TD, fontSize: '12.5px', color: 'var(--text-sub)' }}>{r.updatedBy || '—'}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {renderHistoryTable(historyRows)}
         </div>
       )}
     </div>

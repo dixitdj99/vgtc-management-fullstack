@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2 } from 'lucide-react';
+import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
@@ -196,7 +196,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         truckNo: '', destination: '', weight: '', bags: '',
         rate: '', pump: PUMPS[0], advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
+        startKm: '', endKm: '',
     });
+    const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
+    const [fetchingKm, setFetchingKm] = useState(false);
+    const [vgtcTrucks, setVgtcTrucks] = useState(new Set()); // truck numbers owned by Vikas Goods Transport
+
+    // Fetch vehicle registry to know which trucks are VGTC-owned
+    useEffect(() => {
+        ax.get('/vehicles').then(r => {
+            const vgtcSet = new Set(
+                r.data
+                    .filter(v => (v.ownerName || '').toLowerCase().includes('vikas'))
+                    .map(v => v.truckNo)
+            );
+            setVgtcTrucks(vgtcSet);
+        }).catch(() => {});
+    }, []);
+
+    const isVGTCTruck = (truckNo) => vgtcTrucks.has(truckNo);
 
     // Update tab when initialTab prop changes from sidebar navigation
     useEffect(() => {
@@ -229,6 +247,19 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         }
     }, [nextLrNo]);
 
+    /* Auto-fetch last km when truckNo changes — for VGTC trucks across all voucher types */
+    const fetchLastKm = useCallback(async (truck) => {
+        if (!truck || !isVGTCTruck(truck)) { setLastKmInfo(null); return; }
+        setFetchingKm(true);
+        try {
+            const { data } = await ax.get(`/mileage/last-km/${encodeURIComponent(truck)}`);
+            setLastKmInfo(data.endKm ? data : null);
+            if (data.endKm) setForm(f => ({ ...f, startKm: String(data.endKm) }));
+            else setForm(f => ({ ...f, startKm: '' }));
+        } catch { setLastKmInfo(null); }
+        finally { setFetchingKm(false); }
+    }, [vgtcTrucks]);
+
     /* LR search — only Dump vouchers auto-fetch from /lr receipts */
     /* JK_Super and JK_Lakshmi have custom LR numbers — no auto-fetch, but still prevent duplicates */
     const handleLrSearch = async val => {
@@ -255,11 +286,20 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
                 const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
-                setForm(f => ({ ...f, truckNo: rows[0].truckNo || '', date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb) }));
+                const truck = rows[0].truckNo || '';
+                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb) }));
+                // Fetch last km for the auto-filled truck
+                if (truck) fetchLastKm(truck);
             }
         } catch (err) { console.error(err); }
     };
 
+
+    // When user manually changes truckNo (not via LR auto-fill), also fetch last km
+    const handleTruckNoChange = (val) => {
+        set('truckNo', val.toUpperCase());
+        fetchLastKm(val.toUpperCase());
+    };
 
     const handleFormRequest = e => {
         e.preventDefault();
@@ -272,8 +312,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
             await ax.post(API_V, { ...form, type: vType, ...calc });
-            fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false }));
+            fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '' }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
@@ -379,7 +419,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder="Auto-filled" value={form.truckNo} onChange={e => set('truckNo', e.target.value.toUpperCase())} required />
+                                                <input className="fi" type="text" placeholder="Auto-filled" value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
                                             </div>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>
@@ -447,6 +487,56 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             </div>
                                         </div>
+                                        {/* ── Odometer KM fields — VGTC trucks only, all voucher types ── */}
+                                        {isVGTCTruck(form.truckNo) && (
+                                            <div style={{ marginTop: '12px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                    <Gauge size={14} color="#f59e0b" />
+                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odometer / Mileage</span>
+                                                </div>
+                                                <div className="fg fg-2">
+                                                    <div className="field">
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            <Navigation size={11} /> Start KM
+                                                            {fetchingKm && <Loader2 size={10} className="spin" style={{ opacity: 0.5 }} />}
+                                                        </label>
+                                                        <input
+                                                            className="fi"
+                                                            type="number"
+                                                            placeholder="e.g. 45200"
+                                                            value={form.startKm}
+                                                            onChange={e => set('startKm', e.target.value)}
+                                                        />
+                                                        {lastKmInfo && (
+                                                            <div style={{ marginTop: '4px', fontSize: '10px', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <Check size={10} /> Last trip (LR#{lastKmInfo.lrNo}) ended at {lastKmInfo.endKm} km on {lastKmInfo.date}
+                                                            </div>
+                                                        )}
+                                                        {!lastKmInfo && form.truckNo && !fetchingKm && (
+                                                            <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                                                No previous trip found — enter manually
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="field">
+                                                        <label>End KM (at destination)</label>
+                                                        <input
+                                                            className="fi"
+                                                            type="number"
+                                                            placeholder="e.g. 45850"
+                                                            value={form.endKm}
+                                                            onChange={e => set('endKm', e.target.value)}
+                                                        />
+                                                        {form.startKm && form.endKm && parseFloat(form.endKm) > parseFloat(form.startKm) && (
+                                                            <div style={{ marginTop: '4px', fontSize: '10px', color: '#6366f1', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <Gauge size={10} /> Distance: {(parseFloat(form.endKm) - parseFloat(form.startKm)).toFixed(0)} km this trip
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
                                             <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving || lrAlreadyUsed} title="Save Voucher">
                                                 {saving ? <Loader2 size={15} className="spin" /> : <><Check size={15} /> Save Voucher</>}

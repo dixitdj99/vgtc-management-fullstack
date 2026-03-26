@@ -13,7 +13,7 @@ const getAll = async (collection = DEFAULT_COLLECTION) => {
 };
 
 const addSale = async (data, collection = DEFAULT_COLLECTION) => {
-    const { material, quantity, rate, date, remark, customerName, brand, paymentType } = data;
+    const { material, quantity, rate, date, remark, customerName, brand, paymentType, paymentStatus } = data;
     
     if (!material) throw new Error('Material type required');
     const qty = parseInt(quantity);
@@ -35,6 +35,7 @@ const addSale = async (data, collection = DEFAULT_COLLECTION) => {
         customerName: customerName || 'Cash Sale',
         brand: brand || 'dump', // dump or jkl
         paymentType: paymentType || 'cash',
+        paymentStatus: paymentStatus || 'paid', // paid or pending
         createdAt: new Date().toISOString()
     };
 
@@ -56,6 +57,15 @@ const addSale = async (data, collection = DEFAULT_COLLECTION) => {
     return savedSale;
 };
 
+const updateSale = async (id, data, collection = DEFAULT_COLLECTION) => {
+    if (firebaseAvailable()) {
+        await db.collection(collection).doc(id).update(data);
+        return { id, ...data };
+    } else {
+        return localStore.update(collection, id, data);
+    }
+};
+
 const deleteSale = async (id, brand = 'dump', collection = DEFAULT_COLLECTION) => {
     if (firebaseAvailable()) {
         await db.collection(collection).doc(id).delete();
@@ -64,4 +74,4 @@ const deleteSale = async (id, brand = 'dump', collection = DEFAULT_COLLECTION) =
     }
 };
 
-module.exports = { getAll, addSale, deleteSale };
+module.exports = { getAll, addSale, updateSale, deleteSale };

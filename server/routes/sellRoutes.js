@@ -21,6 +21,14 @@ router.post('/', async (req, res) => {
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// PATCH /api/sell/:id
+router.patch('/:id', async (req, res) => {
+    try {
+        const doc = await svc.updateSale(req.params.id, req.body);
+        res.json(doc);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // DELETE /api/sell/:id
 router.delete('/:id', async (req, res) => {
     try {

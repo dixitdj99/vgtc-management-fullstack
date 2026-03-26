@@ -103,7 +103,15 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.material !== undefined) allowed.material = data.material;
     if (data.weight !== undefined) allowed.weight = parseFloat(data.weight) || 0;
     if (data.totalBags !== undefined) allowed.totalBags = parseInt(data.totalBags) || 0;
-    if (data.status !== undefined) allowed.status = data.status;
+    if (data.status !== undefined) {
+        allowed.status = data.status;
+        if (data.status === 'Started') allowed.startedAt = new Date().toISOString();
+        if (data.status === 'Loaded') {
+            allowed.loadedAt = new Date().toISOString();
+            // If they skip 'Started' directly to 'Loaded', set startedAt too
+            if (!data.startedAt) allowed.startedAt = allowed.loadedAt;
+        }
+    }
 
     if (firebaseAvailable()) {
         await db.collection(lrCollection).doc(id).update({
