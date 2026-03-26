@@ -51,12 +51,30 @@ try {
     // ... rest of mock db
     db = {
         collection: () => ({
-            doc: () => ({ set: () => { }, get: () => ({ exists: false, data: () => null }), update: () => { }, delete: () => { } }),
-            orderBy: () => ({ get: () => ({ docs: [] }) }),
-            where: () => ({ orderBy: () => ({ get: () => ({ docs: [] }) }), get: () => ({ docs: [] }) })
+            doc: () => ({ 
+                set: () => Promise.resolve(), 
+                get: () => Promise.resolve({ exists: false, data: () => null }), 
+                update: () => Promise.resolve(), 
+                delete: () => Promise.resolve() 
+            }),
+            add: () => Promise.resolve({ id: 'mock-id' }),
+            orderBy: () => ({ 
+                limit: () => ({ get: () => Promise.resolve({ docs: [] }) }),
+                get: () => Promise.resolve({ docs: [] }) 
+            }),
+            where: () => ({ 
+                orderBy: () => ({ 
+                    limit: () => ({ get: () => Promise.resolve({ docs: [] }) }),
+                    get: () => Promise.resolve({ docs: [] }) 
+                }), 
+                get: () => Promise.resolve({ docs: [] }) 
+            })
         }),
-        runTransaction: () => { console.error('Firestore not initialized'); return null; },
-        batch: () => ({ set: () => { }, commit: () => { } })
+        runTransaction: () => { console.error('Firestore not initialized'); return Promise.resolve(null); },
+        batch: () => ({ 
+            set: () => { }, 
+            commit: () => Promise.resolve() 
+        })
     };
 }
 
