@@ -9,6 +9,7 @@ const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
 const CONFIG_COLL = 'system_config';
 const TOKEN_DOC = 'google_drive_token';
+const LOGS_COLL = 'backup_logs';
 
 function getClientTemplate() {
     // 1. Check environment variable first (for Production)
@@ -162,4 +163,33 @@ async function uploadFile(filePath, fileName, folderId) {
     return res.data.id;
 }
 
-module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getOrCreateFolder, uploadFile };
+async function logActivity(moduleName, status, details = '', error = null) {
+    if (!isAvailable()) return;
+    try {
+        await db.collection(LOGS_COLL).add({
+            moduleName,
+            status, // 'success', 'error', 'pending'
+            details,
+            error: error ? error.message : null,
+            timestamp: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('[Drive] Failed to log activity:', e.message);
+    }
+}
+
+async function getLogs(limit = 20) {
+    if (!isAvailable()) return [];
+    try {
+        const snapshot = await db.collection(LOGS_COLL)
+            .orderBy('timestamp', 'desc')
+            .limit(limit)
+            .get();
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+        console.error('[Drive] Failed to fetch logs:', e.message);
+        return [];
+    }
+}
+
+module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getOrCreateFolder, uploadFile, logActivity, getLogs };

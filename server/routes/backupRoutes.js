@@ -11,6 +11,16 @@ router.get('/auth-status', async (req, res) => {
     });
 });
 
+// GET /api/backup/logs
+router.get('/logs', async (req, res) => {
+    try {
+        const logs = await driveService.getLogs(30);
+        res.json(logs);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch backup logs' });
+    }
+});
+
 // GET /api/backup/auth-url
 router.get('/auth-url', (req, res) => {
     const url = driveService.getAuthUrl();
@@ -33,12 +43,12 @@ router.post('/submit-code', async (req, res) => {
 // POST /api/backup/now
 router.post('/now', async (req, res) => {
     try {
-        if (!driveService.isAuthorized()) {
+        if (!await driveService.isAuthorized()) {
             return res.status(401).json({ error: 'Google Drive not authorized' });
         }
         // Run in background
         backupService.runWeeklyBackup();
-        res.json({ message: 'Backup started in background. Check server logs for status.' });
+        res.json({ message: 'Backup started in background. Check Backup History below for status.' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

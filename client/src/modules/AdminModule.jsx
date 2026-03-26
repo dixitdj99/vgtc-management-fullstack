@@ -8,6 +8,8 @@ const AdminModule = () => {
     const [authUrl, setAuthUrl] = useState('');
     const [code, setCode] = useState('');
     const [status, setStatus] = useState(null);
+    const [logs, setLogs] = useState([]);
+    const [logsLoading, setLogsLoading] = useState(false);
 
     const fetchStatus = async () => {
         setLoading(true);
@@ -15,6 +17,7 @@ const AdminModule = () => {
         try {
             const res = await ax.get('backup/auth-status');
             setAuthStatus(res.data);
+            if (res.data.authorized) fetchLogs();
         } catch (e) {
             const statusText = e.response ? `[${e.response.status}] ${e.response.statusText}` : e.message;
             const fullUrl = e.config ? `${e.config.baseURL}/${e.config.url}` : 'unknown';
@@ -22,6 +25,18 @@ const AdminModule = () => {
             setAuthStatus({ authorized: false, configured: false, error: true, details: `${statusText} while hitting ${fullUrl}` });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchLogs = async () => {
+        setLogsLoading(true);
+        try {
+            const res = await ax.get('backup/logs');
+            setLogs(res.data);
+        } catch (e) {
+            console.error('Failed to fetch logs');
+        } finally {
+            setLogsLoading(false);
         }
     };
 
@@ -211,6 +226,67 @@ const AdminModule = () => {
                     </div>
                 )}
             </div>
+
+            {authStatus.authorized && (
+                <div style={{ marginTop: '32px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)' }}>Backup History</h3>
+                        <button 
+                            className="btn btn-s" 
+                            onClick={fetchLogs} 
+                            disabled={logsLoading}
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                        >
+                            {logsLoading ? <Loader2 size={12} className="spin" /> : 'Refresh Logs'}
+                        </button>
+                    </div>
+
+                    <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                <thead style={{ background: 'var(--bg-th)', borderBottom: '1px solid var(--border)' }}>
+                                    <tr>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: 'var(--text-sub)' }}>Timestamp</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: 'var(--text-sub)' }}>Module</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: 'var(--text-sub)' }}>Status</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: 'var(--text-sub)' }}>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {logs.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>No backup activity recorded yet.</td>
+                                        </tr>
+                                    ) : (
+                                        logs.map(log => (
+                                            <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
+                                                    {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                </td>
+                                                <td style={{ padding: '12px 16px' }}>
+                                                    <span style={{ fontWeight: '600' }}>{log.moduleName}</span>
+                                                </td>
+                                                <td style={{ padding: '12px 16px' }}>
+                                                    <span style={{ 
+                                                        padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase',
+                                                        background: log.status === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                                                        color: log.status === 'success' ? '#10b981' : '#f43f5e'
+                                                    }}>
+                                                        {log.status}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px 16px', color: 'var(--text-sub)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {log.details || (log.error ? `Error: ${log.error}` : '-')}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
