@@ -16,8 +16,10 @@ const AdminModule = () => {
             const res = await ax.get('backup/auth-status');
             setAuthStatus(res.data);
         } catch (e) {
-            console.error('API Error (auth-status):', e.message);
-            setAuthStatus({ authorized: false, configured: false, error: true });
+            const statusText = e.response ? `[${e.response.status}] ${e.response.statusText}` : e.message;
+            const fullUrl = e.config ? `${e.config.baseURL}/${e.config.url}` : 'unknown';
+            console.error('API Error (auth-status):', statusText, fullUrl);
+            setAuthStatus({ authorized: false, configured: false, error: true, details: `${statusText} while hitting ${fullUrl}` });
         } finally {
             setLoading(false);
         }
@@ -101,8 +103,16 @@ const AdminModule = () => {
                 </div>
 
                 {authStatus.error && (
-                    <div style={{ marginBottom: '20px', padding: '12px 16px', background: 'rgba(244, 63, 94, 0.1)', color: '#f43f5e', borderRadius: '8px', fontSize: '13px', border: '1px solid rgba(244, 63, 94, 0.2)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <AlertCircle size={14} /> System unable to reach backup services. <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={fetchStatus}>Retry</span>
+                    <div style={{ marginBottom: '20px', padding: '12px 16px', background: 'rgba(244, 63, 94, 0.1)', color: '#f43f5e', borderRadius: '8px', fontSize: '13px', border: '1px solid rgba(244, 63, 94, 0.2)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <AlertCircle size={14} /> System unable to reach backup services.
+                        </div>
+                        {authStatus.details && (
+                            <div style={{ fontSize: '11px', opacity: 0.8, fontFamily: 'monospace', wordBreak: 'break-all', marginTop: '4px' }}>
+                                Error: {authStatus.details}
+                            </div>
+                        )}
+                        <span style={{ cursor: 'pointer', textDecoration: 'underline', marginTop: '4px', fontWeight: '700' }} onClick={fetchStatus}>Retry Connection</span>
                     </div>
                 )}
 
