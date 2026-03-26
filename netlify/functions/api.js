@@ -15,6 +15,9 @@ const jklLrRoutes = require('../../server/routes/jklLrRoutes');
 const jklStockRoutes = require('../../server/routes/jklStockRoutes');
 const jklCashbookRoutes = require('../../server/routes/jklCashbookRoutes');
 const vehicleRoutes = require('../../server/routes/vehicleRoutes');
+const sellRoutes = require('../../server/routes/sellRoutes');
+const mileageRoutes = require('../../server/routes/mileageRoutes');
+const backupRoutes = require('../../server/routes/backupRoutes');
 
 const app = express();
 app.use(cors());
@@ -33,6 +36,9 @@ apiRouter.use('/jkl/lr', jklLrRoutes);
 apiRouter.use('/jkl/stock', jklStockRoutes);
 apiRouter.use('/jkl/cashbook', jklCashbookRoutes);
 apiRouter.use('/vehicles', vehicleRoutes);
+apiRouter.use('/sell', sellRoutes);
+apiRouter.use('/mileage', mileageRoutes);
+apiRouter.use('/backup', backupRoutes);
 
 // Root route for base URL pings
 apiRouter.all('/', (req, res) => {
@@ -56,7 +62,27 @@ apiRouter.get('/health', (req, res) => {
 // Register the router under all possible base paths
 app.use('/.netlify/functions/api', apiRouter);
 app.use('/api', apiRouter);
-app.use('/', apiRouter); // Fallback
+
+// Root route handler for Google Auth Landing Page in production
+app.get('/', (req, res) => {
+    const code = req.query.code;
+    if (code) {
+        return res.send(`
+            <div style="font-family: sans-serif; padding: 40px; text-align: center;">
+                <h1 style="color: #10b981;">✔ Authorization Successful!</h1>
+                <p>Please <b>copy the code</b> below and paste it into the "Backup Settings" page in your app:</p>
+                <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 18px; margin: 20px 0; word-break: break-all; border: 1px solid #cbd5e1;">
+                    ${code}
+                </div>
+                <p style="color: #64748b; font-size: 14px;">Once you have copied the code, you can close this tab.</p>
+            </div>
+        `);
+    }
+    // Fallback to apiRouter root if no code
+    res.json({ message: 'VGTC API is running' });
+});
+
+app.use('/', apiRouter); // Fallback for other paths
 
 // Catch-all for debugging
 app.use((req, res) => {
