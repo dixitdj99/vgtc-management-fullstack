@@ -10,11 +10,17 @@ const AdminModule = () => {
     const [status, setStatus] = useState(null);
 
     const fetchStatus = async () => {
+        setLoading(true);
+        setStatus(null);
         try {
             const res = await ax.get('/backup/auth-status');
             setAuthStatus(res.data);
         } catch (e) {
             console.error('Failed to fetch auth status');
+            setAuthStatus({ authorized: false, error: true });
+            setStatus({ type: 'error', msg: 'System unable to reach backup services. Check server logs.' });
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -153,6 +159,23 @@ const AdminModule = () => {
                         {status.type === 'success' ? <CheckCircle2 size={14} /> : status.type === 'error' ? <AlertCircle size={14} /> : <Loader2 size={14} className="spin" />}
                         {status.msg}
                     </div>
+                )}
+
+                {!authStatus.authorized && !authStatus.error && (
+                    <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <Info size={16} color="#f59e0b" style={{ marginTop: '2px' }} />
+                            <div style={{ fontSize: '12px', color: 'var(--text-sub)', lineHeight: '1.5' }}>
+                                <strong>Production Hint:</strong> If you are deploying to Render/Netlify, ensure you have added the <code>GOOGLE_CREDENTIALS</code> environment variable with the content of your JSON file.
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {authStatus.error && (
+                    <button className="btn btn-s" onClick={fetchStatus} style={{ marginTop: '20px', width: '100%' }}>
+                        Retry Connection
+                    </button>
                 )}
             </div>
         </div>

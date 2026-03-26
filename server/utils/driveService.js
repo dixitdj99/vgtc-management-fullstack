@@ -1,29 +1,46 @@
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
+const { db, isAvailable } = require('../firebase');
 
 const CREDENTIALS_PATH = path.join(__dirname, '..', 'config', 'credentials.json');
 const TOKEN_PATH = path.join(__dirname, '..', 'config', 'token.json');
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
-let oauth2Client = null;
+const CONFIG_COLL = 'system_config';
+const TOKEN_DOC = 'google_drive_token';
 
 function getClientTemplate() {
+    // 1. Check environment variable first (for Production)
+    if (process.env.GOOGLE_CREDENTIALS) {
+        try {
+            const keys = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+            return keys.web || keys.installed || keys;
+        } catch (e) {
+            console.error('[Drive] Invalid GOOGLE_CREDENTIALS Env Var');
+        }
+    }
+
+    // 2. Check local file (for Development)
     if (!fs.existsSync(CREDENTIALS_PATH)) return null;
-    const content = fs.readFileSync(CREDENTIALS_PATH);
-    const keys = JSON.parse(content);
-    return keys.web || keys.installed;
+    try {
+        const content = fs.readFileSync(CREDENTIALS_PATH);
+        const keys = JSON.parse(content);
+        return keys.web || keys.installed;
+    } catch (e) {
+        return null;
+    }
 }
 
 function createOAuthClient() {
     const keys = getClientTemplate();
     if (!keys) return null;
     
-    // For local dev, we often don't have a fixed redirect URI in JSON
-    // The user might need to add http://localhost:5000/api/backup/callback if we used a formal web flow
-    // But for "Manual Copy/Paste" flow, we can use 'urn:ietf:wg:oauth:2.0:oob' (though deprecated)
-    // Instead, we will use a redirect URI that the user can manually handle or just "post-message"
-    const redirectUri = keys.redirect_uris ? keys.redirect_uris[0] : 'http://localhost:5000';
+    // Redirect URI must match what user configured in Google Cloud Console
+    // We use http://localhost:5000 as the standard for this app
+    const redirectUri = (keys.redirect_uris && keys.redirect_uris.length > 0) 
+        ? keys.redirect_uris[0] 
+        : 'http://localhost:5000';
     
     return new google.auth.OAuth2(
         keys.client_id,
@@ -32,8 +49,13 @@ function createOAuthClient() {
     );
 }
 
-function isAuthorized() {
-    return fs.existsSync(TOKEN_PATH);
+async function isAuthorized() {
+    if (fs.existsSync(TOKEN_PATH)) return true;
+    if (isAvailable()) {
+        const doc = await db.collection(CONFIG_COLL).doc(TOKEN_DOC).get();
+        return doc.exists;
+    }
+    return false;
 }
 
 function getAuthUrl() {
@@ -49,26 +71,61 @@ function getAuthUrl() {
 async function saveToken(code) {
     const client = createOAuthClient();
     const { tokens } = await client.getToken(code);
-    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+    
+    // Save to local file
+    try {
+        if (!fs.existsSync(path.dirname(TOKEN_PATH))) fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true });
+        fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+    } catch (e) {
+        console.warn('[Drive] Could not save token to local filesystem (likely production)');
+    }
+
+    // Save to Firestore for persistence
+    if (isAvailable()) {
+        await db.collection(CONFIG_COLL).doc(TOKEN_DOC).set({
+            ...tokens,
+            updatedAt: new Date().toISOString()
+        });
+        console.log('[Drive] Token saved to Firestore');
+    }
+
     return tokens;
 }
 
 async function getDriveClient() {
     const client = createOAuthClient();
-    if (!client) throw new Error('credentials.json missing');
+    if (!client) throw new Error('Google Credentials (JSON or ENV) missing.');
     
-    if (!fs.existsSync(TOKEN_PATH)) {
+    let tokens = null;
+
+    // Load from local file
+    if (fs.existsSync(TOKEN_PATH)) {
+        tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
+    } 
+    // Load from Firestore
+    else if (isAvailable()) {
+        const doc = await db.collection(CONFIG_COLL).doc(TOKEN_DOC).get();
+        if (doc.exists) tokens = doc.data();
+    }
+
+    if (!tokens) {
         throw new Error('Not authorized. Please connect Google Drive first.');
     }
 
-    const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
-    client.setCredentials(token);
+    client.setCredentials(tokens);
     
-    // Refresh token if needed
-    client.on('tokens', (newTokens) => {
-        if (newTokens.refresh_token) {
-            fs.writeFileSync(TOKEN_PATH, JSON.stringify({ ...token, ...newTokens }));
+    // Refresh token logic
+    client.on('tokens', async (newTokens) => {
+        const updatedTokens = { ...tokens, ...newTokens };
+        if (isAvailable()) {
+            await db.collection(CONFIG_COLL).doc(TOKEN_DOC).set({
+                ...updatedTokens,
+                updatedAt: new Date().toISOString()
+            });
         }
+        try {
+            fs.writeFileSync(TOKEN_PATH, JSON.stringify(updatedTokens));
+        } catch (e) {}
     });
 
     return google.drive({ version: 'v3', auth: client });
