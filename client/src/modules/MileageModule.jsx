@@ -5,6 +5,9 @@ import {
     Gauge, Truck, ArrowLeft, TrendingUp, Fuel, MapPin, Calendar,
     ChevronRight, AlertCircle, Loader2, Navigation, BarChart3
 } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const DIESEL_PRICE_PER_LITRE = 90; // estimated ₹ per litre for mileage calculation
 
@@ -37,6 +40,7 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
 function VehicleDetail({ truckNo, onBack }) {
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         ax.get(`/mileage/vehicle/${encodeURIComponent(truckNo)}`)
@@ -57,6 +61,11 @@ function VehicleDetail({ truckNo, onBack }) {
         const avgKmPerL = totalLitres > 0 ? (totalKm / totalLitres) : 0;
         return { totalKm: totalKm.toFixed(0), totalDieselRs, avgKmPerL: avgKmPerL.toFixed(2), mileageTripCount: mileageTrips.length };
     }, [mileageTrips]);
+
+    const paginatedTrips = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return trips.slice(start, start + PAGE_SIZE);
+    }, [trips, currentPage]);
 
     if (loading) return (
         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -128,7 +137,7 @@ function VehicleDetail({ truckNo, onBack }) {
                         <tbody>
                             {trips.length === 0 ? (
                                 <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>No trips found</td></tr>
-                            ) : trips.map((t, i) => {
+                            ) : paginatedTrips.map((t, i) => {
                                 const dist = (t.startKm && t.endKm) ? parseFloat(t.endKm) - parseFloat(t.startKm) : null;
                                 const dieselRs = parseFloat(t.advanceDiesel) || 0;
                                 const litres = dieselRs / DIESEL_PRICE_PER_LITRE;
@@ -165,6 +174,13 @@ function VehicleDetail({ truckNo, onBack }) {
                         </tbody>
                     </table>
                 </div>
+
+                <Pagination 
+                    currentPage={currentPage}
+                    totalItems={trips.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                />
             </div>
         </motion.div>
     );

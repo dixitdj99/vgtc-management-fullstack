@@ -6,6 +6,12 @@ const voucherService = require('../services/voucherService');
 router.post('/', async (req, res) => {
     try {
         const result = await voucherService.createVoucher(req.body);
+        
+        // Real-time backup (fire-and-forget, non-blocking)
+        const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
+        const plant = req.body.type === 'JK_Lakshmi' ? PLANTS.LAKSHMI : PLANTS.SUPER;
+        backupEntryToDrive('Voucher', result, plant).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });

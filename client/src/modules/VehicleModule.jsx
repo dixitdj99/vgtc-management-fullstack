@@ -196,7 +196,21 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         <div>
             {/* Delete Modal */}
             <AnimatePresence>
-                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchData(); }} />}
+                {deleteTarget && (
+                    <DeleteConfirm 
+                        vehicle={deleteTarget} 
+                        onClose={() => setDeleteTarget(null)} 
+                        onConfirm={() => { 
+                            setDeleteTarget(null); 
+                            fetchData();
+                            if (editId === deleteTarget.id) {
+                                setEditId(null);
+                                setForm(getEmptyForm());
+                                setTab('list');
+                            }
+                        }} 
+                    />
+                )}
             </AnimatePresence>
 
             <ConfirmSaveModal
@@ -327,7 +341,24 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                             <button type="submit" className="btn btn-p" disabled={saving} style={{ flex: 1 }}>
                                 {saving ? 'Saving...' : <><Check size={14} /> Save Vehicle Record</>}
                             </button>
-                            {editId && <button type="button" className="btn btn-g" onClick={toggleToNew}>Cancel Edit</button>}
+                            {editId && (
+                                <>
+                                    {(role === 'admin' || permissions?.vehicle === 'edit') && (
+                                        <button 
+                                            type="button" 
+                                            className="btn btn-d" 
+                                            onClick={() => {
+                                                const v = vehicles.find(v => v.id === editId);
+                                                if (v) setDeleteTarget(v);
+                                            }}
+                                            style={{ padding: '0 20px' }}
+                                        >
+                                            <Trash2 size={14} /> Delete
+                                        </button>
+                                    )}
+                                    <button type="button" className="btn btn-g" onClick={toggleToNew}>Cancel Edit</button>
+                                </>
+                            )}
                         </div>
                     </form>
                 </motion.div>

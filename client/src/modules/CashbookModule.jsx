@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const fmtRs = n => 'Rs.' + Math.abs(Math.round(n)).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -97,6 +100,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const [showForm, setShowForm] = useState(null); // 'deposit' | 'cash_out' | null
   const [delTarget, setDelTarget] = useState(null);
   const [onlinePaidTarget, setOnlinePaidTarget] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   /* Filter states */
   const [fSearch, setFSearch] = useState('');
@@ -104,8 +108,18 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const [fTo, setFTo] = useState('');
   const [fPaid, setFPaid] = useState('all');
 
+  const onTabChange = (t) => {
+    setTab(t);
+    setCurrentPage(1);
+  };
+
+  const onFilterChange = (setter, val) => {
+    setter(val);
+    setCurrentPage(1);
+  };
+
   useEffect(() => {
-    if (initialTab) setTab(initialTab);
+    if (initialTab) onTabChange(initialTab);
   }, [initialTab]);
 
   useEffect(() => { fetchAll(); }, []);
@@ -248,6 +262,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       tab === 'voucher_cash' ? filteredVoucherCash :
         tab === 'online' ? filteredOnline :
           filteredCashOuts;
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return activeRows.slice(start, start + PAGE_SIZE);
+  }, [activeRows, currentPage]);
 
   /* ── Summary stats ── */
   const currentBalance = deposits.reduce((s, e) => s + e.amount, 0) - cashOuts.reduce((s, e) => s + e.amount, 0) - voucherCashAdv.reduce((s, e) => s + Math.abs(e.amount), 0);
@@ -518,18 +537,18 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         <div className="field" style={{ flex: 1, minWidth: '150px', marginBottom: 0 }}>
           <div style={{ position: 'relative' }}>
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input className="fi" type="text" placeholder="Search remarks, truck..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '32px' }} />
+            <input className="fi" type="text" placeholder="Search remarks, truck..." value={fSearch} onChange={e => onFilterChange(setFSearch, e.target.value)} style={{ paddingLeft: '32px' }} />
           </div>
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
-          <input className="fi" type="date" value={fFrom} onChange={e => setFFrom(e.target.value)} title="From Date" />
+          <input className="fi" type="date" value={fFrom} onChange={e => onFilterChange(setFFrom, e.target.value)} title="From Date" />
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
-          <input className="fi" type="date" value={fTo} onChange={e => setFTo(e.target.value)} title="To Date" />
+          <input className="fi" type="date" value={fTo} onChange={e => onFilterChange(setFTo, e.target.value)} title="To Date" />
         </div>
         {tab === 'online' && (
           <div className="field" style={{ marginBottom: 0 }}>
-            <select className="fi" value={fPaid} onChange={e => setFPaid(e.target.value)}>
+            <select className="fi" value={fPaid} onChange={e => onFilterChange(setFPaid, e.target.value)}>
               <option value="all">All Status</option>
               <option value="paid">Paid</option>
               <option value="unpaid">Unpaid</option>
@@ -537,7 +556,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           </div>
         )}
         {(fSearch || fFrom || fTo || (tab === 'online' && fPaid !== 'all')) && (
-          <button className="btn btn-g" onClick={() => { setFSearch(''); setFFrom(''); setFTo(''); setFPaid('all'); }}>Clear Filters</button>
+          <button className="btn btn-g" onClick={() => { onFilterChange(setFSearch, ''); onFilterChange(setFFrom, ''); onFilterChange(setFTo, ''); onFilterChange(setFPaid, 'all'); }}>Clear Filters</button>
         )}
       </div>
 
@@ -601,7 +620,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           { id: 'online', label: 'Online Advances', count: onlineAdvList.length },
           { id: 'cash_out', label: 'Cash Outs', count: cashOuts.length },
         ].map(({ id, label, count }) => (
-          <button key={id} onClick={() => setTab(id)}
+          <button key={id} onClick={() => onTabChange(id)}
             style={{
               padding: '7px 14px', borderRadius: '9px', border: '1px solid', cursor: 'pointer', fontFamily: 'inherit',
               fontSize: '12px', fontWeight: 700, transition: 'all 0.15s',
@@ -646,12 +665,21 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         </div>
         {loading
           ? <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading…</div>
-          : tab === 'online'
-            ? <OnlineTable rows={filteredOnline} />
-            : <LedgerTable
-              rows={activeRows}
-              showBalance={tab === 'ledger'}
-              showBadge={tab === 'ledger'} />}
+          : <>
+              {tab === 'online'
+                ? <OnlineTable rows={paginatedRows} />
+                : <LedgerTable
+                  rows={paginatedRows}
+                  showBalance={tab === 'ledger'}
+                  showBadge={tab === 'ledger'} />}
+              
+              <Pagination 
+                currentPage={currentPage}
+                totalItems={activeRows.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setCurrentPage}
+              />
+            </>}
       </div>
     </div>
   );

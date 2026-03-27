@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const BASE_API = `/sell`;
 const MATS_DUMP = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -22,6 +25,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   
   const getEmptyForm = () => ({
     material: MATS[0],
@@ -40,6 +44,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
 
   useEffect(() => {
     fetchSales();
+    setCurrentPage(1);
   }, [brand]);
 
   const fetchSales = async () => {
@@ -105,6 +110,17 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     });
     return list;
   }, [sales, filters]);
+
+  // Pagination Logic
+  const paginatedSales = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredSales.slice(start, start + PAGE_SIZE);
+  }, [filteredSales, currentPage]);
+
+  const onFilterUpdate = (k, v) => {
+    setFilters(f => ({ ...f, [k]: v }));
+    setCurrentPage(1);
+  };
 
   const totalBags = filteredSales.reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
   const totalVal = filteredSales.reduce((s, x) => s + (parseFloat(x.totalAmount) || 0), 0);
@@ -233,11 +249,11 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={TH}>Date <ColumnFilter label="" colKey="date" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                  <th style={TH}>Material <ColumnFilter label="" colKey="material" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                   <th style={TH}>Customer <ColumnFilter label="" colKey="customerName" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                  <th style={{ ...TH, textAlign: 'center' }}>Type <ColumnFilter label="" colKey="paymentType" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                  <th style={{ ...TH, textAlign: 'center' }}>Status <ColumnFilter label="" colKey="paymentStatus" data={sales} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                  <th style={TH}>Date <ColumnFilter label="" colKey="date" data={sales} activeFilters={filters} onFilterChange={onFilterUpdate} /></th>
+                  <th style={TH}>Material <ColumnFilter label="" colKey="material" data={sales} activeFilters={filters} onFilterChange={onFilterUpdate} /></th>
+                   <th style={TH}>Customer <ColumnFilter label="" colKey="customerName" data={sales} activeFilters={filters} onFilterChange={onFilterUpdate} /></th>
+                  <th style={{ ...TH, textAlign: 'center' }}>Type <ColumnFilter label="" colKey="paymentType" data={sales} activeFilters={filters} onFilterChange={onFilterUpdate} /></th>
+                  <th style={{ ...TH, textAlign: 'center' }}>Status <ColumnFilter label="" colKey="paymentStatus" data={sales} activeFilters={filters} onFilterChange={onFilterUpdate} /></th>
                   <th style={{ ...TH, textAlign: 'right' }}>Bags</th>
                   <th style={{ ...TH, textAlign: 'right' }}>Total</th>
                   <th style={{ ...TH, textAlign: 'center' }}>Action</th>
@@ -249,7 +265,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                 ) : filteredSales.length === 0 ? (
                     <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No sales history found</td></tr>
                 ) : (
-                  filteredSales.map((s, i) => (
+                  paginatedSales.map((s, i) => (
                     <tr key={s.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                       <td style={TD}>{new Date(s.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</td>
                       <td style={TD}>
@@ -303,6 +319,13 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                 </tr>
               </tfoot>
             </table>
+
+            <Pagination 
+              currentPage={currentPage}
+              totalItems={filteredSales.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+            />
           </div>
         </div>
 

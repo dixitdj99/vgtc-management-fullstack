@@ -9,6 +9,13 @@ const JKL_META_COL = 'jkl_metadata';
 router.post('/', async (req, res) => {
     try {
         const result = await lrService.createLoadingReceipt(req.body, JKL_LR_COL, JKL_META_COL);
+
+        // Real-time backup (fire-and-forget, non-blocking)
+        const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
+        // Merge original data with result to ensure all fields (truckNo, etc.) are available for PDF
+        const fullData = { ...req.body, ...result };
+        backupEntryToDrive('Loading_Receipt', fullData, PLANTS.LAKSHMI).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });

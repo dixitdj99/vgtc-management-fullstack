@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, AlertCircle, CheckCircle2, Loader2, Info, ExternalLink, Key } from 'lucide-react';
 import ax from '../api';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const AdminModule = () => {
     const [loading, setLoading] = useState(false);
@@ -10,6 +13,7 @@ const AdminModule = () => {
     const [status, setStatus] = useState(null);
     const [logs, setLogs] = useState([]);
     const [logsLoading, setLogsLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
 
     const fetchStatus = async () => {
         setLoading(true);
@@ -81,6 +85,7 @@ const AdminModule = () => {
         try {
             const backupRes = await ax.post('backup/now');
             setStatus({ type: 'success', msg: backupRes.data.message });
+            fetchLogs();
         } catch (e) {
             console.error('API Error (backup/now):', e.message);
             setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Backup request failed' });
@@ -94,6 +99,8 @@ const AdminModule = () => {
             <Loader2 className="spin" size={32} color="var(--accent)" />
         </div>
     );
+
+    const paginatedLogs = (logs || []).slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
     return (
         <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
@@ -258,7 +265,7 @@ const AdminModule = () => {
                                             <td colSpan="4" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>No backup activity recorded yet.</td>
                                         </tr>
                                     ) : (
-                                        logs.map(log => (
+                                        paginatedLogs.map(log => (
                                             <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
                                                     {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
@@ -284,6 +291,13 @@ const AdminModule = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        <Pagination 
+                            currentPage={currentPage}
+                            totalItems={logs.length}
+                            pageSize={PAGE_SIZE}
+                            onPageChange={setCurrentPage}
+                        />
                     </div>
                 </div>
             )}

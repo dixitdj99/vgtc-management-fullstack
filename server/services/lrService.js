@@ -20,7 +20,7 @@ const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) =>
 };
 
 const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
-    const { materials, date, truckNo, partyName, billing } = data;
+    const { materials, date, truckNo, partyName, billing, destination } = data;
     const lrNo = await firestoreGetNextLrNo(metadataCollection);
     const batch = db.batch();
     const createdIds = [];
@@ -28,8 +28,10 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
             lrNo, date: date || new Date().toISOString(), truckNo,
+            destination: destination || '',
             material: mat.type, weight: parseFloat(mat.weight) || 0,
-            totalBags: parseInt(mat.bags) || 0, billing: billing || 'No',
+            totalBags: parseInt(mat.bags) || 0, 
+            billing: mat.billing || billing || 'No',
             partyName, status: 'Created',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -51,14 +53,16 @@ const localGetNextLrNo = (collectionName = 'lr_no') => {
 };
 
 const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
-    const { materials, date, truckNo, partyName, billing } = data;
+    const { materials, date, truckNo, partyName, billing, destination } = data;
     const lrNo = localGetNextLrNo(counterCollection);
     const createdIds = [];
     materials.forEach((mat) => {
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
+            destination: destination || '',
             material: mat.type, weight: parseFloat(mat.weight) || 0,
-            totalBags: parseInt(mat.bags) || 0, billing: billing || 'No',
+            totalBags: parseInt(mat.bags) || 0, 
+            billing: mat.billing || billing || 'No',
             partyName, status: 'Created'
         });
         createdIds.push(doc.id);
@@ -98,6 +102,7 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.lrNo !== undefined) allowed.lrNo = typeof data.lrNo === 'number' ? data.lrNo : parseInt(data.lrNo);
     if (data.date !== undefined) allowed.date = data.date;
     if (data.truckNo !== undefined) allowed.truckNo = data.truckNo;
+    if (data.destination !== undefined) allowed.destination = data.destination;
     if (data.partyName !== undefined) allowed.partyName = data.partyName;
     if (data.billing !== undefined) allowed.billing = data.billing;
     if (data.material !== undefined) allowed.material = data.material;

@@ -5,6 +5,9 @@ import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Pri
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
@@ -181,6 +184,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [delVoucher, setDelVoucher] = useState(null);
     const [formOpen, setFormOpen] = useState(true);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
 
     // Filters
     const [filters, setFilters] = useState({});
@@ -189,6 +193,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const handleFilterChange = (key, val) => {
         setFilters(f => ({ ...f, [key]: val }));
+        setCurrentPage(1);
     };
 
     const [form, setForm] = useState({
@@ -221,7 +226,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         if (initialTab) setVType(initialTab);
     }, [initialTab]);
 
-    useEffect(() => { fetchVouchers(); }, [vType]);
+    useEffect(() => { 
+        fetchVouchers(); 
+        setCurrentPage(1);
+    }, [vType]);
 
     const fetchVouchers = async () => {
         try { setVouchers((await ax.get(API_V + '/' + vType)).data); } catch { }
@@ -349,6 +357,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         });
         return list;
     }, [vouchers, filters, sortCol, sortDir]);
+
+    // Pagination Logic
+    const paginatedVouchers = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return filtered.slice(start, start + PAGE_SIZE);
+    }, [filtered, currentPage]);
 
     /* Totals row */
     const totals = useMemo(() => ({
@@ -628,7 +642,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 {filtered.length === 0 && (
                                     <tr><td colSpan={15} style={{ padding: '40px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>No records found</td></tr>
                                 )}
-                                {filtered.map((v, i) => (
+                                {paginatedVouchers.map((v, i) => (
                                     <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', transition: 'background 0.12s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
@@ -682,6 +696,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             )}
                         </table>
                     </div>
+
+                    <Pagination 
+                        currentPage={currentPage}
+                        totalItems={filtered.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setCurrentPage}
+                    />
                 </div>
             </div>
         </>

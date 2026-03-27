@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cinematic Weather System</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="weather-header" id="weather-header">
+        <!-- Layer 1: Background Gradient Morph -->
+        <div class="weather-layer layer-bg" id="layer-bg"></div>
+        
+        <!-- Layer 2: Celestial Bodies (Sun/Moon) -->
+        <div class="weather-layer layer-celestial" id="layer-celestial"></div>
+        
+        <!-- Layer 3: Far Clouds (Parallax) -->
+        <div class="weather-layer layer-clouds-far" id="layer-clouds-far"></div>
+        
+        <!-- Layer 4: Particle System (Rain/Snow/Stars) -->
+        <canvas class="weather-layer layer-canvas" id="weather-canvas"></canvas>
+        
+        <!-- Layer 5: Near Clouds & Atmosphere (Mist/Fog/Bloom) -->
+        <div class="weather-layer layer-atmosphere" id="layer-atmosphere"></div>
+
+        <!-- Layer 6: UI (Glassmorphism) -->
+        <div class="weather-ui container">
+            <div class="glass-card">
+                <div class="weather-main">
+                    <div class="loc-time">
+                        <h2 id="location-name">Detecting...</h2>
+                        <span id="current-time">00:00 AM</span>
+                    </div>
+                    <div class="condition">
+                        <img id="weather-icon" src="" alt="">
+                        <span id="weather-desc">Initialising...</span>
+                    </div>
+                </div>
+                
+                <div class="temp-display" id="temp-display" onclick="toggleUnits()">
+                    <span id="temp-val">--</span><span id="temp-unit">°C</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="controls-area">
+        <div class="container">
+            <section class="demo-info">
+                <h1>Cinematic Weather Engine</h1>
+                <p>A physics-based, multi-layered animation system with smooth state morphing.</p>
+            </section>
+            
+            <section class="state-picker">
+                <h3>Simulate Atmosphere:</h3>
+                <div class="btn-grid">
+                    <button onclick="changeWeather('clear_day')">☀️ Clear Day</button>
+                    <button onclick="changeWeather('clear_night')">🌙 Clear Night</button>
+                    <button onclick="changeWeather('partly_cloudy')">⛅ Partly Cloudy</button>
+                    <button onclick="changeWeather('overcast')">☁️ Overcast</button>
+                    <button onclick="changeWeather('light_rain')">🌧️ Light Rain</button>
+                    <button onclick="changeWeather('heavy_rain')">⛈️ Heavy Rain</button>
+                    <button onclick="changeWeather('thunderstorm')">🌩️ Thunderstorm</button>
+                    <button onclick="changeWeather('snow')">❄️ Snow</button>
+                    <button onclick="changeWeather('blizzard')">🌨️ Blizzard</button>
+                    <button onclick="changeWeather('mist')">🌫️ Mist / Fog</button>
+                    <button onclick="changeWeather('windy')">🌬️ Windy</button>
+                    <button onclick="changeWeather('sunset')">🌅 Sunset</button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Core Engine Scripts -->
+    <script src="script.js"></script>
+</body>
+</html>

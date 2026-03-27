@@ -14,6 +14,13 @@ const BASE_API = ``;
 const MATS_DUMP = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
 const MATS_JKL = ["PPC", "OPC43", "Pro+"];
 const MCOL = { "PPC": "#6366f1", "OPC43": "#f59e0b", "Pro+": "#10b981", "Adstar": "#10b981", "OPC FS": "#0ea5e9", "OPC53 FS": "#a855f7", "Weather": "#f43f5e" };
+
+const validateTruckNo = (no) => {
+  if (!no) return false;
+  const clean = no.replace(/\s/g, '').toUpperCase();
+  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+  return regex.test(clean);
+};
 const STATUS_META = {
   open: { label: 'Open / On Hold', color: 'var(--warn)', Icon: Clock },
   loaded: { label: 'Loaded', color: 'var(--accent)', Icon: CheckCircle2 },
@@ -34,7 +41,7 @@ const fi = (label, node) => (
 /* ─────────────────────────────────────────────
    MATERIAL CARD
 ───────────────────────────────────────────── */
-function MatCard({ mat, added, lrUsed, sold, held }) {
+function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
   const available = added - lrUsed - sold - held;
   const col = MCOL[mat] || '#6366f1';
   return (
@@ -55,7 +62,7 @@ function MatCard({ mat, added, lrUsed, sold, held }) {
         {[
           { label: 'Total In', val: (added || 0), color: 'var(--text)' },
           { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
-          { label: 'On Hold', val: held, color: 'var(--warn)' },
+          { label: 'Pending Ch.', val: (pendingChallan || 0), color: 'var(--warn)' },
           { label: 'Sold', val: (sold || 0), color: 'var(--accent)' },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: 'center', padding: '10px 6px', background: 'var(--bg)', borderRadius: '10px', border: label === 'Available' ? `1px solid ${col}44` : '1px solid transparent' }}>
@@ -135,7 +142,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     const m = {};
     MATS.forEach(mat => {
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
-      const lrUsed = lrs.filter(l => l.material === mat).reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      const consumedRows = lrs.filter(l => l.material === mat);
+      const lrUsed = consumedRows.reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      const pending = consumedRows.filter(l => !l.billing || l.billing === 'No').reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
       const sold = sales.filter(s => s.material === mat).reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
 
       let held = 0;
@@ -152,7 +161,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         }
       });
 
-      m[mat] = { added, lrUsed, sold, held, available: added - lrUsed - sold - held };
+      m[mat] = { added, lrUsed, sold, held, pendingChallan: pending, available: added - lrUsed - sold - held };
     });
     return m;
   }, [additions, challans, lrs, sales, MATS]);
@@ -169,6 +178,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   };
   const executeMigo = async () => {
     setSaving(true); setIsConfirmingMigo(false);
+    if (!validateTruckNo(migoForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); setSaving(false); return; }
     try { await ax.post(API + '/additions', migoForm); setMigoForm(getEmptyMigo()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
@@ -179,6 +189,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const triggerChallan = e => {
     e.preventDefault(); setErr('');
     if (!chalForm.truckNo) { setErr('Truck number required'); return; }
+    if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); return; }
     if (!chalForm.quantity || parseFloat(chalForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
     // Check availability
     const avail = stockMap[chalForm.material]?.available || 0;
@@ -441,7 +452,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
                 {fi('Truck Number', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="migo-truck-list"
-                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: e.target.value.toUpperCase() }))} />
+                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') }))} />
                   <datalist id="migo-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                   </datalist>
@@ -531,7 +542,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
                 {fi('Truck No. (Auto-suggests)', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="stock-truck-list"
-                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: e.target.value.toUpperCase() }))} />
+                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') }))} />
                   <datalist id="stock-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                   </datalist>

@@ -4,6 +4,11 @@ const driveService = require('../utils/driveService');
 const backupService = require('../utils/backupService');
 
 // GET /api/backup/auth-status
+const { requireAdmin } = require('../middleware/auth');
+
+// All backup routes require admin role
+router.use(requireAdmin);
+
 router.get('/auth-status', async (req, res) => {
     res.json({ 
         authorized: await driveService.isAuthorized(),

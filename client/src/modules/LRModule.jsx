@@ -1,15 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const BASE_API = ``;
 const MATS_DUMP = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
 const MATS_JKL = ['PPC', 'OPC43', 'Pro+'];
+
+const validateTruckNo = (no) => {
+  if (!no) return false;
+  const clean = no.replace(/\s/g, '').toUpperCase();
+  // Standard Indian Vehicle Number: 2 letters, 1-2 digits, 1-3 letters, 4 digits
+  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+  return regex.test(clean);
+};
 
 /* ── Print helper ── */
 function printReceipt(allRows, lrNo, allChallans = []) {
@@ -104,7 +115,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap = {} }) {
+function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
@@ -114,6 +125,7 @@ function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap
     material: row.material,
     weight: row.weight,
     totalBags: row.totalBags,
+    destination: row.destination || '',
   });
   const [loading, setLoading] = useState(false); // Renamed from saving to loading
   const [isConfirming, setIsConfirming] = useState(false);
@@ -132,7 +144,7 @@ function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap
     if (form.material === row.material) {
       if (newBags > oldBags) {
         const extraNeeded = newBags - oldBags;
-        const limit = physicalStockMap[form.material] || 0;
+        const limit = stockMap[form.material]?.physical || 0;
         if (extraNeeded > limit) {
           alert(`Low Stock! Cannot increase loading receipt.\nYou need ${extraNeeded} more bags of ${form.material}, but only ${limit} bags are physically available in the godown.`);
           setLoading(false);
@@ -140,7 +152,7 @@ function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap
         }
       }
     } else {
-      const limit = physicalStockMap[form.material] || 0;
+      const limit = stockMap[form.material]?.physical || 0;
       if (newBags > limit) {
         alert(`Low Stock! Cannot change material type to ${form.material}.\nYou need ${newBags} bags of ${form.material}, but only ${limit} bags are physically available in the godown.`);
         setLoading(false);
@@ -207,11 +219,19 @@ function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap
             </div>
             <div className="field">
               <label>Truck No.</label>
-              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase())} />
+              <input className="fi" type="text" value={form.truckNo} onChange={e => {
+                const val = e.target.value.toUpperCase().replace(/\s/g, '');
+                S('truckNo', val);
+              }} />
+              {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800}}>Invalid Format (e.g. RJ07GA1234)</span>}
             </div>
             <div className="field">
               <label><User size={11} /> Party Name</label>
               <input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Destination</label>
+              <input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} />
             </div>
           </div>
           <hr className="sep" style={{ margin: '4px 0' }} />
@@ -223,7 +243,12 @@ function EditModal({ row, openChallans, onClose, onSave, brand, physicalStockMap
               </select>
             </div>
             <div className="field">
-              <label>Bags</label>
+              <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Bags</span>
+                {form.material && (
+                   <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[form.material]?.physical || 0}</span>
+                )}
+              </label>
               <input className="fi" type="number" value={form.totalBags} onChange={e => S('totalBags', e.target.value)} />
             </div>
             <div className="field">
@@ -290,6 +315,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const handleCreateRequest = (e) => {
     e.preventDefault();
     if (!chalForm.truckNo) { setErr('Truck number required'); return; }
+    if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); return; }
     if (!chalForm.quantity || parseFloat(chalForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
     setErr('');
     setIsConfirming(true);
@@ -409,10 +435,11 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label>Truck No. *</label>
-                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase())} required list="chal-truck-list" />
+                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase().replace(/\s/g, ''))} required list="chal-truck-list" />
                       <datalist id="chal-truck-list">
                         {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                       </datalist>
+                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Standard: RJ07GA1234</div>}
                     </div>
                     <div className="field">
                       <label><Calendar size={11} /> Date *</label>
@@ -545,18 +572,23 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [loading, setLoading] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showChalPopup, setShowChalPopup] = useState(false);
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     truckNo: '', partyName: '',
+    destination: '',
     usedChallans: [], // array of selected challan objects
-    materials: [{ type: MATERIALS[0], weight: '', bags: '' }],
+    materials: [{ type: MATERIALS[0], weight: '', bags: '', billing: 'No' }],
   });
 
   /* Excel-style filters */
   const [filters, setFilters] = useState({});
-  const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
+  const handleFilterChange = (key, val) => {
+    setFilters(f => ({ ...f, [key]: val }));
+    setCurrentPage(1);
+  };
 
   const fetchData = async () => {
     try {
@@ -591,14 +623,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchData(), fetchChallans(), fetchVehicles(), fetchAdditions()]).finally(() => setLoading(false));
+    setCurrentPage(1);
   }, [brand]);
 
-  const physicalStockMap = useMemo(() => {
+  const stockMap = useMemo(() => {
     const m = {};
     MATERIALS.forEach(mat => {
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
-      const lrUsed = receipts.filter(l => l.material === mat).reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
-      m[mat] = added - lrUsed;
+      const consumedRows = receipts.filter(l => l.material === mat);
+      const totalLoaded = consumedRows.reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      const pending = consumedRows.filter(l => !l.billing || l.billing === 'No').reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      
+      m[mat] = {
+        physical: added - totalLoaded,
+        pendingChallan: pending
+      };
     });
     return m;
   }, [additions, receipts, MATERIALS]);
@@ -608,16 +647,20 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     if (field === 'bags' && val) m[i].weight = (parseFloat(val) * 0.05).toFixed(2);
     setForm({ ...form, materials: m });
   };
-  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: 'PPC', weight: '', bags: '' }] });
+  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], weight: '', bags: '', billing: 'No' }] });
   const removeMat = idx => setForm({ ...form, materials: form.materials.filter((_, i) => i !== idx) });
 
   const handleFormRequest = e => {
     e.preventDefault();
+    if (!validateTruckNo(form.truckNo)) {
+      alert('Invalid truck number format. Please enter in GJ01AB1234 format (No spaces).');
+      return;
+    }
     // Validate physical stock
     for (const mat of form.materials) {
       if (!mat.bags) continue;
       const needed = parseInt(mat.bags);
-      const limit = physicalStockMap[mat.type] || 0;
+      const limit = (stockMap[mat.type]?.physical) || 0;
       if (needed > limit) {
         alert(`Low Stock! Cannot create loading receipt.\nYou need ${needed} bags of ${mat.type}, but only ${limit} bags are physically available in the godown.`);
         return;
@@ -635,14 +678,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       };
 
       const res = await ax.post(API, payload);
-
-      // Sync stock for each material
+      
+      // Sync stock for each material - only if it has a challan
       const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
       for (const m of form.materials) {
-        if (m.bags && payload.billing) {
+        if (m.bags && m.billing && m.billing !== 'No') {
           await ax.post(SYNC_API, {
             oldChallanNos: "",
-            newChallanNos: payload.billing,
+            newChallanNos: m.billing,
             material: m.type,
             quantity: m.bags
           });
@@ -673,6 +716,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     return list;
   }, [receipts, filters]);
 
+  // Pagination Logic
+  const paginatedReceipts = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredReceipts.slice(start, start + PAGE_SIZE);
+  }, [filteredReceipts, currentPage]);
+
   const exportExcel = () => {
     exportToExcel(filteredReceipts.map(r => ({ LR_No: r.lrNo, Date: r.date, Truck: r.truckNo, Material: r.material, Weight_MT: r.weight, Bags: r.totalBags, Party: r.partyName, Challan: r.billing || '' })), `Receipts_${new Date().toISOString().slice(0, 10)} `);
   };
@@ -694,7 +743,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={editRow} brand={brand} openChallans={openChallans} physicalStockMap={physicalStockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={editRow} brand={brand} openChallans={openChallans} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -722,6 +771,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 newUsed = [...form.usedChallans, ch];
               }
 
+              // Auto-fill destination from first selected challan if empty
+              if (newUsed.length > 0 && !form.destination) {
+                setForm(f => ({ ...f, destination: newUsed[0].destination || '', usedChallans: newUsed }));
+              } else {
+                setForm(f => ({ ...f, usedChallans: newUsed }));
+              }
+
               // Remap materials based on latest selected challans
               const combinedMaterials = [];
               newUsed.forEach(c => {
@@ -734,8 +790,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       if (existing) {
                         existing.bags = String(parseInt(existing.bags || 0) + left);
                         existing.weight = (parseInt(existing.bags) * 0.05).toFixed(2);
+                        // Append challan No if not already there
+                        const nos = existing.billing.split(',').map(s => s.trim());
+                        if (!nos.includes(c.challanNo)) {
+                            existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
+                        }
                       } else {
-                        combinedMaterials.push({ type: m.type, bags: String(left), weight: (left * 0.05).toFixed(2) });
+                        combinedMaterials.push({ type: m.type, bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo });
                       }
                     }
                   });
@@ -745,14 +806,18 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   if (existing) {
                     existing.bags = String(parseInt(existing.bags || 0) + c.quantity);
                     existing.weight = (parseInt(existing.bags) * 0.05).toFixed(2);
+                    const nos = existing.billing.split(',').map(s => s.trim());
+                    if (!nos.includes(c.challanNo)) {
+                        existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
+                    }
                   } else {
-                    combinedMaterials.push({ type: c.material, bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2) });
+                    combinedMaterials.push({ type: c.material, bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo });
                   }
                 }
               });
 
               if (combinedMaterials.length === 0 && newUsed.length === 0) {
-                combinedMaterials.push({ type: 'PPC', weight: '', bags: '' });
+                combinedMaterials.push({ type: MATERIALS[0], weight: '', bags: '', billing: 'No' });
               }
 
               setForm({ ...form, usedChallans: newUsed, materials: combinedMaterials });
@@ -793,12 +858,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
                   <div className="field">
                     <label>Truck No. (Auto-suggests from Vehicles)</label>
-                    <input className="fi" type="text" placeholder="RJ00 XX 0000" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: e.target.value.toUpperCase() })} required list="truck-list" />
+                    <input className="fi" type="text" placeholder="RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') })} required list="truck-list" />
                     <datalist id="truck-list">
                       {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                     </datalist>
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Format: RJ07GA1234</span>}
                   </div>
                   <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: e.target.value })} required /></div>
+                  <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
                   <div className="field">
                     <label><Tag size={11} /> Challan Selection</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -854,9 +921,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         </select>
                       </div>
                       <div className="field">
-                        <label>
-                          Bags 
-                          {m.type && <span style={{color: 'var(--primary)', marginLeft: '4px', fontSize: '10px'}}>(Max {physicalStockMap[m.type] || 0} in godown)</span>}
+                        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Bags</span>
+                          {m.type && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[m.type]?.physical || 0}</span>
+                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>PENDING: {stockMap[m.type]?.pendingChallan || 0}</span>
+                            </div>
+                          )}
                         </label>
                         <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
                       </div>
@@ -900,6 +972,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                         <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                         <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
@@ -914,13 +987,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredReceipts.length === 0 ? <tr><td colSpan={7} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
-                    : filteredReceipts.map(lr => (
+                  {filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 9 : 7} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
+                    : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
                         <td><span className="t-lr">#{lr.lrNo}</span></td>
                         <td>
                           <div className="t-main">{lr.truckNo}</div>
-                          <div className="t-sub">{lr.partyName} · {lr.date}</div>
+                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
                         </td>
                         <td>
                           <span className="badge badge-tag">{lr.material}</span>
@@ -973,6 +1046,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 </tbody>
               </table>
             </div>
+
+            <Pagination 
+              currentPage={currentPage}
+              totalItems={filteredReceipts.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+            />
           </div>
         </div>
       </div>

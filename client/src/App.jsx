@@ -18,6 +18,7 @@ import SellModule from './modules/SellModule';
 import { Truck, Fuel, ShoppingCart, Gauge } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import AdminModule from './modules/AdminModule';
+import CinematicWeather from './components/CinematicWeather';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -41,7 +42,7 @@ function AppInner() {
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
 
   const [isWakingUp, setIsWakingUp] = useState(false);
-  const [weather, setWeather] = useState({ temp: null, cond: 'Clear', isRain: false, advice: 'Loading weather...' });
+  const [weather, setWeather] = useState({ temp: null, cond: 'Clear', code: 1000, isDay: true, advice: 'Loading weather...' });
   const [currentHour, setCurrentHour] = useState(new Date().getHours());
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const city = 'Jharli, Jhajjar, Haryana';
@@ -52,25 +53,74 @@ function AppInner() {
     return () => clearInterval(tick);
   }, []);
 
+  const HINDI_TAGLINES = {
+    clear: [
+      '✅ आसमान साफ है — ट्रकों की माइलेज और रफ्तार बढ़ाने के लिए बेहतरीन दिन!',
+      '☀️ अच्छी धूप है — लोडिंग और अनलोडिंग का काम तेजी से पूरा करें।',
+      '🚚 मौसम सुहाना है — लंबी दूरी की यात्रा के लिए गाड़ियां तैयार रखें।',
+      '💪 आज सड़कें साफ हैं — समय पर माल पहुंचाने का लक्ष्य रखें!'
+    ],
+    night: [
+      '🌙 रात का सफर — हेडलाइट्स और इंडिकेटर चेक कर लें, सुरक्षित ड्राइव करें।',
+      '✨ शांत रात — थकान महसूस हो तो सुरक्षित जगह रुककर आराम जरूर करें।',
+      '🏘️ रात्रि लॉगिंग — शांतिपूर्ण माहौल में लंबी दूरी तय करने का सही समय।'
+    ],
+    rain: [
+      '🌧 बारिश का मौसम — तिरपाल (Tarp) कस कर बांधें, माल सुरक्षित रहना चाहिए!',
+      '☔ फिसलन भरी सड़कें — ब्रेक का इस्तेमाल सावधानी से करें, दूरी बनाए रखें।',
+      '🌧 भारी वर्षा — विजिबिलिटी कम होने पर गाड़ी सुरक्षित किनारे खड़ी करें।'
+    ],
+    mist: [
+      '🌫 घना कोहरा — फॉग लाइट्स का प्रयोग करें और हमेशा लो-बीम पर चलें।',
+      '🌫 सावधानी बरतें — कोहरे में ओवरटेकिंग से बचें, सुरक्षा ही सर्वोपरि है।',
+      '☁️ खराब विजिबिलिटी — रिफ्लेक्टर टेप साफ रखें ताकि दूसरी गाड़ियां आपको देख सकें।'
+    ],
+    hot: [
+      '🔥 भीषण गर्मी — टायर प्रेशर चेक करते रहें, ज्यादा गर्मी में टायर फटने का डर रहता है।',
+      '☀️ तेज धूप — इंजन का कूलेंट लेवल चेक करें और ड्राइवरों को पर्याप्त पानी दें।',
+      '🥤 गर्मी का अलर्ट — टायर ठंडे करने के लिए बीच-बीच में ब्रेक लेते रहें।'
+    ],
+    cold: [
+      '🥶 कड़ाके की ठंड — स्टार्ट करने से पहले इंजन को 5 मिनट वार्म-अप जरूर करें।',
+      '❄️ शीत लहर — डीजल फिल्टर की जांच करें और बैटरी को चार्ज रखें।',
+      '☕ ठंड का मौसम — एंटी-फ्रीज़ चेक करें और ड्राइवरों के लिए गर्म कपड़ों का ध्यान रखें।'
+    ],
+    pleasant: [
+      '🌤 सुहाना मौसम — गाड़ियों के इंजन और माइलेज के लिए सबसे अच्छा समय!',
+      '🌿 ठंडी हवाएं — लंबी ड्राइव के लिए ड्राइवरों का मूड और स्वास्थ्य बढ़िया रहेगा।',
+      '🙌 शुभ दिन — आज काम की रफ़्तार बढ़िया रहेगी, सुरक्षित सफर करें!'
+    ]
+  };
+
   const fetchWeather = async () => {
     try {
-      const res = await ax.get(`/weather?city=${encodeURIComponent(city)}`);
-      if (res.data && res.data.current_condition) {
-        const cur = res.data.current_condition[0];
-        const temp = parseFloat(cur.temp_C);   // parse to number
-        const cond = cur.weatherDesc[0].value;
-        const isRain = cond.toLowerCase().includes('rain') || cond.toLowerCase().includes('drizzle');
-        const isHaze = cond.toLowerCase().includes('fog') || cond.toLowerCase().includes('haze') || cond.toLowerCase().includes('mist');
+      // Using WeatherAPI.com directly as requested
+      const API_KEY = 'e98e8f62e87e49de8db164340262603';
+      const city = 'Jharli, Jhajjar, Haryana';
+      const res = await ax.get(`https://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(city)}`);
+      
+      if (res.data && res.data.current) {
+        const cur = res.data.current;
+        const temp = cur.temp_c;
+        const cond = cur.condition.text;
+        const code = cur.condition.code;
+        const isDay = cur.is_day === 1;
 
-        let advice = '✅ Clear skies — the world is working and so are we!';
-        if (isRain) advice = '🌧 The sky is weeping — stay dry and keep those trucks safe!';
-        else if (isHaze) advice = '🌫 A ghostly mist has settled — drive slow, we value your safety!';
-        else if (temp > 38) advice = '🔥 The sun is fierce today — hydrate the team, let\'s stay cool!';
-        else if (temp > 32) advice = '☀️ Golden hour vibes — it\'s a glorious day for a long haul!';
-        else if (temp < 10) advice = '🥶 Crisp and cold — a warm engine and a hot tea is all we need!';
-        else if (temp < 22) advice = '🌤 Emerald skies — the birds are literally cheering for our fleet!';
+        let category = 'clear';
+        if (code >= 1063 && code <= 1246) category = 'rain';
+        else if ([1030, 1135, 1147].includes(code)) category = 'mist';
+        else if (temp > 38) category = 'hot';
+        else if (temp > 30) category = 'pleasant'; // High standard pleasant
+        else if (temp < 10) category = 'cold';
+        else if (temp < 24) category = 'pleasant';
+        
+        // Final override for night check if clear
+        if (!isDay && category === 'clear') category = 'night';
 
-        setWeather({ temp, cond, isRain, isHaze, advice });
+        const variations = HINDI_TAGLINES[category] || HINDI_TAGLINES.clear;
+        const advice = variations[Math.floor(Math.random() * variations.length)];
+
+        setWeather({ temp, cond, code, isDay, advice });
       }
     } catch (err) {
       console.error('Weather fetch failed:', err.message);
@@ -349,56 +399,17 @@ function AppInner() {
             });
           }}
         >
-          {/* Dynamic Weather Background — driven by currentHour state (ticks every minute) */}
-          {(() => {
-            const isNight = currentHour >= 18 || currentHour < 6;
-            const cond = weather.cond.toLowerCase();
-            const isRain = weather.isRain;
-            const isCloudy = cond.includes('cloud') || cond.includes('overcast');
-            const isHaze = cond.includes('fog') || cond.includes('haze') || cond.includes('mist');
-
-            let weatherClass = 'weather-sunny';
-            if (isRain) weatherClass = 'weather-rain';
-            else if (isNight) weatherClass = 'weather-night';
-            else if (isCloudy || isHaze) weatherClass = 'weather-clouds';
-
-            const isDay = currentHour >= 6 && currentHour <= 18;
-            const style = { 
-              '--mx': mousePos.x, 
-              '--my': mousePos.y 
-            };
-
-            return (
-              <div 
-                className={`weather-bg ${weatherClass}`} 
-                style={style}
-              >
-                {isNight && <div className="weather-night-shooting" />}
-                {isRain && <div className="wx-lightning" />}
-                {(isCloudy || isHaze) && <div className="wx-cloud-sm" />}
-                {isDay && !isRain && (
-                  <>
-                    <div className="wx-bird bird-1" />
-                    <div className="wx-bird bird-2" />
-                  </>
-                )}
-                {weatherClass.includes('sunny') && <div className="wx-sun-flare" />}
-              </div>
-            );
-          })()}
+          {/* Cinematic Weather Background — Multi-layered physics engine */}
+          <CinematicWeather weatherCode={weather.code} isDay={weather.isDay} />
 
           <div className="topbar-left" style={{ position: 'relative', zIndex: 1 }}>
             <div className="app-title">{FILTERED_NAV.find(n => n.id === active)?.label}</div>
           </div>
           <div className="topbar-right" style={{ position: 'relative', zIndex: 1 }}>
             {/* Global Weather Widget */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '12px', background: 'rgba(255,255,255,0.1)', padding: '4px 10px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '12px', background: 'rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '14px', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {weather.isRain
-                  ? <CloudRain size={12} color="white" />
-                  : weather.temp > 30
-                    ? <Sun size={12} color="#fcd34d" />
-                    : <Cloud size={12} color="white" />}
+                <img src={`https://cdn.weatherapi.com/weather/64x64/${weather.isDay ? 'day' : 'night'}/${weather.code % 1000}.png`} style={{ width: '16px', height: '16px', opacity: 0.9 }} alt="" />
                 <span style={{ fontSize: '11px', fontWeight: 800, color: 'white' }}>
                   {weather.temp !== null ? `${weather.temp}°C` : '—°C'} • Jharli
                 </span>
