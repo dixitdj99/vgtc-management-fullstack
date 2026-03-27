@@ -44,7 +44,6 @@ function AppInner() {
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [weather, setWeather] = useState({ temp: null, cond: 'Clear', code: 1000, isDay: true, advice: 'Loading weather...' });
   const [currentHour, setCurrentHour] = useState(new Date().getHours());
-  const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const city = 'Jharli, Jhajjar, Haryana';
 
   // Tick every minute to keep day/night animation in sync
@@ -390,15 +389,7 @@ function AppInner() {
       </aside>
 
       <div className="main-content">
-        <header className="topbar" style={{ position: 'relative', overflow: 'hidden' }}
-          onMouseMove={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            setMousePos({
-              x: (e.clientX - rect.left) / rect.width,
-              y: (e.clientY - rect.top) / rect.height
-            });
-          }}
-        >
+        <header className="topbar" style={{ position: 'relative', overflow: 'hidden' }}>
           {/* Cinematic Weather Background — Multi-layered physics engine */}
           <CinematicWeather weatherCode={weather.code} isDay={weather.isDay} />
 
