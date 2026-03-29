@@ -6,6 +6,7 @@ const firebaseAvailable = () => isAvailable();
 const MATERIALS = ['PPC', 'OPC43', 'Adstar', 'OPC FS', 'OPC53 FS', 'Weather'];
 const SCOL = 'stock_additions';
 const CCOL = 'challans';
+const MCOL = 'materials';
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,55 @@ const firestoreCreateChallan = async (data, cCol) => {
 
 module.exports = {
     MATERIALS,
+    
+    getMaterialsList: async (col = MCOL) => {
+        if (firebaseAvailable()) {
+            const snap = await db.collection(col).orderBy('createdAt').get();
+            if (snap.empty) {
+                const defs = col === 'jkl_materials' ? ['PPC', 'OPC43', 'Pro+'] : MATERIALS;
+                const batch = db.batch();
+                const res = [];
+                for (const name of defs) {
+                    const ref = db.collection(col).doc();
+                    batch.set(ref, { name, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                    res.push({ id: ref.id, name });
+                }
+                await batch.commit();
+                return res;
+            }
+            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+        const locals = localStore.getAll(col);
+        if (locals.length === 0) {
+            const defs = col === 'jkl_materials' ? ['PPC', 'OPC43', 'Pro+'] : MATERIALS;
+            const res = [];
+            for (const name of defs) {
+                const inserted = localStore.insert(col, { name });
+                res.push(inserted);
+            }
+            return res;
+        }
+        return locals;
+    },
+
+    addMaterial: async (name, col = MCOL) => {
+        if (!name || !name.trim()) throw new Error('Material name required');
+        const cleanName = name.trim();
+        if (firebaseAvailable()) {
+            const ref = db.collection(col).doc();
+            await ref.set({ name: cleanName, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            return { id: ref.id, name: cleanName };
+        }
+        return localStore.insert(col, { name: cleanName });
+    },
+
+    deleteMaterial: async (id, col = MCOL) => {
+        if (firebaseAvailable()) {
+            await db.collection(col).doc(id).delete();
+            return;
+        }
+        localStore.delete(col, id);
+    },
 
     init: async (col = CCOL) => {
         // Migration logic for local only (server startup)
@@ -78,9 +128,18 @@ module.exports = {
         return localStore.getAll(sCol).sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
     },
 
-    addStock: async (data, sCol = SCOL, allowedMaterials = MATERIALS) => {
+    addStock: async (data, sCol = SCOL, allowedMaterialsCol = MCOL) => {
         const { material, quantity, date, remark, truckNo } = data;
-        if (!allowedMaterials.includes(material)) throw new Error('Invalid material: ' + material);
+        
+        let validMatNames = [];
+        if (Array.isArray(allowedMaterialsCol)) {
+            validMatNames = allowedMaterialsCol; 
+        } else {
+            const dynamicMats = await module.exports.getMaterialsList(allowedMaterialsCol);
+            validMatNames = dynamicMats.map(m => m.name);
+        }
+
+        if (!validMatNames.includes(material)) throw new Error('Invalid material: ' + material);
         const qty = parseFloat(quantity);
         if (!qty || qty <= 0) throw new Error('Quantity must be positive');
         
@@ -123,13 +182,21 @@ module.exports = {
         return localStore.getAll(cCol);
     },
 
-    createChallan: async (data, cCol = CCOL, allowedMaterials = MATERIALS) => {
+    createChallan: async (data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
         let { truckNo, materials, partyName, destination, date, remark, material, quantity } = data;
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
         if (!materials || !materials.length) throw new Error('Materials required');
 
+        let validMatNames = [];
+        if (Array.isArray(allowedMaterialsCol)) {
+            validMatNames = allowedMaterialsCol; 
+        } else {
+            const dynamicMats = await module.exports.getMaterialsList(allowedMaterialsCol);
+            validMatNames = dynamicMats.map(m => m.name);
+        }
+
         const cleanMaterials = materials.map(m => {
-            if (!allowedMaterials.includes(m.type)) throw new Error('Invalid material: ' + m.type);
+            if (!validMatNames.includes(m.type)) throw new Error('Invalid material: ' + m.type);
             const qty = parseInt(m.totalBags);
             if (!qty || qty <= 0) throw new Error('Quantity must be positive');
             return { type: m.type, totalBags: qty, loadedBags: 0 };

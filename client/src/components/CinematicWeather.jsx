@@ -88,7 +88,7 @@ class Particle {
     }
 }
 
-const mapWCodeToState = (code, isDay) => {
+const mapWCodeToState = (code, isDay, temp) => {
     if (!code) return isDay ? 'clear_day' : 'clear_night';
     
     if (code === 1000) return isDay ? 'clear_day' : 'clear_night';
@@ -99,15 +99,20 @@ const mapWCodeToState = (code, isDay) => {
     if ([1087, 1273, 1276].includes(code)) return 'thunderstorm';
     if ([1066, 1210, 1213, 1216, 1219, 1255].includes(code)) return 'snow';
     if ([1114, 1117, 1222, 1225, 1258].includes(code)) return 'blizzard';
-    if ([1030, 1135, 1147].includes(code)) return 'mist';
+    
+    if ([1135, 1147].includes(code)) return 'mist';
+    if (code === 1030) {
+        if (temp === null || temp < 22) return 'mist';
+        return isDay ? 'partly_cloudy' : 'clear_night'; // Haze fallback
+    }
     
     return isDay ? 'clear_day' : 'clear_night';
 };
 
-const CinematicWeather = ({ weatherCode, isDay }) => {
+const CinematicWeather = ({ weatherCode, isDay, temp }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
-    const state = mapWCodeToState(weatherCode, isDay);
+    const state = mapWCodeToState(weatherCode, isDay, temp);
     
     useEffect(() => {
         const canvas = canvasRef.current;

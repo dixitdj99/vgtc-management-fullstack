@@ -11,9 +11,18 @@ import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 
 const BASE_API = ``;
-const MATS_DUMP = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
-const MATS_JKL = ["PPC", "OPC43", "Pro+"];
-const MCOL = { "PPC": "#6366f1", "OPC43": "#f59e0b", "Pro+": "#10b981", "Adstar": "#10b981", "OPC FS": "#0ea5e9", "OPC53 FS": "#a855f7", "Weather": "#f43f5e" };
+const MATS_DUMP_FALLBACK = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
+const MATS_JKL_FALLBACK = ["PPC", "OPC43", "Pro+"];
+const BASE_MCOL = { "PPC": "#6366f1", "OPC43": "#f59e0b", "Pro+": "#10b981", "Adstar": "#10b981", "OPC FS": "#0ea5e9", "OPC53 FS": "#a855f7", "Weather": "#f43f5e" };
+
+const getMatCol = (mat) => {
+  if (BASE_MCOL[mat]) return BASE_MCOL[mat];
+  // Deterministic color generation for custom materials
+  let hash = 0;
+  for (let i = 0; i < mat.length; i++) hash = mat.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash % 360);
+  return `hsl(${hue}, 75%, 50%)`;
+};
 
 const validateTruckNo = (no) => {
   if (!no) return false;
@@ -22,7 +31,7 @@ const validateTruckNo = (no) => {
   return regex.test(clean);
 };
 const STATUS_META = {
-  open: { label: 'Open / On Hold', color: 'var(--warn)', Icon: Clock },
+  open: { label: 'Challan Created', color: 'var(--warn)', Icon: Clock },
   loaded: { label: 'Loaded', color: 'var(--accent)', Icon: CheckCircle2 },
   cancelled: { label: 'Cancelled', color: 'var(--danger)', Icon: XCircle },
 };
@@ -43,7 +52,7 @@ const fi = (label, node) => (
 ───────────────────────────────────────────── */
 function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
   const available = added - lrUsed - sold - held;
-  const col = MCOL[mat] || '#6366f1';
+  const col = getMatCol(mat);
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px',
@@ -84,7 +93,9 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
 export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
   const API = brand === 'jkl' ? `${BASE_API}/jkl/stock` : `${BASE_API}/stock`;
   const API_LR = brand === 'jkl' ? `${BASE_API}/jkl/lr` : `${BASE_API}/lr`;
-  const MATS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
+  
+  const [materialObjs, setMaterialObjs] = useState([]);
+  const MATS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
   const [additions, setAdditions] = useState([]);
   const [challans, setChallans] = useState([]);
@@ -95,6 +106,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [tab, setTab] = useState(initialTab || 'overview'); // overview|history|migo|challan
   const [showMigoForm, setShowMigoForm] = useState(false);
   const [showChallanForm, setShowChallanForm] = useState(false);
+  const [showMatManager, setShowMatManager] = useState(false);
+  const [newMatName, setNewMatName] = useState('');
   const [challanFilter, setChallanFilter] = useState('open'); // open|loaded|cancelled|all
   const [delTarget, setDelTarget] = useState(null);
 
@@ -125,16 +138,36 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [ad, ch, lr, vh, sl] = await Promise.all([
+      const [ad, ch, lr, vh, sl, matsRaw] = await Promise.all([
         ax.get(API + '/additions').then(r => r.data),
         ax.get(API + '/challans').then(r => r.data),
         ax.get(API_LR).then(r => r.data),
         ax.get(`/vehicles`).then(r => r.data).catch(() => []),
         ax.get(`/sell?brand=${brand}`).then(r => r.data).catch(() => []),
+        ax.get(`${API}/materials/list`).then(r => r.data).catch(() => [])
       ]);
       setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh); setSales(sl);
+      if (matsRaw && matsRaw.length > 0) setMaterialObjs(matsRaw);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  /* ── Manage Materials ── */
+  const handleAddMaterial = async (e) => {
+    e.preventDefault();
+    if (!newMatName.trim()) return;
+    try {
+      await ax.post(`${API}/materials`, { name: newMatName });
+      setNewMatName('');
+      fetchAll();
+    } catch (er) { alert(er.response?.data?.error || 'Failed to add material'); }
+  };
+  const handleDeleteMaterial = async (id, name) => {
+    if (!window.confirm(`Delete material type "${name}"? Existing records will not be affected.`)) return;
+    try {
+      await ax.delete(`${API}/materials/${id}`);
+      fetchAll();
+    } catch (er) { alert(er.response?.data?.error || 'Failed to delete material'); }
   };
 
   /* ── stock math per material ── */
@@ -165,6 +198,29 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     });
     return m;
   }, [additions, challans, lrs, sales, MATS]);
+
+  const monthlyStats = useMemo(() => {
+    const months = {};
+    additions.forEach(a => {
+      const m = a.date.slice(0, 7);
+      if (!months[m]) months[m] = { in: 0, out: 0 };
+      months[m].in += (parseFloat(a.quantity) || 0);
+    });
+    lrs.forEach(l => {
+      const m = l.date.slice(0, 7);
+      if (!months[m]) months[m] = { in: 0, out: 0 };
+      months[m].out += (parseInt(l.totalBags) || 0);
+    });
+    sales.forEach(s => {
+      const m = s.date.slice(0, 7);
+      if (!months[m]) months[m] = { in: 0, out: 0 };
+      months[m].out += (parseInt(s.quantity) || 0);
+    });
+    return Object.keys(months).sort().reverse().map(m => ({
+      month: m,
+      ...months[m]
+    }));
+  }, [additions, lrs, sales]);
 
   const totalAvailable = MATS.reduce((s, mat) => s + (stockMap[mat]?.available || 0), 0);
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
@@ -278,8 +334,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const exportHistoryPDF = () => exportToPDF(historyRows, 'Stock History', ['date', 'displayType', 'label', 'truckNo', 'material', 'credit', 'debit']);
 
   const renderHistoryTable = (rows) => (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div className="tbl-wrap">
+      <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>
           <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
           <th style={TH}><ColumnFilter label="Type" colKey="displayType" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -307,7 +363,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <td style={{ ...TD, fontWeight: 700 }}>{r.truckNo || '—'}</td>
               <td style={{ ...TD }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: MCOL[r.material], display: 'inline-block' }} />
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: getMatCol(r.material), display: 'inline-block' }} />
                   {r.material || '—'}
                 </span>
               </td>
@@ -332,7 +388,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         {delTarget && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }}
-              style={{ background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', width: '300px', textAlign: 'center' }}>
+              style={{ background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', width: '90%', maxWidth: '300px', textAlign: 'center' }}>
               <AlertCircle size={28} color="var(--danger)" style={{ marginBottom: '12px' }} />
               <div style={{ fontWeight: 800, color: 'var(--text)', marginBottom: '6px', fontSize: '14px' }}>Delete Entry?</div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>{delTarget.label}</div>
@@ -352,6 +408,11 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {(role === 'admin' || permissions?.stock === 'edit') && (
+            <button onClick={() => setShowMatManager(true)} className="btn btn-g btn-sm" style={{ fontWeight: 800 }}>
+               <Tag size={13} /> Manage Materials
+            </button>
+          )}
           <button onClick={() => setTab('migo')} className="btn btn-a btn-sm" style={{ fontWeight: 800 }}>
              <Plus size={13} /> MIGO Entry
           </button>
@@ -368,8 +429,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         {[
           { label: 'Total In (All Time)', val: additions.reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0), color: '#10b981' },
           { label: 'Net Available', val: totalAvailable, color: '#a855f7' },
-          { label: 'Current On Hold', val: totalHeld, color: 'var(--warn)' },
+          { label: 'Challan Created', val: totalHeld, color: 'var(--warn)', unit: 'bags' },
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
+          { label: 'LR Pending Ch.', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
         ].map(({ label, val, color, unit = 'bags' }) => (
           <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '150px' }}>
             <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
@@ -383,6 +445,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {[
           { id: 'overview', label: 'Overview', icon: <Package size={13} /> },
+          { id: 'monthly', label: 'Monthly Report', icon: <TrendingDown size={13} /> },
           { id: 'history', label: 'Full History', icon: <FileText size={13} /> },
           { id: 'migo', label: 'MIGO (Stock Entry)', icon: <Plus size={13} />, restricted: true },
           { id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true },
@@ -421,6 +484,46 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                <button onClick={() => setTab('history')} className="btn btn-g btn-sm">View Full History <ChevronRight size={14} /></button>
             </div>
             {renderHistoryTable(historyRows.slice(0, 10))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'monthly' && (
+        <div className="card">
+          <div className="card-header">
+             <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><TrendingDown size={17} /></div>
+                <div className="card-title-text"><h3>Monthly Summary</h3><p>Stock In vs Stock Out by month</p></div>
+             </div>
+          </div>
+          <div className="tbl-wrap">
+            <table className="tbl" style={{ minWidth: '1000px' }}>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th className="c">Total In (Bags)</th>
+                  <th className="c">Total Out (Bags)</th>
+                  <th className="c">Net (Bags)</th>
+                  <th className="c">Net (MT)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyStats.length === 0 ? <tr><td colSpan={5} className="t-empty">No data available</td></tr> : 
+                  monthlyStats.map(s => {
+                    const net = s.in - s.out;
+                    return (
+                      <tr key={s.month}>
+                        <td><span style={{ fontWeight: 800 }}>{new Date(s.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</span></td>
+                        <td className="c"><span style={{ color: '#10b981', fontWeight: 800 }}>{s.in.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span style={{ color: '#f43f5e', fontWeight: 800 }}>{s.out.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span style={{ color: net < 0 ? '#ef4444' : '#6366f1', fontWeight: 900 }}>{net.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span className="badge badge-tag">{(net * 0.05).toFixed(2)} MT</span></td>
+                      </tr>
+                    );
+                  })
+                }
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -489,8 +592,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><Archive size={17} /></div>
             <div className="card-title-text"><h3>Stock Arrival History (MIGO)</h3><p>{additions.length} total entries</p></div>
           </div></div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="tbl-wrap">
+            <table className="tbl" style={{ minWidth: '1000px', width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
                 <th style={TH}>Date</th>
                 <th style={TH}>Truck #</th>
@@ -508,7 +611,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>{a.truckNo || '—'}</td>
                     <td style={{ ...TD }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: MCOL[a.material], display: 'inline-block' }} />
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getMatCol(a.material), display: 'inline-block' }} />
                         {a.material}
                       </span>
                     </td>
@@ -536,7 +639,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div className="card" style={{ marginBottom: '14px' }}>
             <div className="card-header"><div className="card-title-block">
               <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}><Tag size={17} /></div>
-              <div className="card-title-text"><h3>Dispatch New Challan</h3><p>Assign stock to a vehicle (goes to Hold)</p></div>
+              <div className="card-title-text"><h3>Dispatch New Challan</h3><p>Assign stock to a vehicle (Challan Created status)</p></div>
             </div></div>
             <form onSubmit={triggerChallan} style={{ padding: '14px 18px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
@@ -597,7 +700,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                       background: challanFilter === s ? 'rgba(99,102,241,0.1)' : 'transparent',
                       color: challanFilter === s ? 'var(--primary)' : 'var(--text-muted)'
                     }}>
-                    {s === 'open' ? 'On Hold' : s}
+                    {s === 'open' ? 'Challan Created' : s}
                     <span style={{ opacity: 0.7, marginLeft: '4px', fontSize: '10px' }}>
                       ({challans.filter(c => s === 'all' || c.status === s).length})
                     </span>
@@ -605,8 +708,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 ))}
               </div>
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="tbl-wrap">
+              <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
                   <th style={TH}><ColumnFilter label="Challan #" colKey="challanNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}><ColumnFilter label="Date" colKey="date" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -634,13 +737,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                           {c.materials ? (
                             c.materials.map((m, idx) => (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: MCOL[m.type] || '#ccc', display: 'inline-block' }} />
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getMatCol(m.type) || '#ccc', display: 'inline-block' }} />
                                 {m.type}
                               </div>
                             ))
                           ) : (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: MCOL[c.material], display: 'inline-block' }} />
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getMatCol(c.material), display: 'inline-block' }} />
                               {c.material}
                             </span>
                           )}
@@ -717,6 +820,47 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           {renderHistoryTable(historyRows)}
         </div>
       )}
+
+      {/* ── Material Manager Modal ── */}
+      <AnimatePresence>
+        {showMatManager && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', width: '90%', maxWidth: '420px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Tag size={18} color="#f59e0b" /> Manage Materials
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>Add or remove material types for `{brand.toUpperCase()}`</p>
+                </div>
+                <button className="btn btn-g btn-icon" onClick={() => setShowMatManager(false)}><X size={16} /></button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '40vh', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
+                {materialObjs.map(m => (
+                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--bg)', borderRadius: '10px', border: '1px solid var(--border-input)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: getMatCol(m.name), display: 'inline-block' }} />
+                      <span style={{ fontWeight: 800 }}>{m.name}</span>
+                    </div>
+                    <button className="btn btn-sm btn-icon" style={{ color: 'var(--danger)', background: 'transparent' }} onClick={() => handleDeleteMaterial(m.id, m.name)}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                {materialObjs.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '10px' }}>No custom materials found.</div>}
+              </div>
+
+              <form onSubmit={handleAddMaterial} style={{ display: 'flex', gap: '8px' }}>
+                <input className="fi" style={{ flex: 1 }} type="text" placeholder="New material name (e.g., Brass)" value={newMatName} onChange={e => setNewMatName(e.target.value)} required />
+                <button type="submit" className="btn btn-p" disabled={!newMatName.trim()}><Plus size={14} /> Add</button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

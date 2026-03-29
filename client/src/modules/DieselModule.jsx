@@ -145,11 +145,11 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                         </div>
                     </div>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="tbl-wrap">
                     {loading ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading records...</div>
                     ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ background: 'var(--bg-th)' }}>
                                     <th style={TH}><ColumnFilter label="Date" colKey="date" data={vouchers} activeFilters={filters} onFilterChange={handleFilterChange} /></th>

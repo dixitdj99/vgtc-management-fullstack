@@ -38,6 +38,20 @@ const getVouchersByType = async (type) => {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
+const getVouchersByTruckAndDate = async (truckNo, paymentClearedDate) => {
+    if (firebaseAvailable()) {
+        const snapshot = await db.collection(COLLECTION_VOUCHERS)
+            .where('truckNo', '==', truckNo)
+            .where('paymentClearedDate', '==', paymentClearedDate)
+            .get();
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return docs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    }
+    return localStore.getAll(COLLECTION_VOUCHERS)
+        .filter(v => v.truckNo === truckNo && v.paymentClearedDate === paymentClearedDate)
+        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+};
+
 const updateVoucher = async (id, data) => {
     if (firebaseAvailable()) {
         await db.collection(COLLECTION_VOUCHERS).doc(id).update({
@@ -60,6 +74,7 @@ const deleteVoucher = async (id) => {
 module.exports = {
     createVoucher,
     getVouchersByType,
+    getVouchersByTruckAndDate,
     updateVoucher,
     deleteVoucher,
 };

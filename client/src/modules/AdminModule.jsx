@@ -249,7 +249,7 @@ const AdminModule = () => {
                     </div>
 
                     <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-                        <div style={{ overflowX: 'auto' }}>
+                        <div className="tbl-wrap">
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead style={{ background: 'var(--bg-th)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>

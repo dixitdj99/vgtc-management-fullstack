@@ -61,6 +61,20 @@ router.delete('/challans/:id', async (req, res) => {
     catch (e) { res.status(404).json({ error: e.message }); }
 });
 
+/* ── Meta & Materials ── */
+router.get('/materials/list', async (req, res) => {
+    try { res.json(await svc.getMaterialsList('jkl_materials')); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/materials', async (req, res) => {
+    try { res.status(201).json(await svc.addMaterial(req.body.name, 'jkl_materials')); }
+    catch (e) { res.status(400).json({ error: e.message }); }
+});
+router.delete('/materials/:id', async (req, res) => {
+    try { await svc.deleteMaterial(req.params.id, 'jkl_materials'); res.json({ ok: true }); }
+    catch (e) { res.status(404).json({ error: e.message }); }
+});
+
 router.post('/sync-lr', async (req, res) => {
     try {
         const { oldChallanNos, newChallanNos, material, quantity } = req.body;

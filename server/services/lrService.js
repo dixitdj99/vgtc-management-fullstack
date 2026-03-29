@@ -117,6 +117,8 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
             if (!data.startedAt) allowed.startedAt = allowed.loadedAt;
         }
     }
+    if (data.invoiceGenerated !== undefined) allowed.invoiceGenerated = data.invoiceGenerated;
+    if (data.invoiceNumber !== undefined) allowed.invoiceNumber = data.invoiceNumber;
 
     if (firebaseAvailable()) {
         await db.collection(lrCollection).doc(id).update({

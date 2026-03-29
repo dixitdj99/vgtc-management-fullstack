@@ -200,7 +200,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
       </div>
 
       {/* ── COLLECTION SUMMARY ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' }}>
+      <div className="stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px', marginBottom: '25px' }}>
          <div className="card" style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '12px', borderLeft: '4px solid #6366f1' }}>
             <div style={{ padding: '8px', background: 'rgba(99,102,241,0.1)', borderRadius: '10px', color: '#6366f1' }}><ShoppingCart size={20} /></div>
             <div>
@@ -231,7 +231,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
          </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px', alignItems: 'start' }}>
+      <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px', alignItems: 'start' }}>
         
         {/* ── SALES HISTORY ── */}
         <div className="card">
@@ -245,8 +245,8 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto', maxHeight: '600px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="tbl-wrap" style={{ maxHeight: '600px' }}>
+            <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <th style={TH}>Date <ColumnFilter label="" colKey="date" data={sales} activeFilters={filters} onFilterChange={onFilterUpdate} /></th>

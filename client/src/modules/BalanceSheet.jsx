@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -100,7 +100,7 @@ function doPrint(rows, truckNo, label, tabName) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, role, permissions }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -204,7 +204,12 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, role, permissions }) {
             <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditing(false)} title="Cancel"><X size={12} /></button>
           </div>
         ) : (role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') ? (
-          <button className="btn btn-g btn-icon btn-sm" onClick={startEdit}><Pencil size={12} /></button>
+          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+            <button className="btn btn-g btn-icon btn-sm" onClick={startEdit} title="Edit Record"><Pencil size={12} /></button>
+            {role === 'admin' && (
+              <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>
+            )}
+          </div>
         ) : null}
       </td>
       <ConfirmSaveModal
@@ -219,8 +224,33 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, role, permissions }) {
   );
 }
 
+/* ── Delete Confirm ── */
+function DeleteConfirm({ v, onClose, onConfirm }) {
+  const [deleting, setDeleting] = useState(false);
+  const go = async () => {
+    setDeleting(true);
+    try { await ax.delete(API_V + '/' + v.id); onConfirm(); }
+    catch { alert('Delete failed'); } finally { setDeleting(false); }
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+      <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+        style={{ width: '90%', maxWidth: '360px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px', textAlign: 'center' }}>
+        <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><AlertTriangle size={26} color="#f43f5e" /></div>
+        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Voucher?</div>
+        <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', marginBottom: '6px' }}>LR <strong style={{ color: 'var(--text)' }}>#{v.lrNo}</strong> · {v.truckNo} · {v.date}</div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This cannot be undone.</div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+          <button className="btn btn-g" onClick={onClose}>Cancel</button>
+          <button className="btn btn-d" onClick={go} disabled={deleting} title="Confirm Delete">{deleting ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}</button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName, selTruck, filters, onFilterChange, role, permissions }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions }) {
   const [open, setOpen] = useState(true);
 
   const monthChecked = rows.filter(v => selected.has(v.id));
@@ -314,8 +344,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
       </div>
 
       {open && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+        <div className="tbl-wrap">
+          <table style={{ minWidth: '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr>
                 <th style={{ ...TH, textAlign: 'center', padding: '7px 8px' }}>
@@ -346,7 +376,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} role={role} permissions={permissions} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} />
               ))}
             </tbody>
             <tfoot>
@@ -373,7 +403,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, tabName
         {confirmMarkRows && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
             <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ width: '360px', background: 'var(--bg-card)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
+              style={{ width: '90%', maxWidth: '360px', background: 'var(--bg-card)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
               <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', textAlign: 'center' }}>Mark as Paid</div>
               <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '20px', textAlign: 'center' }}>
                 Select the date when these {confirmMarkRows.length} trip(s) were paid.
@@ -403,6 +433,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [selTruck, setSelTruck] = useState(null);
   const [truckSearch, setTruckSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
+  const [delVoucher, setDelVoucher] = useState(null);
   const [marking, setMarking] = useState(false);
   const [paymentClearedDate, setPaymentClearedDate] = useState(new Date().toISOString().slice(0, 10));
 
@@ -619,16 +650,28 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
           )}
 
           {sortedMonths.length === 0 && <div style={{ color: 'var(--text-muted)', padding: '40px', textAlign: 'center', fontSize: '13px' }}>No vouchers in this period</div>}
+          {sortedMonths.map(ym => (
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
-              selected={selected} onCheck={onCheck} onCheckAll={onCheckAll}
+              selected={selected} onCheck={onCheck} onCheckAll={onCheckAll} onDelete={setDelVoucher}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
               role={role} permissions={permissions} />
+          ))}
+
+          <AnimatePresence>
+            {delVoucher && (
+              <DeleteConfirm
+                v={delVoucher}
+                onClose={() => setDelVoucher(null)}
+                onConfirm={() => { setDelVoucher(null); fetchVouchers(); }}
+              />
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {confirmMarkPaid && (
               <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
                 <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  style={{ width: '360px', background: 'var(--bg-card)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
+                  style={{ width: '90%', maxWidth: '360px', background: 'var(--bg-card)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
                   <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', textAlign: 'center' }}>Mark as Paid</div>
                   <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '20px', textAlign: 'center' }}>
                     Select the date when these {confirmMarkPaid.length} selected trip(s) were paid.
@@ -667,7 +710,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               <button className="btn btn-g btn-sm" onClick={() => exportToPDF(truckSummaries, `Balance Sheet Overview - ${tab.replace('_', ' ')}`, ['truck', 'trips', 'gross', 'net', 'paid', 'outstanding'])}><Printer size={13} /> PDF</button>
             </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="tbl-wrap">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr>

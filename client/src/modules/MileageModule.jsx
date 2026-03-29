@@ -125,7 +125,7 @@ function VehicleDetail({ truckNo, onBack }) {
                         </div>
                     </div>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="tbl-wrap">
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                         <thead>
                             <tr style={{ background: 'var(--bg-th)' }}>

@@ -28,7 +28,7 @@ export default function Pagination({ currentPage, totalItems, pageSize, onPageCh
   };
 
   return (
-    <div style={{ 
+    <div className="pagination" style={{ 
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'space-between', 

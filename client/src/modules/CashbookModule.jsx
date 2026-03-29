@@ -36,7 +36,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     };
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <motion.div initial={{ opacity: 0, scale: 0.93 }} animate={{ opacity: 1, scale: 1 }} style={{ width: '320px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', textAlign: 'center' }}>
+        <motion.div initial={{ opacity: 0, scale: 0.93 }} animate={{ opacity: 1, scale: 1 }} style={{ width: '90%', maxWidth: '320px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', textAlign: 'center' }}>
           <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
             <AlertTriangle size={24} color="var(--danger)" />
           </div>
@@ -77,7 +77,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{isDeposit ? 'Add Deposit' : 'Cash Out'}</span>
         </div>
         <form onSubmit={handleFormRequest}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr auto', gap: '9px', alignItems: 'end' }}>
+          <div className="fg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '9px', alignItems: 'end' }}>
             <div className="field"><label>Amount (Rs.)</label><input className="fi" type="number" step="0.01" placeholder="0" required value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
             <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
             <div className="field"><label>Remark</label><input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office expenses'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} /></div>
@@ -304,8 +304,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
 
   /* ── Render helper: ledger table ── */
   const LedgerTable = ({ rows, showBalance = true, showBadge = true }) => (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+    <div className="tbl-wrap">
+      <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
           <th style={TH}>Date</th>
           <th style={TH}>Description</th>
@@ -407,7 +407,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     const sortedDates = Object.keys(groupedRows).sort((a, b) => b > a ? 1 : -1);
 
     return (
-      <div style={{ overflowX: 'auto' }}>
+      <div className="tbl-wrap">
         {sortedDates.length === 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <tbody>
@@ -519,7 +519,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         {onlinePaidTarget && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              style={{ width: '340px', background: 'var(--bg)', borderRadius: '16px', padding: '24px', border: '1px solid var(--border)' }}>
+              style={{ width: '90%', maxWidth: '340px', background: 'var(--bg)', borderRadius: '16px', padding: '24px', border: '1px solid var(--border)' }}>
               <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '8px', color: 'var(--text)' }}>Select Payment Date</div>
               <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '18px' }}>When was this online advance paid?</div>
               <input type="date" value={onlinePaidTarget.date} onChange={e => setOnlinePaidTarget(prev => ({ ...prev, date: e.target.value }))} className="fi" style={{ width: '100%', marginBottom: '20px' }} />

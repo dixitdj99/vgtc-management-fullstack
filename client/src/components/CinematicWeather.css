@@ -17,6 +17,7 @@
 .layer-bg {
     z-index: 1;
     background: linear-gradient(180deg, #1e293b, #0f172a);
+    opacity: 0.12; /* Barely tint the theme background without forcing a color override */
 }
 
 /* Specific Atmosphere Backgrounds */

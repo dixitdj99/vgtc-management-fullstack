@@ -11,8 +11,8 @@ import Pagination from '../components/Pagination';
 const PAGE_SIZE = 20;
 
 const BASE_API = ``;
-const MATS_DUMP = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
-const MATS_JKL = ['PPC', 'OPC43', 'Pro+'];
+const MATS_DUMP_FALLBACK = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
+const MATS_JKL_FALLBACK = ['PPC', 'OPC43', 'Pro+'];
 
 const validateTruckNo = (no) => {
   if (!no) return false;
@@ -130,7 +130,8 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
   const [loading, setLoading] = useState(false); // Renamed from saving to loading
   const [isConfirming, setIsConfirming] = useState(false);
 
-  const MATERIALS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
+  // MATERIALS passed down from parent now, fallback to MATS_DUMP_FALLBACK
+  const MATERIALS = row.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
   const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
 
   const executeSave = async () => {
@@ -189,7 +190,7 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '520px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden' }}
+        style={{ width: '94%', maxWidth: '520px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden' }}
       >
         {/* Modal header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
@@ -249,7 +250,14 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
                    <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[form.material]?.physical || 0}</span>
                 )}
               </label>
-              <input className="fi" type="number" value={form.totalBags} onChange={e => S('totalBags', e.target.value)} />
+              <input className="fi" type="number" value={form.totalBags} onChange={e => {
+                const bags = e.target.value;
+                setForm(f => {
+                   const f2 = { ...f, totalBags: bags };
+                   if (bags) f2.weight = (parseFloat(bags) * 0.05).toFixed(2);
+                   return f2;
+                });
+              }} />
             </div>
             <div className="field">
               <label>Weight (MT)</label>
@@ -295,7 +303,7 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', onRefetch }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
 
   // For 'create' tab
@@ -303,11 +311,18 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const [err, setErr] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
 
-  const MATERIALS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
+  // Use brandMats from parent
+  const MATERIALS = vehicles[0]?.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
   const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
-    truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: ''
+    truckNo: preFill?.truckNo || '',
+    date: preFill?.date || new Date().toISOString().split('T')[0],
+    material: preFill?.material || MATERIALS[0],
+    quantity: preFill?.quantity || '',
+    partyName: preFill?.partyName || '',
+    destination: preFill?.destination || '',
+    remark: preFill?.remark || ''
   });
 
   const S = (k, v) => setChalForm(f => ({ ...f, [k]: v }));
@@ -324,12 +339,14 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const executeCreate = async () => {
     setSaving(true); setIsConfirming(false);
     try {
-      await ax.post(ENDPOINT, chalForm);
+      const res = await ax.post(ENDPOINT, chalForm);
+      const newChNo = res.data.challanNo;
       // Go back to select tab so user can see newly created challan
       setTab('select');
       setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
+      if (onCreated) onCreated(newChNo);
     } catch (er) {
       setErr(er.response?.data?.error || 'Error creating challan');
     } finally {
@@ -344,7 +361,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '560px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+        style={{ width: '94%', maxWidth: '560px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -537,7 +554,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
-        style={{ width: '380px', background: '#0f172a', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}
+        style={{ width: '90%', maxWidth: '380px', background: '#0f172a', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}
       >
         <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <AlertTriangle size={26} color="#f43f5e" />
@@ -561,8 +578,11 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
   const API = brand === 'jkl' ? `${BASE_API}/jkl/lr` : `${BASE_API}/lr`;
-  const API_CHAL = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
-  const MATERIALS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
+  const API_STOCK = brand === 'jkl' ? `${BASE_API}/jkl/stock` : `${BASE_API}/stock`;
+  const API_CHAL = `${API_STOCK}/challans`;
+  
+  const [materialObjs, setMaterialObjs] = useState([]);
+  const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
   const [receipts, setReceipts] = useState([]);
   const [openChallans, setOpenChallans] = useState([]);
@@ -574,6 +594,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [deleteRow, setDeleteRow] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showChalPopup, setShowChalPopup] = useState(false);
+  const [chalPreFill, setChalPreFill] = useState(null);
+  const [linkingLrId, setLinkingLrId] = useState(null);
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -614,15 +636,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const fetchAdditions = async () => {
     try {
-      const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/additions` : `${BASE_API}/stock/additions`;
-      const data = (await ax.get(ENDPOINT)).data;
+      const data = (await ax.get(`${API_STOCK}/additions`)).data;
       setAdditions(data);
+    } catch { }
+  };
+
+  const fetchMaterials = async () => {
+    try {
+       const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
+       if (data && data.length > 0) setMaterialObjs(data);
     } catch { }
   };
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchData(), fetchChallans(), fetchVehicles(), fetchAdditions()]).finally(() => setLoading(false));
+    Promise.all([fetchData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials()]).finally(() => setLoading(false));
     setCurrentPage(1);
   }, [brand]);
 
@@ -667,6 +695,38 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       }
     }
     setIsConfirmingSave(true);
+  };
+
+  const handleChallanCreatedFromLR = async (newChNo) => {
+    if (!linkingLrId) return;
+    setLoading(true);
+    try {
+      // 1. Update LR billing
+      await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newChNo });
+      
+      // 2. Sync stock
+      const receipt = receipts.find(r => r.id === linkingLrId);
+      if (receipt) {
+        const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+        await ax.post(SYNC_API, {
+          oldChallanNos: "",
+          newChallanNos: newChNo,
+          material: receipt.material,
+          quantity: receipt.totalBags
+        });
+      }
+      
+      alert(`Challan ${newChNo} created and linked to LR!`);
+      fetchData();
+      fetchChallans();
+    } catch (e) {
+      alert('Linking failed: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setLoading(false);
+      setLinkingLrId(null);
+      setChalPreFill(null);
+      setShowChalPopup(false);
+    }
   };
 
   const executeSaveLR = async () => {
@@ -743,7 +803,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={editRow} brand={brand} openChallans={openChallans} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -758,10 +818,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             brand={brand}
             initialTab={showChalPopup === 'create' ? 'create' : 'select'}
             openChallans={openChallans}
-            vehicles={vehicles || []}
+            vehicles={vehicles.length ? vehicles.map(v => ({ ...v, brandMats: MATERIALS })) : [{ brandMats: MATERIALS }]}
             selectedChallans={form.usedChallans}
-            onClose={() => setShowChalPopup(false)}
+            preFill={chalPreFill}
+            onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
+            onCreated={handleChallanCreatedFromLR}
             onToggleSelect={(ch) => {
               const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
               let newUsed;
@@ -964,8 +1026,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </div>
             )}
 
-            <div style={{ overflowX: 'auto' }}>
-              <table className="tbl">
+            <div className="tbl-wrap">
+              <table className="tbl" style={{ minWidth: '1200px' }}>
                 <thead><tr>
                   <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={{ padding: '8px 12px' }}>
@@ -1000,7 +1062,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                           <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
                         </td>
                         <td className="c">
-                          {lr.billing ? (
+                          {lr.billing && lr.billing !== 'No' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                               {lr.billing.split(',').map((cNo, idx) => {
                                 const ch = allChallans.find(c => c.challanNo === cNo.trim());
@@ -1020,7 +1082,29 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                                 );
                               })}
                             </div>
-                          ) : <span className="badge badge-n">None</span>}
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                <span className="badge badge-n">No Challan</span>
+                                <button
+                                    className="btn btn-a btn-sm"
+                                    onClick={() => {
+                                        setLinkingLrId(lr.id);
+                                        setChalPreFill({
+                                            truckNo: lr.truckNo,
+                                            material: lr.material,
+                                            quantity: lr.totalBags,
+                                            partyName: lr.partyName,
+                                            destination: lr.destination,
+                                            date: lr.date
+                                        });
+                                        setShowChalPopup('create');
+                                    }}
+                                    style={{ fontSize: '9px', padding: '3px 8px', fontWeight: 800 }}
+                                >
+                                    <Tag size={10} /> Create Challan
+                                </button>
+                            </div>
+                          )}
                         </td>
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}

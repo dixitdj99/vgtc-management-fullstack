@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain } from 'lucide-react';
+import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X } from 'lucide-react';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ax from './api';
 import LoginPage from './pages/LoginPage';
@@ -15,16 +15,20 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
-import { Truck, Fuel, ShoppingCart, Gauge } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge, Banknote } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import AdminModule from './modules/AdminModule';
 import CinematicWeather from './components/CinematicWeather';
+import PayModule from './modules/PayModule';
+import PublicReceipt from './pages/PublicReceipt';
+import InvoiceModule from './modules/InvoiceModule';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
   { id: 'light', label: 'Light', Icon: Sun },
   { id: 'sepia', label: 'Sepia', Icon: Coffee },
 ];
+
 
 function AppInner() {
   const { user, logout, ready, plant } = useAuth();
@@ -40,6 +44,7 @@ function AppInner() {
   });
   const [col, setCol] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [weather, setWeather] = useState({ temp: null, cond: 'Clear', code: 1000, isDay: true, advice: 'Loading weather...' });
@@ -57,37 +62,44 @@ function AppInner() {
       '✅ आसमान साफ है — ट्रकों की माइलेज और रफ्तार बढ़ाने के लिए बेहतरीन दिन!',
       '☀️ अच्छी धूप है — लोडिंग और अनलोडिंग का काम तेजी से पूरा करें।',
       '🚚 मौसम सुहाना है — लंबी दूरी की यात्रा के लिए गाड़ियां तैयार रखें।',
-      '💪 आज सड़कें साफ हैं — समय पर माल पहुंचाने का लक्ष्य रखें!'
+      '💪 आज सड़कें साफ हैं — समय पर माल पहुंचाने का लक्ष्य रखें!',
+      '🛣️ शानदार मौसम! बिना रुके डिलीवरी का आदर्श समय है।'
     ],
     night: [
       '🌙 रात का सफर — हेडलाइट्स और इंडिकेटर चेक कर लें, सुरक्षित ड्राइव करें।',
       '✨ शांत रात — थकान महसूस हो तो सुरक्षित जगह रुककर आराम जरूर करें।',
-      '🏘️ रात्रि लॉगिंग — शांतिपूर्ण माहौल में लंबी दूरी तय करने का सही समय।'
+      '🏘️ रात्रि लॉगिंग — शांतिपूर्ण माहौल में लंबी दूरी तय करने का सही समय।',
+      '🌌 रात की ठंडी हवाएं — इंजन के लिए अच्छी हैं, पर नींद से सावधान रहें।'
     ],
     rain: [
       '🌧 बारिश का मौसम — तिरपाल (Tarp) कस कर बांधें, माल सुरक्षित रहना चाहिए!',
       '☔ फिसलन भरी सड़कें — ब्रेक का इस्तेमाल सावधानी से करें, दूरी बनाए रखें।',
-      '🌧 भारी वर्षा — विजिबिलिटी कम होने पर गाड़ी सुरक्षित किनारे खड़ी करें।'
+      '🌧 भारी वर्षा — विजिबिलिटी कम होने पर गाड़ी सुरक्षित किनारे खड़ी करें।',
+      '🌧 कीचड़ और पानी — टायर स्लिप हो सकते हैं, स्पीड पर नियंत्रण रखें!'
     ],
     mist: [
       '🌫 घना कोहरा — फॉग लाइट्स का प्रयोग करें और हमेशा लो-बीम पर चलें।',
       '🌫 सावधानी बरतें — कोहरे में ओवरटेकिंग से बचें, सुरक्षा ही सर्वोपरि है।',
-      '☁️ खराब विजिबिलिटी — रिफ्लेक्टर टेप साफ रखें ताकि दूसरी गाड़ियां आपको देख सकें।'
+      '☁️ खराब विजिबिलिटी — रिफ्लेक्टर टेप साफ रखें ताकि दूसरी गाड़ियां आपको देख सकें।',
+      '🌁 धुंध भरा रास्ता — हार्न का प्रयोग करें, अपनी लेन में सुरक्षित चलें।'
     ],
     hot: [
       '🔥 भीषण गर्मी — टायर प्रेशर चेक करते रहें, ज्यादा गर्मी में टायर फटने का डर रहता है।',
       '☀️ तेज धूप — इंजन का कूलेंट लेवल चेक करें और ड्राइवरों को पर्याप्त पानी दें।',
-      '🥤 गर्मी का अलर्ट — टायर ठंडे करने के लिए बीच-बीच में ब्रेक लेते रहें।'
+      '🥤 गर्मी का अलर्ट — टायर ठंडे करने के लिए बीच-बीच में ब्रेक लेते रहें।',
+      '🥵 लू का प्रकोप — केबिन को हवादार रखें और लगातार हाइड्रेटेड रहें!'
     ],
     cold: [
       '🥶 कड़ाके की ठंड — स्टार्ट करने से पहले इंजन को 5 मिनट वार्म-अप जरूर करें।',
       '❄️ शीत लहर — डीजल फिल्टर की जांच करें और बैटरी को चार्ज रखें।',
-      '☕ ठंड का मौसम — एंटी-फ्रीज़ चेक करें और ड्राइवरों के लिए गर्म कपड़ों का ध्यान रखें।'
+      '☕ ठंड का मौसम — एंटी-फ्रीज़ चेक करें और ड्राइवरों के लिए गर्म कपड़ों का ध्यान रखें।',
+      '🧊 भारी ठंड — कोहरे की भी संभावना हो सकती है, हीटर चालू रखें और ध्यान से चलाएँ।'
     ],
     pleasant: [
       '🌤 सुहाना मौसम — गाड़ियों के इंजन और माइलेज के लिए सबसे अच्छा समय!',
       '🌿 ठंडी हवाएं — लंबी ड्राइव के लिए ड्राइवरों का मूड और स्वास्थ्य बढ़िया रहेगा।',
-      '🙌 शुभ दिन — आज काम की रफ़्तार बढ़िया रहेगी, सुरक्षित सफर करें!'
+      '🙌 शुभ दिन — आज काम की रफ़्तार बढ़िया रहेगी, सुरक्षित सफर करें!',
+      '🚀 बेहतरीन तापमान! गाड़ियों की परफॉरमेंस आज सबसे बढ़िया रहेगी।'
     ]
   };
 
@@ -106,15 +118,31 @@ function AppInner() {
         const isDay = cur.is_day === 1;
 
         let category = 'clear';
-        if (code >= 1063 && code <= 1246) category = 'rain';
-        else if ([1030, 1135, 1147].includes(code)) category = 'mist';
-        else if (temp > 38) category = 'hot';
-        else if (temp > 30) category = 'pleasant'; // High standard pleasant
-        else if (temp < 10) category = 'cold';
-        else if (temp < 24) category = 'pleasant';
         
-        // Final override for night check if clear
-        if (!isDay && category === 'clear') category = 'night';
+        // Rain takes top priority
+        if (code >= 1063 && code <= 1246) {
+          category = 'rain';
+        } 
+        // Real fog/mist only matters if it's actually cold or explicitly dense fog
+        else if ([1135, 1147].includes(code) || (code === 1030 && temp < 22)) {
+          category = 'mist';
+        } 
+        // Temperature based
+        else if (temp >= 35) {
+          category = 'hot';
+        } 
+        else if (temp <= 15) {
+          category = 'cold';
+        } 
+        // Between 16 and 34 is nice/clear
+        else {
+          category = 'pleasant';
+        }
+        
+        // Final override for night if it's clear/pleasant
+        if (!isDay && (category === 'clear' || category === 'pleasant')) {
+          category = 'night';
+        }
 
         const variations = HINDI_TAGLINES[category] || HINDI_TAGLINES.clear;
         const advice = variations[Math.floor(Math.random() * variations.length)];
@@ -196,7 +224,9 @@ function AppInner() {
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'diesel', adminOnly: true },
+    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'balance', adminOnly: true },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
+    { id: 'invoice_dump', label: 'Generate Invoices', Icon: FileText, color: '#8b5cf6', section: 'jksuper', permKey: 'balance', adminOnly: true },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
@@ -232,6 +262,7 @@ function AppInner() {
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi', permKey: 'vehicle' },
     { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi', permKey: 'diesel' },
     { id: 'mileage_jkl', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jklakshmi', permKey: 'diesel', adminOnly: true },
+    { id: 'pay_jkl', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jklakshmi', permKey: 'balance', adminOnly: true },
     { id: 'sell_jkl', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
 
     ...(user?.role === 'admin' ? [
@@ -269,8 +300,15 @@ function AppInner() {
     if (active === 'admin' && user?.role !== 'admin') setActive('lr_dump');
   }, [user]);
 
-  const isPublicLoading = window.location.pathname === '/loading-status';
-  if (isPublicLoading) return <PublicLoadingStatus />;
+  const path = window.location.pathname;
+  if (path === '/loading-status') return <PublicLoadingStatus />;
+  
+  if (path.startsWith('/receipt/')) {
+    const parts = path.split('/');
+    if (parts.length >= 4) {
+      return <PublicReceipt externalTruckNo={decodeURIComponent(parts[2])} externalDate={decodeURIComponent(parts[3])} />;
+    }
+  }
 
   if (!ready) return (
     <div style={{
@@ -292,7 +330,8 @@ function AppInner() {
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar${col ? ' collapsed' : ''}`}>
+      <div className={`sidebar-overlay${showMobileMenu ? ' show-mobile' : ''}`} onClick={() => setShowMobileMenu(false)} />
+      <aside className={`sidebar${col ? ' collapsed' : ''}${showMobileMenu ? ' show-mobile' : ''}`}>
         <div className="sidebar-brand">
           <div className="brand-icon"><LayoutDashboard size={22} color="white" /></div>
           {!col && <div className="brand-text">
@@ -313,6 +352,7 @@ function AppInner() {
               <button className={`nav-btn${active === id ? ' active' : ''}`}
                 onClick={() => {
                   if (col) setCol(false);
+                  setShowMobileMenu(false); // Close on click for mobile
                   if (sub) {
                     setExpanded(e => ({ ...e, [id]: !e[id] }));
                     if (active !== id) {
@@ -341,7 +381,7 @@ function AppInner() {
                   >
                     {sub.map(s => (
                       <button key={s.id}
-                        onClick={() => { setActive(id); setSubActive(s.id); }}
+                        onClick={() => { setActive(id); setSubActive(s.id); setShowMobileMenu(false); }}
                         style={{
                           background: 'transparent', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s',
@@ -391,9 +431,12 @@ function AppInner() {
       <div className="main-content">
         <header className="topbar" style={{ position: 'relative', overflow: 'hidden' }}>
           {/* Cinematic Weather Background — Multi-layered physics engine */}
-          <CinematicWeather weatherCode={weather.code} isDay={weather.isDay} />
+          <CinematicWeather weatherCode={weather.code} isDay={weather.isDay} temp={weather.temp} />
 
           <div className="topbar-left" style={{ position: 'relative', zIndex: 1 }}>
+            <button className="mobile-menu-toggle" onClick={() => setShowMobileMenu(!showMobileMenu)}>
+              {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
+            </button>
             <div className="app-title">{FILTERED_NAV.find(n => n.id === active)?.label}</div>
           </div>
           <div className="topbar-right" style={{ position: 'relative', zIndex: 1 }}>
@@ -445,9 +488,11 @@ function AppInner() {
               {(active === 'vehicles_dump' || active === 'vehicles_jkl') && <VehicleModule permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl') && <DieselModule permissions={user.permissions} />}
               {(active === 'mileage_dump' || active === 'mileage_jkl') && <MileageModule />}
+              {(active === 'pay_dump' || active === 'pay_jkl') && <PayModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
+              {active === 'invoice_dump' && <InvoiceModule brand="dump" role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
-              {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus />}
+              {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus globalWeather={weather} />}
               {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>
           </AnimatePresence>

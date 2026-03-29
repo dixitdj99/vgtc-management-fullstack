@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock } from 'lucide-react';
+import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X } from 'lucide-react';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -33,14 +33,22 @@ const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   );
 };
 
-export default function AdminLoadingStatus() {
+export default function AdminLoadingStatus({ globalWeather }) {
   const [brand, setBrand] = useState('jksuper');
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
-  const [weather, setWeather] = useState({ temp: '25', cond: 'Clear', isRain: false, advice: 'Good to go!' });
   const [now, setNow] = useState(Date.now());
+  const [showQR, setShowQR] = useState(false);
   const city = 'Jharli, Jhajjar, Haryana';
+
+  // Map globalWeather properties required by the local view
+  const weather = {
+    temp: globalWeather?.temp || 25,
+    cond: globalWeather?.cond || 'Clear',
+    advice: globalWeather?.advice || 'Loading weather...',
+    isRain: globalWeather?.code >= 1063 && globalWeather?.code <= 1246
+  };
 
   const fetchReceipts = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -56,35 +64,11 @@ export default function AdminLoadingStatus() {
     }
   };
 
-  const fetchWeather = async () => {
-    try {
-      const res = await api.get(`/weather?city=${encodeURIComponent(city)}`);
-      const data = res.data;
-      if (data && data.current_condition) {
-        const cur = data.current_condition[0];
-        const temp = cur.temp_C;
-        const cond = cur.weatherDesc[0].value;
-        const isRain = cond.toLowerCase().includes('rain') || cond.toLowerCase().includes('drizzle');
-        
-        let advice = 'Standard conditions, good to go!';
-        if (isRain) advice = 'Possible rain: Better to pause loading!';
-        else if (temp > 35) advice = 'Very hot: Keep crew hydrated!';
-        else if (temp < 25) advice = 'Weather is cool, you are good to go!';
-
-        setWeather({ temp, cond, isRain, advice });
-      }
-    } catch (e) { 
-      console.error('Weather Proxy fail:', e);
-    }
-  };
-
   useEffect(() => { 
     fetchReceipts(); 
-    fetchWeather();
     const tickInt = setInterval(() => setNow(Date.now()), 1000); // Live second tick
     const fetchInt = setInterval(() => fetchReceipts(true), 10000); // 10s data sync
-    const wInterval = setInterval(fetchWeather, 300000); 
-    return () => { clearInterval(tickInt); clearInterval(fetchInt); clearInterval(wInterval); };
+    return () => { clearInterval(tickInt); clearInterval(fetchInt); };
   }, [brand]);
 
   const updateStatus = async (id, newStatus) => {
@@ -101,6 +85,25 @@ export default function AdminLoadingStatus() {
 
   return (
     <div className="module-content" style={{ padding: '24px' }}>
+      
+      {/* QR Code Popup Modal */}
+      {showQR && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setShowQR(false)}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', maxWidth: '320px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center', border: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)' }}>
+                 <Smartphone size={20} color="var(--primary)" /> Scan to Open
+              </div>
+              <button onClick={() => setShowQR(false)} style={{ background: 'var(--bg)', border: 'none', borderRadius: '50%', padding: '6px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
+            </div>
+            <div style={{ background: 'white', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
+               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/loading-status')}`} alt="QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
+            </div>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5' }}>Scan this QR code with any smartphone camera to instantly open the public real-time driver tracking portal.</p>
+          </div>
+        </div>
+      )}
+
       {/* Weather Alert Header */}
       {weather.isRain && (
         <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', color: '#dc2626', padding: '12px 20px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '15px', animation: 'pulse 2s infinite' }}>
@@ -126,12 +129,15 @@ export default function AdminLoadingStatus() {
             {weather.advice}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setShowQR(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--primary)', background: 'var(--primary)', color: 'white', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+            <QrCode size={16} /> Share QR
+          </button>
           <select value={brand} onChange={e => setBrand(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold' }}>
             <option value="jksuper">JK Super</option>
             <option value="jklakshmi">JK Lakshmi</option>
           </select>
-          <button onClick={fetchReceipts} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}>
+          <button onClick={fetchReceipts} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
             <RefreshCw size={16} /> Refresh
           </button>
         </div>
@@ -144,7 +150,7 @@ export default function AdminLoadingStatus() {
           No loading orders found for today.
         </div>
       ) : (
-        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <div className="tbl-wrap" style={{ background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'rgba(0,0,0,0.02)' }}>

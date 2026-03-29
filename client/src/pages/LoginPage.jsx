@@ -134,7 +134,7 @@ export default function LoginPage() {
                 }}>
                   <Building2 size={12} /> Select Plant
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="login-plant-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
                   {PLANTS.map(p => (
                     <button key={p.id} type="button" onClick={() => { setPlant(p.id); setError(''); }}
                       style={{

@@ -21,6 +21,7 @@ const vehicleRoutes = require('./routes/vehicleRoutes');
 const sellRoutes = require('./routes/sellRoutes');
 const mileageRoutes = require('./routes/mileageRoutes');
 const backupRoutes = require('./routes/backupRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
@@ -38,6 +39,7 @@ app.use('/api/cashbook', cashbookRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/sell', sellRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/public', publicRoutes);
 
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {

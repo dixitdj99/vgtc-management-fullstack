@@ -846,6 +846,12 @@ select.fi option {
   border-collapse: collapse;
 }
 
+.tbl-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .tbl th {
   padding: 11px 15px;
   text-align: left;
@@ -1288,3 +1294,151 @@ select.fi option {
 /* Night & Stars (Cleaned) */
 @keyframes stars-twinkle { 0%{opacity:.4} 100%{opacity:1} }
 @keyframes shooting { 0%{opacity:0;transform:translateX(0)} 10%{opacity:1} 20%{opacity:0;transform:translateX(-100px)} 100%{opacity:0} }
+
+/* =============================================================
+   RESPONSIVE DESIGN (Tablet & Mobile)
+   ============================================================= */
+
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 72px; /* Auto-collapse on tablet */
+  }
+  .sidebar.collapsed {
+    width: 72px;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .fg-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1000;
+    transform: translateX(-100%);
+    box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+    background: var(--sidebar-bg);
+    width: 280px;
+  }
+
+  .sidebar.show-mobile {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+    display: none;
+  }
+
+  .sidebar-overlay.show-mobile {
+    display: block;
+  }
+
+  .main-content {
+    height: 100vh;
+  }
+
+  .topbar {
+    padding: 0 16px;
+    height: 60px;
+  }
+
+  .topbar-right {
+    gap: 8px;
+  }
+
+  .user-info {
+    display: none; /* Hide name on mobile header */
+  }
+
+  .page-area {
+    padding: 16px;
+  }
+
+  .fg, .fg-2, .fg-3, .fg-4, .stat-grid, .two-col {
+    grid-template-columns: 1fr !important;
+  }
+
+  .tc-form-list {
+    grid-template-columns: 1fr;
+  }
+
+  .page-hd {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-hd-right {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    justify-content: flex-start;
+  }
+
+  .btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+
+  .tbl th, .tbl td {
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+
+  .stat-val {
+    font-size: 16px;
+  }
+
+  .calc-total-val {
+    font-size: 18px;
+  }
+
+  /* Mobile Brand and Menu Button */
+  .mobile-menu-toggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--primary);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    margin-right: 12px;
+  }
+
+  .pagination {
+    flex-direction: column !important;
+    gap: 12px !important;
+    align-items: center !important;
+    text-align: center;
+  }
+}
+
+/* Hide mobile-only by default */
+.mobile-menu-toggle {
+  display: none;
+}
+
+ 
+
+@media print {
+  body * { visibility: hidden; }
+  .invoice-preview, .invoice-preview * { visibility: visible; }
+  .invoice-preview { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; padding: 0 !important; }
+}

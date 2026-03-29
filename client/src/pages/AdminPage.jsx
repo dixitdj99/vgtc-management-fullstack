@@ -36,7 +36,7 @@ function DeleteConfirm({ u, onClose, onConfirm }) {
     }}>
       <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
         style={{
-          width: '340px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)',
+          width: '90%', maxWidth: '340px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)',
           borderRadius: '16px', padding: '28px 24px', textAlign: 'center'
         }}>
         <div style={{
@@ -149,7 +149,7 @@ export default function AdminPage() {
           <button className="btn btn-g btn-sm" onClick={fetchUsers}><RefreshCw size={14} className={loading ? 'ani-spin' : ''} /> Refresh</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
+        <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
 
           {/* ── User Form (Create/Edit) ── */}
           <div className="card">
@@ -270,7 +270,7 @@ export default function AdminPage() {
             {loading ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading...</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="tbl-wrap">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-th)' }}>

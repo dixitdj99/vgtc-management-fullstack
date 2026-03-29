@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { Truck, Package, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { Truck, Package, CheckCircle, Clock, RefreshCw, Smartphone, X, Share, MoreVertical, Download } from 'lucide-react';
 
 export default function PublicLoadingStatus() {
   const [brand, setBrand] = useState('jksuper');
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   const fetchReceipts = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -48,11 +49,55 @@ export default function PublicLoadingStatus() {
 
   return (
     <div style={{ backgroundColor: '#f8fafc', height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', fontFamily: 'system-ui, sans-serif' }}>
+      
+      {/* Install Guide Modal */}
+      {showInstallGuide && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setShowInstallGuide(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: '360px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 'bold', fontSize: '18px' }}>
+                 <Download size={20} color="#6366f1" /> Install App
+              </div>
+              <button onClick={() => setShowInstallGuide(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', cursor: 'pointer' }}>
+                <X size={16} />
+              </button>
+            </div>
+            
+            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#475569', lineHeight: '1.5' }}>Install this portal on your phone for quick one-tap access like a regular app!</p>
+
+            <div style={{ marginBottom: '20px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}><Smartphone size={16} /> For Android (Chrome)</h4>
+              <ol style={{ margin: 0, paddingLeft: '20px', color: '#475569', fontSize: '13px', lineHeight: '1.6' }}>
+                <li>Tap the <strong>3-dots menu</strong> <MoreVertical size={12} style={{verticalAlign: 'middle'}}/> at the top right of your browser.</li>
+                <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
+                <li>Confirm by tapping <strong>Add</strong>.</li>
+              </ol>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}><Smartphone size={16} /> For iPhone (Safari)</h4>
+              <ol style={{ margin: 0, paddingLeft: '20px', color: '#475569', fontSize: '13px', lineHeight: '1.6' }}>
+                <li>Tap the <strong>Share</strong> button <Share size={12} style={{verticalAlign: 'middle'}}/> at the bottom of the screen.</li>
+                <li>Scroll down and tap <strong>"Add to Home Screen"</strong> <span style={{fontSize: '14px'}}>+</span>.</li>
+                <li>Confirm by tapping <strong>Add</strong> at the top right.</li>
+              </ol>
+            </div>
+            
+            <button onClick={() => setShowInstallGuide(false)} style={{ width: '100%', marginTop: '20px', background: '#6366f1', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>Got it</button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ backgroundColor: '#1e293b', color: 'white', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', position: 'sticky', top: 0, zIndex: 10 }}>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Truck /> Loading Status Updates
-        </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Truck /> Loading Status Updates
+          </h1>
+          <button onClick={() => setShowInstallGuide(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+            <Download size={14} /> Install
+          </button>
+        </div>
         
         {/* Brand Selector */}
         <div style={{ display: 'flex', gap: '8px', background: '#334155', padding: '4px', borderRadius: '8px' }}>
