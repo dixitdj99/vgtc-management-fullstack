@@ -21,7 +21,6 @@ import AdminModule from './modules/AdminModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import PublicReceipt from './pages/PublicReceipt';
-import InvoiceModule from './modules/InvoiceModule';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -490,7 +489,6 @@ function AppInner() {
               {(active === 'mileage_dump' || active === 'mileage_jkl') && <MileageModule />}
               {(active === 'pay_dump' || active === 'pay_jkl') && <PayModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-              {active === 'invoice_dump' && <InvoiceModule brand="dump" role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
               {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus globalWeather={weather} />}
               {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
