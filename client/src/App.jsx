@@ -225,7 +225,6 @@ function AppInner() {
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'diesel', adminOnly: true },
     { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'balance', adminOnly: true },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'invoice_dump', label: 'Generate Invoices', Icon: FileText, color: '#8b5cf6', section: 'jksuper', permKey: 'balance', adminOnly: true },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },

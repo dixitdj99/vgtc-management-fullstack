@@ -6,8 +6,11 @@ const path = require('path');
 const COLLECTIONS = [
   'vouchers', 'lr', 'jkl_lr', 'cashbook', 'jkl_cashbook',
   'stock_additions', 'jkl_stock_additions', 'challans', 'jkl_challans',
-  'vehicles', 'diesel_entries', 'metadata', 'users', 'settings'
+  'vehicles', 'diesel_entries', 'users', 'settings', 'materials', 'parties'
 ];
+
+const METADATA_COLLECTION = 'metadata';
+const COUNTER_DOC = 'lr_counter';
 
 async function clearFirebaseCollection(collectionName) {
   const snapshot = await db.collection(collectionName).get();
@@ -34,6 +37,13 @@ async function run() {
         console.error(`Failed to clear ${col}:`, e.message);
       }
     }
+    // Explicitly reset lr_counter document in metadata
+    try {
+      await db.collection(METADATA_COLLECTION).doc(COUNTER_DOC).set({ count: 0 });
+      console.log('Reset Firestore lr_counter to 0');
+    } catch (e) {
+      console.error('Failed to reset Firestore lr_counter:', e.message);
+    }
   } else {
     console.log('Firebase not available. Wiping local data files...');
     for (const col of COLLECTIONS) {
@@ -42,6 +52,12 @@ async function run() {
         fs.unlinkSync(p);
         console.log(`Deleted ${p}`);
       }
+    }
+    // Delete local counters file
+    const counterPath = path.join(__dirname, 'data', '_counters.json');
+    if (fs.existsSync(counterPath)) {
+      fs.unlinkSync(counterPath);
+      console.log(`Deleted local counter file: ${counterPath}`);
     }
   }
   console.log('--- DONE ---');

@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vikas Goods Transport Co. Invoice</title>
+    <style>
+        body {
+            background-color: #f4f4f4;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .invoice-container {
+            width: 100%;
+            max-width: 1050px;
+            background-color: #fff;
+            border: 2px solid #000;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            color: #000;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        td,
+        th {
+            border: 1px solid #000;
+            padding: 3px 4px;
+        }
+
+        .bold-italic {
+            font-weight: bold;
+            font-style: italic;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .left {
+            text-align: left;
+        }
+
+        .right {
+            text-align: right;
+        }
+
+        .bg-yellow {
+            background-color: #ffff00;
+        }
+
+        .bg-gray {
+            background-color: #eaedf2;
+        }
+
+        .bg-blue {
+            background-color: #dbe5f1;
+        }
+
+        .no-border-left {
+            border-left: none !important;
+        }
+
+        .no-border-right {
+            border-right: none !important;
+        }
+
+        .no-border-top {
+            border-top: none !important;
+        }
+
+        .no-border-bottom {
+            border-bottom: none !important;
+        }
+
+        /* Column Widths to ensure perfect alignment */
+        .col-1 {
+            width: 3.5%;
+        }
+
+        /* S NO */
+        .col-2 {
+            width: 14.5%;
+        }
+
+        /* Consignee */
+        .col-3 {
+            width: 10%;
+        }
+
+        /* Dest */
+        .col-4 {
+            width: 9%;
+        }
+
+        /* Truck */
+        .col-5 {
+            width: 8%;
+        }
+
+        /* LR */
+        .col-6 {
+            width: 9%;
+        }
+
+        /* InvNo */
+        .col-7 {
+            width: 8%;
+        }
+
+        /* Date */
+        .col-8 {
+            width: 7.5%;
+        }
+
+        /* Billed */
+        .col-9 {
+            width: 7.5%;
+        }
+
+        /* Rec */
+        .col-10 {
+            width: 6%;
+        }
+
+        /* Rate */
+        .col-11 {
+            width: 12%;
+        }
+
+        /* Total */
+        .col-12 {
+            width: 5%;
+        }
+
+        /* Short */
+
+        .normal-text {
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        .declaration-text {
+            font-weight: bold;
+            font-style: italic;
+            font-size: 10px;
+            padding: 4px;
+            line-height: 1.2;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="invoice-container bold-italic">
+        <table>
+            <colgroup>
+                <col class="col-1">
+                <col class="col-2">
+                <col class="col-3">
+                <col class="col-4">
+                <col class="col-5">
+                <col class="col-6">
+                <col class="col-7">
+                <col class="col-8">
+                <col class="col-9">
+                <col class="col-10">
+                <col class="col-11">
+                <col class="col-12">
+            </colgroup>
+            <tbody>
+                <tr>
+                    <td colspan="12" class="center no-border-left no-border-right no-border-top normal-text"
+                        style="font-size: 18px; font-weight: bold; padding: 5px;">VIKAS GOODS TRANSPORT CO.</td>
+                </tr>
+                <tr>
+                    <td colspan="12" class="center no-border-left no-border-right" style="padding: 4px;">H.O. :Near Rao
+                        Gopal Dev Chowk, Narnaul Road Rewari ,E-Mail : vikasgoodstransport1234@gmail.com,Contact :
+                        9416319445</td>
+                </tr>
+                <tr>
+                    <td colspan="12" class="center bg-yellow no-border-left no-border-right"
+                        style="padding: 4px; font-size: 12px;">TRANSPORTATION FREIGHT BILL ( Primary/Grey)</td>
+                </tr>
+                <tr>
+                    <td colspan="12" class="center no-border-left no-border-right"
+                        style="padding: 4px; font-size: 12px;">TAX INVOICE (Loose/Bag/STO) - Cement/Clinker</td>
+                </tr>
+
+                <tr>
+                    <td colspan="2" class="no-border-left">Sap Code :</td>
+                    <td colspan="2">500000505</td>
+                    <td colspan="4" rowspan="8" class="no-border-top no-border-bottom"></td>
+                    <td colspan="2">Bill No. :</td>
+                    <td colspan="2" class="no-border-right">36</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="no-border-left">Consignor / Bill To</td>
+                    <td colspan="2">J.K. CEMENT WORKS, JHARLI</td>
+                    <td colspan="2">Date :</td>
+                    <td colspan="2" class="no-border-right">31-May-25</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="no-border-left">GSTI :</td>
+                    <td colspan="2">06AABCJ0355R1ZB</td>
+                    <td colspan="2">PAN No.:</td>
+                    <td colspan="2" class="no-border-right">ARIPK9021C</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="no-border-left">SAC Code :</td>
+                    <td colspan="2">996511 GTA Services</td>
+                    <td colspan="2">GSTIN No.:</td>
+                    <td colspan="2" class="no-border-right">06ARIPK9021C2Z2</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="no-border-left">Plant Code :</td>
+                    <td colspan="2">1022</td>
+                    <td colspan="2">Status</td>
+                    <td colspan="2" class="no-border-right">Propriter</td>
+                </tr>
+                <tr>
+                    <td colspan="4" rowspan="2" class="no-border-left no-border-bottom"></td>
+                    <td colspan="2">Transport Mode</td>
+                    <td colspan="2" class="no-border-right">Road</td>
+                </tr>
+                <tr>
+                    <td colspan="2">RST on forward Charge</td>
+                    <td colspan="2" class="no-border-right">Yes</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="center no-border-left">Place of Supply</td>
+                    <td colspan="2" class="center">State Name</td>
+                    <td colspan="2">State Code</td>
+                    <td class="no-border-right">06</td>
+                    <td class="no-border-right no-border-left"></td>
+                </tr>
+
+                <tr class="bg-gray center">
+                    <td class="no-border-left">S NO</td>
+                    <td>Consignee Name</td>
+                    <td>Destination</td>
+                    <td>Truck No</td>
+                    <td>LR No</td>
+                    <td>InvoiceNo</td>
+                    <td>Invoice<br>Date</td>
+                    <td>Billed Qty (LD)</td>
+                    <td>Rec. Qty (UL)</td>
+                    <td>Rate<br>PMT</td>
+                    <td>Total Freight</td>
+                    <td class="no-border-right">Short<br>Qty</td>
+                </tr>
+
+                <tr class="center">
+                    <td class="no-border-left">1</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">SIKAR</td>
+                    <td>HR63E9632</td>
+                    <td>VGTC-26/1</td>
+                    <td>3387982535</td>
+                    <td>30.04.2025</td>
+                    <td>42</td>
+                    <td>42</td>
+                    <td>600</td>
+                    <td>25200</td>
+                    <td class="no-border-right"></td>
+                </tr>
+                <tr class="center">
+                    <td class="no-border-left">2</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">BATHINDA</td>
+                    <td>HR47F7819</td>
+                    <td>VGTC-26/4</td>
+                    <td>3387995711</td>
+                    <td>02.05.2025</td>
+                    <td>8</td>
+                    <td>8</td>
+                    <td>763</td>
+                    <td>6104</td>
+                    <td class="no-border-right"></td>
+                </tr>
+                <tr class="center">
+                    <td class="no-border-left">3</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">BATHINDA</td>
+                    <td>HR63E9768</td>
+                    <td>VGTC-26/16</td>
+                    <td>3388008452</td>
+                    <td>05.05.2025</td>
+                    <td>42</td>
+                    <td>42</td>
+                    <td>763</td>
+                    <td>32046</td>
+                    <td class="no-border-right"></td>
+                </tr>
+                <tr class="center">
+                    <td class="no-border-left">4</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">ROHTAK</td>
+                    <td>HR46D7210</td>
+                    <td>VGTC-26/28</td>
+                    <td>3388032183</td>
+                    <td>10.05.2025</td>
+                    <td>34</td>
+                    <td>34</td>
+                    <td>301</td>
+                    <td>10234</td>
+                    <td class="no-border-right"></td>
+                </tr>
+                <tr class="center">
+                    <td class="no-border-left">5</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">BATHINDA</td>
+                    <td>HR63E9768</td>
+                    <td>VGTC-26/42</td>
+                    <td>3388052688</td>
+                    <td>14.05.2025</td>
+                    <td>42</td>
+                    <td>42</td>
+                    <td>763</td>
+                    <td>32046</td>
+                    <td class="no-border-right"></td>
+                </tr>
+                <tr class="center">
+                    <td class="no-border-left">6</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">BEHROR</td>
+                    <td>HR63E1352</td>
+                    <td>VGTC-26/50</td>
+                    <td>3388064843</td>
+                    <td>15.05.2025</td>
+                    <td>42</td>
+                    <td>42</td>
+                    <td>406</td>
+                    <td>17052</td>
+                    <td class="no-border-right"></td>
+                </tr>
+                <tr class="center">
+                    <td class="no-border-left">7</td>
+                    <td class="left">JK CEMENT WORKS</td>
+                    <td class="left">BATHINDA</td>
+                    <td>HR63E9632</td>
+                    <td>VGTC-26/60</td>
+                    <td>3388098720</td>
+                    <td>21.05.2025</td>
+                    <td>42</td>
+                    <td>42</td>
+                    <td>763</td>
+                    <td>32046</td>
+                    <td class="no-border-right"></td>
+                </tr>
+
+                <tr class="bg-gray center">
+                    <td colspan="7" class="no-border-left">Grand Total</td>
+                    <td>252.000</td>
+                    <td>252.000</td>
+                    <td></td>
+                    <td>154,728.000</td>
+                    <td class="no-border-right">0.000</td>
+                </tr>
+
+                <tr>
+                    <td colspan="8" rowspan="4" class="no-border-left no-border-bottom"></td>
+                    <td>Inter State</td>
+                    <td>IGST 12%</td>
+                    <td class="center">0</td>
+                    <td rowspan="4" class="no-border-right no-border-bottom"></td>
+                </tr>
+                <tr>
+                    <td rowspan="2">Intra State</td>
+                    <td>CGST 6%</td>
+                    <td class="center">9284</td>
+                </tr>
+                <tr>
+                    <td>SGST 6%</td>
+                    <td class="center">9284</td>
+                </tr>
+                <tr>
+                    <td>Total</td>
+                    <td></td>
+                    <td class="center">173295</td>
+                </tr>
+
+                <tr>
+                    <td colspan="12" class="bg-blue no-border-left no-border-right" style="height: 22px;"></td>
+                </tr>
+
+                <tr>
+                    <td colspan="8" class="no-border-left no-border-bottom"></td>
+                    <td colspan="4" class="center no-border-right" style="padding: 5px;">For VIKAS GOODS TRANSPORT CO.
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="8" class="no-border-left no-border-top"></td>
+                    <td colspan="4" class="center no-border-right"
+                        style="height: 65px; vertical-align: bottom; padding: 5px;">Authorised Signatory</td>
+                </tr>
+
+                <tr>
+                    <td class="center no-border-left no-border-bottom">12%<br>(FCM)</td>
+                    <td colspan="2" class="center no-border-bottom">Decelaration -</td>
+                    <td colspan="9" class="center declaration-text no-border-right no-border-bottom">
+                        "I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax
+                        on services of GTA in relation to transport of goods supplied by<br>
+                        us during the Financial Year 2025-26 under forward charge.".<br>
+                        GTA in relation to transport of goods supplied by us during the Financial Year 2025-26 under
+                        forward charge.".
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</body>
+
+</html>

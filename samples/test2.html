@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vikas Goods Transport - Tax Invoice</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            padding: 30px 10px;
+        }
+
+        .invoice-wrapper {
+            width: 960px;
+            background: #ffffff;
+            border: 2px solid #1a3c6e;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        /* ── HEADER ── */
+        .header {
+            background: linear-gradient(135deg, #1a3c6e 0%, #2d6abf 100%);
+            color: #ffffff;
+            padding: 18px 24px 14px;
+            text-align: center;
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        .header .header-sub {
+            font-size: 12px;
+            margin-top: 6px;
+            color: #d0e4ff;
+            line-height: 1.6;
+        }
+
+        .header .header-sub span {
+            margin: 0 8px;
+        }
+
+        /* ── BILL TYPE BANNER ── */
+        .bill-type-banner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f5a623;
+            padding: 7px 20px;
+            color: #1a1a1a;
+        }
+
+        .bill-type-banner .bill-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .bill-type-banner .bill-subtitle {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4a2000;
+        }
+
+        /* ── SECTION LAYOUTS ── */
+        .section {
+            padding: 12px 20px;
+        }
+
+        .section-title {
+            background: #1a3c6e;
+            color: #ffffff;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            border-radius: 2px;
+        }
+
+        /* ── INFO GRID (2-column top info) ── */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 20px;
+        }
+
+        .info-left,
+        .info-right {
+            padding: 0;
+        }
+
+        .info-row {
+            display: flex;
+            border-bottom: 1px solid #dde5f0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-key {
+            background: #eaf0fb;
+            color: #1a3c6e;
+            font-size: 11.5px;
+            font-weight: 700;
+            padding: 6px 10px;
+            width: 160px;
+            min-width: 140px;
+            border-right: 1px solid #c0cce0;
+        }
+
+        .info-val {
+            font-size: 11.5px;
+            padding: 6px 10px;
+            color: #222;
+            flex: 1;
+        }
+
+        .info-val.highlight {
+            font-weight: 700;
+            color: #c0392b;
+        }
+
+        /* Divider between left and right halves */
+        .info-left {
+            border-right: 2px solid #1a3c6e;
+        }
+
+        /* ── CONSIGNEE/CONSIGNOR BOX ── */
+        .party-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 0 20px 10px;
+        }
+
+        .party-box {
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .party-box-title {
+            background: #2d6abf;
+            color: #fff;
+            font-size: 11.5px;
+            font-weight: 700;
+            padding: 5px 10px;
+            text-transform: uppercase;
+        }
+
+        .party-box-body {
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.7;
+            color: #222;
+            background: #f9fbff;
+        }
+
+        .party-box-body strong {
+            color: #1a3c6e;
+        }
+
+        /* ── MAIN TABLE ── */
+        .table-wrap {
+            margin: 0 20px 10px;
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        table.main-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11.5px;
+        }
+
+        table.main-table thead tr {
+            background: #1a3c6e;
+            color: #ffffff;
+        }
+
+        table.main-table thead th {
+            padding: 7px 6px;
+            text-align: center;
+            border: 1px solid #3358a0;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        table.main-table tbody tr:nth-child(even) {
+            background: #f2f6fc;
+        }
+
+        table.main-table tbody tr:hover {
+            background: #ddeeff;
+        }
+
+        table.main-table tbody td {
+            padding: 6px 6px;
+            border: 1px solid #d0daea;
+            text-align: center;
+            color: #333;
+        }
+
+        table.main-table tbody td.text-left {
+            text-align: left;
+            padding-left: 10px;
+        }
+
+        table.main-table tfoot tr {
+            background: #eaf0fb;
+        }
+
+        table.main-table tfoot td {
+            padding: 6px 8px;
+            border: 1px solid #c0cce0;
+            font-weight: 700;
+            font-size: 12px;
+            color: #1a3c6e;
+        }
+
+        /* ── GST SUMMARY TABLE ── */
+        .gst-amount-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 12px;
+            margin: 0 20px 10px;
+        }
+
+        table.gst-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11.5px;
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        table.gst-table thead tr {
+            background: #2d6abf;
+            color: #fff;
+        }
+
+        table.gst-table thead th {
+            padding: 6px 8px;
+            text-align: center;
+            border: 1px solid #3a70c0;
+            font-size: 11px;
+        }
+
+        table.gst-table tbody td {
+            padding: 5px 8px;
+            border: 1px solid #d0daea;
+            text-align: center;
+            font-size: 11.5px;
+        }
+
+        table.gst-table tbody tr:nth-child(even) {
+            background: #f2f6fc;
+        }
+
+        table.gst-table tfoot td {
+            background: #1a3c6e;
+            color: #fff;
+            font-weight: 700;
+            padding: 6px 8px;
+            text-align: center;
+            border: 1px solid #3358a0;
+        }
+
+        /* ── AMOUNT SUMMARY BOX ── */
+        .amount-summary {
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .amount-summary-title {
+            background: #2d6abf;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 5px 12px;
+        }
+
+        .amount-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 12px;
+            font-size: 12px;
+            border-bottom: 1px solid #dde5f0;
+            color: #333;
+        }
+
+        .amount-row:last-child {
+            border-bottom: none;
+        }
+
+        .amount-row .label {
+            color: #555;
+        }
+
+        .amount-row .value {
+            font-weight: 700;
+            color: #1a3c6e;
+        }
+
+        .amount-row.total-row {
+            background: #1a3c6e;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .amount-row.total-row .label,
+        .amount-row.total-row .value {
+            color: #fff;
+        }
+
+        /* ── WORDS BOX ── */
+        .words-box {
+            margin: 0 20px 10px;
+            background: #fffbe6;
+            border: 1px solid #f5a623;
+            border-left: 4px solid #f5a623;
+            border-radius: 4px;
+            padding: 8px 14px;
+            font-size: 12px;
+            color: #4a3000;
+        }
+
+        .words-box strong {
+            color: #c07000;
+        }
+
+        /* ── TERMS ── */
+        .terms-box {
+            margin: 0 20px 10px;
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .terms-box-title {
+            background: #1a3c6e;
+            color: #fff;
+            font-size: 11.5px;
+            font-weight: 700;
+            padding: 5px 12px;
+        }
+
+        .terms-box-body {
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #444;
+            line-height: 1.8;
+            background: #f9fbff;
+        }
+
+        .terms-box-body ol {
+            padding-left: 18px;
+        }
+
+        /* ── SIGNATURE / FOOTER ── */
+        .sig-footer {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0;
+            margin: 0 20px 10px;
+            border: 1px solid #c0cce0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .sig-cell {
+            padding: 14px 12px;
+            text-align: center;
+            border-right: 1px solid #c0cce0;
+            background: #f9fbff;
+            font-size: 11px;
+            color: #555;
+        }
+
+        .sig-cell:last-child {
+            border-right: none;
+        }
+
+        .sig-cell .sig-line {
+            height: 40px;
+            border-bottom: 1px dashed #aaa;
+            margin: 6px 20px 4px;
+        }
+
+        .sig-cell strong {
+            display: block;
+            margin-top: 4px;
+            color: #1a3c6e;
+            font-size: 12px;
+        }
+
+        /* ── FOOTER BAR ── */
+        .footer-bar {
+            background: #1a3c6e;
+            color: #d0e4ff;
+            text-align: center;
+            padding: 8px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .footer-bar span {
+            color: #f5a623;
+            font-weight: 700;
+        }
+
+        /* ── STATUS BADGE ── */
+        .badge {
+            display: inline-block;
+            background: #27ae60;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 7px;
+            border-radius: 10px;
+            margin-left: 5px;
+            vertical-align: middle;
+        }
+
+        /* Print */
+        @media print {
+            body {
+                background: #fff;
+                padding: 0;
+            }
+
+            .invoice-wrapper {
+                box-shadow: none;
+                border: 1px solid #000;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="invoice-wrapper">
+
+        <!-- ═══════════ HEADER ═══════════ -->
+        <div class="header">
+            <h1>🚛 Vikas Goods Transport Co.</h1>
+            <div class="header-sub">
+                <span>📍 Near Rao Gopal Dev Chowk, Narnaul Road, Rewari</span>
+                <span>|</span>
+                <span>✉️ vikasgoodstransport1234@gmail.com</span>
+                <span>|</span>
+                <span>📞 9416319445</span>
+            </div>
+        </div>
+
+        <!-- ═══════════ BILL TYPE BANNER ═══════════ -->
+        <div class="bill-type-banner">
+            <div class="bill-title">🏷️ Transportation Freight Bill &nbsp;(Primary / Grey)</div>
+            <div class="bill-subtitle">TAX INVOICE (Loose / Bag / STO) — Cement / Clinker</div>
+        </div>
+
+        <!-- ═══════════ TOP INFO GRID ═══════════ -->
+        <div class="info-grid">
+            <!-- LEFT COLUMN -->
+            <div class="info-left">
+                <div class="info-row">
+                    <span class="info-key">SAP Code</span>
+                    <span class="info-val">500000505</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Bill No.</span>
+                    <span class="info-val highlight">36</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Date</span>
+                    <span class="info-val">31-May-2025</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">GSTIN (Consignor)</span>
+                    <span class="info-val">06AABCJ0355R1ZB</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Plant Code</span>
+                    <span class="info-val">1022</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Transport Mode</span>
+                    <span class="info-val">Road</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">State Code</span>
+                    <span class="info-val">06 (Haryana)</span>
+                </div>
+            </div>
+            <!-- RIGHT COLUMN -->
+            <div class="info-right">
+                <div class="info-row">
+                    <span class="info-key">Consignor / Bill To</span>
+                    <span class="info-val highlight">J.K. CEMENT WORKS, JHARLI</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">PAN No.</span>
+                    <span class="info-val">ARIPK9021C</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">SAC Code</span>
+                    <span class="info-val">996511 — GTA Services</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">GSTIN No.</span>
+                    <span class="info-val">06ARIPK9021C2Z2</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Status</span>
+                    <span class="info-val">Proprietor</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">RST on Fwd. Charge</span>
+                    <span class="info-val">Yes <span class="badge">✔</span></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Place of Supply</span>
+                    <span class="info-val">Haryana (06)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ CONSIGNOR / CONSIGNEE ═══════════ -->
+        <div class="party-grid">
+            <div class="party-box">
+                <div class="party-box-title">📦 Consignor (From)</div>
+                <div class="party-box-body">
+                    <strong>J.K. CEMENT WORKS</strong><br />
+                    Jharli, District Jhajjar,<br />
+                    Haryana – 124103<br />
+                    GSTIN: 06AABCJ0355R1ZB<br />
+                    State Code: 06
+                </div>
+            </div>
+            <div class="party-box">
+                <div class="party-box-title">🏠 Consignee (To)</div>
+                <div class="party-box-body">
+                    <strong>J.K. CEMENT WORKS (Delivery Point)</strong><br />
+                    Narnaul / Rewari Region,<br />
+                    Haryana<br />
+                    State Code: 06
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ MAIN FREIGHT TABLE ═══════════ -->
+        <div style="padding: 0 20px 4px;">
+            <div class="section-title">📋 Freight / Lorry Details</div>
+        </div>
+        <div class="table-wrap">
+            <table class="main-table">
+                <thead>
+                    <tr>
+                        <th>S.No.</th>
+                        <th>Vehicle No.</th>
+                        <th>LR No.</th>
+                        <th>LR Date</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Material</th>
+                        <th>Bags / MT</th>
+                        <th>Weight (MT)</th>
+                        <th>Rate (₹/MT)</th>
+                        <th>Freight Amt (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>HR55AG0001</td>
+                        <td>LR-101</td>
+                        <td>01-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Rewari</td>
+                        <td class="text-left">Cement</td>
+                        <td>400</td>
+                        <td>20.00</td>
+                        <td>550.00</td>
+                        <td>11,000.00</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>HR55AG0002</td>
+                        <td>LR-102</td>
+                        <td>03-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Narnaul</td>
+                        <td class="text-left">Cement</td>
+                        <td>500</td>
+                        <td>25.00</td>
+                        <td>550.00</td>
+                        <td>13,750.00</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>HR55AG0003</td>
+                        <td>LR-103</td>
+                        <td>07-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Rewari</td>
+                        <td class="text-left">Clinker</td>
+                        <td>480</td>
+                        <td>24.00</td>
+                        <td>520.00</td>
+                        <td>12,480.00</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>HR55AG0004</td>
+                        <td>LR-104</td>
+                        <td>12-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Narnaul</td>
+                        <td class="text-left">Cement (Bag)</td>
+                        <td>450</td>
+                        <td>22.50</td>
+                        <td>550.00</td>
+                        <td>12,375.00</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>HR55AG0005</td>
+                        <td>LR-105</td>
+                        <td>18-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Rewari</td>
+                        <td class="text-left">Cement (Loose)</td>
+                        <td>500</td>
+                        <td>25.00</td>
+                        <td>530.00</td>
+                        <td>13,250.00</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td>HR55AG0006</td>
+                        <td>LR-106</td>
+                        <td>22-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Rewari</td>
+                        <td class="text-left">Clinker</td>
+                        <td>460</td>
+                        <td>23.00</td>
+                        <td>520.00</td>
+                        <td>11,960.00</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td>HR55AG0007</td>
+                        <td>LR-107</td>
+                        <td>28-May-25</td>
+                        <td class="text-left">Jharli</td>
+                        <td class="text-left">Narnaul</td>
+                        <td class="text-left">Cement</td>
+                        <td>440</td>
+                        <td>22.00</td>
+                        <td>550.00</td>
+                        <td>12,100.00</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="7" style="text-align:right; padding-right:12px;">TOTAL</td>
+                        <td>3,230</td>
+                        <td>161.50 MT</td>
+                        <td>—</td>
+                        <td>₹ 86,915.00</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- ═══════════ GST + AMOUNT SUMMARY ═══════════ -->
+        <div class="gst-amount-grid">
+            <!-- GST TABLE -->
+            <div>
+                <div class="section-title" style="margin-bottom:6px;">🧾 GST Summary</div>
+                <table class="gst-table">
+                    <thead>
+                        <tr>
+                            <th>Tax Type</th>
+                            <th>Taxable Amt (₹)</th>
+                            <th>Rate (%)</th>
+                            <th>Tax Amt (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>CGST</td>
+                            <td>86,915.00</td>
+                            <td>2.5%</td>
+                            <td>2,172.88</td>
+                        </tr>
+                        <tr>
+                            <td>SGST</td>
+                            <td>86,915.00</td>
+                            <td>2.5%</td>
+                            <td>2,172.88</td>
+                        </tr>
+                        <tr>
+                            <td>IGST</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3">Total GST (5%)</td>
+                            <td>₹ 4,345.75</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <!-- AMOUNT SUMMARY -->
+            <div>
+                <div class="section-title" style="margin-bottom:6px;">💰 Amount Summary</div>
+                <div class="amount-summary">
+                    <div class="amount-summary-title">Bill Amount Breakup</div>
+                    <div class="amount-row">
+                        <span class="label">Basic Freight</span>
+                        <span class="value">₹ 86,915.00</span>
+                    </div>
+                    <div class="amount-row">
+                        <span class="label">CGST @ 2.5%</span>
+                        <span class="value">₹ 2,172.88</span>
+                    </div>
+                    <div class="amount-row">
+                        <span class="label">SGST @ 2.5%</span>
+                        <span class="value">₹ 2,172.88</span>
+                    </div>
+                    <div class="amount-row">
+                        <span class="label">IGST</span>
+                        <span class="value">₹ 0.00</span>
+                    </div>
+                    <div class="amount-row">
+                        <span class="label">Other Charges</span>
+                        <span class="value">₹ 0.00</span>
+                    </div>
+                    <div class="amount-row total-row">
+                        <span class="label">GRAND TOTAL</span>
+                        <span class="value">₹ 91,260.75</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ AMOUNT IN WORDS ═══════════ -->
+        <div class="words-box">
+            <strong>Amount in Words:</strong>&nbsp;
+            Rupees Ninety-One Thousand Two Hundred Sixty and Seventy-Five Paise Only
+        </div>
+
+        <!-- ═══════════ TERMS & CONDITIONS ═══════════ -->
+        <div class="terms-box">
+            <div class="terms-box-title">📜 Terms & Conditions</div>
+            <div class="terms-box-body">
+                <ol>
+                    <li>This is a computer-generated invoice and does not require a physical signature.</li>
+                    <li>Payment should be made within <strong>30 days</strong> from the date of invoice.</li>
+                    <li>All disputes are subject to <strong>Rewari / Narnaul Jurisdiction</strong> only.</li>
+                    <li>GTA Services under SAC Code <strong>996511</strong> — GST payable on Forward Charge Basis.</li>
+                    <li>Goods once dispatched will not be accepted back without prior written consent.</li>
+                    <li>We are not responsible for any damages caused due to natural calamities during transit.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- ═══════════ BANK DETAILS ═══════════ -->
+        <div style="margin: 0 20px 10px;">
+            <div class="section-title">🏦 Bank Details</div>
+            <div
+                style="border:1px solid #c0cce0; border-radius:4px; background:#f9fbff; padding: 10px 16px; font-size:12px; line-height:1.9; color:#333;">
+                <strong style="color:#1a3c6e;">Account Name:</strong> Vikas Goods Transport Co. &nbsp;|&nbsp;
+                <strong style="color:#1a3c6e;">Bank:</strong> State Bank of India &nbsp;|&nbsp;
+                <strong style="color:#1a3c6e;">Branch:</strong> Rewari &nbsp;|&nbsp;
+                <strong style="color:#1a3c6e;">A/C No.:</strong> XXXXXXXXXXXX &nbsp;|&nbsp;
+                <strong style="color:#1a3c6e;">IFSC:</strong> SBIN0XXXXXX
+            </div>
+        </div>
+
+        <!-- ═══════════ SIGNATURES ═══════════ -->
+        <div class="sig-footer">
+            <div class="sig-cell">
+                <div>Prepared By</div>
+                <div class="sig-line"></div>
+                <strong>Authorised Signatory</strong>
+            </div>
+            <div class="sig-cell">
+                <div>Checked By</div>
+                <div class="sig-line"></div>
+                <strong>Accounts Department</strong>
+            </div>
+            <div class="sig-cell">
+                <div>For <strong style="color:#c0392b;">Vikas Goods Transport Co.</strong></div>
+                <div class="sig-line"></div>
+                <strong>Proprietor / Owner Seal</strong>
+            </div>
+        </div>
+
+        <!-- ═══════════ FOOTER BAR ═══════════ -->
+        <div class="footer-bar">
+            Thank you for your business! &nbsp;|&nbsp;
+            <span>Vikas Goods Transport Co.</span> &nbsp;|&nbsp;
+            📞 9416319445 &nbsp;|&nbsp;
+            ✉️ vikasgoodstransport1234@gmail.com
+        </div>
+
+    </div>
+</body>
+
+</html>
