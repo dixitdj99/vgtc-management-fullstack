@@ -27,4 +27,12 @@ const getCol = (baseCol, req) => {
     return `${envPrefix}${sandboxPrefix}${baseCol}`;
 };
 
-module.exports = { getCol };
+/**
+ * Applies only the environment prefix. Correct for collections like 'users'
+ * or internal metadata that shouldn't be affected by the sandbox flag.
+ */
+const getEnvCol = (baseCol) => {
+    return `${getEnvPrefix()}${baseCol}`;
+};
+
+module.exports = { getCol, getEnvCol };

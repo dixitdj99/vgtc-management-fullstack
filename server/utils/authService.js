@@ -2,7 +2,9 @@ const bcrypt = require('bcryptjs');
 const localStore = require('./localStore');
 const { db, isAvailable } = require('../firebase');
 const { isProduction } = require('./envConfig');
-const COLLECTION = 'users';
+const { getEnvCol } = require('./collectionUtils');
+
+const getUCol = () => getEnvCol('users');
 
 const isFirebaseAvailable = () => isAvailable();
 
@@ -40,10 +42,10 @@ const seed = async () => {
                 const { password, ...rest } = u;
                 const hash = bcrypt.hashSync(password, 10);
                 if (isFirebaseAvailable()) {
-                    await db.collection(COLLECTION).add({ ...rest, password: hash, createdAt: new Date().toISOString() });
+                    await db.collection(getUCol()).add({ ...rest, password: hash, createdAt: new Date().toISOString() });
                     console.log(`[Auth] User '${u.username}' created in Firestore`);
                 } else {
-                    localStore.insert(COLLECTION, { ...rest, password: hash });
+                    localStore.insert(getUCol(), { ...rest, password: hash });
                     console.log(`[Auth] User '${u.username}' created locally`);
                 }
             }
@@ -55,29 +57,29 @@ const seed = async () => {
 
 const getAll = async () => {
     if (isFirebaseAvailable()) {
-        const snapshot = await db.collection(COLLECTION).get();
+        const snapshot = await db.collection(getUCol()).get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), password: undefined, otpCode: undefined }));
     }
-    return localStore.getAll(COLLECTION).map(u => ({ ...u, password: undefined, otpCode: undefined }));
+    return localStore.getAll(getUCol()).map(u => ({ ...u, password: undefined, otpCode: undefined }));
 };
 
 const findByUsername = async (username) => {
     if (isFirebaseAvailable()) {
-        const snapshot = await db.collection(COLLECTION).where('username', '==', username).limit(1).get();
+        const snapshot = await db.collection(getUCol()).where('username', '==', username).limit(1).get();
         if (snapshot.empty) return null;
         const doc = snapshot.docs[0];
         return { id: doc.id, ...doc.data() };
     }
-    return localStore.getAll(COLLECTION).find(u => u.username === username);
+    return localStore.getAll(getUCol()).find(u => u.username === username);
 };
 
 const findById = async (id) => {
     if (isFirebaseAvailable()) {
-        const doc = await db.collection(COLLECTION).doc(id).get();
+        const doc = await db.collection(getUCol()).doc(id).get();
         if (!doc.exists) return null;
         return { id: doc.id, ...doc.data() };
     }
-    return localStore.getAll(COLLECTION).find(u => u.id === id);
+    return localStore.getAll(getUCol()).find(u => u.id === id);
 };
 
 const createUser = async (name, username, password, role = 'user', email = '', permissions = null) => {
@@ -100,11 +102,11 @@ const createUser = async (name, username, password, role = 'user', email = '', p
     };
 
     if (isFirebaseAvailable()) {
-        const docRef = await db.collection(COLLECTION).add(userData);
+        const docRef = await db.collection(getUCol()).add(userData);
         return { id: docRef.id, ...userData, password: undefined };
     }
 
-    const doc = localStore.insert(COLLECTION, userData);
+    const doc = localStore.insert(getUCol(), userData);
     return { ...doc, password: undefined };
 };
 
@@ -123,15 +125,15 @@ const updateUser = async (id, data) => {
     });
 
     if (isFirebaseAvailable()) {
-        await db.collection(COLLECTION).doc(id).update(filteredData);
+        await db.collection(getUCol()).doc(id).update(filteredData);
         return;
     }
-    localStore.update(COLLECTION, id, filteredData);
+    localStore.update(getUCol(), id, filteredData);
 }
 
 const deleteUser = async (id) => {
     if (isFirebaseAvailable()) {
-        const usersRef = db.collection(COLLECTION);
+        const usersRef = db.collection(getUCol());
         const userDoc = await usersRef.doc(id).get();
         if (!userDoc.exists) throw new Error('User not found');
         const userData = userDoc.data();
@@ -143,11 +145,11 @@ const deleteUser = async (id) => {
         return;
     }
 
-    const user = localStore.getAll(COLLECTION).find(u => u.id === id);
+    const user = localStore.getAll(getUCol()).find(u => u.id === id);
     if (!user) throw new Error('User not found');
-    if (user.role === 'admin' && localStore.getAll(COLLECTION).filter(u => u.role === 'admin').length === 1)
+    if (user.role === 'admin' && localStore.getAll(getUCol()).filter(u => u.role === 'admin').length === 1)
         throw new Error('Cannot delete the last admin');
-    localStore.delete(COLLECTION, id);
+    localStore.delete(getUCol(), id);
 };
 
 const generateOTP = () => {
