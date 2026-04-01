@@ -22,6 +22,7 @@ const sellRoutes = require('./routes/sellRoutes');
 const mileageRoutes = require('./routes/mileageRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const { requireAuth } = require('./middleware/auth');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
@@ -31,13 +32,13 @@ if (!process.env.NETLIFY) {
 const app = express();
 app.use(express.json());
 
-app.use('/api/lr', lrRoutes);
-app.use('/api/vouchers', voucherRoutes);
+app.use('/api/lr', requireAuth, lrRoutes);
+app.use('/api/vouchers', requireAuth, voucherRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/cashbook', cashbookRoutes);
-app.use('/api/stock', stockRoutes);
-app.use('/api/sell', sellRoutes);
+app.use('/api/cashbook', requireAuth, cashbookRoutes);
+app.use('/api/stock', requireAuth, stockRoutes);
+app.use('/api/sell', requireAuth, sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
 
@@ -55,11 +56,11 @@ app.get('/api/weather', async (req, res) => {
 });
 
 // JKL Routes
-app.use('/api/jkl/lr', jklLrRoutes);
-app.use('/api/jkl/stock', jklStockRoutes);
-app.use('/api/jkl/cashbook', jklCashbookRoutes);
-app.use('/api/vehicles', vehicleRoutes);
-app.use('/api/mileage', mileageRoutes);
+app.use('/api/jkl/lr', requireAuth, jklLrRoutes);
+app.use('/api/jkl/stock', requireAuth, jklStockRoutes);
+app.use('/api/jkl/cashbook', requireAuth, jklCashbookRoutes);
+app.use('/api/vehicles', requireAuth, vehicleRoutes);
+app.use('/api/mileage', requireAuth, mileageRoutes);
 
 const PORT = process.env.PORT || 5000;
 

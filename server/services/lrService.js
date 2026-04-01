@@ -12,8 +12,19 @@ const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) =>
     const metadataRef = db.collection(metadataCollection).doc('lr_counter');
     return await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(metadataRef);
-        if (!doc.exists) { transaction.set(metadataRef, { count: 1 }); return 1; }
-        const newCount = doc.data().count + 1;
+        if (!doc.exists) {
+            transaction.set(metadataRef, { count: 1, available: [] });
+            return 1;
+        }
+        const data = doc.data();
+        let available = data.available || [];
+        if (available.length > 0) {
+            const nextNo = Math.min(...available);
+            available = available.filter(n => n !== nextNo);
+            transaction.update(metadataRef, { available });
+            return nextNo;
+        }
+        const newCount = (data.count || 0) + 1;
         transaction.update(metadataRef, { count: newCount });
         return newCount;
     });
@@ -130,9 +141,33 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     }
 };
 
-const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR) => {
+const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
     if (firebaseAvailable()) {
-        await db.collection(lrCollection).doc(id).delete();
+        const lrRef = db.collection(lrCollection).doc(id);
+        const doc = await lrRef.get();
+        if (doc.exists) {
+            const { lrNo } = doc.data();
+            await lrRef.delete();
+            // Check if any other docs have this lrNo
+            const otherDocs = await db.collection(lrCollection).where('lrNo', '==', lrNo).limit(1).get();
+            if (otherDocs.empty) {
+                // If no more docs with this lrNo, make it available for reuse
+                const metadataRef = db.collection(metadataCollection).doc('lr_counter');
+                await db.runTransaction(async (transaction) => {
+                    const mDoc = await transaction.get(metadataRef);
+                    if (mDoc.exists) {
+                        const data = mDoc.data();
+                        const available = data.available || [];
+                        if (!available.includes(lrNo)) {
+                            available.push(lrNo);
+                            transaction.update(metadataRef, { available });
+                        }
+                    } else {
+                        transaction.set(metadataRef, { count: 1, available: [lrNo] });
+                    }
+                });
+            }
+        }
     } else {
         localStore.delete(lrCollection, id);
     }

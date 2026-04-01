@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
+const { isProduction } = require('../utils/envConfig');
 
 const BASE_COL = 'loading_receipts';
 const META_COL = 'metadata';
@@ -16,10 +17,12 @@ router.post('/', async (req, res) => {
         );
 
         // Real-time backup (fire-and-forget, non-blocking)
-        const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
-        // Merge original data with result to ensure all fields (truckNo, etc.) are available for PDF
-        const fullData = { ...req.body, ...result };
-        backupEntryToDrive('Loading_Receipt', fullData, PLANTS.SUPER).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+        // Only run in production to keep Drive data clean
+        if (isProduction()) {
+            const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
+            const fullData = { ...req.body, ...result };
+            backupEntryToDrive('Loading_Receipt', fullData, PLANTS.SUPER).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+        }
 
         res.status(201).json(result);
     } catch (error) {
@@ -59,7 +62,7 @@ router.patch('/:id', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body);
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(BASE_COL, req));
         res.json({ message: 'Receipt updated successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -69,7 +72,7 @@ router.put('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.params.id, getCol(BASE_COL, req));
+        await lrService.deleteLoadingReceipt(req.params.id, getCol(BASE_COL, req), getCol(META_COL, req));
         res.json({ message: 'Receipt deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });

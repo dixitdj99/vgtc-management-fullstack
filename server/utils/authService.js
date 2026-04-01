@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const localStore = require('./localStore');
 const { db, isAvailable } = require('../firebase');
+const { isProduction } = require('./envConfig');
 const COLLECTION = 'users';
 
 const isFirebaseAvailable = () => isAvailable();
@@ -177,4 +178,10 @@ module.exports = {
     verifyPassword, generateOTP, saveUserOTP, verifyOTP 
 };
 
-seed();
+// Seed default users ONLY in non-production environments.
+// This prevents test accounts from being created/overwritten in the live database.
+if (!isProduction()) {
+    seed();
+} else {
+    console.log('[Auth] Production mode: skipping seed (test users will not be created).');
+}

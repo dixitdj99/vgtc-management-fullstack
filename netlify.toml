@@ -6,6 +6,22 @@
   NPM_CONFIG_PRODUCTION = "false"
   SECRETS_SCAN_OMIT_KEYS = "NODE_ENV"
 
+# ── Environment Isolation ─────────────────────────────────────────────────────
+# APP_ENV controls which Firestore collection tier is used.
+# These blocks override any APP_ENV set in the Netlify dashboard.
+
+[context.production.environment]
+  APP_ENV = "production"
+  BLOCK_PROD_WRITES = "false"
+
+[context.branch-deploy.environment]
+  APP_ENV = "beta"
+  BLOCK_PROD_WRITES = "false"
+
+[context.deploy-preview.environment]
+  APP_ENV = "beta"
+  BLOCK_PROD_WRITES = "false"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

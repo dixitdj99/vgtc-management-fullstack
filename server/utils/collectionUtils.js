@@ -1,12 +1,30 @@
+const { getEnvPrefix } = require('./envConfig');
+
 /**
- * Utility to isolate database collections for Sandbox/Test accounts.
- * If the user is a sandbox user, the collection name is prefixed with 'test_'.
+ * Resolves the Firestore collection name using two isolation layers:
+ *
+ *  Layer 1 — Environment prefix (from APP_ENV):
+ *    local       → 'dev_'
+ *    beta        → 'beta_'
+ *    production  → '' (no prefix)
+ *
+ *  Layer 2 — Sandbox user prefix (from JWT isSandbox flag):
+ *    isSandbox true  → 'test_'
+ *    isSandbox false → '' (no extra prefix)
+ *
+ * Resulting collection examples:
+ *  Local  + Normal  user → dev_loading_receipts
+ *  Local  + Sandbox user → dev_test_loading_receipts
+ *  Beta   + Normal  user → beta_loading_receipts
+ *  Beta   + Sandbox user → beta_test_loading_receipts
+ *  Prod   + Normal  user → loading_receipts
+ *  Prod   + Sandbox user → test_loading_receipts
  */
 const getCol = (baseCol, req) => {
-    if (req.user && req.user.isSandbox) {
-        return `test_${baseCol}`;
-    }
-    return baseCol;
+    const envPrefix = getEnvPrefix();                          // 'dev_' | 'beta_' | ''
+    const isSandbox = req?.user?.isSandbox;
+    const sandboxPrefix = isSandbox ? 'test_' : '';
+    return `${envPrefix}${sandboxPrefix}${baseCol}`;
 };
 
 module.exports = { getCol };

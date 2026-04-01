@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const voucherService = require('../services/voucherService');
 const { getCol } = require('../utils/collectionUtils');
+const { isProduction } = require('../utils/envConfig');
 
 const BASE_COL = 'vouchers';
 
@@ -11,9 +12,12 @@ router.post('/', async (req, res) => {
         const result = await voucherService.createVoucher(req.body, getCol(BASE_COL, req));
         
         // Real-time backup (fire-and-forget, non-blocking)
-        const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
-        const plant = req.body.type === 'JK_Lakshmi' ? PLANTS.LAKSHMI : PLANTS.SUPER;
-        backupEntryToDrive('Voucher', result, plant).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+        // Only run in production to keep Drive data clean
+        if (isProduction()) {
+            const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
+            const plant = req.body.type === 'JK_Lakshmi' ? PLANTS.LAKSHMI : PLANTS.SUPER;
+            backupEntryToDrive('Voucher', result, plant).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+        }
 
         res.status(201).json(result);
     } catch (error) {

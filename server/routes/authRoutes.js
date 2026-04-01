@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const authService = require('../utils/authService');
 const emailService = require('../utils/emailService');
 const { SECRET } = require('../middleware/auth');
+const { ENV, getEnvPrefix } = require('../utils/envConfig');
 
 const { isAvailable } = require('../firebase');
 
@@ -12,6 +13,8 @@ router.get('/status', (req, res) => {
     const firebaseConnected = isAvailable();
     res.json({
         status: 'ok',
+        appEnv: ENV,
+        collectionPrefix: getEnvPrefix() || '(none — production)',
         database: firebaseConnected ? 'Firestore' : 'Local JSON (Fallback)',
         firebase: firebaseConnected ? 'connected' : 'disconnected',
         environment: process.env.NETLIFY ? 'netlify' : 'local',

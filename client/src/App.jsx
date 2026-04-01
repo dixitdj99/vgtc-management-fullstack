@@ -28,6 +28,14 @@ const THEMES = [
   { id: 'sepia', label: 'Sepia', Icon: Coffee },
 ];
 
+// Environment banner — shown in non-production environments only.
+// Driven by VITE_APP_ENV (set in client .env files).
+const APP_ENV = import.meta.env.VITE_APP_ENV || 'local';
+const ENV_BANNER = APP_ENV === 'production' ? null
+  : APP_ENV === 'beta'
+    ? { label: 'BETA', bg: '#f97316', glow: 'rgba(249,115,22,0.4)' }
+    : { label: 'LOCAL DEV', bg: '#eab308', glow: 'rgba(234,179,8,0.4)' };
+
 
 function AppInner() {
   const { user, logout, ready, plant } = useAuth();
@@ -437,6 +445,21 @@ function AppInner() {
             </button>
             <div className="app-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               {FILTERED_NAV.find(n => n.id === active)?.label}
+              {/* Environment banner — visible in local/beta only */}
+              {ENV_BANNER && (
+                <span style={{
+                  background: ENV_BANNER.bg,
+                  color: '#000',
+                  fontSize: '9px',
+                  padding: '2px 8px',
+                  borderRadius: '100px',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  boxShadow: `0 0 12px ${ENV_BANNER.glow}`,
+                  border: '1px solid rgba(0,0,0,0.15)',
+                  letterSpacing: '0.06em'
+                }}>{ENV_BANNER.label}</span>
+              )}
               {user?.isSandbox && (
                 <span style={{ 
                   background: '#f59e0b', 
