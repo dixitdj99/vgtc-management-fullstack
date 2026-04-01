@@ -1,16 +1,21 @@
-const { db, isAvailable: firebaseAvailable } = require('./firebase');
+const { db, admin, isAvailable: firebaseAvailable } = require('./firebase');
 const localStore = require('./utils/localStore');
 const fs = require('fs');
 const path = require('path');
 
 const COLLECTIONS = [
-  'vouchers', 'lr', 'jkl_lr', 'cashbook', 'jkl_cashbook',
-  'stock_additions', 'jkl_stock_additions', 'challans', 'jkl_challans',
-  'vehicles', 'diesel_entries', 'users', 'settings', 'materials', 'parties'
+  // JK Super
+  'loading_receipts', 'vouchers', 'cashbook', 'stock_additions', 'challans', 'materials', 'parties', 'sell_entries', 'diesel_entries',
+  // JK Lakshmi
+  'jkl_loading_receipts', 'jkl_vouchers', 'jkl_cashbook', 'jkl_stock_additions', 'jkl_challans', 'jkl_materials', 'jkl_parties', 'jkl_sell_entries',
+  // Shared/Other
+  'vehicles', 'mileage'
 ];
 
 const METADATA_COLLECTION = 'metadata';
 const COUNTER_DOC = 'lr_counter';
+const JKL_METADATA_COLLECTION = 'jkl_metadata';
+const JKL_COUNTER_DOC = 'lr_counter';
 
 async function clearFirebaseCollection(collectionName) {
   const snapshot = await db.collection(collectionName).get();
@@ -37,10 +42,13 @@ async function run() {
         console.error(`Failed to clear ${col}:`, e.message);
       }
     }
-    // Explicitly reset lr_counter document in metadata
+    // Explicitly reset lr_counter document in metadata for both Super and JKL
     try {
       await db.collection(METADATA_COLLECTION).doc(COUNTER_DOC).set({ count: 0 });
-      console.log('Reset Firestore lr_counter to 0');
+      console.log('Reset Firestore metadata/lr_counter to 0 (Super)');
+      
+      await db.collection(JKL_METADATA_COLLECTION).doc(JKL_COUNTER_DOC).set({ count: 0 });
+      console.log('Reset Firestore jkl_metadata/lr_counter to 0 (JKL)');
     } catch (e) {
       console.error('Failed to reset Firestore lr_counter:', e.message);
     }
