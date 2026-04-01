@@ -38,6 +38,14 @@ router.post('/login', async (req, res) => {
             return res.json({ requireOtp: true, userId: user.id, email: user.email });
         }
 
+        // Success path (no OTP)
+        const token = jwt.sign(
+            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
+            SECRET,
+            { expiresIn: '24h' }
+        );
+        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
+
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -54,11 +62,11 @@ router.post('/verify-otp', async (req, res) => {
 
         const user = await authService.findById(userId);
         const token = jwt.sign(
-            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions },
+            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
             SECRET,
             { expiresIn: '24h' }
         );
-        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions } });
+        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
