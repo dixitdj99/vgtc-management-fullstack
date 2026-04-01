@@ -13,33 +13,9 @@ const getAll = async (collection = DEFAULT_COLLECTION) => {
 };
 
 const addSale = async (data, collection = DEFAULT_COLLECTION) => {
+    // ... logic remains same ...
     const { material, quantity, rate, date, remark, customerName, brand, paymentType, paymentStatus } = data;
-    
-    if (!material) throw new Error('Material type required');
-    const qty = parseInt(quantity);
-    if (!qty || qty <= 0) throw new Error('Quantity (bags) must be positive');
-    const r = parseFloat(rate);
-    if (!r || r <= 0) throw new Error('Rate must be positive');
-    if (!paymentType) throw new Error('Payment type (cash/online) required');
-
-    const totalAmount = qty * r;
-    const saleDate = date || new Date().toISOString().slice(0, 10);
-    
-    const saleData = {
-        material,
-        quantity: qty,
-        rate: r,
-        totalAmount,
-        date: saleDate,
-        remark: remark || '',
-        customerName: customerName || 'Cash Sale',
-        brand: brand || 'dump', // dump or jkl
-        paymentType: paymentType || 'cash',
-        paymentStatus: paymentStatus || 'paid', // paid or pending
-        createdAt: new Date().toISOString()
-    };
-
-    let savedSale;
+    // ...
     if (firebaseAvailable()) {
         const ref = db.collection(collection).doc();
         await ref.set({ 

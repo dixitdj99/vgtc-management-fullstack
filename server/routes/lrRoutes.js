@@ -1,11 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const lrService = require('../services/lrService');
+const { getCol } = require('../utils/collectionUtils');
+
+const BASE_COL = 'loading_receipts';
+const META_COL = 'metadata';
 
 // Create
 router.post('/', async (req, res) => {
     try {
-        const result = await lrService.createLoadingReceipt(req.body);
+        const result = await lrService.createLoadingReceipt(
+            req.body, 
+            getCol(BASE_COL, req), 
+            getCol(META_COL, req)
+        );
 
         // Real-time backup (fire-and-forget, non-blocking)
         const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
@@ -22,7 +30,7 @@ router.post('/', async (req, res) => {
 // Get all
 router.get('/', async (req, res) => {
     try {
-        const receipts = await lrService.getAllLoadingReceipts();
+        const receipts = await lrService.getAllLoadingReceipts(getCol(BASE_COL, req));
         res.json(receipts);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -32,7 +40,7 @@ router.get('/', async (req, res) => {
 // Update billing only
 router.patch('/:id/billing', async (req, res) => {
     try {
-        await lrService.updateBillingStatus(req.params.id, req.body.billing);
+        await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(BASE_COL, req));
         res.json({ message: 'Billing status updated' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -42,7 +50,7 @@ router.patch('/:id/billing', async (req, res) => {
 // Full update of a single receipt row (Support both PATCH and PUT)
 router.patch('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body);
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(BASE_COL, req));
         res.json({ message: 'Receipt updated successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -61,7 +69,7 @@ router.put('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.params.id);
+        await lrService.deleteLoadingReceipt(req.params.id, getCol(BASE_COL, req));
         res.json({ message: 'Receipt deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });

@@ -15,39 +15,43 @@ const DEFAULT_PERMISSIONS = {
     vehicle: 'edit'
 };
 
-// Seed a default admin on first run (Local or Firestore)
+const DEFAULT_USER_DATA = {
+    name: 'Vikas Admin',
+    username: 'admin',
+    role: 'admin',
+    email: '',
+    isOtpEnabled: false,
+    isSandbox: false,
+    permissions: DEFAULT_PERMISSIONS,
+};
+
+// Seed a default admin and tester on first run (Local or Firestore)
 const seed = async () => {
     try {
+        const seedUsers = [
+            { ...DEFAULT_USER_DATA, username: 'admin', name: 'Vikas Admin', password: 'admin123', role: 'admin', isSandbox: false },
+            { ...DEFAULT_USER_DATA, username: 'tester', name: 'Sandbox Tester', password: 'test123', role: 'user', isSandbox: true }
+        ];
+
         if (isFirebaseAvailable()) {
             const snapshot = await db.collection(COLLECTION).limit(1).get();
             if (snapshot.empty) {
-                const hash = bcrypt.hashSync('admin123', 10);
-                await db.collection(COLLECTION).add({
-                    name: 'Vikas Admin',
-                    username: 'admin',
-                    password: hash,
-                    role: 'admin',
-                    email: '',
-                    isOtpEnabled: false,
-                    permissions: DEFAULT_PERMISSIONS,
-                    createdAt: new Date().toISOString()
-                });
-                console.log('[Auth] Default admin created in Firestore → admin/admin123');
+                for (const u of seedUsers) {
+                    const { password, ...rest } = u;
+                    const hash = bcrypt.hashSync(password, 10);
+                    await db.collection(COLLECTION).add({ ...rest, password: hash, createdAt: new Date().toISOString() });
+                }
+                console.log('[Auth] Default users created in Firestore');
             }
         } else {
             const all = localStore.getAll(COLLECTION);
             if (all.length === 0) {
-                const hash = bcrypt.hashSync('admin123', 10);
-                localStore.insert(COLLECTION, {
-                    name: 'Vikas Admin',
-                    username: 'admin',
-                    password: hash,
-                    role: 'admin',
-                    email: '',
-                    isOtpEnabled: false,
-                    permissions: DEFAULT_PERMISSIONS,
-                });
-                console.log('[Auth] Default admin created locally → admin/admin123');
+                for (const u of seedUsers) {
+                    const { password, ...rest } = u;
+                    const hash = bcrypt.hashSync(password, 10);
+                    localStore.insert(COLLECTION, { ...rest, password: hash });
+                }
+                console.log('[Auth] Default users created locally');
             }
         }
     } catch (err) {
@@ -97,6 +101,7 @@ const createUser = async (name, username, password, role = 'user', email = '', p
         role,
         email,
         isOtpEnabled: false,
+        isSandbox: false, // Default to production mode for new accounts
         permissions: userPerms,
         createdAt: new Date().toISOString()
     };
@@ -112,7 +117,7 @@ const createUser = async (name, username, password, role = 'user', email = '', p
 
 const updateUser = async (id, data) => {
     // Only allow updating specific fields to prevent security issues
-    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'password', 'otpCode', 'otpExpiry'];
+    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'otpCode', 'otpExpiry'];
     const filteredData = {};
     Object.keys(data).forEach(k => {
         if (allowedFields.includes(k)) {

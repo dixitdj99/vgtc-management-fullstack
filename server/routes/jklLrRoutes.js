@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const lrService = require('../services/lrService');
+const { getCol } = require('../utils/collectionUtils');
 
 const JKL_LR_COL = 'jkl_loading_receipts';
 const JKL_META_COL = 'jkl_metadata';
@@ -8,7 +9,7 @@ const JKL_META_COL = 'jkl_metadata';
 // Create
 router.post('/', async (req, res) => {
     try {
-        const result = await lrService.createLoadingReceipt(req.body, JKL_LR_COL, JKL_META_COL);
+        const result = await lrService.createLoadingReceipt(req.body, getCol(JKL_LR_COL, req), getCol(JKL_META_COL, req));
 
         // Real-time backup (fire-and-forget, non-blocking)
         const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
@@ -25,7 +26,7 @@ router.post('/', async (req, res) => {
 // Get all
 router.get('/', async (req, res) => {
     try {
-        const receipts = await lrService.getAllLoadingReceipts(JKL_LR_COL);
+        const receipts = await lrService.getAllLoadingReceipts(getCol(JKL_LR_COL, req));
         res.json(receipts);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -35,7 +36,7 @@ router.get('/', async (req, res) => {
 // Update billing only
 router.patch('/:id/billing', async (req, res) => {
     try {
-        await lrService.updateBillingStatus(req.params.id, req.body.billing, JKL_LR_COL);
+        await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -45,7 +46,7 @@ router.patch('/:id/billing', async (req, res) => {
 // Update full LR (Support both PUT and PATCH)
 router.put('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body, JKL_LR_COL);
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -64,7 +65,7 @@ router.patch('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.params.id, JKL_LR_COL);
+        await lrService.deleteLoadingReceipt(req.params.id, getCol(JKL_LR_COL, req));
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });

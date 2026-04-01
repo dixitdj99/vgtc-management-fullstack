@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { db, isAvailable } = require('../firebase');
+const { getCol } = require('../utils/collectionUtils');
 
-const COLLECTION = 'vouchers';
+const BASE_COL = 'vouchers';
 
 /**
  * GET /api/mileage/last-km/:truckNo
@@ -13,7 +14,7 @@ router.get('/last-km/:truckNo', async (req, res) => {
     try {
         if (!isAvailable()) return res.json({ endKm: null });
 
-        const snapshot = await db.collection(COLLECTION)
+        const snapshot = await db.collection(getCol(BASE_COL, req))
             .where('truckNo', '==', truckNo)
             .get();
 
@@ -47,7 +48,7 @@ router.get('/vehicle/:truckNo', async (req, res) => {
     try {
         if (!isAvailable()) return res.json([]);
 
-        const snapshot = await db.collection(COLLECTION)
+        const snapshot = await db.collection(getCol(BASE_COL, req))
             .where('truckNo', '==', truckNo)
             .get();
 
@@ -74,7 +75,7 @@ router.get('/all-vehicles', async (req, res) => {
     try {
         if (!isAvailable()) return res.json([]);
 
-        const snapshot = await db.collection(COLLECTION).get();
+        const snapshot = await db.collection(getCol(BASE_COL, req)).get();
 
         const byTruck = {};
         snapshot.docs.forEach(doc => {

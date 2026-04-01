@@ -7,8 +7,8 @@ const COLLECTION_VEHICLES = 'vehicles';
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreCreate = async (data) => {
-    const ref = db.collection(COLLECTION_VEHICLES).doc();
+const firestoreCreate = async (data, col = COLLECTION_VEHICLES) => {
+    const ref = db.collection(col).doc();
     const payload = {
         ...data,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -17,20 +17,20 @@ const firestoreCreate = async (data) => {
     return { id: ref.id, ...data };
 };
 
-const firestoreGetAll = async () => {
-    const snapshot = await db.collection(COLLECTION_VEHICLES).orderBy('createdAt', 'desc').get();
+const firestoreGetAll = async (col = COLLECTION_VEHICLES) => {
+    const snapshot = await db.collection(col).orderBy('createdAt', 'desc').get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-const firestoreUpdate = async (id, data) => {
-    await db.collection(COLLECTION_VEHICLES).doc(id).update({
+const firestoreUpdate = async (id, data, col = COLLECTION_VEHICLES) => {
+    await db.collection(col).doc(id).update({
         ...data,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 };
 
-const firestoreDelete = async (id) => {
-    await db.collection(COLLECTION_VEHICLES).doc(id).delete();
+const firestoreDelete = async (id, col = COLLECTION_VEHICLES) => {
+    await db.collection(col).doc(id).delete();
 };
 
 // ── Local store helpers ────────────────────────────────────────────────────────
@@ -47,34 +47,34 @@ const localGetAll = () => {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-const createVehicle = async (data) => {
+const createVehicle = async (data, col = COLLECTION_VEHICLES) => {
     // Expected fields: truckNo, ownerName, ownerContact, driverName, driverContact, type, bankDetails, etc.
-    if (firebaseAvailable()) return await firestoreCreate(data);
-    return localCreate(data);
+    if (firebaseAvailable()) return await firestoreCreate(data, col);
+    return localStore.insert(col, data);
 };
 
-const getAllVehicles = async () => {
-    if (firebaseAvailable()) return await firestoreGetAll();
-    return localGetAll();
+const getAllVehicles = async (col = COLLECTION_VEHICLES) => {
+    if (firebaseAvailable()) return await firestoreGetAll(col);
+    return localStore.getAll(col).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
-const updateVehicle = async (id, data) => {
+const updateVehicle = async (id, data, col = COLLECTION_VEHICLES) => {
     const allowed = { ...data };
     delete allowed.id;
     delete allowed.createdAt;
 
     if (firebaseAvailable()) {
-        await firestoreUpdate(id, allowed);
+        await firestoreUpdate(id, allowed, col);
     } else {
-        localStore.update(COLLECTION_VEHICLES, id, allowed);
+        localStore.update(col, id, allowed);
     }
 };
 
-const deleteVehicle = async (id) => {
+const deleteVehicle = async (id, col = COLLECTION_VEHICLES) => {
     if (firebaseAvailable()) {
-        await firestoreDelete(id);
+        await firestoreDelete(id, col);
     } else {
-        localStore.delete(COLLECTION_VEHICLES, id);
+        localStore.delete(col, id);
     }
 };
 

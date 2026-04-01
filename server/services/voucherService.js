@@ -7,23 +7,23 @@ const COLLECTION_VOUCHERS = 'vouchers';
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-const createVoucher = async (data) => {
+const createVoucher = async (data, col = COLLECTION_VOUCHERS) => {
     const { type, ...voucherData } = data;
     const finalData = { ...voucherData, type };
 
     if (firebaseAvailable()) {
-        const ref = db.collection(COLLECTION_VOUCHERS).doc();
+        const ref = db.collection(col).doc();
         await ref.set({ ...finalData, createdAt: admin.firestore.FieldValue.serverTimestamp() });
         return { id: ref.id, ...finalData };
     }
     return localStore.insert(COLLECTION_VOUCHERS, finalData);
 };
 
-const getVouchersByType = async (type) => {
+const getVouchersByType = async (type, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
         // Use only a single-field where — no orderBy — to avoid requiring a composite index.
         // Sort by createdAt in JS after fetching.
-        const snapshot = await db.collection(COLLECTION_VOUCHERS)
+        const snapshot = await db.collection(col)
             .where('type', '==', type)
             .get();
         const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -38,9 +38,9 @@ const getVouchersByType = async (type) => {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
-const getVouchersByTruckAndDate = async (truckNo, paymentClearedDate) => {
+const getVouchersByTruckAndDate = async (truckNo, paymentClearedDate, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
-        const snapshot = await db.collection(COLLECTION_VOUCHERS)
+        const snapshot = await db.collection(col)
             .where('truckNo', '==', truckNo)
             .where('paymentClearedDate', '==', paymentClearedDate)
             .get();
@@ -52,9 +52,9 @@ const getVouchersByTruckAndDate = async (truckNo, paymentClearedDate) => {
         .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 };
 
-const updateVoucher = async (id, data) => {
+const updateVoucher = async (id, data, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
-        await db.collection(COLLECTION_VOUCHERS).doc(id).update({
+        await db.collection(col).doc(id).update({
             ...data,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -63,9 +63,9 @@ const updateVoucher = async (id, data) => {
     }
 };
 
-const deleteVoucher = async (id) => {
+const deleteVoucher = async (id, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
-        await db.collection(COLLECTION_VOUCHERS).doc(id).delete();
+        await db.collection(col).doc(id).delete();
     } else {
         localStore.delete(COLLECTION_VOUCHERS, id);
     }

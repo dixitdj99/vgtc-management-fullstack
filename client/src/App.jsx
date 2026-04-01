@@ -435,7 +435,22 @@ function AppInner() {
             <button className="mobile-menu-toggle" onClick={() => setShowMobileMenu(!showMobileMenu)}>
               {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="app-title">{FILTERED_NAV.find(n => n.id === active)?.label}</div>
+            <div className="app-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {FILTERED_NAV.find(n => n.id === active)?.label}
+              {user?.isSandbox && (
+                <span style={{ 
+                  background: '#f59e0b', 
+                  color: '#000', 
+                  fontSize: '9px', 
+                  padding: '2px 8px', 
+                  borderRadius: '100px', 
+                  fontWeight: 900, 
+                  textTransform: 'uppercase',
+                  boxShadow: '0 0 15px rgba(245,158,11,0.4)',
+                  border: '1px solid rgba(0,0,0,0.1)'
+                }}>Sandbox Mode</span>
+              )}
+            </div>
           </div>
           <div className="topbar-right" style={{ position: 'relative', zIndex: 1 }}>
             {/* Global Weather Widget */}
@@ -453,7 +468,7 @@ function AppInner() {
             <button className="notif-btn theme-toggle-btn" onClick={cycleTheme}
               title={`Theme: ${currentTheme.label} (click to switch)`}>
               <ThemeIcon size={17} />
-              <span style={{ fontSize: '11px', fontWeight: 700, marginLeft: '5px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, marginLeft: '5px', color: 'white' }}>
                 {currentTheme.label}
               </span>
             </button>

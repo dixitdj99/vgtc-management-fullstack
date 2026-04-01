@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const svc = require('../utils/cashbookService');
-
+const { getCol } = require('../utils/collectionUtils');
+const BASE_COL = 'cashbook';
 
 // GET  /api/cashbook
 router.get('/', async (req, res) => {
     try {
-        const data = await svc.getAll();
+        const data = await svc.getAll(getCol(BASE_COL, req));
         res.json(data);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -15,7 +16,7 @@ router.get('/', async (req, res) => {
 router.post('/deposit', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
-        const doc = await svc.addEntry('deposit', amount, remark, date);
+        const doc = await svc.addEntry('deposit', amount, remark, date, getCol(BASE_COL, req));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -24,7 +25,7 @@ router.post('/deposit', async (req, res) => {
 router.post('/cash-out', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
-        const doc = await svc.addEntry('cash_out', amount, remark, date);
+        const doc = await svc.addEntry('cash_out', amount, remark, date, getCol(BASE_COL, req));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -32,7 +33,7 @@ router.post('/cash-out', async (req, res) => {
 // DELETE /api/cashbook/:id
 router.delete('/:id', async (req, res) => {
     try {
-        await svc.deleteEntry(req.params.id);
+        await svc.deleteEntry(req.params.id, getCol(BASE_COL, req));
         res.json({ message: 'Deleted' });
     } catch (e) { res.status(404).json({ error: e.message }); }
 });
