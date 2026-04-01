@@ -33,32 +33,24 @@ const seed = async () => {
             { ...DEFAULT_USER_DATA, username: 'tester', name: 'Sandbox Tester', password: 'test123', role: 'user', isSandbox: true }
         ];
 
-        if (isFirebaseAvailable()) {
-            const snapshot = await db.collection(COLLECTION).limit(1).get();
-            if (snapshot.empty) {
-                for (const u of seedUsers) {
-                    const { password, ...rest } = u;
-                    const hash = bcrypt.hashSync(password, 10);
+        for (const u of seedUsers) {
+            const existing = await findByUsername(u.username);
+            if (!existing) {
+                const { password, ...rest } = u;
+                const hash = bcrypt.hashSync(password, 10);
+                if (isFirebaseAvailable()) {
                     await db.collection(COLLECTION).add({ ...rest, password: hash, createdAt: new Date().toISOString() });
-                }
-                console.log('[Auth] Default users created in Firestore');
-            }
-        } else {
-            const all = localStore.getAll(COLLECTION);
-            if (all.length === 0) {
-                for (const u of seedUsers) {
-                    const { password, ...rest } = u;
-                    const hash = bcrypt.hashSync(password, 10);
+                    console.log(`[Auth] User '${u.username}' created in Firestore`);
+                } else {
                     localStore.insert(COLLECTION, { ...rest, password: hash });
+                    console.log(`[Auth] User '${u.username}' created locally`);
                 }
-                console.log('[Auth] Default users created locally');
             }
         }
     } catch (err) {
         console.error('[Auth] Seed failed:', err.message);
     }
 };
-seed();
 
 const getAll = async () => {
     if (isFirebaseAvailable()) {
@@ -184,3 +176,5 @@ module.exports = {
     getAll, findByUsername, findById, createUser, updateUser, deleteUser, 
     verifyPassword, generateOTP, saveUserOTP, verifyOTP 
 };
+
+seed();
