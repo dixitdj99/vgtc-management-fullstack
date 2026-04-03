@@ -21,13 +21,43 @@ const getCalc = (w, r, hasComm) => {
     return { munshi, commission, total: rt * wt };
 };
 
+// Compute deductions and net payable for a voucher record
+const getNet = (v) => {
+    const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+    // dieselPending = true when diesel is set to a non-numeric value like 'FULL'
+    const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
+    const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
+    const cash = parseFloat(v.advanceCash) || 0;
+    const online = parseFloat(v.advanceOnline) || 0;
+    const munshi = parseFloat(v.munshi) || 0;
+    const commission = parseFloat(v.commission) || 0;
+    const totalDeductions = diesel + cash + online + munshi + commission;
+    return { gross, diesel, cash, online, munshi, commission, totalDeductions, net: gross - totalDeductions, dieselPending };
+};
+
 /* ── Print ── */
 function printVoucher(v) {
-    const calc = getCalc(v.weight, v.rate, v.hasCommission);
+    const n = getNet(v);
+    const deductionRows = [
+        { lbl: 'Diesel Advance', val: n.diesel, raw: v.advanceDiesel },
+        { lbl: 'Cash Advance', val: n.cash, raw: v.advanceCash },
+        { lbl: 'Online Advance', val: n.online, raw: v.advanceOnline },
+        { lbl: 'Munshi', val: n.munshi, raw: v.munshi },
+        { lbl: 'Commission', val: n.commission, raw: v.commission },
+    ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'));
+
+    const deductionHTML = deductionRows.map(d => {
+        const isDieselPending = d.lbl === 'Diesel Advance' && n.dieselPending;
+        const valDisplay = isDieselPending
+            ? `FULL`
+            : `- Rs.${d.val.toLocaleString()}`;
+        return `<tr><td style="padding:3px 0;color:#444;font-size:12px">${d.lbl}</td><td style="padding:3px 0;text-align:right;font-size:12px;color:#c0392b">${valDisplay}</td></tr>`;
+    }).join('');
+
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;padding:10mm}
-.slip{width:160mm;margin:0 auto;border:2px solid #000;padding:10mm}
+.slip{width:165mm;margin:0 auto;border:2px solid #000;padding:10mm}
 h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
 .sub{text-align:center;font-size:10px;color:#555;margin:2px 0 8px}
 .div{border-top:1px dashed #000;margin:7px 0}
@@ -37,7 +67,15 @@ h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
 .cell{padding:5px 8px;border:1px solid #ccc;border-radius:4px}
 .cell-lbl{font-size:9px;font-weight:bold;color:#666;text-transform:uppercase;margin-bottom:2px}
 .cell-val{font-size:13px;font-weight:bold}
-.total{display:flex;justify-content:space-between;padding:8px 10px;background:#f5f5f5;border:2px solid #000;border-radius:4px;margin-top:8px;font-size:14px;font-weight:900}
+.calc-box{border:1px solid #ccc;border-radius:6px;padding:8px 10px;margin-top:8px;background:#fafafa}
+.calc-title{font-size:9px;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
+.calc-table{width:100%}
+.gross-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #ddd;font-size:13px;font-weight:bold}
+.gross-formula{font-size:9px;color:#666;margin-top:1px}
+.total-box{display:flex;justify-content:space-between;padding:10px 12px;background:#000;color:#fff;border-radius:5px;margin-top:8px;font-size:15px;font-weight:900}
+.total-pending{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#92400e;color:#fff;border-radius:5px;margin-top:8px;font-size:13px;font-weight:900}
+.pending-badge{font-size:9px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:3px;font-weight:800;letter-spacing:0.04em}
+.pending-note{font-size:9.5px;color:#92400e;font-weight:700;margin-top:5px;padding:5px 8px;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;line-height:1.4}
 .sig{display:flex;justify-content:space-between;margin-top:18px;font-size:11px}
 .sl{border-top:1px solid #000;padding-top:4px;min-width:100px;text-align:center}
 @media print{body{padding:0}}</style></head>
@@ -53,19 +91,27 @@ h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
 <div class="cell"><div class="cell-lbl">Bags</div><div class="cell-val">${v.bags}</div></div>
 <div class="cell"><div class="cell-lbl">Rate</div><div class="cell-val">Rs.${v.rate}/MT</div></div>
 <div class="cell"><div class="cell-lbl">Pump</div><div class="cell-val">${v.pump || '—'}</div></div>
-<div class="cell"><div class="cell-lbl">Diesel Adv.</div><div class="cell-val">${v.advanceDiesel || '0'}</div></div>
-<div class="cell"><div class="cell-lbl">Cash Adv.</div><div class="cell-val">Rs.${v.advanceCash || 0}</div></div>
-${v.advanceOnline ? '<div class="cell"><div class="cell-lbl">Online Adv.</div><div class="cell-val">Rs.' + v.advanceOnline + '</div></div>' : ''}
-${v.munshi ? '<div class="cell"><div class="cell-lbl">Munshi</div><div class="cell-val">Rs.' + v.munshi + '</div></div>' : ''}
-${v.commission ? '<div class="cell"><div class="cell-lbl">Commission</div><div class="cell-val">Rs.' + v.commission + '</div></div>' : ''}
 </div>
-<div class="total"><span>GROSS TOTAL</span><span>Rs.${Math.round((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)).toLocaleString()}</span></div>
+<div class="calc-box">
+<div class="calc-title">Payment Calculation</div>
+<div class="gross-row">
+  <span>Gross Total</span>
+  <span>Rs.${Math.round(n.gross).toLocaleString()}</span>
+</div>
+<div class="gross-formula">${v.weight} MT × Rs.${v.rate}/MT</div>
+${deductionRows.length > 0 ? `<table class="calc-table" style="margin-top:6px">${deductionHTML}${!n.dieselPending ? `<tr style="border-top:1px solid #bbb"><td style="padding:4px 0;font-weight:bold;font-size:12px">Total Deductions</td><td style="text-align:right;font-weight:bold;font-size:12px;color:#c0392b">- Rs.${Math.round(n.totalDeductions).toLocaleString()}</td></tr>` : ''}</table>` : ''}
+</div>
+${n.dieselPending
+    ? `<div class="total-pending"><span>NET PAYABLE</span><span class="pending-badge">&#8987; DIESEL PENDING</span></div>
+       <div class="pending-note">&#9888; Diesel advance is <strong>FULL TANK</strong> &mdash; the actual amount has not been entered yet. Net payable will be finalised once the diesel amount is updated in the system.</div>`
+    : `<div class="total-box"><span>NET PAYABLE</span><span>Rs.${Math.round(n.net).toLocaleString()}</span></div>`
+}
 <div class="div"></div>
 <div class="sig"><div class="sl">Driver</div><div class="sl">Accountant</div><div class="sl">Authorised</div></div>
 </div>
 <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
 </body></html>`;
-    const win = window.open('', '_blank', 'width=680,height=560');
+    const win = window.open('', '_blank', 'width=700,height=620');
     win.document.write(html); win.document.close();
 }
 
@@ -174,7 +220,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 /* ══════════════════════════════════════════════════
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
-export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {} }) {
+export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
     const [vType, setVType] = useState(lockedType || initialTab || 'Dump');
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -295,7 +341,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
                 const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
                 const truck = rows[0].truckNo || '';
-                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb) }));
+                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
             }
@@ -319,7 +365,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         setSaving(true); setIsConfirmingSave(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await ax.post(API_V, { ...form, type: vType, ...calc });
+            await ax.post(API_V, { ...form, type: vType, brand, ...calc });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '' }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
@@ -433,11 +479,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder="Auto-filled" value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
+                                                <input className="fi" type="text" placeholder={vType === 'Dump' ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
                                             </div>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>
-                                                <input className="fi" type="text" placeholder="City" value={form.destination} onChange={e => set('destination', e.target.value)} />
+                                                <input className="fi" type="text" placeholder={vType === 'Dump' ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
                                             </div>
                                             <div className="field">
                                                 <label>Date</label>
@@ -659,8 +705,33 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--accent)' }}>
-                                            {((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)).toLocaleString()}
+                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                            {(() => {
+                                                const n = getNet(v);
+                                                return (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}
+                                                            title={`${v.weight} MT × Rs.${v.rate}/MT`}>
+                                                            Rs.{Math.round(n.gross).toLocaleString()}
+                                                        </span>
+                                                        {n.dieselPending && (
+                                                            <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, background: '#fef3c7', padding: '1px 5px', borderRadius: '4px' }}
+                                                                title="Diesel advance is FULL TANK — amount not yet entered">
+                                                                ⏳ Diesel pending
+                                                            </span>
+                                                        )}
+                                                        {!n.dieselPending && n.totalDeductions > 0 && (
+                                                            <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 600 }}
+                                                                title={`Deductions: Diesel Rs.${n.diesel} + Cash Rs.${n.cash} + Online Rs.${n.online} + Munshi Rs.${n.munshi}${n.commission > 0 ? ' + Comm Rs.' + n.commission : ''}`}>
+                                                                − Rs.{Math.round(n.totalDeductions).toLocaleString()}
+                                                            </span>
+                                                        )}
+                                                        <span style={{ fontSize: '13px', fontWeight: 900, color: n.dieselPending ? '#b45309' : 'var(--accent)', borderTop: (n.dieselPending || n.totalDeductions > 0) ? '1px solid var(--border)' : 'none', paddingTop: (n.dieselPending || n.totalDeductions > 0) ? '2px' : '0' }}>
+                                                            {n.dieselPending ? '—' : `Rs.${Math.round(n.net).toLocaleString()}`}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </td>
                                         {role === 'admin' && <td style={{ ...TD }}>{v.createdBy || '—'}</td>}
                                         {role === 'admin' && <td style={{ ...TD }}>{v.updatedBy || '—'}</td>}
@@ -678,22 +749,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                     </tr>
                                 ))}
                             </tbody>
-                            {filtered.length > 0 && (
-                                <tfoot>
-                                    <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
-                                        <td colSpan={5} style={{ ...TD, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.08em' }}>
-                                            Totals ({filtered.length} rows)
-                                        </td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--text)' }}>{totals.weight}</td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--text)' }}>{totals.bags}</td>
-                                        <td colSpan={5} style={{ ...TD }}></td>
-                                        <td colSpan={2} style={{ ...TD, textAlign: 'right', fontWeight: 900, color: 'var(--accent)', fontSize: '14px' }}>
-                                            Rs.{totals.total.toLocaleString()}
-                                        </td>
-                                        <td colSpan={role === 'admin' ? 3 : 1} style={{ ...TD }}></td>
-                                    </tr>
-                                </tfoot>
-                            )}
+
                         </table>
                     </div>
 

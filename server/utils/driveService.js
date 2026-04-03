@@ -5,7 +5,15 @@ const { db, isAvailable } = require('../firebase');
 
 const CREDENTIALS_PATH = path.join(__dirname, '..', 'config', 'credentials.json');
 const TOKEN_PATH = path.join(__dirname, '..', 'config', 'token.json');
-const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+const SCOPES = [
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/spreadsheets'
+];
+
+// Redirect URI MUST exactly match what is registered in Google Cloud Console
+// Currently registered: http://localhost:5000 (root handles the code exchange)
+// For prod: set GOOGLE_OAUTH_REDIRECT_URI to your Render URL (e.g. https://yourapp.onrender.com)
+const REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT_URI || 'http://localhost:5000';
 
 const CONFIG_COLL = 'system_config';
 const TOKEN_DOC = 'google_drive_token';
@@ -38,17 +46,10 @@ function getClientTemplate() {
 function createOAuthClient() {
     const keys = getClientTemplate();
     if (!keys) return null;
-    
-    // Redirect URI must match what user configured in Google Cloud Console
-    // We use http://localhost:5000 as the standard for this app
-    const redirectUri = (keys.redirect_uris && keys.redirect_uris.length > 0) 
-        ? keys.redirect_uris[0] 
-        : 'http://localhost:5000';
-    
     return new google.auth.OAuth2(
         keys.client_id,
         keys.client_secret,
-        redirectUri
+        REDIRECT_URI
     );
 }
 
@@ -99,43 +100,35 @@ async function saveToken(code) {
     return tokens;
 }
 
-async function getDriveClient() {
+async function getAuthClient() {
     const client = createOAuthClient();
     if (!client) throw new Error('Google Credentials (JSON or ENV) missing.');
-    
-    let tokens = null;
 
-    // Load from local file
+    let tokens = null;
     if (fs.existsSync(TOKEN_PATH)) {
         tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
-    } 
-    // Load from Firestore
-    else if (isAvailable()) {
+    } else if (isAvailable()) {
         const doc = await db.collection(CONFIG_COLL).doc(TOKEN_DOC).get();
         if (doc.exists) tokens = doc.data();
     }
-
-    if (!tokens) {
-        throw new Error('Not authorized. Please connect Google Drive first.');
-    }
+    if (!tokens) throw new Error('Not authorized. Please connect Google Drive first.');
 
     client.setCredentials(tokens);
-    
-    // Refresh token logic
     client.on('tokens', async (newTokens) => {
         const updatedTokens = { ...tokens, ...newTokens };
         if (isAvailable()) {
             await db.collection(CONFIG_COLL).doc(TOKEN_DOC).set({
-                ...updatedTokens,
-                updatedAt: new Date().toISOString()
+                ...updatedTokens, updatedAt: new Date().toISOString()
             });
         }
-        try {
-            fs.writeFileSync(TOKEN_PATH, JSON.stringify(updatedTokens));
-        } catch (e) {}
+        try { fs.writeFileSync(TOKEN_PATH, JSON.stringify(updatedTokens)); } catch (e) {}
     });
+    return client;
+}
 
-    return google.drive({ version: 'v3', auth: client });
+async function getDriveClient() {
+    const auth = await getAuthClient();
+    return google.drive({ version: 'v3', auth });
 }
 
 async function getOrCreateFolder(name, parentId = null) {
@@ -158,6 +151,20 @@ async function uploadFile(filePath, fileName, folderId) {
     const res = await drive.files.create({
         resource: { name: fileName, parents: [folderId] },
         media,
+        fields: 'id'
+    });
+    return res.data.id;
+}
+
+async function uploadBuffer(buffer, fileName, folderId, mimeType = 'application/pdf') {
+    const { Readable } = require('stream');
+    const drive = await getDriveClient();
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null);
+    const res = await drive.files.create({
+        resource: { name: fileName, parents: [folderId] },
+        media: { mimeType, body: readable },
         fields: 'id'
     });
     return res.data.id;
@@ -192,4 +199,4 @@ async function getLogs(limit = 20) {
     }
 }
 
-module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getOrCreateFolder, uploadFile, logActivity, getLogs };
+module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getAuthClient, getOrCreateFolder, uploadFile, uploadBuffer, logActivity, getLogs };

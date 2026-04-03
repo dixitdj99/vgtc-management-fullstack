@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Cloud, AlertCircle, CheckCircle2, Loader2, Info, ExternalLink, Key } from 'lucide-react';
 import ax from '../api';
 import Pagination from '../components/Pagination';
@@ -7,13 +7,14 @@ const PAGE_SIZE = 20;
 
 const AdminModule = () => {
     const [loading, setLoading] = useState(false);
-    const [authStatus, setAuthStatus] = useState(null); // { authorized: boolean, configured: boolean }
-    const [authUrl, setAuthUrl] = useState('');
-    const [code, setCode] = useState('');
+    const [authStatus, setAuthStatus] = useState(null);
     const [status, setStatus] = useState(null);
     const [logs, setLogs] = useState([]);
     const [logsLoading, setLogsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [showCodeInput, setShowCodeInput] = useState(false);
+    const [code, setCode] = useState('');
+    const popupRef = useRef(null);
 
     const fetchStatus = async () => {
         setLoading(true);
@@ -44,17 +45,35 @@ const AdminModule = () => {
         }
     };
 
+    // Listen for postMessage from the OAuth popup
+    useEffect(() => {
+        const handler = (event) => {
+            if (event.data?.type === 'oauth-success') {
+                setStatus({ type: 'success', msg: 'Google Drive authorized successfully!' });
+                fetchStatus();
+            } else if (event.data?.type === 'oauth-error') {
+                setStatus({ type: 'error', msg: `Authorization failed: ${event.data.msg}` });
+                setLoading(false);
+            }
+        };
+        window.addEventListener('message', handler);
+        return () => window.removeEventListener('message', handler);
+    }, []);
+
     useEffect(() => {
         fetchStatus();
     }, []);
 
     const handleConnect = async () => {
         setLoading(true);
+        setStatus(null);
+        setCode('');
         try {
             const res = await ax.get('backup/auth-url');
-            window.open(res.data.url, '_blank');
-            setAuthUrl(res.data.url);
-            setStatus({ type: 'info', msg: 'Please authorize on the new tab and paste the code below.' });
+            const popup = window.open(res.data.url, 'google-oauth', 'width=500,height=650,scrollbars=yes');
+            popupRef.current = popup;
+            setShowCodeInput(true);
+            setStatus({ type: 'info', msg: 'Sign in on the popup. If it does not auto-close, paste the code shown below.' });
         } catch (e) {
             console.error('API Error (auth-url):', e.message);
             setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Failed to get auth URL' });
@@ -68,12 +87,11 @@ const AdminModule = () => {
         try {
             await ax.post('backup/submit-code', { code });
             setStatus({ type: 'success', msg: 'Authorized successfully!' });
-            fetchStatus();
-            setAuthUrl('');
+            setShowCodeInput(false);
             setCode('');
+            fetchStatus();
         } catch (e) {
-            console.error('API Error (submit-code):', e.message);
-            setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Authorization failed' });
+            setStatus({ type: 'error', msg: e.response?.data?.error || e.message || 'Authorization failed. Check the code and try again.' });
         } finally {
             setLoading(false);
         }
@@ -157,32 +175,33 @@ const AdminModule = () => {
                     <>
                         {!authStatus.authorized ? (
                             <div style={{ background: 'var(--bg-th)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                                <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', gap: '12px', marginBottom: showCodeInput ? '20px' : '0' }}>
                                     <Key size={20} color="var(--accent)" />
                                     <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
-                                        <strong style={{ color: 'var(--text-main)' }}>Step 1: Link your Account</strong>
-                                        <p style={{ color: 'var(--text-sub)', margin: '4px 0 12px 0' }}>Click the button below to sign in with Google and grant permission to upload backups.</p>
+                                        <strong style={{ color: 'var(--text-main)' }}>Link your Google Account</strong>
+                                        <p style={{ color: 'var(--text-sub)', margin: '4px 0 12px 0' }}>Click below to sign in with Google. Authorization completes automatically, or paste the code manually if the popup doesn't close.</p>
                                         <button className="btn btn-p" onClick={handleConnect} disabled={loading} style={{ height: '36px', fontSize: '13px' }}>
-                                            Connect Google Drive <ExternalLink size={14} style={{ marginLeft: '6px' }} />
+                                            {loading ? <Loader2 className="spin" size={14} /> : <><ExternalLink size={14} style={{ marginRight: '6px' }} />Connect Google Drive</>}
                                         </button>
                                     </div>
                                 </div>
 
-                                {authUrl && (
-                                    <div style={{ marginTop: '24px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-                                        <strong style={{ color: 'var(--text-main)', fontSize: '14px' }}>Step 2: Paste Authorization Code</strong>
-                                        <p style={{ color: 'var(--text-sub)', fontSize: '13px', margin: '4px 0 12px 0' }}>Paste the code you received from Google after signing in:</p>
+                                {showCodeInput && (
+                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                                        <strong style={{ color: 'var(--text-main)', fontSize: '13px' }}>Paste Authorization Code</strong>
+                                        <p style={{ color: 'var(--text-sub)', fontSize: '12px', margin: '4px 0 10px 0' }}>Copy the code from the Google page and paste it here:</p>
                                         <div style={{ display: 'flex', gap: '8px' }}>
-                                            <input 
-                                                type="text" 
-                                                className="input" 
-                                                placeholder="Paste code here..." 
-                                                value={code} 
+                                            <input
+                                                type="text"
+                                                className="input"
+                                                placeholder="Paste code here..."
+                                                value={code}
                                                 onChange={(e) => setCode(e.target.value)}
                                                 style={{ flex: 1, height: '36px', fontSize: '13px' }}
+                                                autoFocus
                                             />
                                             <button className="btn btn-s" onClick={handleSubmitCode} disabled={!code || loading} style={{ height: '36px', padding: '0 20px' }}>
-                                                Verify Code
+                                                {loading ? <Loader2 className="spin" size={14} /> : 'Verify'}
                                             </button>
                                         </div>
                                     </div>
@@ -192,14 +211,44 @@ const AdminModule = () => {
                             <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: '20px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                                 <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                                     <CheckCircle2 size={20} color="#10b981" />
-                                    <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
+                                    <div style={{ fontSize: '14px', lineHeight: '1.6', flex: 1 }}>
                                         <strong style={{ color: 'var(--text-main)' }}>Automatic Backup is ACTIVE</strong>
                                         <p style={{ color: 'var(--text-sub)', margin: '4px 0 0 0' }}>Files are uploaded every Sunday at 00:00 to <code>VGTC_Backups/</code></p>
                                     </div>
+                                    <button
+                                        className="btn btn-s"
+                                        onClick={handleConnect}
+                                        disabled={loading}
+                                        style={{ height: '32px', fontSize: '12px', whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
+                                        title="Re-trigger OAuth if your token has expired or been revoked"
+                                    >
+                                        <Key size={12} style={{ marginRight: '4px' }} /> Reauthorize
+                                    </button>
                                 </div>
                                 <button className="btn btn-p" onClick={triggerBackup} disabled={loading} style={{ width: '100%', height: '40px', fontWeight: '600' }}>
                                     {loading ? <Loader2 className="spin" size={16} /> : 'Run Manual Backup Now'}
                                 </button>
+
+                                {showCodeInput && (
+                                    <div style={{ marginTop: '16px', borderTop: '1px solid rgba(16, 185, 129, 0.2)', paddingTop: '16px' }}>
+                                        <strong style={{ color: 'var(--text-main)', fontSize: '13px' }}>Paste Authorization Code</strong>
+                                        <p style={{ color: 'var(--text-sub)', fontSize: '12px', margin: '4px 0 10px 0' }}>Copy the code from the Google page and paste it here:</p>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input
+                                                type="text"
+                                                className="input"
+                                                placeholder="Paste code here..."
+                                                value={code}
+                                                onChange={(e) => setCode(e.target.value)}
+                                                style={{ flex: 1, height: '36px', fontSize: '13px' }}
+                                                autoFocus
+                                            />
+                                            <button className="btn btn-s" onClick={handleSubmitCode} disabled={!code || loading} style={{ height: '36px', padding: '0 20px' }}>
+                                                {loading ? <Loader2 className="spin" size={14} /> : 'Verify'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </>

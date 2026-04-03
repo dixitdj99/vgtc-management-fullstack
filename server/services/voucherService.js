@@ -71,10 +71,21 @@ const deleteVoucher = async (id, col = COLLECTION_VOUCHERS) => {
     }
 };
 
+const getVoucherById = async (id, col = COLLECTION_VOUCHERS) => {
+    if (firebaseAvailable()) {
+        const doc = await db.collection(col).doc(id).get();
+        if (doc.exists) return { id: doc.id, ...doc.data() };
+        return null;
+    }
+    const all = localStore.getAll(COLLECTION_VOUCHERS);
+    return all.find(v => v.id === id) || null;
+};
+
 module.exports = {
     createVoucher,
     getVouchersByType,
     getVouchersByTruckAndDate,
     updateVoucher,
     deleteVoucher,
+    getVoucherById,
 };

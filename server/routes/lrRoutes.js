@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
-const { isProduction } = require('../utils/envConfig');
+const driveService = require('../utils/driveService');
 
 const BASE_COL = 'loading_receipts';
 const META_COL = 'metadata';
@@ -16,12 +16,44 @@ router.post('/', async (req, res) => {
             getCol(META_COL, req)
         );
 
-        // Real-time backup (fire-and-forget, non-blocking)
-        // Only run in production to keep Drive data clean
-        if (isProduction()) {
-            const { backupEntryToDrive, PLANTS } = require('../utils/backupService');
-            const fullData = { ...req.body, ...result };
-            backupEntryToDrive('Loading_Receipt', fullData, PLANTS.SUPER).catch(e => console.error('[Backup-Hook] Failed:', e.message));
+        // Real-time backup — runs whenever Google Drive is authorized
+        if (await driveService.isAuthorized()) {
+            (async () => {
+                try {
+                    const fs = require('fs');
+                    const path = require('path');
+                    const { generateLoadingReceiptPDF } = require('../utils/pdfService');
+
+                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+
+                    const fullData = { ...req.body, ...result };
+                    const dateStr = (fullData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
+                    const fileName = `LR_${result.lrNo}_${dateStr}.pdf`;
+                    const localPath = path.join(TEMP_DIR, fileName);
+
+                    console.log(`[Backup-Hook] Generating LR PDF: ${fileName}`);
+                    await generateLoadingReceiptPDF(fullData, localPath);
+
+                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
+                    
+                    const brand = req.body.brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
+                    const plantFolder = await driveService.getOrCreateFolder(brand, rootId);
+                    
+                    // Match requested architecture
+                    const finalFolder = await driveService.getOrCreateFolder('Loading Receipt Individual', plantFolder);
+                    await driveService.uploadFile(localPath, fileName, finalFolder);
+                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+
+                    await driveService.logActivity('LR_Create', 'success', `Backed up: ${fileName}`);
+                    console.log(`[Backup-Hook] LR backed up successfully: ${fileName}`);
+                } catch (e) {
+                    console.error('[Backup-Hook] LR create FAILED:', e.message, e.stack);
+                    await driveService.logActivity('LR_Create', 'error', 'Backup failed', e);
+                }
+            })();
+        } else {
+            console.log('[Backup-Hook] Skipping LR backup — Drive not authorized');
         }
 
         res.status(201).json(result);

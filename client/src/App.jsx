@@ -513,10 +513,10 @@ function AppInner() {
               exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="page-content">
               {active === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand="dump" />}
               {active === 'lr_jkl' && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
-              {active === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} />}
-              {active === 'voucher_jkl' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} />}
-              {active === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} />}
-              {active === 'balance_jkl' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} />}
+              {active === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jksuper" />}
+              {active === 'voucher_jkl' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jklakshmi" />}
+              {active === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jksuper" />}
+              {active === 'balance_jkl' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jklakshmi" />}
               {active === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="dump" />}
               {active === 'cashbook_jkl' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="jkl" />}
               {active === 'stock_dump' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="dump" />}

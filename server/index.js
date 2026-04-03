@@ -64,20 +64,36 @@ app.use('/api/mileage', requireAuth, mileageRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
     const code = req.query.code;
-    if (code) {
-        return res.send(`
-            <div style="font-family: sans-serif; padding: 40px; text-align: center;">
-                <h1 style="color: #10b981;">✔ Authorization Successful!</h1>
-                <p>Please <b>copy the code</b> below and paste it into the "Backup Settings" page in your app:</p>
-                <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 18px; margin: 20px 0; word-break: break-all; border: 1px solid #cbd5e1;">
-                    ${code}
-                </div>
-                <p style="color: #64748b; font-size: 14px;">Once you have copied the code, you can close this tab.</p>
-            </div>
-        `);
+    const error = req.query.error;
+
+    if (error) {
+        return res.send(`<html><body><script>
+            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: '${error}' }, '*'); window.close(); }
+        </script><p>Authorization failed: ${error}</p></body></html>`);
     }
+
+    if (code) {
+        // Auto-exchange the code — no manual copy needed
+        const driveService = require('./utils/driveService');
+        try {
+            await driveService.saveToken(code);
+            return res.send(`<html><body><script>
+                if (window.opener) {
+                    window.opener.postMessage({ type: 'oauth-success' }, '*');
+                    setTimeout(() => window.close(), 500);
+                } else {
+                    document.write('<p style="font-family:sans-serif;padding:40px;text-align:center;color:#10b981">&#x2705; Google Drive authorized! You can close this tab.</p>');
+                }
+            </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#10b981">&#x2705; Authorized! Closing...</p></body></html>`);
+        } catch (e) {
+            return res.send(`<html><body><script>
+                if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Token exchange failed' }, '*'); window.close(); }
+            </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#f43f5e">&#x274c; Authorization failed: ${e.message}</p></body></html>`);
+        }
+    }
+
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

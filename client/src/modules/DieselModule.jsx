@@ -65,11 +65,15 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
     };
 
     const handleSave = async (id) => {
+        // Block save if diesel is FULL tank but no actual amount has been entered
+        if (editForm.isFullTank && (!editForm.advanceDiesel || isNaN(parseFloat(editForm.advanceDiesel)))) {
+            alert('Please enter the actual diesel amount before saving. The value cannot be left empty when Full Tank is selected.');
+            return;
+        }
+
         setSaving(true);
         try {
-            // Save the actual amount entered, even if it's a full tank
-            // If it's a full tank but they haven't entered an amount yet, keep it as 'FULL' for fallback
-            const finalValue = editForm.advanceDiesel || (editForm.isFullTank ? 'FULL' : '0');
+            const finalValue = editForm.advanceDiesel || '0';
             
             await ax.patch(`${API_V}/${id}`, { 
                 advanceDiesel: finalValue,
@@ -167,7 +171,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                     <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No records matching filters</td></tr>
                                 ) : (
                                     filtered.map(v => (
-                                        <tr key={v.id} style={{ transition: 'background 0.2s', opacity: v.isDieselVerified && fStatus === 'All' ? 0.7 : 1 }}>
+                                        <tr key={v.id} style={{ transition: 'background 0.2s', opacity: v.isDieselVerified ? 0.75 : 1 }}>
                                             <td style={TD}>{v.date}</td>
                                             <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo}</td>
                                             <td style={TD}>{v.pump}</td>

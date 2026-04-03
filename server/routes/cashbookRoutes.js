@@ -4,6 +4,8 @@ const svc = require('../utils/cashbookService');
 const { getCol } = require('../utils/collectionUtils');
 const BASE_COL = 'cashbook';
 
+const sheetsService = require('../utils/sheetsService');
+
 // GET  /api/cashbook
 router.get('/', async (req, res) => {
     try {
@@ -17,6 +19,7 @@ router.post('/deposit', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
         const doc = await svc.addEntry('deposit', amount, remark, date, getCol(BASE_COL, req));
+        sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -26,6 +29,7 @@ router.post('/cash-out', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
         const doc = await svc.addEntry('cash_out', amount, remark, date, getCol(BASE_COL, req));
+        sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -33,7 +37,14 @@ router.post('/cash-out', async (req, res) => {
 // DELETE /api/cashbook/:id
 router.delete('/:id', async (req, res) => {
     try {
+        const all = await svc.getAll(getCol(BASE_COL, req));
+        const entry = all.find(e => e.id === req.params.id);
+        
         await svc.deleteEntry(req.params.id, getCol(BASE_COL, req));
+        
+        if (entry) {
+            sheetsService.deleteCashbook(req.params.id, entry.type, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook delete failed:', err.message));
+        }
         res.json({ message: 'Deleted' });
     } catch (e) { res.status(404).json({ error: e.message }); }
 });
