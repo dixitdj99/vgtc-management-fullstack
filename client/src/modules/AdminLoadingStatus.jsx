@@ -33,7 +33,7 @@ const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   );
 };
 
-export default function AdminLoadingStatus({ globalWeather }) {
+export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
   const [brand, setBrand] = useState('jksuper');
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -213,20 +213,26 @@ export default function AdminLoadingStatus({ globalWeather }) {
                       ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>}
                     </td>
                     <td style={{ padding: '16px', textAlign: 'right' }}>
-                      {editingId === r.id ? (
-                        <select 
-                          onChange={(e) => updateStatus(r.id, e.target.value)} 
-                          onBlur={() => setEditingId(null)}
-                          defaultValue={r.status || 'Pending'}
-                          style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--primary)', background: 'var(--bg)', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-                          <option value="Pending">Pending</option>
-                          <option value="Started">Started</option>
-                          <option value="Loaded">Loaded</option>
-                        </select>
+                      {role === 'admin' ? (
+                        editingId === r.id ? (
+                          <select 
+                            onChange={(e) => updateStatus(r.id, e.target.value)} 
+                            onBlur={() => setEditingId(null)}
+                            defaultValue={r.status || 'Pending'}
+                            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--primary)', background: 'var(--bg)', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                            <option value="Pending">Pending</option>
+                            <option value="Started">Started</option>
+                            <option value="Loaded">Loaded</option>
+                          </select>
+                        ) : (
+                          <button onClick={() => setEditingId(r.id)} style={{ background: 'none', border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', transition: 'all 0.2s' }}>
+                            <Edit2 size={14}/> Override
+                          </button>
+                        )
                       ) : (
-                        <button onClick={() => setEditingId(r.id)} style={{ background: 'none', border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', transition: 'all 0.2s' }}>
-                          <Edit2 size={14}/> Override
-                        </button>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: prog.color, background: `${prog.color}11`, padding: '4px 10px', borderRadius: '20px', border: `1px solid ${prog.color}33` }}>
+                          {prog.label.toUpperCase()}
+                        </span>
                       )}
                     </td>
                   </tr>

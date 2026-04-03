@@ -2,11 +2,43 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { Truck, Package, CheckCircle, Clock, RefreshCw, Smartphone, X, Share, MoreVertical, Download } from 'lucide-react';
 
+const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
+  const isLoaded = status === 'Loaded';
+  const isStarted = status === 'Started';
+  
+  const getWidth = () => {
+    if (isLoaded) return 100;
+    if (isStarted && startedAt) {
+      const start = new Date(startedAt).getTime();
+      const elapsed = Math.floor((now - start) / 60000);
+      // Creep from 15% to 95% over 30 minutes
+      return Math.min(95, 15 + (elapsed * 2.5)); 
+    }
+    return 10;
+  };
+
+  const width = getWidth();
+  const color = isLoaded ? '#10b981' : (isStarted ? '#3b82f6' : '#94a3b8');
+
+  return (
+    <div style={{ width: '100%', maxWidth: '140px' }}>
+      <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '4px' }}>
+        <div style={{ 
+          width: `${width}%`, height: '100%', background: color, 
+          transition: 'width 0.5s ease-out',
+          boxShadow: isStarted ? `0 0 10px ${color}44` : 'none'
+        }} />
+      </div>
+    </div>
+  );
+};
+
 export default function PublicLoadingStatus() {
   const [brand, setBrand] = useState('jksuper');
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   const fetchReceipts = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -32,8 +64,9 @@ export default function PublicLoadingStatus() {
 
   useEffect(() => {
     fetchReceipts();
-    const interval = setInterval(() => fetchReceipts(true), 5000);
-    return () => clearInterval(interval);
+    const tickInt = setInterval(() => setNow(Date.now()), 1000); // 1s tick for duration
+    const interval = setInterval(() => fetchReceipts(true), 10000); // 10s data sync
+    return () => { clearInterval(tickInt); clearInterval(interval); };
   }, [brand]);
 
   const updateStatus = async (id, newStatus) => {
@@ -163,22 +196,33 @@ export default function PublicLoadingStatus() {
                   
                   {!isLoaded && (
                     <>
-                      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', background: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', background: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold' }}>Material</div>
                           <div style={{ fontSize: '14px', color: '#334155', fontWeight: '600' }}>{r.material || 'N/A'}</div>
                         </div>
                         <div style={{ flex: 1, borderLeft: '1px solid #e2e8f0', paddingLeft: '12px' }}>
-                          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold' }}>Quantity</div>
-                          <div style={{ fontSize: '14px', color: '#334155', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Package size={14}/> {r.totalBags || 0} Bags
+                          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: 'bold' }}>Progress</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                            <ProgressBar status={r.status} startedAt={r.startedAt} loadedAt={r.loadedAt} now={now} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 800, color: r.status === 'Started' ? '#3b82f6' : '#94a3b8' }}>
+                               <Clock size={10} /> 
+                               {r.startedAt ? (() => {
+                                  const start = new Date(r.startedAt).getTime();
+                                  const end = r.loadedAt ? new Date(r.loadedAt).getTime() : now;
+                                  const diffMs = Math.max(0, end - start);
+                                  const mins = Math.floor(diffMs / 60000);
+                                  const secs = Math.floor((diffMs % 60000) / 1000);
+                                  return `${mins}m ${secs}s`;
+                               })() : 'Pending'}
+                            </div>
                           </div>
                         </div>
                       </div>
 
                       <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
                         <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', color: r.status === 'Started' ? '#3b82f6' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          Current Status: {r.status || 'Pending'}
+                          Update Status: {r.status || 'Pending'}
                         </div>
                         
                         <div style={{ display: 'flex', gap: '8px' }}>

@@ -233,6 +233,7 @@ function AppInner() {
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'diesel', adminOnly: true },
     { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'balance', adminOnly: true },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
+    { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
@@ -270,10 +271,10 @@ function AppInner() {
     { id: 'mileage_jkl', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jklakshmi', permKey: 'diesel', adminOnly: true },
     { id: 'pay_jkl', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jklakshmi', permKey: 'balance', adminOnly: true },
     { id: 'sell_jkl', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
+    { id: 'admin_loading_status_jkl', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
 
     ...(user?.role === 'admin' ? [
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' },
-      { id: 'admin_loading_status', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: plant || 'jksuper', adminOnly: true },
       { id: 'admin_backup', label: 'Backup Settings', Icon: Cloud, color: '#6366f1', section: plant || 'jksuper', adminOnly: true },
     ] : []),
   ];
@@ -527,7 +528,7 @@ function AppInner() {
               {(active === 'pay_dump' || active === 'pay_jkl') && <PayModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
-              {active === 'admin_loading_status' && (user?.role === 'admin') && <AdminLoadingStatus globalWeather={weather} />}
+              {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl') && <AdminLoadingStatus globalWeather={weather} role={user.role} />}
               {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>
           </AnimatePresence>
