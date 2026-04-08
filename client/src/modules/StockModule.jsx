@@ -91,8 +91,20 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
    MAIN
 ═════════════════════════════════════════════════ */
 export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
-  const API = brand === 'jkl' ? `${BASE_API}/jkl/stock` : `${BASE_API}/stock`;
-  const API_LR = brand === 'jkl' ? `${BASE_API}/jkl/lr` : `${BASE_API}/lr`;
+  let API, API_LR;
+  if (brand === 'jkl') {
+    API = `${BASE_API}/jkl/stock`;
+    API_LR = `${BASE_API}/jkl/lr`;
+  } else if (brand === 'kosli') {
+    API = `${BASE_API}/kosli/stock`;
+    API_LR = `${BASE_API}/kosli/lr`;
+  } else if (brand === 'jhajjar') {
+    API = `${BASE_API}/jhajjar/stock`;
+    API_LR = `${BASE_API}/jhajjar/lr`;
+  } else {
+    API = `${BASE_API}/stock`;
+    API_LR = `${BASE_API}/lr`;
+  }
   
   const [materialObjs, setMaterialObjs] = useState([]);
   const MATS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
@@ -367,11 +379,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   {r.material || '—'}
                 </span>
               </td>
-              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>
-                {r.credit > 0 ? (r.credit || 0).toLocaleString() : '—'}
+              <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
+                <div style={{ color: 'var(--accent)' }}>{r.credit > 0 ? (r.credit || 0).toLocaleString() : '—'}</div>
+                {r.credit > 0 && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(r.credit * 0.05).toFixed(2)} MT</div>}
               </td>
-              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>
-                {r.debit > 0 ? (r.debit || 0).toLocaleString() : '—'}
+              <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
+                <div style={{ color: 'var(--danger)' }}>{r.debit > 0 ? (r.debit || 0).toLocaleString() : '—'}</div>
+                {r.debit > 0 && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(r.debit * 0.05).toFixed(2)} MT</div>}
               </td>
               {role === 'admin' && <td style={{ ...TD, fontSize: '11px', color: 'var(--text-muted)' }}>{r.createdBy || '—'}</td>}
             </tr>
@@ -404,7 +418,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* Header */}
       <div className="page-hd">
         <div>
-          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : 'Dump'} Stock</h1>
+          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : brand === 'kosli' ? 'Kosli' : brand === 'jhajjar' ? 'Jhajjar' : 'Dump'} Stock</h1>
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -433,10 +447,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
           { label: 'LR Pending Ch.', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
         ].map(({ label, val, color, unit = 'bags' }) => (
-          <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '150px' }}>
+          <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '150px' }}>
             <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
-            <span style={{ fontSize: '20px', fontWeight: 900, color, lineHeight: 1 }}>{val.toLocaleString('en-IN')}</span>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{unit}</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+              <span style={{ fontSize: '20px', fontWeight: 900, color, lineHeight: 1 }}>{val.toLocaleString('en-IN')}</span>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>{unit}</span>
+            </div>
+            {unit === 'bags' && <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--text-sub)', marginTop: '2px' }}>{(val * 0.05).toFixed(2)} MT</span>}
           </div>
         ))}
       </div>
@@ -562,8 +579,11 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Material', <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (bags)', <input className="fi" type="number" step="1" min="1" required placeholder="e.g. 500"
-                  value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />)}
+                {fi('Quantity (bags)', <>
+                  <input className="fi" type="number" step="1" min="1" required placeholder="e.g. 500"
+                    value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />
+                  {migoForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--accent)', marginTop: '4px' }}>= {(migoForm.quantity * 0.05).toFixed(2)} MT</div>}
+                </>)}
                 {fi('Date', <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
                   value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />)}
@@ -615,7 +635,10 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                         {a.material}
                       </span>
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
+                       <div style={{ color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</div>
+                       <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(a.quantity * 0.05).toFixed(2)} MT</div>
+                    </td>
                     <td style={{ ...TD, color: 'var(--text-muted)' }}>{a.remark || '—'}</td>
                     {role === 'admin' && <td style={{ ...TD, fontSize: '11px', color: 'var(--text-muted)' }}>{a.createdBy || '—'}</td>}
                     <td style={{ ...TD, textAlign: 'center' }}>
@@ -652,8 +675,11 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Material', <select className="fi" value={chalForm.material} onChange={e => setChalForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (bags)', <input className="fi" type="number" step="1" min="1" required placeholder="bags"
-                  value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />)}
+                {fi('Quantity (bags)', <>
+                  <input className="fi" type="number" step="1" min="1" required placeholder="bags"
+                    value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
+                  {chalForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--warn)', marginTop: '4px' }}>= {(chalForm.quantity * 0.05).toFixed(2)} MT</div>}
+                </>)}
                 {fi('Party Name', <input className="fi" type="text" placeholder="Customer / party"
                   value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: e.target.value }))} />)}
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
@@ -751,15 +777,19 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                         <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
                           {c.materials ? (
                             c.materials.map((m, idx) => (
-                              <div key={idx} style={{ marginBottom: '4px' }}>
+                              <div key={idx} style={{ marginBottom: '6px' }}>
                                 {m.loadedBags > 0 ? (
-                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.loadedBags} loaded / </span>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{m.loadedBags} loaded / </div>
                                 ) : null}
-                                {(m.totalBags || 0).toLocaleString()}
+                                <div style={{ fontSize: '13px' }}>{(m.totalBags || 0).toLocaleString()} bags</div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((m.totalBags || 0) * 0.05).toFixed(2)} MT</div>
                               </div>
                             ))
                           ) : (
-                            (c.quantity || 0).toLocaleString()
+                            <>
+                                <div style={{ fontSize: '13px' }}>{(c.quantity || 0).toLocaleString()} bags</div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(c.quantity * 0.05).toFixed(2)} MT</div>
+                            </>
                           )}
                         </td>
                         <td style={{ ...TD }}>{c.partyName || '—'}</td>

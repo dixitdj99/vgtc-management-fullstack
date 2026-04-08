@@ -4,13 +4,17 @@ const cron = require('node-cron');
 const backupService = require('./utils/backupService');
 require('dotenv').config();
 
-const lrRoutes = require('./routes/lrRoutes');
+const lrRoutes = require('./routes/lrRoutes'); // Legacy
 const axios = require('axios');
 const voucherRoutes = require('./routes/voucherRoutes');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const cashbookRoutes = require('./routes/cashbookRoutes');
-const stockRoutes = require('./routes/stockRoutes');
+const stockRoutes = require('./routes/stockRoutes'); // Legacy
+const kosliLrRoutes = require('./routes/kosliLrRoutes');
+const jhajjarLrRoutes = require('./routes/jhajjarLrRoutes');
+const kosliStockRoutes = require('./routes/kosliStockRoutes');
+const jhajjarStockRoutes = require('./routes/jhajjarStockRoutes');
 const stockService = require('./utils/stockService');
 
 // JK Lakshmi specific routes
@@ -32,12 +36,14 @@ if (!process.env.NETLIFY) {
 const app = express();
 app.use(express.json());
 
-app.use('/api/lr', requireAuth, lrRoutes);
+app.use('/api/kosli/lr', requireAuth, kosliLrRoutes);
+app.use('/api/jhajjar/lr', requireAuth, jhajjarLrRoutes);
 app.use('/api/vouchers', requireAuth, voucherRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/cashbook', requireAuth, cashbookRoutes);
-app.use('/api/stock', requireAuth, stockRoutes);
+app.use('/api/kosli/stock', requireAuth, kosliStockRoutes);
+app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
 app.use('/api/sell', requireAuth, sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);

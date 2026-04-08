@@ -9,7 +9,7 @@ import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
-const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
+const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -428,7 +428,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
 
 /* ══════ MAIN ══════ */
 export default function BalanceSheet({ initialTab, lockedType, role = 'user', permissions = {} }) {
-  const [tab, setTab] = useState(lockedType || initialTab || 'Dump');
+  const [tab, setTab] = useState(lockedType || initialTab || 'Kosli_Bill');
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
   const [truckSearch, setTruckSearch] = useState('');

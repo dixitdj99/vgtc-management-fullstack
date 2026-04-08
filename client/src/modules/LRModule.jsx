@@ -115,39 +115,79 @@ function printReceipt(allRows, lrNo, allChallans = []) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} }) {
+function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {} }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
     truckNo: row.truckNo,
     partyName: row.partyName,
     billing: row.billing || '',
+    usedChallans: [], // Resolved below
     material: row.material,
     weight: row.weight,
     totalBags: row.totalBags,
     destination: row.destination || '',
   });
-  const [loading, setLoading] = useState(false); // Renamed from saving to loading
+  const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [showChalPopup, setShowChalPopup] = useState(false);
 
-  // MATERIALS passed down from parent now, fallback to MATS_DUMP_FALLBACK
+  // Resolution of usedChallans on mount
+  useEffect(() => {
+    if (row.billing && allChallans.length > 0) {
+      const nos = row.billing.split(',').map(s => s.trim());
+      const resolved = allChallans.filter(c => nos.includes(c.challanNo));
+      setForm(f => ({ ...f, usedChallans: resolved }));
+    }
+  }, [row.billing, allChallans]);
+
   const MATERIALS = row.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
-  const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
+  let ENDPOINT;
+  if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
+  else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
+  else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
+  else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const executeSave = async () => {
-    setLoading(true);
     setIsConfirming(false);
 
+    // 1. Strict Quantity Validation
+    const lrBags = parseInt(form.totalBags || 0);
+    let totalChallanBags = 0;
+    
+    form.usedChallans.forEach(c => {
+      if (c.materials) {
+        const mat = c.materials.find(m => m.type === form.material);
+        if (mat) {
+           totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
+           if (row.billing.includes(c.challanNo) && row.material === form.material) {
+             totalChallanBags += parseInt(row.totalBags || 0);
+           }
+        }
+      } else if (c.material === form.material) {
+        totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
+        if (row.billing.includes(c.challanNo) && row.material === form.material) {
+           totalChallanBags += parseInt(row.totalBags || 0);
+        }
+      }
+    });
+
+    if (form.usedChallans.length > 0 && lrBags > totalChallanBags) {
+       alert(`Not Enough Bags!\nLoading Receipt has ${lrBags} bags, but selected challans only provide ${totalChallanBags} bags of ${form.material}.\n\nPlease select more challans or reduce LR bags.`);
+       return;
+    }
+
+    setLoading(true);
     const oldBags = parseInt(row.totalBags || 0);
     const newBags = parseInt(form.totalBags || 0);
     
-    // Validate physical stock if increasing bags or changing material
+    // Validate physical stock
     if (form.material === row.material) {
       if (newBags > oldBags) {
         const extraNeeded = newBags - oldBags;
         const limit = stockMap[form.material]?.physical || 0;
         if (extraNeeded > limit) {
-          alert(`Low Stock! Cannot increase loading receipt.\nYou need ${extraNeeded} more bags of ${form.material}, but only ${limit} bags are physically available in the godown.`);
+          alert(`Low Stock! Cannot increase loading receipt.\nYou need ${extraNeeded} more bags of ${form.material}, but only ${limit} bags are physically available.`);
           setLoading(false);
           return;
         }
@@ -155,20 +195,25 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
     } else {
       const limit = stockMap[form.material]?.physical || 0;
       if (newBags > limit) {
-        alert(`Low Stock! Cannot change material type to ${form.material}.\nYou need ${newBags} bags of ${form.material}, but only ${limit} bags are physically available in the godown.`);
+        alert(`Low Stock! Cannot change material type to ${form.material}.\nYou need ${newBags} bags of ${form.material}, but only ${limit} bags are physically available.`);
         setLoading(false);
         return;
       }
     }
 
     try {
-      const payload = { ...form };
+      const finalBilling = form.usedChallans.map(c => c.challanNo).join(', ');
+      const payload = { ...form, billing: finalBilling };
+      delete payload.usedChallans; // remove UI state
       
-      // Sync stock first
-      const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+      let SYNC_API;
+      if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+      else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+      else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else SYNC_API = `${BASE_API}/stock/sync-lr`;
       await ax.post(SYNC_API, {
         oldChallanNos: row.billing,
-        newChallanNos: form.billing,
+        newChallanNos: finalBilling,
         material: form.material,
         quantity: form.totalBags
       });
@@ -207,33 +252,18 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
             <X size={18} />
           </button>
         </div>
+        
         {/* Modal body */}
-        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '70vh', overflowY: 'auto' }}>
           <div className="fg fg-2">
-            <div className="field">
-              <label>LR Number</label>
-              <input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} />
-            </div>
-            <div className="field">
-              <label><Calendar size={11} /> Date</label>
-              <input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} />
-            </div>
+            <div className="field"><label>LR Number</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
+            <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
             <div className="field">
               <label>Truck No.</label>
-              <input className="fi" type="text" value={form.truckNo} onChange={e => {
-                const val = e.target.value.toUpperCase().replace(/\s/g, '');
-                S('truckNo', val);
-              }} />
-              {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800}}>Invalid Format (e.g. RJ07GA1234)</span>}
+              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase().replace(/\s/g, ''))} />
             </div>
-            <div className="field">
-              <label><User size={11} /> Party Name</label>
-              <input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Destination</label>
-              <input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} />
-            </div>
+            <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
+            <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
           </div>
           <hr className="sep" style={{ margin: '4px 0' }} />
           <div className="fg fg-3">
@@ -246,58 +276,66 @@ function EditModal({ row, openChallans, onClose, onSave, brand, stockMap = {} })
             <div className="field">
               <label style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Bags</span>
-                {form.material && (
-                   <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[form.material]?.physical || 0}</span>
-                )}
+                <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[form.material]?.physical || 0}</span>
               </label>
               <input className="fi" type="number" value={form.totalBags} onChange={e => {
                 const bags = e.target.value;
-                setForm(f => {
-                   const f2 = { ...f, totalBags: bags };
-                   if (bags) f2.weight = (parseFloat(bags) * 0.05).toFixed(2);
-                   return f2;
-                });
+                setForm(f => ({ ...f, totalBags: bags, weight: bags ? (parseFloat(bags) * 0.05).toFixed(2) : '' }));
               }} />
             </div>
-            <div className="field">
-              <label>Weight (MT)</label>
-              <input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} />
+            <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} /></div>
+          </div>
+          
+          <div className="field">
+            <label><Tag size={11} /> Challan Selection</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                   <Tag size={14} color="#f59e0b" />
+                   {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
+                </span>
+                <Pencil size={12} opacity={0.5} />
+              </button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {form.usedChallans.map(c => (
+                  <div key={c.challanNo} style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', padding: '4px 10px', borderRadius: '12px', fontSize: '10px', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {c.challanNo}
+                    <X size={10} style={{ cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== c.challanNo) }))} />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="field">
-            <label><Tag size={11} /> Challan</label>
-            <select className="fi" value={form.billing} onChange={e => S('billing', e.target.value)}>
-              <option value="">— No Challan —</option>
-              {form.billing && !openChallans.find(c => c.challanNo === form.billing) && (
-                <option value={form.billing}>{form.billing} (current)</option>
-              )}
-              {openChallans.map(c => {
-                let matText = c.material ? `${c.material} (${c.quantity} bags)` : '';
-                if (c.materials) {
-                    matText = c.materials.map(m => `${m.type}: ${m.totalBags - m.loadedBags} bags left`).join(', ');
-                }
-                const destText = c.destination ? ` · ${c.destination}` : '';
-                return <option key={c.id} value={c.challanNo}>{c.challanNo} — {c.truckNo}{destText} ({matText})</option>
-              })}
-            </select>
-          </div>
         </div>
+
         {/* Modal footer */}
         <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.07)', justifyContent: 'flex-end' }}>
           <button className="btn btn-g" onClick={onClose} disabled={loading}>Cancel</button>
-          <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading} title="Save Changes">
+          <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading}>
             {loading ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}
           </button>
         </div>
+
+        {showChalPopup && (
+           <ChallanPopup 
+             brand={brand} openChallans={openChallans} vehicles={vehicles} 
+             selectedChallans={form.usedChallans} 
+             onClose={() => setShowChalPopup(false)}
+             onToggleSelect={(ch) => {
+                const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
+                if (isSelected) {
+                   setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
+                } else {
+                   if (form.truckNo && ch.truckNo !== form.truckNo) {
+                      if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
+                   }
+                   setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
+                }
+             }}
+           />
+        )}
       </motion.div>
-      <ConfirmSaveModal
-        isOpen={isConfirming}
-        onClose={() => setIsConfirming(false)}
-        onConfirm={executeSave}
-        title="Save Changes"
-        message="Are you sure you want to save changes to this loading receipt?"
-        isSaving={loading}
-      />
+      <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title="Save Changes" message="Update this loading receipt?" isSaving={loading} />
     </div>
   );
 }
@@ -313,7 +351,11 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
   // Use brandMats from parent
   const MATERIALS = vehicles[0]?.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
-  const ENDPOINT = brand === 'jkl' ? `${BASE_API}/jkl/stock/challans` : `${BASE_API}/stock/challans`;
+  let ENDPOINT;
+  if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
+  else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
+  else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
+  else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
     truckNo: preFill?.truckNo || '',
@@ -425,7 +467,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#818cf8', fontSize: '10px', fontWeight: 700 }}>
                                     <Package size={10} /> {m.type}
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700 }}>{m.totalBags - m.loadedBags} left</div>
+                                  <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700 }}>
+                                    {m.totalBags - m.loadedBags} bags <span style={{ opacity: 0.7 }}>({((m.totalBags - m.loadedBags) * 0.05).toFixed(2)} MT)</span> left
+                                  </div>
                                 </div>
                               ))
                             ) : (
@@ -434,7 +478,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '4px 8px', borderRadius: '6px', color: '#818cf8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
                                   <Package size={12} /> {c.material}
                                 </div>
-                                <div style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 700 }}>{c.quantity} bags</div>
+                                 <div style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 700 }}>
+                                   {c.quantity} bags <span style={{ opacity: 0.7 }}>({(c.quantity * 0.05).toFixed(2)} MT)</span>
+                                 </div>
                               </>
                             )}
                           </div>
@@ -473,6 +519,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                     <div className="field">
                       <label>Quantity (bags) *</label>
                       <input className="fi" type="number" step="1" min="1" placeholder="0" value={chalForm.quantity} onChange={e => S('quantity', e.target.value)} required />
+                      {chalForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: '#f59e0b', marginTop: '4px' }}>= {(chalForm.quantity * 0.05).toFixed(2)} MT</div>}
                     </div>
                   </div>
                   <div className="fg fg-2">
@@ -534,7 +581,11 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
     setDeleting(true);
     try {
       // Refund stock first
-      const SYNC_API = apiUrl.includes('/jkl/lr') ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+      let SYNC_API;
+      if (apiUrl.includes('/jkl/lr')) SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+      else if (apiUrl.includes('/kosli/lr')) SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+      else if (apiUrl.includes('/jhajjar/lr')) SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else SYNC_API = `${BASE_API}/stock/sync-lr`;
       if (row.billing) {
         await ax.post(SYNC_API, {
           oldChallanNos: row.billing,
@@ -577,8 +628,20 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
-  const API = brand === 'jkl' ? `${BASE_API}/jkl/lr` : `${BASE_API}/lr`;
-  const API_STOCK = brand === 'jkl' ? `${BASE_API}/jkl/stock` : `${BASE_API}/stock`;
+  let API, API_STOCK;
+  if (brand === 'jkl') {
+    API = `${BASE_API}/jkl/lr`;
+    API_STOCK = `${BASE_API}/jkl/stock`;
+  } else if (brand === 'kosli') {
+    API = `${BASE_API}/kosli/lr`;
+    API_STOCK = `${BASE_API}/kosli/stock`;
+  } else if (brand === 'jhajjar') {
+    API = `${BASE_API}/jhajjar/lr`;
+    API_STOCK = `${BASE_API}/jhajjar/stock`;
+  } else {
+    API = `${BASE_API}/lr`;
+    API_STOCK = `${BASE_API}/stock`;
+  }
   const API_CHAL = `${API_STOCK}/challans`;
   
   const [materialObjs, setMaterialObjs] = useState([]);
@@ -707,7 +770,11 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       // 2. Sync stock
       const receipt = receipts.find(r => r.id === linkingLrId);
       if (receipt) {
-        const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+        let SYNC_API;
+        if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+        else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+        else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+        else SYNC_API = `${BASE_API}/stock/sync-lr`;
         await ax.post(SYNC_API, {
           oldChallanNos: "",
           newChallanNos: newChNo,
@@ -730,7 +797,33 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   };
 
   const executeSaveLR = async () => {
-    setLoading(true); setIsConfirmingSave(false);
+    setIsConfirmingSave(false);
+    
+    // 1. Strict Quantity Validation
+    for (const m of form.materials) {
+      if (m.billing && m.billing !== 'No') {
+          const lrBags = parseInt(m.bags || 0);
+          let totalChallanBags = 0;
+          const nos = m.billing.split(',').map(s => s.trim());
+          const used = allChallans.filter(c => nos.includes(c.challanNo));
+
+          used.forEach(c => {
+             if (c.materials) {
+                const mat = c.materials.find(cm => cm.type === m.type);
+                if (mat) totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
+             } else if (c.material === m.type) {
+                totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
+             }
+          });
+
+          if (lrBags > totalChallanBags) {
+             alert(`Not Enough Bags in ${m.type}!\nLR needs ${lrBags} bags, but selected challan(s) only provide ${totalChallanBags} bags.\n\nPlease fix the bag count or selection.`);
+             return;
+          }
+      }
+    }
+
+    setLoading(true);
     try {
       const payload = {
         ...form,
@@ -739,8 +832,11 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       const res = await ax.post(API, payload);
       
-      // Sync stock for each material - only if it has a challan
-      const SYNC_API = brand === 'jkl' ? `${BASE_API}/jkl/stock/sync-lr` : `${BASE_API}/stock/sync-lr`;
+      let SYNC_API;
+      if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+      else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+      else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else SYNC_API = `${BASE_API}/stock/sync-lr`;
       for (const m of form.materials) {
         if (m.bags && m.billing && m.billing !== 'No') {
           await ax.post(SYNC_API, {
@@ -803,7 +899,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -827,9 +923,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             onToggleSelect={(ch) => {
               const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
               let newUsed;
+              
               if (isSelected) {
                 newUsed = form.usedChallans.filter(c => c.challanNo !== ch.challanNo);
               } else {
+                // Vehicle mismatch warning
+                if (form.truckNo && ch.truckNo !== form.truckNo) {
+                  const confirm = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
+                  if (!confirm) return;
+                }
                 newUsed = [...form.usedChallans, ch];
               }
 

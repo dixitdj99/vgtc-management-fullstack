@@ -4,8 +4,8 @@ const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 
-const BASE_COL = 'loading_receipts';
-const META_COL = 'metadata';
+const BASE_COL = 'jhajjar_loading_receipts';
+const META_COL = 'jhajjar_metadata';
 
 // Create
 router.post('/', async (req, res) => {

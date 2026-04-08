@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vikas Goods Transport Bill</title>
+    <style>
+        body {
+            background-color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        .receipt-container {
+            width: 210mm;
+            height: 148.5mm; /* Exact Half A4 size (A5 landscape) */
+            background-color: #fdfdfb; /* Slight off-white paper tone */
+            border: 1px solid #000;
+            padding: 5px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            color: #000;
+            overflow: hidden;
+        }
+
+        /* --- Header Section --- */
+        .header {
+            display: flex;
+            align-items: center;
+            padding-bottom: 5px;
+        }
+        .header-left {
+            width: 15%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .header-center {
+            width: 70%;
+            text-align: center;
+        }
+        .header-right {
+            width: 15%;
+            font-size: 9px;
+            font-weight: bold;
+            align-self: flex-start;
+            text-align: right;
+            padding-top: 5px;
+            padding-right: 5px;
+        }
+
+        .company-name {
+            font-size: 21px;
+            font-weight: 900;
+            margin: 0 0 2px 0;
+            letter-spacing: 0.5px;
+        }
+        .auth-badge {
+            background-color: #000;
+            color: #fff;
+            display: inline-block;
+            padding: 2px 15px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        .address-text {
+            font-size: 11px;
+            font-weight: bold;
+            margin: 1px 0;
+        }
+        .head-office {
+            font-size: 10px;
+            margin: 1px 0;
+        }
+
+        /* --- Info Grid Section --- */
+        .info-grid {
+            display: flex;
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .info-col-1 {
+            width: 20%;
+            border-right: 1px solid #000;
+            display: flex;
+            flex-direction: column;
+        }
+        .info-col-1 > div {
+            padding: 3px 5px;
+            display: flex;
+            align-items: center;
+        }
+        .info-col-1 > div:nth-child(1) { border-bottom: 1px solid #000; height: 18px; }
+        .info-col-1 > div:nth-child(2) { border-bottom: 1px solid #000; flex-grow: 1; justify-content: center; text-align: center; }
+        .info-col-1 > div:nth-child(3) { height: 18px; justify-content: center; }
+
+        .info-col-2 {
+            width: 50%;
+            border-right: 1px solid #000;
+            display: flex;
+            flex-direction: column;
+        }
+        .info-col-2 > div {
+            padding: 3px 5px;
+            border-bottom: 1px solid #000;
+            display: flex;
+            align-items: flex-end;
+            height: 16px;
+        }
+        .info-col-2 > div:last-child {
+            border-bottom: none;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .info-col-3 {
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+        }
+        .info-col-3 > div {
+            padding: 3px 5px;
+            border-bottom: 1px solid #000;
+            display: flex;
+            align-items: flex-end;
+            height: 16px;
+        }
+        .info-col-3 > div:last-child {
+            border-bottom: none;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .line-fill { flex-grow: 1; border-bottom: 1px solid #000; margin-left: 5px; height: 10px; }
+        .dotted-fill { flex-grow: 1; border-bottom: 1px dotted #000; margin-left: 5px; height: 10px; }
+
+        .sno-handwritten {
+            display: inline-block;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-size: 18px;
+            font-weight: 900;
+            transform: rotate(-10deg) translateY(-2px);
+            margin-left: 10px;
+        }
+
+        /* --- Main Table Section --- */
+        .main-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            table-layout: fixed;
+            flex-grow: 1;
+        }
+        .main-table th, .main-table td {
+            border: 1px solid #000;
+            padding: 3px;
+        }
+        .main-table th {
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .col-bags { width: 6%; }
+        .col-desc { width: 24%; }
+        .col-weight { width: 7%; }
+        .col-rate { width: 8%; }
+        .col-freight { width: 9.33%; }
+        .col-remark { width: 17%; }
+
+        .split-header { padding: 0 !important; }
+        .split-header .top-part { border-bottom: 1px solid #000; padding: 2px; }
+        .split-header .bottom-part { display: flex; justify-content: space-between; padding: 2px; }
+
+        .body-row td {
+            border-bottom: none;
+            vertical-align: top;
+        }
+        
+        .advance-cell {
+            text-align: center;
+            vertical-align: middle !important;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .billed-cell {
+            text-align: center;
+            vertical-align: middle !important;
+            font-size: 16px;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+
+        .desc-text {
+            font-size: 10px;
+            line-height: 1.5;
+        }
+        .remark-text {
+            font-size: 10px;
+            line-height: 2;
+        }
+
+        /* --- Footer Section --- */
+        .footer {
+            font-size: 8px;
+            margin-top: 2px;
+            line-height: 1.1;
+        }
+        .declaration {
+            margin: 2px 0;
+            text-align: left;
+        }
+        .service-tax-note {
+            text-align: center;
+            font-weight: bold;
+            font-size: 9px;
+            margin: 2px 0;
+        }
+        .hindi-note {
+            margin: 2px 0;
+        }
+        
+        .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 0 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="receipt-container">
+        <div class="header">
+            <div class="header-left">
+               <img src="krishna-logo.jpg" alt="Krishna Logo" style="max-width: 100%; max-height: 50px;">
+            </div>
+            <div class="header-center">
+                <div class="company-name">M/S. VIKAS GOODS TRANSPORT CO.</div>
+                <div class="auth-badge">Authorised Transport for : J.K. Super Cement Ltd.</div>
+                <div class="address-text">Near Gaushala, Rewari Road, Jhajjar (Hr.)</div>
+                <div class="address-text">Mob. : 9728284849, 9416319445</div>
+                <div class="head-office">Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari</div>
+            </div>
+            <div class="header-right">
+                GSTIN : 06ARIPK9021C2Z2
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-col-1">
+                <div>Consignor</div>
+                <div>J.K. Super Cement Ltd.</div>
+                <div>Jhajjar</div>
+            </div>
+            <div class="info-col-2">
+                <div>M/s. <div class="line-fill"></div></div>
+                <div><div class="line-fill" style="margin-left: 0;"></div></div>
+                <div><div class="line-fill" style="margin-left: 0;"></div></div>
+                <div>
+                    <span>S.T.L. No.</span>
+                    <span>C.S.T. No.</span>
+                </div>
+            </div>
+            <div class="info-col-3">
+                <div>Truck No. <div class="dotted-fill"></div></div>
+                <div>From : Jhajjar</div>
+                <div>To <div class="line-fill"></div></div>
+                <div>
+                    <span>S. No. <span class="sno-handwritten">024</span></span>
+                    <span>Date</span>
+                </div>
+            </div>
+        </div>
+
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="col-bags">No. of<br>Bags</th>
+                    <th rowspan="2" class="col-desc">Description said to contain</th>
+                    <th colspan="2">Actual Weight</th>
+                    <th rowspan="2" class="col-rate">Rate</th>
+                    <th colspan="3">FRIEGHT</th>
+                    <th rowspan="2" class="col-remark">Remark</th>
+                </tr>
+                <tr>
+                    <th class="col-weight">Qn.</th>
+                    <th class="col-weight">Kg.</th>
+                    <th class="col-freight split-header">
+                        <div class="top-part">FRIEGHT</div>
+                        <div class="bottom-part"><span>Rs.</span><span>P.</span></div>
+                    </th>
+                    <th class="col-freight split-header">
+                        <div class="top-part">Paid</div>
+                        <div class="bottom-part"><span>Rs.</span><span>P.</span></div>
+                    </th>
+                    <th class="col-freight split-header">
+                        <div class="top-part">To Pay</div>
+                        <div class="bottom-part"><span>Rs.</span><span>P.</span></div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="body-row" style="height: 190px;">
+                    <td></td>
+                    <td class="desc-text">
+                        CEMENT<br>
+                        Grade<br>
+                        <b><i>J.K. Super Cement</i></b><br>
+                        PPC<br>
+                        43<br>
+                        53<br>
+                        Value of Goods<br>
+                        Bill No. :<br>
+                        Shipment No. :<br>
+                        D.I. No.
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td colspan="2" class="advance-cell">Advance =</td>
+                    <td class="billed-cell">To<br>be<br>Billed</td>
+                    <td class="remark-text">
+                        Driver Name<br>
+                        D.L. No.<br>
+                        Owner Permit No.<br>
+                        Permit No.<br>
+                        Address
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="font-weight: bold; border-top: 1px solid #000;">Total</td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td style="border-top: 1px solid #000;"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <div class="declaration">
+                *I/We declare that we have not taken credit of Excise Duty paid on inputs or capital goods or credit of Service Tax paid on Input Services used for providing of Goods by Road Services under the provision of Cenvat Credit Rule 2004*./ I/We also declare that we have not availed the benefit under notification No. 12/2003 ST2 - 16.8.2011
+            </div>
+            <div class="service-tax-note">Service Tax to be paid by Consignor</div>
+            <div class="hindi-note">
+                नोट : 1. बिल्टी की पहुंच 15 दिन के अन्दर की जावें, अन्यथा किरायें का 2% काटा जायेगा और एक माह के बाद पहुंच का किराया नहीं दिया जायेगा।<br>
+                2. गाड़ी में रस्सा तिरपाल अनिवार्य है अन्यथा गाड़ी नहीं भरी जाएगी। All Disputes arising out of it shall have the Jurisdiction for Jhajjar
+            </div>
+            
+            <div class="signatures">
+                <div style="width: 30%;"></div>
+                <div style="width: 30%; text-align: center;">Sign. of Driver</div>
+                <div style="width: 40%; text-align: right;">Sign. of Clerk <b>for</b><br>VIKAS GOODS TRANSPORT</div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

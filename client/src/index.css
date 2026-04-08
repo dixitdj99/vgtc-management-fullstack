@@ -245,7 +245,15 @@ textarea {
 }
 
 .nav-btn.active .nav-indicator {
-  opacity: 1;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  background: var(--primary);
+  border-radius: 0 4px 4px 0;
+  opacity: 0;
 }
 
 .sidebar-footer {

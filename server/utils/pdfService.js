@@ -106,6 +106,8 @@ async function generateReceiptPDF(title, data, outputPath) {
  * Used for individual per-creation backups.
  */
 async function generateVoucherPDF(v, outputPath) {
+    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
+    
     const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
     const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
     const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
@@ -125,6 +127,129 @@ async function generateVoucherPDF(v, outputPath) {
     ].filter(d => d.value > 0 || d.isPending);
 
     return new Promise((resolve, reject) => {
+        if (isBill) {
+            const doc = new PDFDocument({ margin: 20, size: 'A5', layout: 'landscape' });
+            const stream = fs.createWriteStream(outputPath);
+            doc.pipe(stream);
+
+            // A5 landscape: width = 595.28, height = 419.53
+            const PW = 595.28;
+            const PH = 419.53;
+            const M = 15;
+
+            doc.rect(M, M, PW - M * 2, PH - M * 2).strokeColor('#000').lineWidth(1).stroke();
+            
+            let y = M + 5;
+            doc.fontSize(16).font('Helvetica-Bold').fillColor('#000').text('M/S. VIKAS GOODS TRANSPORT CO.', M, y, { align: 'center' });
+            y += 20;
+            
+            doc.rect(M + (PW - M * 2) / 2 - 100, y, 200, 14).fillAndStroke('#000', '#000');
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff').text('Authorised Transport for : J.K. Super Cement Ltd.', M, y + 3, { align: 'center' });
+            y += 18;
+            
+            doc.fillColor('#000').fontSize(8).font('Helvetica-Bold').text('Near Gaushala, Rewari Road, Jhajjar (Hr.)', M, y, { align: 'center' });
+            y += 10;
+            doc.text('Mob. : 9728284849, 9416319445', M, y, { align: 'center' });
+            y += 10;
+            doc.fontSize(7).font('Helvetica').text('Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari', M, y, { align: 'center' });
+            doc.fontSize(7).font('Helvetica-Bold').text('GSTIN : 06ARIPK9021C2Z2', PW - M - 100, M + 10);
+            
+            y += 12;
+            doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1).stroke();
+            
+            // Info grid
+            const col1 = M + 100;
+            const col2 = M + 300;
+            doc.moveTo(col1, y).lineTo(col1, y + 45).stroke();
+            doc.moveTo(col2, y).lineTo(col2, y + 45).stroke();
+            
+            doc.fontSize(8).font('Helvetica-Bold').text('Consignor', M + 5, y + 5);
+            doc.moveTo(M, y + 15).lineTo(col1, y + 15).stroke();
+            doc.text('J.K. Super Cement Ltd.', M + 5, y + 20);
+            doc.moveTo(M, y + 30).lineTo(col1, y + 30).stroke();
+            doc.text(v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar', M + 5, y + 35, { align: 'center', width: col1 - M });
+            
+            doc.text(`M/s.  ${v.partyName || ''}`, col1 + 5, y + 5);
+            doc.moveTo(col1, y + 15).lineTo(col2, y + 15).stroke();
+            doc.moveTo(col1, y + 30).lineTo(col2, y + 30).stroke();
+            doc.text('S.T.L. No.', col1 + 5, y + 35);
+            doc.text('C.S.T. No.', col1 + 100, y + 35);
+            
+            doc.text(`Truck No.  ${v.truckNo || ''}`, col2 + 5, y + 5);
+            doc.moveTo(col2, y + 15).lineTo(PW - M, y + 15).stroke();
+            doc.text(`From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}`, col2 + 5, y + 18);
+            doc.moveTo(col2, y + 30).lineTo(PW - M, y + 30).stroke();
+            doc.text(`To  ${v.destination || ''}`, col2 + 50, y + 18);
+            doc.text(`S. No. ${v.lrNo}`, col2 + 5, y + 35);
+            doc.font('Helvetica').text(`Date: ${v.date}`, col2 + 100, y + 35);
+            
+            y += 45;
+            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+            
+            const cw1 = 40, cw2 = 120, cw3 = 60, cw4 = 40, cw5 = 60, cw6 = 60, cw7 = 60;
+            let cwX = [M + cw1, M + cw1 + cw2, M + cw1 + cw2 + cw3, M + cw1 + cw2 + cw3 + cw4, M + cw1 + cw2 + cw3 + cw4 + cw5, M + cw1 + cw2 + cw3 + cw4 + cw5 + cw6, M + cw1 + cw2 + cw3 + cw4 + cw5 + cw6 + cw7];
+            
+            cwX.forEach((x, i) => { if (i < cwX.length - 1) doc.moveTo(x, y).lineTo(x, PH - M - 40).stroke(); });
+            
+            doc.fontSize(8).font('Helvetica-Bold');
+            doc.text('No. of Bags', M + 5, y + 5, { width: cw1 - 10, align: 'center' });
+            doc.text('Description said to contain', cwX[0] + 5, y + 5, { width: cw2 - 10, align: 'center' });
+            doc.text('Actual Weight', cwX[1] + 5, y + 2, { width: cw3 - 10, align: 'center' });
+            doc.moveTo(cwX[1], y + 12).lineTo(cwX[2], y + 12).stroke();
+            doc.text('Qn.', cwX[1] + 2, y + 15);
+            doc.moveTo(cwX[1] + cw3/2, y + 12).lineTo(cwX[1] + cw3/2, PH - M - 40).stroke();
+            doc.text('Kg.', cwX[1] + cw3/2 + 2, y + 15);
+            doc.text('Rate', cwX[2] + 5, y + 5, { width: cw4 - 10, align: 'center' });
+            
+            ['FRIEGHT', 'Paid', 'To Pay'].forEach((lbl, i) => {
+                const bx = cwX[3 + i];
+                doc.text(lbl, bx + 5, y + 2, { width: cw5 - 10, align: 'center' });
+                doc.moveTo(bx, y + 12).lineTo(bx + cw5, y + 12).stroke();
+                doc.text('Rs.', bx + 5, y + 15);
+                doc.moveTo(bx + cw5 - 15, y + 12).lineTo(bx + cw5 - 15, PH - M - 40).stroke();
+                doc.text('P.', bx + cw5 - 12, y + 15);
+            });
+            
+            doc.text('Remark', cwX[6] + 5, y + 5, { width: PW - M - cwX[6] - 10, align: 'center' });
+            
+            y += 25;
+            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+            
+            doc.fontSize(9).font('Helvetica').text(v.bags || '', M + 5, y + 10, { width: cw1 - 10, align: 'center' });
+            const descY = y + 5;
+            doc.fontSize(7).text('CEMENT\nGrade\nJ.K. Super Cement\nPPC\n43\n53\nValue of Goods\nBill No. :\nShipment No. :\nD.I. No.', cwX[0] + 5, descY);
+            
+            doc.fontSize(9).text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 10, { width: cw3 - 10, align: 'center' });
+            doc.fontSize(8).text(v.rate || '', cwX[2] + 5, y + 10, { width: cw4 - 10, align: 'center' });
+            
+            doc.fontSize(8).font('Helvetica-Bold').text(`Advance = \n${dieselPending ? 'FULL (Pending)' : (!totalDeductions ? '—' : 'Rs.' + Math.round(totalDeductions).toLocaleString())}`, cwX[3] + 5, y + 30, { width: cw5*2 - 10, align: 'center' });
+            doc.fontSize(10).text(`To be Billed\n\n${dieselPending ? '—' : 'Rs.' + Math.round(net).toLocaleString()}`, cwX[5] + 5, y + 20, { width: cw7 - 10, align: 'center' });
+            doc.fontSize(7).font('Helvetica').text(`Driver Name\nD.L. No.\nOwner Permit No.\nPermit No.\nAddress\n\n${v.pump ? 'Pump: ' + v.pump : ''}`, cwX[6] + 5, y + 5);
+            
+            y = PH - M - 40;
+            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('Total', M + 5, y + 3, { width: cw1 + cw2 - 10, align: 'center' });
+            doc.text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 3, { width: cw3 - 10, align: 'center' });
+            doc.text(`Gross: Rs.${Math.round(gross).toLocaleString()}`, cwX[3] + 5, y + 3, { width: cw5 * 3 - 10, align: 'center' });
+            
+            y += 15;
+            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+            
+            doc.fontSize(6).font('Helvetica').text('*I/We declare that we have not taken credit of Excise Duty paid on inputs... All Disputes arising out of it shall have the Jurisdiction for Jhajjar', M + 5, y + 2);
+            doc.font('Helvetica-Bold').text('Service Tax to be paid by Consignor', M + 5, y + 10, { align: 'center', width: PW - M * 2 });
+            
+            y += 20;
+            doc.fontSize(8);
+            doc.text('Sign. of Driver', M + cw1 + 20, y);
+            doc.text('Sign. of Clerk for VIKAS GOODS TRANSPORT', PW - M - 200, y, { align: 'right', width: 190 });
+            
+            doc.end();
+            stream.on('finish', () => resolve(outputPath));
+            stream.on('error', reject);
+            return;
+        }
+
         // PW=467 (approx 165mm), PH depends on content, we will use a tall fixed height
         const PW = 467, PH = 550, M = 28, CW = PW - M * 2;
         const doc = new PDFDocument({ margin: 0, size: [PW, PH] });
@@ -456,10 +581,99 @@ async function generateVoucherListPDF(plantName, vouchers, outputPath) {
     });
 }
 
+/**
+ * Generates a formal Tax Invoice PDF for multiple Loading Receipts.
+ * Includes Header, Invoice Details, Party Info, and a detailed table of LRs.
+ */
+async function generateInvoicePDF(invoiceData, outputPath) {
+    const { 
+        invoiceNumber, 
+        invoiceDate, 
+        partyName, 
+        items, // Array of LRs
+        billingEntity = 'VIKAS GOODS TRANSPORT',
+        address = 'Jharli, Jhajjar, Haryana',
+        contact = '+91 9999999999'
+    } = invoiceData;
+
+    const totalWeight = items.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0);
+    const totalBags = items.reduce((s, v) => s + (parseInt(v.totalBags || v.bags) || 0), 0);
+    const totalAmount = items.reduce((s, v) => s + (parseFloat(v.totalAmount || v.amount || 0)), 0);
+
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 30, size: 'A4' });
+        const stream = fs.createWriteStream(outputPath);
+        doc.pipe(stream);
+
+        // ── Header ───────────────────────────────────────────────
+        doc.rect(30, 30, doc.page.width - 60, 60).fill('#1e293b');
+        doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text(billingEntity, 40, 45);
+        doc.fontSize(10).font('Helvetica').text('TAX INVOICE', 40, 72);
+        doc.fontSize(10).text(`${address} | ${contact}`, 30, 45, { align: 'right', width: doc.page.width - 70 });
+        
+        let y = 110;
+
+        // ── Invoice Details ──────────────────────────────────────
+        doc.fillColor('#000').fontSize(10).font('Helvetica-Bold').text('INVOICE TO:', 30, y);
+        doc.fontSize(14).text(partyName || '—', 30, y + 14);
+        
+        doc.fontSize(10).font('Helvetica-Bold').text('INVOICE NO:', 400, y);
+        doc.font('Helvetica').text(invoiceNumber || '—', 480, y);
+        doc.font('Helvetica-Bold').text('DATE:', 400, y + 14);
+        doc.font('Helvetica').text(invoiceDate || '—', 480, y + 14);
+        
+        y += 60;
+
+        // ── Table ────────────────────────────────────────────────
+        const table = {
+            title: 'Loading Receipts Detail',
+            headers: [
+                { label: 'Date', property: 'date', width: 60 },
+                { label: 'LR No.', property: 'lrNo', width: 50 },
+                { label: 'Truck', property: 'truckNo', width: 70 },
+                { label: 'Destination', property: 'destination', width: 100 },
+                { label: 'Material', property: 'material', width: 100 },
+                { label: 'Bags', property: 'totalBags', width: 50 },
+                { label: 'Weight(MT)', property: 'weight', width: 60 },
+            ],
+            rows: items.map(v => [
+                v.date || '—',
+                `#${v.lrNo}`,
+                v.truckNo || '—',
+                v.destination || '—',
+                v.material || '—',
+                String(v.totalBags || 0),
+                `${parseFloat(v.weight || 0).toFixed(2)} MT`
+            ])
+        };
+
+        doc.table(table, {
+            prepareHeader: () => doc.font('Helvetica-Bold').fontSize(9).fillColor('#1e293b'),
+            prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
+                doc.font('Helvetica').fontSize(9).fillColor('#000');
+            },
+        });
+
+        // ── Totals ───────────────────────────────────────────────
+        y = doc.y + 20;
+        doc.rect(30, y, doc.page.width - 60, 40).fill('#f8fafc');
+        doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold').text('GRAND TOTALS', 40, y + 15);
+        doc.text(`Bags: ${totalBags} | Weight: ${totalWeight.toFixed(2)} MT`, 250, y + 15, { align: 'right', width: doc.page.width - 290 });
+
+        // ── Footer ───────────────────────────────────────────────
+        doc.fontSize(8).fillColor('#94a3b8').text('This is a computer generated invoice and does not require a physical signature.', 30, doc.page.height - 50, { align: 'center' });
+
+        doc.end();
+        stream.on('finish', () => resolve(outputPath));
+        stream.on('error', reject);
+    });
+}
+
 module.exports = {
     generateModuleReport,
     generateReceiptPDF,
     generateVoucherPDF,
     generateLoadingReceiptPDF,
     generateVoucherListPDF,
+    generateInvoicePDF,
 };

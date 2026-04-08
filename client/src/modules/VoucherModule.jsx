@@ -12,7 +12,7 @@ const PAGE_SIZE = 20;
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
 const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
-const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
+const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 const getCalc = (w, r, hasComm) => {
     const wt = parseFloat(w) || 0, rt = parseFloat(r) || 0;
@@ -37,6 +37,8 @@ const getNet = (v) => {
 
 /* ── Print ── */
 function printVoucher(v) {
+    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
+
     const n = getNet(v);
     const deductionRows = [
         { lbl: 'Diesel Advance', val: n.diesel, raw: v.advanceDiesel },
@@ -54,7 +56,161 @@ function printVoucher(v) {
         return `<tr><td style="padding:3px 0;color:#444;font-size:12px">${d.lbl}</td><td style="padding:3px 0;text-align:right;font-size:12px;color:#c0392b">${valDisplay}</td></tr>`;
     }).join('');
 
-    const html = `<!DOCTYPE html>
+    let html = '';
+
+    if (isBill) {
+        // New Bill Format from sample
+        html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vikas Goods Transport Bill</title>
+    <style>
+        body { background-color: #fff; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; font-family: Arial, sans-serif; padding: 5mm; }
+        .receipt-container { width: 210mm; height: 148.5mm; background-color: #fdfdfb; border: 1px solid #000; padding: 5px; box-sizing: border-box; display: flex; flex-direction: column; color: #000; overflow: hidden; margin: 0 auto; }
+        .header { display: flex; align-items: center; padding-bottom: 5px; }
+        .header-left { width: 15%; display: flex; justify-content: center; align-items: center; }
+        .header-center { width: 70%; text-align: center; }
+        .header-right { width: 15%; font-size: 9px; font-weight: bold; align-self: flex-start; text-align: right; padding-top: 5px; padding-right: 5px; }
+        .company-name { font-size: 21px; font-weight: 900; margin: 0 0 2px 0; letter-spacing: 0.5px; }
+        .auth-badge { background-color: #000; color: #fff; display: inline-block; padding: 2px 15px; font-size: 11px; font-weight: bold; margin-bottom: 2px; }
+        .address-text { font-size: 11px; font-weight: bold; margin: 1px 0; }
+        .head-office { font-size: 10px; margin: 1px 0; }
+        .info-grid { display: flex; border-top: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; font-weight: bold; }
+        .info-col-1 { width: 20%; border-right: 1px solid #000; display: flex; flex-direction: column; }
+        .info-col-1 > div { padding: 3px 5px; display: flex; align-items: center; }
+        .info-col-1 > div:nth-child(1) { border-bottom: 1px solid #000; height: 18px; }
+        .info-col-1 > div:nth-child(2) { border-bottom: 1px solid #000; flex-grow: 1; justify-content: center; text-align: center; }
+        .info-col-1 > div:nth-child(3) { height: 18px; justify-content: center; }
+        .info-col-2 { width: 50%; border-right: 1px solid #000; display: flex; flex-direction: column; }
+        .info-col-2 > div { padding: 3px 5px; border-bottom: 1px solid #000; display: flex; align-items: flex-end; height: 16px; }
+        .info-col-2 > div:last-child { border-bottom: none; justify-content: space-between; align-items: center; }
+        .info-col-3 { width: 30%; display: flex; flex-direction: column; }
+        .info-col-3 > div { padding: 3px 5px; border-bottom: 1px solid #000; display: flex; align-items: flex-end; height: 16px; }
+        .info-col-3 > div:last-child { border-bottom: none; justify-content: space-between; align-items: center; }
+        .line-fill { flex-grow: 1; border-bottom: 1px solid #000; margin-left: 5px; height: 10px; }
+        .dotted-fill { flex-grow: 1; border-bottom: 1px dotted #000; margin-left: 5px; height: 10px; }
+        .sno-handwritten { display: inline-block; font-family: 'Comic Sans MS', cursive, sans-serif; font-size: 16px; font-weight: 900; transform: rotate(-5deg) translateY(-2px); margin-left: 10px; }
+        .main-table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; flex-grow: 1; }
+        .main-table th, .main-table td { border: 1px solid #000; padding: 3px; }
+        .main-table th { font-weight: bold; text-align: center; }
+        .col-bags { width: 6%; } .col-desc { width: 24%; } .col-weight { width: 7%; } .col-rate { width: 8%; } .col-freight { width: 9.33%; } .col-remark { width: 17%; }
+        .split-header { padding: 0 !important; } .split-header .top-part { border-bottom: 1px solid #000; padding: 2px; } .split-header .bottom-part { display: flex; justify-content: space-between; padding: 2px; }
+        .body-row td { border-bottom: none; vertical-align: top; }
+        .advance-cell { text-align: center; vertical-align: middle !important; font-size: 11px; font-weight: bold; }
+        .billed-cell { text-align: center; vertical-align: middle !important; font-size: 14px; font-weight: bold; line-height: 1.2; }
+        .desc-text { font-size: 10px; line-height: 1.5; }
+        .remark-text { font-size: 10px; line-height: 2; }
+        .footer { font-size: 8px; margin-top: 2px; line-height: 1.1; }
+        .declaration { margin: 2px 0; text-align: left; }
+        .service-tax-note { text-align: center; font-weight: bold; font-size: 9px; margin: 2px 0; }
+        .hindi-note { margin: 2px 0; }
+        .signatures { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; font-weight: bold; padding: 0 10px; }
+        @media print { body { padding: 0; background-color: #fff; } .receipt-container { margin: 0; } }
+    </style>
+</head>
+<body>
+    <div class="receipt-container">
+        <div class="header">
+            <div class="header-left">
+               <img src="/krishna-logo.jpg" alt="Krishna Logo" style="max-width: 100%; max-height: 50px;">
+            </div>
+            <div class="header-center">
+                <div class="company-name">M/S. VIKAS GOODS TRANSPORT CO.</div>
+                <div class="auth-badge">Authorised Transport for : J.K. Super Cement Ltd.</div>
+                <div class="address-text">Near Gaushala, Rewari Road, Jhajjar (Hr.)</div>
+                <div class="address-text">Mob. : 9728284849, 9416319445</div>
+                <div class="head-office">Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari</div>
+            </div>
+            <div class="header-right">GSTIN : 06ARIPK9021C2Z2</div>
+        </div>
+        <div class="info-grid">
+            <div class="info-col-1">
+                <div>Consignor</div>
+                <div>J.K. Super Cement Ltd.</div>
+                <div>${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}</div>
+            </div>
+            <div class="info-col-2">
+                <div>M/s. <span style="margin-left: 10px; font-weight: normal; font-size: 13px;">${v.partyName || ''}</span>${v.partyName ? '' : '<div class="line-fill"></div>'}</div>
+                <div><div class="line-fill" style="margin-left: 0;"></div></div>
+                <div><div class="line-fill" style="margin-left: 0;"></div></div>
+                <div><span>S.T.L. No.</span><span>C.S.T. No.</span></div>
+            </div>
+            <div class="info-col-3">
+                <div>Truck No. <span style="margin-left: 5px; font-weight: normal;">${v.truckNo || ''}</span>${v.truckNo ? '' : '<div class="dotted-fill"></div>'}</div>
+                <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}</div>
+                <div>To <span style="margin-left: 5px; font-weight: normal;">${v.destination || ''}</span>${v.destination ? '' : '<div class="line-fill"></div>'}</div>
+                <div><span>S. No. <span class="sno-handwritten">${v.lrNo}</span></span><span style="font-weight: normal;">Date: ${v.date}</span></div>
+            </div>
+        </div>
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="col-bags">No. of<br>Bags</th>
+                    <th rowspan="2" class="col-desc">Description said to contain</th>
+                    <th colspan="2">Actual Weight</th>
+                    <th rowspan="2" class="col-rate">Rate</th>
+                    <th colspan="3">FRIEGHT</th>
+                    <th rowspan="2" class="col-remark">Remark</th>
+                </tr>
+                <tr>
+                    <th class="col-weight">Qn.</th>
+                    <th class="col-weight">Kg.</th>
+                    <th class="col-freight split-header"><div class="top-part">FRIEGHT</div><div class="bottom-part"><span>Rs.</span><span>P.</span></div></th>
+                    <th class="col-freight split-header"><div class="top-part">Paid</div><div class="bottom-part"><span>Rs.</span><span>P.</span></div></th>
+                    <th class="col-freight split-header"><div class="top-part">To Pay</div><div class="bottom-part"><span>Rs.</span><span>P.</span></div></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="body-row" style="height: 180px;">
+                    <td style="text-align: center; font-size: 13px;">${v.bags || ''}</td>
+                    <td class="desc-text">
+                        CEMENT<br>
+                        Grade<br>
+                        <b><i>J.K. Super Cement</i></b><br>
+                        PPC<br>
+                        43<br>
+                        53<br>
+                        Value of Goods<br>
+                        Bill No. :<br>
+                        Shipment No. :<br>
+                        D.I. No.
+                    </td>
+                    <td colspan="2" style="text-align: center; font-size: 13px;">${v.weight || ''} MT</td>
+                    <td style="text-align: center; font-size: 12px;">${v.rate || ''}</td>
+                    <td colspan="2" class="advance-cell">Advance = <br/>${n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString())}</td>
+                    <td class="billed-cell">To<br>be<br>Billed<br/><br/>
+                        <span style="font-size: 12px;">${n.dieselPending ? '—' : 'Rs.' + Math.round(n.net).toLocaleString()}</span>
+                    </td>
+                    <td class="remark-text">Driver Name<br>D.L. No.<br>Owner Permit No.<br>Permit No.<br>Address<br/><br/>${v.pump ? 'Pump: ' + v.pump : ''}</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="font-weight: bold; border-top: 1px solid #000; text-align: center;">Total</td>
+                    <td colspan="2" style="border-top: 1px solid #000; text-align: center; font-weight: bold;">${v.weight || ''} MT</td>
+                    <td style="border-top: 1px solid #000;"></td>
+                    <td colspan="3" style="border-top: 1px solid #000; text-align: center; font-weight: bold;">Gross: Rs.${Math.round(n.gross).toLocaleString()}</td>
+                    <td style="border-top: 1px solid #000;"></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="footer">
+            <div class="declaration">*I/We declare that we have not taken credit of Excise Duty paid on inputs or capital goods or credit of Service Tax paid on Input Services used for providing of Goods by Road Services under the provision of Cenvat Credit Rule 2004*./ I/We also declare that we have not availed the benefit under notification No. 12/2003 ST2 - 16.8.2011</div>
+            <div class="service-tax-note">Service Tax to be paid by Consignor</div>
+            <div class="hindi-note">नोट : 1. बिल्टी की पहुंच 15 दिन के अन्दर की जावें, अन्यथा किरायें का 2% काटा जायेगा और एक माह के बाद पहुंच का किराया नहीं दिया जायेगा।<br>2. गाड़ी में रस्सा तिरपाल अनिवार्य है अन्यथा गाड़ी नहीं भरी जाएगी। All Disputes arising out of it shall have the Jurisdiction for Jhajjar</div>
+            <div class="signatures">
+                <div style="width: 30%;"></div>
+                <div style="width: 30%; text-align: center;">Sign. of Driver</div>
+                <div style="width: 40%; text-align: right;">Sign. of Clerk <b>for</b><br>VIKAS GOODS TRANSPORT</div>
+            </div>
+        </div>
+    </div>
+    <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+</body>
+</html>`;
+    } else {
+        // Generic Slip Format for JK_Super, JK_Lakshmi, etc.
+        html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;padding:10mm}
 .slip{width:165mm;margin:0 auto;border:2px solid #000;padding:10mm}
@@ -81,7 +237,7 @@ h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
 @media print{body{padding:0}}</style></head>
 <body><div class="slip">
 <h1>VIKAS GOODS TRANSPORT</h1>
-<div class="sub">${v.type ? v.type.replace('_', ' ') : 'Dump'} Voucher</div>
+<div class="sub">${v.type ? v.type.replace('_', ' ') : ''} Voucher</div>
 <div class="div"></div>
 <div class="row"><span><span class="lbl">LR No.:</span> #${v.lrNo}</span><span><span class="lbl">Date:</span> ${v.date}</span></div>
 <div class="row"><span><span class="lbl">Truck:</span> ${v.truckNo}</span><span><span class="lbl">Destination:</span> ${v.destination || '—'}</span></div>
@@ -111,14 +267,16 @@ ${n.dieselPending
 </div>
 <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
 </body></html>`;
-    const win = window.open('', '_blank', 'width=700,height=620');
+    }
+
+    const win = window.open('', '_blank', isBill ? 'width=850,height=600' : 'width=700,height=620');
     win.document.write(html); win.document.close();
 }
 
 /* ── Edit Modal ── */
 function EditModal({ v, onClose, onSave }) {
     const [form, setForm] = useState({
-        lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '',
+        lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
         weight: v.weight, bags: v.bags, rate: v.rate, pump: v.pump || PUMPS[0],
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
@@ -148,16 +306,33 @@ function EditModal({ v, onClose, onSave }) {
                     <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex' }}><X size={18} /></button>
                 </div>
                 <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div className="fg fg-2">
+                    <div className="fg fg-3">
                         <div className="field"><label>LR No.</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
                         <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
                         <div className="field"><label>Truck No.</label><input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase())} /></div>
                         <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
+                        <div className="field"><label>Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
                     </div>
                     <hr className="sep" style={{ margin: '2px 0' }} />
                     <div className="fg fg-3">
-                        <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} /></div>
-                        <div className="field"><label>Bags</label><input className="fi" type="number" value={form.bags} onChange={e => S('bags', e.target.value)} /></div>
+                        <div className="field">
+                            <label>Weight (MT)</label>
+                            <input className="fi" type="number" step="0.01" value={form.weight} 
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
+                                }} 
+                            />
+                        </div>
+                        <div className="field">
+                            <label>Bags</label>
+                            <input className="fi" type="number" value={form.bags} 
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
+                                }} 
+                            />
+                        </div>
                         <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" value={form.rate} onChange={e => S('rate', e.target.value)} /></div>
                     </div>
                     <div className="fg fg-3">
@@ -221,7 +396,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
-    const [vType, setVType] = useState(lockedType || initialTab || 'Dump');
+    const [vType, setVType] = useState(lockedType || initialTab || 'Kosli_Bill');
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
@@ -244,7 +419,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const [form, setForm] = useState({
         lrNo: '', date: new Date().toISOString().split('T')[0],
-        truckNo: '', destination: '', weight: '', bags: '',
+        truckNo: '', destination: '', partyName: '', weight: '', bags: '',
         rate: '', pump: PUMPS[0], advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
         startKm: '', endKm: '',
@@ -295,7 +470,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             setForm(f => ({ ...f, lrNo: nextLrNo }));
             setLrAlreadyUsed(false);
         } else {
-            // Dump — clear LR field on tab switch
+            // Dump bills — clear LR field on tab switch
             setForm(f => ({ ...f, lrNo: '' }));
             setLrAlreadyUsed(false);
         }
@@ -314,7 +489,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         finally { setFetchingKm(false); }
     }, [vgtcTrucks]);
 
-    /* LR search — only Dump vouchers auto-fetch from /lr receipts */
+    /* LR search — only Dump Bills auto-fetch from /lr receipts */
     /* JK_Super and JK_Lakshmi have custom LR numbers — no auto-fetch, but still prevent duplicates */
     const handleLrSearch = async val => {
         setForm(f => ({ ...f, lrNo: val }));
@@ -332,7 +507,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         // JK_Super and JK_Lakshmi use fully custom LR numbers — skip LR receipt lookup
         if (vType === 'JK_Super' || vType === 'JK_Lakshmi') return;
 
-        // Dump voucher only: Fetch LR details from receipts
+        // Dump Bills only: Fetch LR details from receipts
         try {
             const all = (await ax.get(`/lr`)).data;
             const rows = all.filter(l => String(l.lrNo) === String(val));
@@ -341,7 +516,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
                 const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
                 const truck = rows[0].truckNo || '';
-                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination }));
+                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination, partyName: rows[0].partyName || '' }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
             }
@@ -367,7 +542,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         try {
             await ax.post(API_V, { ...form, type: vType, brand, ...calc });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '' }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '' }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
@@ -438,7 +613,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 <div className="page-hd">
                     <div>
                         <h1><FileText size={20} color={lockedType === 'JK_Lakshmi' ? '#f59e0b' : '#10b981'} /> {lockedType === 'JK_Lakshmi' ? 'JK Lakshmi Voucher' : 'Voucher Management'}</h1>
-                        <p>{lockedType === 'JK_Lakshmi' ? 'Manage JK Lakshmi vouchers' : 'Dump · J.K Lakshmi · J.K Super'}</p>
+                        <p>{lockedType === 'JK_Lakshmi' ? 'Manage JK Lakshmi vouchers' : 'Dump Bills · J.K Lakshmi · J.K Super'}</p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         {!lockedType && (
@@ -466,7 +641,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             <motion.div key="form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeInOut' }} style={{ overflow: 'hidden' }}>
                                 <div className="card-body">
                                     <form onSubmit={handleFormRequest}>
-                                        <div className="fg fg-4">
+                                        <div className="fg fg-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                             <div className="field">
                                                 <label><Search size={11} /> LR Number</label>
                                                 <input
@@ -479,11 +654,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder={vType === 'Dump' ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
+                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
                                             </div>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>
-                                                <input className="fi" type="text" placeholder={vType === 'Dump' ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
+                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
+                                            </div>
+                                            <div className="field">
+                                                <label>Party Name</label>
+                                                <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => set('partyName', e.target.value)} />
                                             </div>
                                             <div className="field">
                                                 <label>Date</label>
@@ -520,8 +699,24 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         )}
 
                                         <div className="fg fg-4" style={{ marginTop: '12px' }}>
-                                            <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={form.weight} onChange={e => set('weight', e.target.value)} /></div>
-                                            <div className="field"><label>Total Bags</label><input className="fi" type="number" placeholder="0" value={form.bags} onChange={e => set('bags', e.target.value)} /></div>
+                                            <div className="field">
+                                                <label>Weight (MT)</label>
+                                                <input className="fi" type="number" step="0.01" placeholder="0.00" value={form.weight} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
+                                                    }} 
+                                                />
+                                            </div>
+                                            <div className="field">
+                                                <label>Total Bags</label>
+                                                <input className="fi" type="number" placeholder="0" value={form.bags} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
+                                                    }} 
+                                                />
+                                            </div>
                                             <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" placeholder="0" value={form.rate} onChange={e => set('rate', e.target.value)} /></div>
                                             <div className="field"><label>Petrol Pump</label>
                                                 <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
@@ -698,7 +893,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo}</td>
                                         <td style={{ ...TD }}>{v.destination || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{v.weight}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.bags}</td>
+                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                            <div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>
+                                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div>
+                                        </td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.rate}</td>
                                         <td style={{ ...TD }}>{v.pump || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>

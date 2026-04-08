@@ -173,10 +173,35 @@ const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR, metadataCo
     }
 };
 
+const generateBulkInvoice = async (ids, invoiceNumber, invoiceDate, lrCollection = COLLECTION_LR) => {
+    if (firebaseAvailable()) {
+        const batch = db.batch();
+        ids.forEach(id => {
+            const ref = db.collection(lrCollection).doc(id);
+            batch.update(ref, {
+                invoiceNumber,
+                invoiceDate,
+                invoiceGenerated: true,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+        await batch.commit();
+    } else {
+        ids.forEach(id => {
+            localStore.update(lrCollection, id, {
+                invoiceNumber,
+                invoiceDate,
+                invoiceGenerated: true
+            });
+        });
+    }
+};
+
 module.exports = {
     createLoadingReceipt,
     getAllLoadingReceipts,
     updateBillingStatus,
     updateLoadingReceipt,
     deleteLoadingReceipt,
+    generateBulkInvoice,
 };

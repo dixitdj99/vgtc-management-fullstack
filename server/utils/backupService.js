@@ -30,9 +30,9 @@ async function runWeeklyBackup() {
 
         // Backup for each plant
         const plantOptions = [
-            { id: PLANTS.SUPER,   name: 'JK Super',   saleBrand: 'dump',  voucherType: 'JK_Super',   lrCol: 'loading_receipts' },
-            { id: PLANTS.LAKSHMI, name: 'JK Lakshmi', saleBrand: 'jkl',   voucherType: 'JK_Lakshmi', lrCol: 'jkl_loading_receipts' },
-            { id: PLANTS.DUMP,    name: 'Dump',       saleBrand: null,    voucherType: 'Dump',        lrCol: null },
+            { id: PLANTS.SUPER,   name: 'JK Super',   saleBrand: 'dump',  voucherType: ['JK_Super'],   lrCol: 'loading_receipts' },
+            { id: PLANTS.LAKSHMI, name: 'JK Lakshmi', saleBrand: 'jkl',   voucherType: ['JK_Lakshmi', 'Dump'], lrCol: 'jkl_loading_receipts' },
+            { id: PLANTS.DUMP,    name: 'Dump Bills', saleBrand: null,    voucherType: ['Kosli_Bill', 'Jajjhar_Bill', 'Dump'], lrCol: null },
         ];
 
         // calculate LR range label helper
@@ -66,9 +66,14 @@ async function runWeeklyBackup() {
 
             // 2. Vouchers Backup — detailed list matching balance sheet
             try {
-                const voucherData = await voucherService.getVouchersByType(p.voucherType);
-                if (voucherData && voucherData.length > 0) {
-                    await performVoucherListBackup(p.name, voucherData, plantFolderId, getRangeLabel(voucherData, dateStr));
+                let allVouchers = [];
+                for (const vType of p.voucherType) {
+                    const data = await voucherService.getVouchersByType(vType);
+                    if (data && data.length > 0) allVouchers = allVouchers.concat(data);
+                }
+                
+                if (allVouchers.length > 0) {
+                    await performVoucherListBackup(p.name, allVouchers, plantFolderId, getRangeLabel(allVouchers, dateStr));
                 }
             } catch (e) {
                 console.error(`[Backup] ${p.name} Vouchers Failed:`, e.message);

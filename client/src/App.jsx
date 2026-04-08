@@ -15,6 +15,7 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
+import InvoiceModule from './modules/InvoiceModule';
 import { Truck, Fuel, ShoppingCart, Gauge, Banknote } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import AdminModule from './modules/AdminModule';
@@ -41,7 +42,7 @@ function AppInner() {
   const { user, logout, ready, plant } = useAuth();
   // Default to first module of the selected plant
   // Persistence for navigation
-  const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || (plant === 'jklakshmi' ? 'lr_jkl' : 'lr_dump'));
+  const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || (plant === 'jklakshmi' ? 'lr_jkl' : 'lr_kosli'));
   const [subActive, setSubActive] = useState(() => localStorage.getItem('vgtc-subactive') || '');
   const [expanded, setExpanded] = useState(() => {
     try {
@@ -116,7 +117,7 @@ function AppInner() {
       const API_KEY = 'e98e8f62e87e49de8db164340262603';
       const city = 'Jharli, Jhajjar, Haryana';
       const res = await ax.get(`https://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(city)}`);
-      
+
       if (res.data && res.data.current) {
         const cur = res.data.current;
         const temp = cur.temp_c;
@@ -125,27 +126,27 @@ function AppInner() {
         const isDay = cur.is_day === 1;
 
         let category = 'clear';
-        
+
         // Rain takes top priority
         if (code >= 1063 && code <= 1246) {
           category = 'rain';
-        } 
+        }
         // Real fog/mist only matters if it's actually cold or explicitly dense fog
         else if ([1135, 1147].includes(code) || (code === 1030 && temp < 22)) {
           category = 'mist';
-        } 
+        }
         // Temperature based
         else if (temp >= 35) {
           category = 'hot';
-        } 
+        }
         else if (temp <= 15) {
           category = 'cold';
-        } 
+        }
         // Between 16 and 34 is nice/clear
         else {
           category = 'pleasant';
         }
-        
+
         // Final override for night if it's clear/pleasant
         if (!isDay && (category === 'clear' || category === 'pleasant')) {
           category = 'night';
@@ -198,21 +199,32 @@ function AppInner() {
   // Build nav items based on role
   const NAV = [
     // ── JK Super ──
-    { id: 'lr_dump', label: 'Loading Receipt', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
+    { id: 'lr_kosli', label: 'Kosli LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
+    { id: 'lr_jhajjar', label: 'Jhajjar LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
     {
       id: 'voucher_dump', label: 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', permKey: 'voucher', sub: [
-        { id: 'Dump', label: 'Dump Voucher' },
+        { id: 'Kosli_Bill', label: 'Kosli Bill' },
+        { id: 'Jajjhar_Bill', label: 'Jajjhar Bill' },
         { id: 'JK_Super', label: 'JK Super Voucher' },
       ]
     },
     {
       id: 'balance_dump', label: 'Balance Sheet', Icon: BarChart3, color: '#6366f1', section: 'jksuper', permKey: 'balance', sub: [
-        { id: 'Dump', label: 'Dump Sheet' },
+        { id: 'Kosli_Bill', label: 'Kosli Bill' },
+        { id: 'Jajjhar_Bill', label: 'Jajjhar Bill' },
         { id: 'JK_Super', label: 'JK Super Sheet' },
       ]
     },
     {
-      id: 'stock_dump', label: 'Dump Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock', sub: [
+      id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock', sub: [
+        { id: 'overview', label: 'Overview' },
+        { id: 'migo', label: 'MIGO (Stock Entry)' },
+        { id: 'challan', label: 'Create Challan' },
+        { id: 'history', label: 'History' },
+      ]
+    },
+    {
+      id: 'stock_jhajjar', label: 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -233,6 +245,7 @@ function AppInner() {
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'diesel', adminOnly: true },
     { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'balance', adminOnly: true },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
+    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'lr' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
 
     // ── JK Lakshmi ──
@@ -271,6 +284,7 @@ function AppInner() {
     { id: 'mileage_jkl', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jklakshmi', permKey: 'diesel', adminOnly: true },
     { id: 'pay_jkl', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jklakshmi', permKey: 'balance', adminOnly: true },
     { id: 'sell_jkl', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
+    { id: 'invoice_jkl', label: 'Generate Invoice', Icon: FileText, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
     { id: 'admin_loading_status_jkl', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
 
     ...(user?.role === 'admin' ? [
@@ -304,12 +318,12 @@ function AppInner() {
 
   // Redirect away from admin if not admin
   React.useEffect(() => {
-    if (active === 'admin' && user?.role !== 'admin') setActive('lr_dump');
+    if (active === 'admin' && user?.role !== 'admin') setActive('lr_kosli');
   }, [user]);
 
   const path = window.location.pathname;
   if (path === '/loading-status') return <PublicLoadingStatus />;
-  
+
   if (path.startsWith('/receipt/')) {
     const parts = path.split('/');
     if (parts.length >= 4) {
@@ -370,9 +384,19 @@ function AppInner() {
                     setActive(id);
                     setSubActive('');
                   }
-                }} title={col ? label : undefined}>
-                <span className="nav-indicator" style={{ background: color }} />
-                <Icon size={20} color={active === id ? color : 'currentColor'} />
+                }} 
+                title={col ? label : undefined}
+                style={active === id ? { 
+                  background: sub ? `${color}15` : color, 
+                  color: sub ? color : '#fff', 
+                  borderColor: sub ? `${color}30` : color, 
+                  fontWeight: 800, 
+                  transform: 'translateX(4px)', 
+                  boxShadow: `0 4px 12px ${color}${sub ? '20' : '60'}` 
+                } : {}}
+              >
+                <span className="nav-indicator" style={{ background: sub ? color : '#fff' }} />
+                <Icon size={20} color={active === id ? (sub ? color : '#fff') : 'currentColor'} />
                 {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
                 {!col && sub && (
                   <ChevronRight size={14} style={{ transition: 'transform 0.2s', transform: expanded[id] ? 'rotate(90deg)' : 'none', opacity: 0.5 }} />
@@ -390,10 +414,13 @@ function AppInner() {
                       <button key={s.id}
                         onClick={() => { setActive(id); setSubActive(s.id); setShowMobileMenu(false); }}
                         style={{
-                          background: 'transparent', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s',
-                          color: active === id && subActive === s.id ? color : 'var(--text-muted)',
-                          backgroundColor: active === id && subActive === s.id ? `${color}15` : 'transparent'
+                          background: active === id && subActive === s.id ? color : 'transparent', 
+                          border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', fontSize: active === id && subActive === s.id ? '12.5px' : '12px', 
+                          fontWeight: active === id && subActive === s.id ? 800 : 600, transition: 'all 0.15s',
+                          color: active === id && subActive === s.id ? '#fff' : 'var(--text-muted)',
+                          transform: active === id && subActive === s.id ? 'translateX(8px)' : 'none',
+                          boxShadow: active === id && subActive === s.id ? `0 4px 12px ${color}60` : 'none'
                         }}
                       >
                         <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', marginRight: '8px', opacity: active === id && subActive === s.id ? 1 : 0.4 }} />
@@ -462,13 +489,13 @@ function AppInner() {
                 }}>{ENV_BANNER.label}</span>
               )}
               {user?.isSandbox && (
-                <span style={{ 
-                  background: '#f59e0b', 
-                  color: '#000', 
-                  fontSize: '9px', 
-                  padding: '2px 8px', 
-                  borderRadius: '100px', 
-                  fontWeight: 900, 
+                <span style={{
+                  background: '#f59e0b',
+                  color: '#000',
+                  fontSize: '9px',
+                  padding: '2px 8px',
+                  borderRadius: '100px',
+                  fontWeight: 900,
                   textTransform: 'uppercase',
                   boxShadow: '0 0 15px rgba(245,158,11,0.4)',
                   border: '1px solid rgba(0,0,0,0.1)'
@@ -512,15 +539,17 @@ function AppInner() {
           <AnimatePresence mode="wait">
             <motion.div key={active + subActive} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="page-content">
-              {active === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand="dump" />}
+              {active === 'lr_kosli' && <LRModule role={user.role} permissions={user.permissions} brand="kosli" />}
+              {active === 'lr_jhajjar' && <LRModule role={user.role} permissions={user.permissions} brand="jhajjar" />}
               {active === 'lr_jkl' && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
-              {active === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jksuper" />}
+              {active === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Kosli_Bill'} brand="jksuper" />}
               {active === 'voucher_jkl' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jklakshmi" />}
-              {active === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jksuper" />}
+              {active === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Kosli_Bill'} brand="jksuper" />}
               {active === 'balance_jkl' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand="jklakshmi" />}
               {active === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="dump" />}
               {active === 'cashbook_jkl' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="jkl" />}
-              {active === 'stock_dump' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="dump" />}
+              {active === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="kosli" />}
+              {active === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jhajjar" />}
               {active === 'stock_jkl' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jkl" />}
               {(active === 'vehicles_dump' || active === 'vehicles_jkl') && <VehicleModule permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl') && <DieselModule permissions={user.permissions} />}
@@ -528,6 +557,8 @@ function AppInner() {
               {(active === 'pay_dump' || active === 'pay_jkl') && <PayModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'sell_dump' || active === 'sell_jkl') && <SellModule brand={active.includes('jkl') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
+              {(active === 'invoice_dump') && <InvoiceModule brand="dump" role={user.role} permissions={user.permissions} />}
+              {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
               {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl') && <AdminLoadingStatus globalWeather={weather} role={user.role} />}
               {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>

@@ -4,8 +4,8 @@ const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 
-const BASE_COL = 'loading_receipts';
-const META_COL = 'metadata';
+const BASE_COL = 'kosli_loading_receipts';
+const META_COL = 'kosli_metadata';
 
 // Create
 router.post('/', async (req, res) => {
