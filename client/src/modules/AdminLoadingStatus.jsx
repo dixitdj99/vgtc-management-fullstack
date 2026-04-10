@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
-import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X } from 'lucide-react';
+import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause } from 'lucide-react';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -32,6 +32,31 @@ const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
     </div>
   );
 };
+
+// Compact inline voice player for admin table
+function InlineVoicePlayer({ base64Audio, heard, heardBy }) {
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef(null);
+  const play = () => {
+    if (playing && audioRef.current) { audioRef.current.pause(); audioRef.current = null; setPlaying(false); return; }
+    const byteChars = atob(base64Audio);
+    const byteArr = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArr], { type: 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.play(); setPlaying(true);
+    audio.onended = () => { setPlaying(false); audioRef.current = null; URL.revokeObjectURL(url); };
+  };
+  return (
+    <button onClick={play} title={heard ? `Heard by ${heardBy || 'labour'}` : 'Play voice message'}
+      style={{ background: heard ? 'rgba(16,185,129,0.1)' : 'rgba(99,102,241,0.1)', border: `1px solid ${heard ? 'rgba(16,185,129,0.3)' : 'rgba(99,102,241,0.3)'}`, borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: heard ? '#10b981' : '#6366f1' }}>
+      {playing ? <Pause size={11} /> : <Play size={11} />}
+      {heard ? '✓ Heard' : 'Voice'}
+    </button>
+  );
+}
 
 export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
   const [brand, setBrand] = useState('jksuper');
@@ -161,6 +186,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Quantity</th>
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Visual Status</th>
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Duration</th>
+                <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Note / Voice</th>
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
@@ -212,6 +238,22 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
                         </div>
                       ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>}
                     </td>
+                    {/* Note + Voice column */}
+                    <td style={{ padding: '12px 16px', maxWidth: '220px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        {r.note && (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '6px', padding: '5px 8px' }}>
+                            <MessageSquare size={11} color="#f59e0b" style={{ marginTop: '1px', flexShrink: 0 }} />
+                            <span style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.4, wordBreak: 'break-word' }}>{r.note}</span>
+                          </div>
+                        )}
+                        {r.voiceMessageBase64 && (
+                          <InlineVoicePlayer base64Audio={r.voiceMessageBase64} heard={r.voiceHeard} heardBy={r.voiceHeardBy} />
+                        )}
+                        {!r.note && !r.voiceMessageBase64 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>}
+                      </div>
+                    </td>
+
                     <td style={{ padding: '16px', textAlign: 'right' }}>
                       {role === 'admin' ? (
                         editingId === r.id ? (
