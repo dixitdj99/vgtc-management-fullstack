@@ -25,10 +25,19 @@ function printReceipt(allRows, lrNo, allChallans = []) {
   const materialsHtml = rows.map(m => `
     <tr>
       <td style="padding:5px 10px;border:1px solid #ccc;">${m.material}</td>
+      <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;
+          background:${m.loadingType === 'Crossing' ? '#fef3c7' : '#dcfce7'};
+          color:${m.loadingType === 'Crossing' ? '#92400e' : '#166534'};
+          border:1px solid ${m.loadingType === 'Crossing' ? '#fcd34d' : '#86efac'}">
+          ${m.loadingType || 'From Godown'}
+        </span>
+      </td>
       <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">${m.totalBags}</td>
       <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">${Number(m.weight).toFixed(2)} MT</td>
     </tr>
   `).join('');
+
   const totalBags = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
 
@@ -91,11 +100,11 @@ function printReceipt(allRows, lrNo, allChallans = []) {
       </div>
       ${challanLine}
       <table>
-        <thead><tr><th>Material</th><th style="text-align:center;">Bags</th><th style="text-align:center;">Weight (MT)</th></tr></thead>
+        <thead><tr><th>Material</th><th style="text-align:center;">Loading Type</th><th style="text-align:center;">Bags</th><th style="text-align:center;">Weight (MT)</th></tr></thead>
         <tbody>
           ${materialsHtml}
           <tr class="tot">
-            <td style="text-align:right;">Total</td>
+            <td colspan="2" style="text-align:right;">Total</td>
             <td style="text-align:center;">${totalBags}</td>
             <td style="text-align:center;">${totalWeight} MT</td>
           </tr>
