@@ -8,6 +8,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('vgtc-token'));
   const [plant, setPlantState] = useState(() => localStorage.getItem('vgtc-plant') || '');
+  const [godown, setGodownState] = useState(() => localStorage.getItem('vgtc-godown') || '');
   const [ready, setReady] = useState(false);
 
   // Set axios default auth header and verify token on mount
@@ -24,13 +25,20 @@ export function AuthProvider({ children }) {
     }
   }, [token]);
 
-  const setPlant = (p) => {
+  const setPlant = (p, g = '') => {
     localStorage.setItem('vgtc-plant', p);
     setPlantState(p);
+    if (g) {
+      localStorage.setItem('vgtc-godown', g);
+      setGodownState(g);
+    } else {
+      localStorage.removeItem('vgtc-godown');
+      setGodownState('');
+    }
   };
 
-  const login = async (username, password, selectedPlant) => {
-    const res = await ax.post(`/auth/login`, { username, password });
+  const login = async (username, password, selectedPlant, selectedGodown) => {
+    const res = await ax.post(`/auth/login`, { username, password, plant: selectedPlant, godown: selectedGodown });
     
     // Check if OTP is required
     if (res.data.requireOtp) {
@@ -42,6 +50,13 @@ export function AuthProvider({ children }) {
     if (selectedPlant) {
       localStorage.setItem('vgtc-plant', selectedPlant);
       setPlantState(selectedPlant);
+      if (selectedGodown) {
+        localStorage.setItem('vgtc-godown', selectedGodown);
+        setGodownState(selectedGodown);
+      } else {
+        localStorage.removeItem('vgtc-godown');
+        setGodownState('');
+      }
     }
     setAuthToken(t);
     setToken(t);
@@ -50,14 +65,21 @@ export function AuthProvider({ children }) {
     return u;
   };
 
-  const verifyOtp = async (userId, code, selectedPlant) => {
-    const res = await ax.post(`/auth/verify-otp`, { userId, code });
+  const verifyOtp = async (userId, code, selectedPlant, selectedGodown) => {
+    const res = await ax.post(`/auth/verify-otp`, { userId, code, plant: selectedPlant, godown: selectedGodown });
     const { token: t, user: u } = res.data;
     
     localStorage.setItem('vgtc-token', t);
     if (selectedPlant) {
       localStorage.setItem('vgtc-plant', selectedPlant);
       setPlantState(selectedPlant);
+      if (selectedGodown) {
+        localStorage.setItem('vgtc-godown', selectedGodown);
+        setGodownState(selectedGodown);
+      } else {
+        localStorage.removeItem('vgtc-godown');
+        setGodownState('');
+      }
     }
     setAuthToken(t);
     setToken(t);
@@ -73,15 +95,17 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('vgtc-token');
     localStorage.removeItem('vgtc-plant');
+    localStorage.removeItem('vgtc-godown');
     setAuthToken(null);
     setToken(null);
     setUser(null);
     setCurrentUser(null);
     setPlantState('');
+    setGodownState('');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, plant, setPlant, login, verifyOtp, resendOtp, logout, ready }}>
+    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, logout, ready }}>
       {children}
     </AuthContext.Provider>
   );

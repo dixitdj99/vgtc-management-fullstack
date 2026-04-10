@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
+import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -14,13 +15,7 @@ const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
 const MATS_JKL_FALLBACK = ['PPC', 'OPC43', 'Pro+'];
 
-const validateTruckNo = (no) => {
-  if (!no) return false;
-  const clean = no.replace(/\s/g, '').toUpperCase();
-  // Standard Indian Vehicle Number: 2 letters, 1-2 digits, 1-3 letters, 4 digits
-  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
-  return regex.test(clean);
-};
+// validateTruckNo and cleanTruckNo imported from ../utils/vehicleUtils
 
 /* ── Print helper ── */
 function printReceipt(allRows, lrNo, allChallans = []) {
@@ -127,6 +122,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
     weight: row.weight,
     totalBags: row.totalBags,
     destination: row.destination || '',
+    loadingType: row.loadingType || 'From Godown',
   });
   const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -271,6 +267,13 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               <label>Material</label>
               <select className="fi" value={form.material} onChange={e => S('material', e.target.value)}>
                 {MATERIALS.map(o => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Loading Type</label>
+              <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
+                <option value="From Godown">From Godown</option>
+                <option value="Crossing">Crossing</option>
               </select>
             </div>
             <div className="field">
@@ -502,7 +505,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       <datalist id="chal-truck-list">
                         {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                       </datalist>
-                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Standard: RJ07GA1234</div>}
+                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</div>}
                     </div>
                     <div className="field">
                       <label><Calendar size={11} /> Date *</label>
@@ -665,7 +668,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     truckNo: '', partyName: '',
     destination: '',
     usedChallans: [], // array of selected challan objects
-    materials: [{ type: MATERIALS[0], weight: '', bags: '', billing: 'No' }],
+    materials: [{ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }],
   });
 
   /* Excel-style filters */
@@ -738,7 +741,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     if (field === 'bags' && val) m[i].weight = (parseFloat(val) * 0.05).toFixed(2);
     setForm({ ...form, materials: m });
   };
-  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], weight: '', bags: '', billing: 'No' }] });
+  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
   const removeMat = idx => setForm({ ...form, materials: form.materials.filter((_, i) => i !== idx) });
 
   const handleFormRequest = e => {
@@ -850,7 +853,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       alert('Receipt #' + res.data.lrNo + ' created!');
       fetchData(); fetchChallans();
-      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', usedChallans: [], materials: [{ type: 'PPC', weight: '', bags: '' }] });
+      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
@@ -960,7 +963,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
                         }
                       } else {
-                        combinedMaterials.push({ type: m.type, bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo });
+                        combinedMaterials.push({ type: m.type, loadingType: 'From Godown', bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo });
                       }
                     }
                   });
@@ -975,13 +978,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
                     }
                   } else {
-                    combinedMaterials.push({ type: c.material, bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo });
+                    combinedMaterials.push({ type: c.material, loadingType: 'From Godown', bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo });
                   }
                 }
               });
 
               if (combinedMaterials.length === 0 && newUsed.length === 0) {
-                combinedMaterials.push({ type: MATERIALS[0], weight: '', bags: '', billing: 'No' });
+                combinedMaterials.push({ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' });
               }
 
               setForm({ ...form, usedChallans: newUsed, materials: combinedMaterials });
@@ -1022,11 +1025,11 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
                   <div className="field">
                     <label>Truck No. (Auto-suggests from Vehicles)</label>
-                    <input className="fi" type="text" placeholder="RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') })} required list="truck-list" />
+                    <input className="fi" type="text" placeholder="e.g. RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
                     <datalist id="truck-list">
                       {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                     </datalist>
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Format: RJ07GA1234</span>}
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</span>}
                   </div>
                   <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: e.target.value })} required /></div>
                   <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
@@ -1078,10 +1081,17 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       <span className="mat-lbl">Material #{i + 1}</span>
                       {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
                     </div>
-                    <div className="fg fg-3">
+                    <div className="fg" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', display: 'grid', gap: '14px' }}>
                       <div className="field"><label>Type</label>
                         <select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label>Loading Type</label>
+                        <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
+                          <option value="From Godown">From Godown</option>
+                          <option value="Crossing">Crossing</option>
                         </select>
                       </div>
                       <div className="field">
@@ -1143,6 +1153,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <th style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -1162,6 +1173,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td>
                           <span className="badge badge-tag">{lr.material}</span>
                           <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
+                          {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
                         </td>
                         <td className="c">
                           {lr.billing && lr.billing !== 'No' ? (

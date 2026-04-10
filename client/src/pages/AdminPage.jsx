@@ -36,6 +36,25 @@ const MODULES = [
   { key: 'loading_status', label: 'Loading Realtime' }
 ];
 
+const HIERARCHY = [
+  {
+    id: 'jksuper',
+    label: 'JK Super',
+    godowns: [
+      { id: 'kosli', label: 'Kosli Godown', modules: ['lr_kosli', 'bill_kosli', 'balance_kosli', 'stock_kosli'] },
+      { id: 'jhajjar', label: 'Jhajjar Godown', modules: ['lr_jhajjar', 'bill_jhajjar', 'balance_jhajjar', 'stock_jhajjar'] },
+      { id: 'common', label: 'Common JKS', modules: ['voucher_jksuper', 'balance_jksuper', 'cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] }
+    ]
+  },
+  {
+    id: 'jklakshmi',
+    label: 'JK Lakshmi',
+    godowns: [
+      { id: 'jkl_all', label: 'JK Lakshmi Modules', modules: ['lr_jkl', 'voucher_jkl_dump', 'voucher_jkl', 'balance_jkl_dump', 'balance_jkl', 'stock_jkl', 'cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] }
+    ]
+  }
+];
+
 function DeleteConfirm({ u, onClose, onConfirm }) {
   const [busy, setBusy] = useState(false);
   const go = async () => {
@@ -124,8 +143,8 @@ export default function AdminPage() {
   }));
 
   const PermissionToggle = ({ moduleKey, current, onChange }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-input)', padding: '6px 10px', borderRadius: '8px' }}>
-      <span style={{ flex: 1, fontSize: '11.5px', fontWeight: 600, color: 'var(--text-sub)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-card)', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '4px' }}>
+      <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-sub)' }}>
         {MODULES.find(m => m.key === moduleKey)?.label}
       </span>
       <div style={{ display: 'flex', gap: '4px' }}>
@@ -135,13 +154,13 @@ export default function AdminPage() {
           return (
             <button key={opt} type="button" onClick={() => onChange(moduleKey, val)}
               style={{
-                fontSize: '9.5px', fontWeight: 800, padding: '4px 8px', borderRadius: '5px',
+                fontSize: '9px', fontWeight: 800, padding: '3px 6px', borderRadius: '4px',
                 border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border)',
                 background: isActive ? 'var(--accent)20' : 'transparent',
                 color: isActive ? 'var(--accent)' : 'var(--text-muted)',
                 cursor: 'pointer', transition: 'all 0.15s'
               }}>
-              {opt || 'None'}
+              {opt}
             </button>
           );
         })}
@@ -243,15 +262,60 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
-                    Modular Permissions
+                <div style={{ marginTop: '8px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.05)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
+                    Plant & Godown Access
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {MODULES.map(m => (
-                      <PermissionToggle key={m.key} moduleKey={m.key} current={form.permissions[m.key]} onChange={SPerm} />
-                    ))}
-                  </div>
+                  
+                  {HIERARCHY.map(p => {
+                    const isPlantAllowed = (form.permissions.allowedPlants || []).includes(p.id);
+                    return (
+                      <div key={p.id} style={{ marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
+                          <input type="checkbox" checked={isPlantAllowed} onChange={e => {
+                            const current = form.permissions.allowedPlants || [];
+                            const next = e.target.checked ? [...current, p.id] : current.filter(id => id !== p.id);
+                            SPerm('allowedPlants', next);
+                          }} />
+                          <span style={{ fontSize: '13px', fontWeight: 800, color: isPlantAllowed ? 'var(--accent)' : 'var(--text)' }}>{p.label} Access</span>
+                        </label>
+
+                        {isPlantAllowed && (
+                          <div style={{ paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {p.godowns.map(g => {
+                              // If common or jkl_all, we don't need a godown checkbox, just modules
+                              const isSpecial = g.id === 'common' || g.id === 'jkl_all';
+                              const isGodownAllowed = isSpecial || (form.permissions.allowedGodowns || []).includes(g.id);
+                              
+                              return (
+                                <div key={g.id}>
+                                  {!isSpecial && (
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '6px' }}>
+                                      <input type="checkbox" checked={isGodownAllowed} onChange={e => {
+                                        const current = form.permissions.allowedGodowns || [];
+                                        const next = e.target.checked ? [...current, g.id] : current.filter(id => id !== g.id);
+                                        SPerm('allowedGodowns', next);
+                                      }} />
+                                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>{g.label}</span>
+                                    </label>
+                                  )}
+
+                                  {isGodownAllowed && (
+                                    <div style={{ paddingLeft: isSpecial ? 0 : '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      {isSpecial && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', opacity: 0.6 }}>{g.label.toUpperCase()}</div>}
+                                      {g.modules.map(mKey => (
+                                        <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {formError && (

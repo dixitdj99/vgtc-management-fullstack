@@ -40,7 +40,9 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
         batch.set(ref, {
             lrNo, date: date || new Date().toISOString(), truckNo,
             destination: destination || '',
-            material: mat.type, weight: parseFloat(mat.weight) || 0,
+            material: mat.type, 
+            loadingType: mat.loadingType || 'From Godown',
+            weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
             partyName, status: 'Created',
@@ -71,7 +73,9 @@ const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
             destination: destination || '',
-            material: mat.type, weight: parseFloat(mat.weight) || 0,
+            material: mat.type,
+            loadingType: mat.loadingType || 'From Godown',
+            weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
             partyName, status: 'Created'
@@ -117,6 +121,7 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.partyName !== undefined) allowed.partyName = data.partyName;
     if (data.billing !== undefined) allowed.billing = data.billing;
     if (data.material !== undefined) allowed.material = data.material;
+    if (data.loadingType !== undefined) allowed.loadingType = data.loadingType;
     if (data.weight !== undefined) allowed.weight = parseFloat(data.weight) || 0;
     if (data.totalBags !== undefined) allowed.totalBags = parseInt(data.totalBags) || 0;
     if (data.status !== undefined) {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
+import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
@@ -253,7 +254,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         <div className="fg fg-2">
                             <div className="field">
                                 <label>Truck No. *</label>
-                                <input className="fi" type="text" placeholder="e.g. RJ01AB1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: e.target.value.toUpperCase() })} required />
+                                <input className="fi" type="text" placeholder="e.g. RJ01AB1234 or HR361234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required />
                             </div>
                             <div className="field">
                                 <label>Vehicle Type</label>

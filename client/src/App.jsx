@@ -39,10 +39,10 @@ const ENV_BANNER = APP_ENV === 'production' ? null
 
 
 function AppInner() {
-  const { user, logout, ready, plant } = useAuth();
-  // Default to first module of the selected plant
+  const { user, logout, ready, plant, godown } = useAuth();
+  // Default to first module of the selected plant/godown
   // Persistence for navigation
-  const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || (plant === 'jklakshmi' ? 'lr_jkl' : 'lr_kosli'));
+  const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || (plant === 'jklakshmi' ? 'lr_jkl' : (godown === 'jhajjar' ? 'lr_jhajjar' : 'lr_kosli')));
   const [subActive, setSubActive] = useState(() => localStorage.getItem('vgtc-subactive') || '');
   const [expanded, setExpanded] = useState(() => {
     try {
@@ -293,10 +293,17 @@ function AppInner() {
     ] : []),
   ];
 
-  // Filter by plant AND permissions
+  // Filter by plant AND permissions AND godown
   const FILTERED_NAV = NAV.map(n => {
     if (n.sub) {
       const allowedSubs = n.sub.filter(s => {
+        // Godown filtering for subs (skip for admins)
+        if (user?.role !== 'admin' && plant === 'jksuper' && godown) {
+          if (s.id.toLowerCase().includes('kosli') && godown !== 'kosli') return false;
+          if (s.id.toLowerCase().includes('jhajjar') && godown !== 'jhajjar') return false;
+          if (s.id.toLowerCase().includes('jajjhar') && godown !== 'jhajjar') return false;
+        }
+
         const pKey = s.permKey || n.permKey;
         if (!pKey || user?.role === 'admin') return true;
         if (!user?.permissions || Object.keys(user.permissions).length === 0) return true;
@@ -308,6 +315,13 @@ function AppInner() {
     return n;
   }).filter(n => {
     if (n.section !== (plant || 'jksuper')) return false;
+
+    // Godown filtering for top-level (skip for admins)
+    if (user?.role !== 'admin' && plant === 'jksuper' && godown) {
+      if (n.id.toLowerCase().includes('kosli') && godown !== 'kosli') return false;
+      if (n.id.toLowerCase().includes('jhajjar') && godown !== 'jhajjar') return false;
+    }
+
     if (n.id === 'admin') return true;
     if (n.adminOnly && user?.role !== 'admin') return false;
     

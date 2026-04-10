@@ -11,6 +11,7 @@ const PLANTS = [
     glow: 'rgba(99,102,241,0.35)',
     bg: 'rgba(99,102,241,0.1)',
     border: 'rgba(99,102,241,0.35)',
+    hasGodowns: true
   },
   {
     id: 'jklakshmi',
@@ -23,9 +24,15 @@ const PLANTS = [
   },
 ];
 
+const GODOWNS = [
+  { id: 'kosli', label: 'Kosli Godown', desc: 'Kosli Plant Operations' },
+  { id: 'jhajjar', label: 'Jhajjar Godown', desc: 'Jhajjar Plant Operations' },
+];
+
 export default function LoginPage() {
   const { login, verifyOtp, resendOtp } = useAuth();
   const [plant, setPlant] = useState('');
+  const [godown, setGodown] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -47,9 +54,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (otpMode) {
-        await verifyOtp(userId, otp, plant);
+        await verifyOtp(userId, otp, plant, godown);
       } else {
-        const result = await login(username, password, plant);
+        const result = await login(username, password, plant, godown);
         if (result && result.requireOtp) {
           setOtpMode(true);
           setUserId(result.userId);
@@ -154,6 +161,33 @@ export default function LoginPage() {
                   ))}
                 </div>
               </div>
+
+              {selectedPlant?.hasGodowns && (
+                <div style={{ marginBottom: '22px' }}>
+                  <div style={{
+                    fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
+                    textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center',
+                    gap: '6px', marginBottom: '10px'
+                  }}>
+                    <Truck size={12} /> Select Godown
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    {GODOWNS.map(g => (
+                      <button key={g.id} type="button" onClick={() => { setGodown(g.id); setError(''); }}
+                        style={{
+                          background: godown === g.id ? accentGlow.replace('0.35', '0.1') : 'var(--bg-input)',
+                          border: `2px solid ${godown === g.id ? accentColor : 'var(--border)'}`,
+                          borderRadius: '12px', padding: '10px', cursor: 'pointer',
+                          textAlign: 'center', transition: 'all 0.18s',
+                        }}>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: godown === g.id ? accentColor : 'var(--text)' }}>
+                          {g.label}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div style={{ borderTop: '1px solid var(--border)', marginBottom: '20px' }} />
             </>
@@ -276,11 +310,11 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button type="submit" disabled={loading || !plant} style={{
+            <button type="submit" disabled={loading || !plant || (selectedPlant?.hasGodowns && !godown)} style={{
               width: '100%', padding: '13px', borderRadius: '12px', border: 'none',
-              background: plant ? `linear-gradient(135deg,${accentColor},${accentColor}dd)` : 'var(--bg-input)',
-              color: plant ? 'white' : 'var(--text-muted)',
-              fontSize: '14px', fontWeight: 800, cursor: plant ? 'pointer' : 'not-allowed',
+              background: (plant && (!selectedPlant?.hasGodowns || godown)) ? `linear-gradient(135deg,${accentColor},${accentColor}dd)` : 'var(--bg-input)',
+              color: (plant && (!selectedPlant?.hasGodowns || godown)) ? 'white' : 'var(--text-muted)',
+              fontSize: '14px', fontWeight: 800, cursor: (plant && (!selectedPlant?.hasGodowns || godown)) ? 'pointer' : 'not-allowed',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
               boxShadow: plant ? `0 4px 20px ${accentGlow}` : 'none',
               opacity: loading ? 0.7 : 1, transition: 'all 0.3s',

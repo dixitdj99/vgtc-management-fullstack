@@ -33,6 +33,39 @@ router.post('/login', async (req, res) => {
         if (!user || !authService.verifyPassword(password, user.password))
             return res.status(401).json({ error: 'Invalid username or password' });
 
+        // Plant/Godown access enforcement for non-admin users
+        if (user.role !== 'admin') {
+            const perms = user.permissions || {};
+            const allowedPlants = perms.allowedPlants; // undefined = legacy user (no restrictions)
+            const allowedGodowns = perms.allowedGodowns; // undefined = no godown restriction set
+            const requestedPlant = req.body.plant;
+            const requestedGodown = req.body.godown;
+
+            // Enforce only if allowedPlants is explicitly configured as an array
+            if (Array.isArray(allowedPlants)) {
+                // Plant must be in the allowed list
+                if (!requestedPlant || !allowedPlants.includes(requestedPlant)) {
+                    const plantName = requestedPlant || '(none selected)';
+                    return res.status(403).json({
+                        error: `Access Denied: Your account is not authorized for ${plantName}. Contact your administrator.`
+                    });
+                }
+
+                // JK Super additionally requires a valid godown
+                if (requestedPlant === 'jksuper') {
+                    if (!requestedGodown) {
+                        return res.status(403).json({ error: 'Access Denied: Please select a Godown for JK Super.' });
+                    }
+                    // If specific godowns are configured, enforce strictly
+                    if (Array.isArray(allowedGodowns) && !allowedGodowns.includes(requestedGodown)) {
+                        return res.status(403).json({
+                            error: `Access Denied: Your account is not authorized for the ${requestedGodown} godown. Contact your administrator.`
+                        });
+                    }
+                }
+            }
+        }
+
         // Check if OTP is enabled
         if (user.isOtpEnabled && user.email) {
             const otp = authService.generateOTP();
@@ -64,6 +97,35 @@ router.post('/verify-otp', async (req, res) => {
         if (!isValid) return res.status(401).json({ error: 'Invalid or expired OTP' });
 
         const user = await authService.findById(userId);
+
+        // Plant/Godown access enforcement for non-admin users
+        if (user.role !== 'admin') {
+            const perms = user.permissions || {};
+            const allowedPlants = perms.allowedPlants;
+            const allowedGodowns = perms.allowedGodowns;
+            const requestedPlant = req.body.plant;
+            const requestedGodown = req.body.godown;
+
+            if (Array.isArray(allowedPlants)) {
+                if (!requestedPlant || !allowedPlants.includes(requestedPlant)) {
+                    const plantName = requestedPlant || '(none selected)';
+                    return res.status(403).json({
+                        error: `Access Denied: Your account is not authorized for ${plantName}. Contact your administrator.`
+                    });
+                }
+
+                if (requestedPlant === 'jksuper') {
+                    if (!requestedGodown) {
+                        return res.status(403).json({ error: 'Access Denied: Please select a Godown for JK Super.' });
+                    }
+                    if (Array.isArray(allowedGodowns) && !allowedGodowns.includes(requestedGodown)) {
+                        return res.status(403).json({
+                            error: `Access Denied: Your account is not authorized for the ${requestedGodown} godown. Contact your administrator.`
+                        });
+                    }
+                }
+            }
+        }
         const token = jwt.sign(
             { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
             SECRET,

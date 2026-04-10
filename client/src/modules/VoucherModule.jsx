@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
+import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
@@ -310,7 +311,7 @@ function EditModal({ v, onClose, onSave }) {
                     <div className="fg fg-3">
                         <div className="field"><label>LR No.</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
                         <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
-                        <div className="field"><label>Truck No.</label><input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase())} /></div>
+                        <div className="field"><label>Truck No.</label><input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} /></div>
                         <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
                         <div className="field"><label>Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
                         {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill') && (
@@ -540,9 +541,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     // When user manually changes truckNo (not via LR auto-fill), also fetch last km
     const handleTruckNoChange = (val) => {
-        set('truckNo', val.toUpperCase());
-        fetchLastKm(val.toUpperCase());
+        const clean = cleanTruckNo(val);
+        set('truckNo', clean);
+        fetchLastKm(clean);
     };
+
 
     const handleFormRequest = e => {
         e.preventDefault();
@@ -668,7 +671,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
+                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(cleanTruckNo(e.target.value))} required />
                                             </div>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>

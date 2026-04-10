@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
+import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
@@ -24,12 +25,8 @@ const getMatCol = (mat) => {
   return `hsl(${hue}, 75%, 50%)`;
 };
 
-const validateTruckNo = (no) => {
-  if (!no) return false;
-  const clean = no.replace(/\s/g, '').toUpperCase();
-  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
-  return regex.test(clean);
-};
+// validateTruckNo and cleanTruckNo imported from ../utils/vehicleUtils
+
 const STATUS_META = {
   open: { label: 'Challan Created', color: 'var(--warn)', Icon: Clock },
   loaded: { label: 'Loaded', color: 'var(--accent)', Icon: CheckCircle2 },
@@ -246,7 +243,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   };
   const executeMigo = async () => {
     setSaving(true); setIsConfirmingMigo(false);
-    if (!validateTruckNo(migoForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); setSaving(false); return; }
+    if (!validateTruckNo(migoForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234 or HR161234)'); setSaving(false); return; }
     try { await ax.post(API + '/additions', migoForm); setMigoForm(getEmptyMigo()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
@@ -257,7 +254,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const triggerChallan = e => {
     e.preventDefault(); setErr('');
     if (!chalForm.truckNo) { setErr('Truck number required'); return; }
-    if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); return; }
+    if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234 or HR161234)'); return; }
     if (!chalForm.quantity || parseFloat(chalForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
     // Check availability
     const avail = stockMap[chalForm.material]?.available || 0;
@@ -572,7 +569,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
                 {fi('Truck Number', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="migo-truck-list"
-                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') }))} />
+                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
                   <datalist id="migo-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                   </datalist>
@@ -668,7 +665,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
                 {fi('Truck No. (Auto-suggests)', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="stock-truck-list"
-                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') }))} />
+                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
                   <datalist id="stock-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                   </datalist>
