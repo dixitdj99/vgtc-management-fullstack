@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import api from '../api';
 import { Truck, LogIn, LogOut, Volume2, CheckCircle, Clock, RefreshCw, Bell, BellOff, Mic, MicOff, Play, Pause, MessageSquare, User, Lock, Eye, EyeOff, AlertCircle, Download, X, Share, MoreVertical } from 'lucide-react';
-
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // ── Beep Sound (Web Audio API) ─────────────────────────────────
 function playBeep() {
@@ -141,18 +140,13 @@ function LoginScreen({ onLogin }) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch(`${BASE}/labour/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
+      const res = await api.post('/labour/login', { username, password });
+      const data = res.data;
       localStorage.setItem('vgtc-labour-token', data.token);
       localStorage.setItem('vgtc-labour-worker', JSON.stringify(data.worker));
       onLogin(data.worker);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.error || err.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -230,11 +224,10 @@ export default function LabourLoadingStatus() {
     if (!token) return;
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`${BASE}/labour/today`, {
+      const res = await api.get('/labour/today', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.status === 401) { handleLogout(); return; }
-      const data = await res.json();
+      const data = res.data;
 
       // Detect new entries
       if (!isFirstFetch.current) {
@@ -245,11 +238,11 @@ export default function LabourLoadingStatus() {
         }
       }
 
-      // Update known IDs
       data.forEach(r => knownIdsRef.current.add(r.id));
       isFirstFetch.current = false;
       setReceipts(data.reverse());
     } catch (e) {
+      if (e.response?.status === 401) { handleLogout(); return; }
       console.error('Labour fetch error:', e);
     } finally {
       if (!silent) setLoading(false);
@@ -278,11 +271,10 @@ export default function LabourLoadingStatus() {
   // ── Update status ─────────────────────────────────────────
   const updateStatus = async (r, newStatus) => {
     try {
-      await fetch(`${BASE}/labour/lr/${worker.godown}/${r.id}/status`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      await api.patch(`/labour/lr/${worker.godown}/${r.id}/status`,
+        { status: newStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       setReceipts(prev => prev.map(x => x.id === r.id ? { ...x, status: newStatus, ...(newStatus === 'Started' ? { startedAt: new Date().toISOString() } : {}), ...(newStatus === 'Loaded' ? { loadedAt: new Date().toISOString() } : {}) } : x));
     } catch (e) { alert('Status update failed'); }
   };
@@ -290,10 +282,9 @@ export default function LabourLoadingStatus() {
   // ── Mark voice heard ──────────────────────────────────────
   const markHeard = async (r) => {
     try {
-      await fetch(`${BASE}/labour/lr/${worker.godown}/${r.id}/heard`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
+      await api.patch(`/labour/lr/${worker.godown}/${r.id}/heard`, {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       setReceipts(prev => prev.map(x => x.id === r.id ? { ...x, voiceHeard: true, voiceHeardBy: worker.name } : x));
     } catch (e) { alert('Failed to mark as heard'); }
   };
