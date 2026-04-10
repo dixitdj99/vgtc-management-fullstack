@@ -405,7 +405,15 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
+    // canEdit: checks brand-specific voucher key and generic fallback
+    const voucherKey = brand === 'jklakshmi' ? 'voucher_jkl' : 'voucher_jksuper';
+    const canEdit = role === 'admin'
+        || permissions?.[voucherKey] === 'edit'
+        || permissions?.voucher === 'edit'
+        || permissions?.bill_kosli === 'edit'
+        || permissions?.bill_jhajjar === 'edit';
     const [vType, setVType] = useState(lockedType || initialTab || 'Kosli_Bill');
+
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
@@ -969,7 +977,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
                                                 <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v)}><Printer size={13} /></button>
-                                                {(role === 'admin' || permissions?.voucher === 'edit') && (
+                                                {canEdit && (
                                                     <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
                                                 )}
                                                 {role === 'admin' && (

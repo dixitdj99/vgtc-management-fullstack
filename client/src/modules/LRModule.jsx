@@ -631,6 +631,10 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
+  // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
+  const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : 'lr_jkl';
+  const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
+
   let API, API_STOCK;
   if (brand === 'jkl') {
     API = `${BASE_API}/jkl/lr`;
@@ -1227,7 +1231,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans)}>
                               <Printer size={14} />
                             </button>
-                            {(role === 'admin' || permissions?.lr === 'edit') && (
+                            {canEdit && (
                               <button className="btn btn-g btn-icon" title="Edit" onClick={() => setEditRow(lr)}>
                                 <Pencil size={14} />
                               </button>

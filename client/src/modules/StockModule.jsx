@@ -88,7 +88,11 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
    MAIN
 ═════════════════════════════════════════════════ */
 export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
+  // canEdit: checks brand-specific key first, then generic 'stock' key
+  const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : 'stock_jkl';
+  const canEdit = role === 'admin' || permissions?.[stockKey] === 'edit' || permissions?.stock === 'edit';
   let API, API_LR;
+
   if (brand === 'jkl') {
     API = `${BASE_API}/jkl/stock`;
     API_LR = `${BASE_API}/jkl/lr`;
@@ -273,7 +277,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   };
 
   const updateStatus = async (id, status) => {
-    if (!(role === 'admin' || permissions?.stock === 'edit')) {
+    if (!canEdit) {
       alert('Permission denied (Edit access required)');
       return;
     }
@@ -419,7 +423,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {(role === 'admin' || permissions?.stock === 'edit') && (
+          {canEdit && (
             <button onClick={() => setShowMatManager(true)} className="btn btn-g btn-sm" style={{ fontWeight: 800 }}>
                <Tag size={13} /> Manage Materials
             </button>
@@ -464,7 +468,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { id: 'migo', label: 'MIGO (Stock Entry)', icon: <Plus size={13} />, restricted: true },
           { id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true },
         ].map(({ id, label, icon, restricted }) => {
-          if (restricted && !(role === 'admin' || permissions?.stock === 'edit')) return null;
+          if (restricted && !canEdit) return null;
           return (
             <button key={id} onClick={() => setTab(id)}
             style={{
@@ -584,7 +588,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 {fi('Date', <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
                   value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-a" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end', fontWeight: 800 }}>
+                <button type="submit" className="btn btn-a" disabled={saving || !canEdit} style={{ height: '38px', alignSelf: 'flex-end', fontWeight: 800 }}>
                   {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
                 </button>
               </div>
@@ -682,7 +686,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Notes"
                   value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-p" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end' }}>
+                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ height: '38px', alignSelf: 'flex-end' }}>
                   {saving ? '…' : <><Tag size={14} /> Create Challan</>}
                 </button>
               </div>
