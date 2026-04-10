@@ -199,24 +199,24 @@ function AppInner() {
   // Build nav items based on role
   const NAV = [
     // ── JK Super ──
-    { id: 'lr_kosli', label: 'Kosli LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
-    { id: 'lr_jhajjar', label: 'Jhajjar LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
+    { id: 'lr_kosli', label: 'Kosli LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_kosli' },
+    { id: 'lr_jhajjar', label: 'Jhajjar LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_jhajjar' },
     {
-      id: 'voucher_dump', label: 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', permKey: 'voucher', sub: [
-        { id: 'Kosli_Bill', label: 'Kosli Bill' },
-        { id: 'Jajjhar_Bill', label: 'Jajjhar Bill' },
-        { id: 'JK_Super', label: 'JK Super Voucher' },
+      id: 'voucher_dump', label: 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', sub: [
+        { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'bill_kosli' },
+        { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'bill_jhajjar' },
+        { id: 'JK_Super', label: 'JK Super Voucher', permKey: 'voucher_jksuper' },
       ]
     },
     {
-      id: 'balance_dump', label: 'Balance Sheet', Icon: BarChart3, color: '#6366f1', section: 'jksuper', permKey: 'balance', sub: [
-        { id: 'Kosli_Bill', label: 'Kosli Bill' },
-        { id: 'Jajjhar_Bill', label: 'Jajjhar Bill' },
-        { id: 'JK_Super', label: 'JK Super Sheet' },
+      id: 'balance_dump', label: 'Balance Sheet', Icon: BarChart3, color: '#6366f1', section: 'jksuper', sub: [
+        { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'balance_kosli' },
+        { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'balance_jhajjar' },
+        { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
     {
-      id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock', sub: [
+      id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -224,7 +224,7 @@ function AppInner() {
       ]
     },
     {
-      id: 'stock_jhajjar', label: 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock', sub: [
+      id: 'stock_jhajjar', label: 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -249,21 +249,21 @@ function AppInner() {
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── JK Lakshmi ──
-    { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
+    { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr_jkl' },
     {
-      id: 'voucher_jkl', label: 'Voucher', Icon: FileText, color: '#f59e0b', section: 'jklakshmi', permKey: 'voucher', sub: [
-        { id: 'Dump', label: 'Dump Voucher' },
-        { id: 'JK_Lakshmi', label: 'JK Lakshmi Voucher' },
+      id: 'voucher_jkl', label: 'Voucher', Icon: FileText, color: '#f59e0b', section: 'jklakshmi', sub: [
+        { id: 'Dump', label: 'Dump Voucher', permKey: 'voucher_jkl_dump' },
+        { id: 'JK_Lakshmi', label: 'JK Lakshmi Voucher', permKey: 'voucher_jkl' },
       ]
     },
     {
-      id: 'balance_jkl', label: 'Balance Sheet', Icon: BarChart3, color: '#f59e0b', section: 'jklakshmi', permKey: 'balance', sub: [
-        { id: 'Dump', label: 'Dump Sheet' },
-        { id: 'JK_Lakshmi', label: 'JK Lakshmi Sheet' },
+      id: 'balance_jkl', label: 'Balance Sheet', Icon: BarChart3, color: '#f59e0b', section: 'jklakshmi', sub: [
+        { id: 'Dump', label: 'Dump Sheet', permKey: 'balance_jkl_dump' },
+        { id: 'JK_Lakshmi', label: 'JK Lakshmi Sheet', permKey: 'balance_jkl' },
       ]
     },
     {
-      id: 'stock_jkl', label: 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jklakshmi', permKey: 'stock', sub: [
+      id: 'stock_jkl', label: 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jklakshmi', permKey: 'stock_jkl', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -294,25 +294,33 @@ function AppInner() {
   ];
 
   // Filter by plant AND permissions
-  const FILTERED_NAV = NAV.filter(n => {
-    // Basic plant filter
+  const FILTERED_NAV = NAV.map(n => {
+    if (n.sub) {
+      const allowedSubs = n.sub.filter(s => {
+        const pKey = s.permKey || n.permKey;
+        if (!pKey || user?.role === 'admin') return true;
+        if (!user?.permissions || Object.keys(user.permissions).length === 0) return true;
+        const p = user.permissions[pKey];
+        return p === 'view' || p === 'edit';
+      });
+      return { ...n, sub: allowedSubs };
+    }
+    return n;
+  }).filter(n => {
     if (n.section !== (plant || 'jksuper')) return false;
-
-    // Admin panel always visible for admins
     if (n.id === 'admin') return true;
-
-    // Check if item is restricted to admins only
     if (n.adminOnly && user?.role !== 'admin') return false;
+    
+    if (n.sub && n.sub.length === 0) return false;
 
-    // Admins see everything else too
     if (user?.role === 'admin') return true;
-
-    // If permissions object is missing (transition period), allow view
     if (!user?.permissions || Object.keys(user.permissions).length === 0) return true;
 
-    // Others must have at least 'view' permission
-    const perm = user.permissions[n.permKey];
-    return perm === 'view' || perm === 'edit';
+    if (!n.sub) {
+      const p = user.permissions[n.permKey];
+      return p === 'view' || p === 'edit';
+    }
+    return true;
   });
 
 

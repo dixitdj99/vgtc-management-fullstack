@@ -10,18 +10,30 @@ const ROLE_COLOR = { admin: '#6366f1', user: '#10b981' };
 const ROLE_ICON = { admin: Crown, user: Users };
 
 const MODULES = [
-  { key: 'lr', label: 'LR Module' },
-  { key: 'voucher', label: 'Voucher Module' },
-  { key: 'balance', label: 'Balance Sheet' },
-  { key: 'stock', label: 'Stock Module' },
+  { key: 'lr_kosli', label: 'Kosli LR' },
+  { key: 'lr_jhajjar', label: 'Jhajjar LR' },
+  { key: 'lr_jkl', label: 'JK Lakshmi LR' },
+  { key: 'bill_kosli', label: 'Kosli Bill' },
+  { key: 'bill_jhajjar', label: 'Jhajjar Bill' },
+  { key: 'voucher_jksuper', label: 'JK Super Voucher' },
+  { key: 'voucher_jkl_dump', label: 'JKL Dump Voucher' },
+  { key: 'voucher_jkl', label: 'JK Lakshmi Voucher' },
+  { key: 'balance_kosli', label: 'Balance - Kosli' },
+  { key: 'balance_jhajjar', label: 'Balance - Jhajjar' },
+  { key: 'balance_jksuper', label: 'Balance - JK Super' },
+  { key: 'balance_jkl_dump', label: 'Balance - JKL Dump' },
+  { key: 'balance_jkl', label: 'Balance - JK Lakshmi' },
+  { key: 'stock_kosli', label: 'Kosli Stock' },
+  { key: 'stock_jhajjar', label: 'Jhajjar Stock' },
+  { key: 'stock_jkl', label: 'JK Lakshmi Stock' },
   { key: 'cashbook', label: 'Cashbook' },
-  { key: 'diesel', label: 'Diesel Module' },
-  { key: 'vehicle', label: 'Vehicle Management' },
-  { key: 'sell', label: 'Sell' },
-  { key: 'invoice', label: 'Generate Invoice' },
-  { key: 'loading_status', label: 'Loading Realtime' },
-  { key: 'mileage', label: 'Mileage Tracker' },
   { key: 'pay', label: 'Pay Vehicles' },
+  { key: 'invoice', label: 'Generate Invoice' },
+  { key: 'vehicle', label: 'Vehicle Management' },
+  { key: 'diesel', label: 'Diesel Module' },
+  { key: 'mileage', label: 'Mileage Tracker' },
+  { key: 'sell', label: 'Sell Management' },
+  { key: 'loading_status', label: 'Loading Realtime' }
 ];
 
 function DeleteConfirm({ u, onClose, onConfirm }) {
