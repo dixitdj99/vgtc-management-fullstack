@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -680,9 +680,69 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     date: new Date().toISOString().split('T')[0],
     truckNo: '', partyName: '',
     destination: '',
+    note: '',
+    voiceMessageBase64: '',
     usedChallans: [], // array of selected challan objects
     materials: [{ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }],
   });
+
+  // ── Voice Recording State ──────────────────────────────
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState('');
+  const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setVoicePreviewUrl(url);
+        // Convert to base64
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const b64 = reader.result.split(',')[1];
+          setForm(f => ({ ...f, voiceMessageBase64: b64 }));
+        };
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setIsRecording(true);
+    } catch (e) {
+      alert('Microphone access denied. Please allow mic access to record.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const playPreview = () => {
+    if (!voicePreviewUrl) return;
+    if (voicePreviewAudio) { voicePreviewAudio.pause(); setVoicePreviewAudio(null); setIsPlayingPreview(false); return; }
+    const audio = new Audio(voicePreviewUrl);
+    setVoicePreviewAudio(audio);
+    setIsPlayingPreview(true);
+    audio.play();
+    audio.onended = () => { setIsPlayingPreview(false); setVoicePreviewAudio(null); };
+  };
+
+  const clearVoice = () => {
+    if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
+    setVoicePreviewUrl('');
+    setForm(f => ({ ...f, voiceMessageBase64: '' }));
+  };
 
   /* Excel-style filters */
   const [filters, setFilters] = useState({});
@@ -866,7 +926,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       alert('Receipt #' + res.data.lrNo + ' created!');
       fetchData(); fetchChallans();
-      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+      clearVoice();
+      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
@@ -1123,7 +1185,42 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </div>
                   </motion.div>
                 ))}
+                <hr className="sep" style={{ margin: '8px 0' }} />
+                {/* Note */}
+                <div className="field" style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour (optional)</label>
+                  <textarea className="fi" rows={2} placeholder="e.g. Handle carefully, load from gate 2..." value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
+                    style={{ resize: 'vertical', minHeight: '60px' }} />
+                </div>
+                {/* Voice Message */}
+                <div className="field" style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message (optional)</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {!isRecording ? (
+                      <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
+                        <Mic size={13} /> {voicePreviewUrl ? 'Re-record' : 'Record Voice'}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={stopRecording} className="btn btn-d btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', animation: 'pulse 1s infinite' }}>
+                        <MicOff size={13} /> Stop Recording
+                      </button>
+                    )}
+                    {voicePreviewUrl && (
+                      <>
+                        <button type="button" onClick={playPreview} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          {isPlayingPreview ? <><Pause size={12} /> Pause</> : <><Play size={12} /> Preview</>}
+                        </button>
+                        <button type="button" onClick={clearVoice} className="btn btn-d btn-sm" title="Remove voice">
+                          <X size={12} />
+                        </button>
+                        <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>✓ Voice recorded</span>
+                      </>
+                    )}
+                    {isRecording && <span style={{ fontSize: '11px', color: '#f43f5e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f43f5e', display: 'inline-block', animation: 'pulse 1s infinite' }} /> Recording...</span>}
+                  </div>
+                </div>
                 <button type="submit" className="btn btn-p btn-full" disabled={loading}>{loading ? 'Saving...' : 'Save Receipt'}</button>
+
               </form>
             </div>
           </div>

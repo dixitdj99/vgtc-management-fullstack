@@ -22,6 +22,7 @@ import AdminModule from './modules/AdminModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import PublicReceipt from './pages/PublicReceipt';
+import LabourLoadingStatus from './modules/LabourLoadingStatus';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -345,6 +346,8 @@ function AppInner() {
 
   const path = window.location.pathname;
   if (path === '/loading-status') return <PublicLoadingStatus />;
+  if (path === '/labour') return <LabourLoadingStatus />;
+
 
   if (path.startsWith('/receipt/')) {
     const parts = path.split('/');

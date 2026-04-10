@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, Users } from 'lucide-react';
+import { Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, Users, Truck, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 const API = `/users`;
@@ -108,7 +108,38 @@ export default function AdminPage() {
   });
   const [formError, setFormError] = useState('');
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(); fetchWorkers(); }, []);
+
+  // ── Labour Workers ───────────────────────────────────────────
+  const [workers, setWorkers] = useState([]);
+  const [workerForm, setWorkerForm] = useState({ name: '', username: '', password: '', godown: 'kosli' });
+  const [workerBusy, setWorkerBusy] = useState(false);
+  const [workerError, setWorkerError] = useState('');
+  const [showWorkerPass, setShowWorkerPass] = useState(false);
+
+  const fetchWorkers = async () => {
+    try { setWorkers((await ax.get('/labour/workers')).data); }
+    catch { }
+  };
+
+  const handleCreateWorker = async e => {
+    e.preventDefault(); setWorkerError(''); setWorkerBusy(true);
+    try {
+      await ax.post('/labour/workers', workerForm);
+      setWorkerForm({ name: '', username: '', password: '', godown: 'kosli' });
+      fetchWorkers();
+    } catch (err) { setWorkerError(err.response?.data?.error || 'Failed to create worker'); }
+    finally { setWorkerBusy(false); }
+  };
+
+  const handleDeleteWorker = async (id) => {
+    if (!confirm('Delete this labour worker?')) return;
+    try { await ax.delete(`/labour/workers/${id}`); fetchWorkers(); }
+    catch { alert('Delete failed'); }
+  };
+
+  const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi' };
+  const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#f59e0b', jkl: '#10b981' };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -431,6 +462,78 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+
+          {/* ── Labour Workers Section ─────────────────────────────── */}
+          <div className="card" style={{ marginTop: '28px' }}>
+            <div className="card-header" style={{ borderBottom: '1px solid var(--border)', marginBottom: '0' }}>
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Truck size={17} /></div>
+                <div className="card-title-text">
+                  <h3>Labour Workers</h3>
+                  <p>Workers who log in to the Labour Portal to update loading statuses</p>
+                </div>
+                <a href="/labour" target="_blank" rel="noopener noreferrer" className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
+                  <ExternalLink size={12} /> Open Labour Portal
+                </a>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '20px' }}>
+              {/* Create Worker Form */}
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Add New Worker</div>
+                <form onSubmit={handleCreateWorker} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div className="field"><label><User size={10} /> Full Name</label><input className="fi" type="text" placeholder="e.g. Ramu Kumar" value={workerForm.name} onChange={e => setWorkerForm(f => ({ ...f, name: e.target.value }))} required /></div>
+                  <div className="field"><label>Username (login ID)</label><input className="fi" type="text" placeholder="e.g. ramu_kosli" value={workerForm.username} onChange={e => setWorkerForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '_') }))} required /></div>
+                  <div className="field">
+                    <label><Lock size={10} /> Password / PIN</label>
+                    <div style={{ position: 'relative' }}>
+                      <input className="fi" type={showWorkerPass ? 'text' : 'password'} placeholder="Set a password or 4-digit PIN" value={workerForm.password} onChange={e => setWorkerForm(f => ({ ...f, password: e.target.value }))} required />
+                      <button type="button" onClick={() => setShowWorkerPass(s => !s)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                        {showWorkerPass ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Assigned Godown</label>
+                    <select className="fi" value={workerForm.godown} onChange={e => setWorkerForm(f => ({ ...f, godown: e.target.value }))}>
+                      <option value="kosli">Kosli Godown</option>
+                      <option value="jhajjar">Jhajjar Godown</option>
+                      <option value="jkl">JK Lakshmi</option>
+                    </select>
+                  </div>
+                  {workerError && <div style={{ fontSize: '11px', color: 'var(--danger)', fontWeight: 600 }}>{workerError}</div>}
+                  <button type="submit" className="btn btn-p btn-full" disabled={workerBusy}>
+                    {workerBusy ? '...' : <><Plus size={13} /> Create Worker</>}
+                  </button>
+                </form>
+              </div>
+
+              {/* Worker List */}
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Registered Workers ({workers.length})</div>
+                {workers.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '10px' }}>No workers yet. Add one to get started.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {workers.map(w => (
+                      <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: `${GODOWN_COLOR[w.godown]}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Truck size={15} color={GODOWN_COLOR[w.godown] || '#6366f1'} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{w.name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>@{w.username} · <span style={{ color: GODOWN_COLOR[w.godown] || '#6366f1', fontWeight: 700 }}>{GODOWN_LABEL[w.godown] || w.godown}</span></div>
+                        </div>
+                        <button className="btn btn-d btn-sm btn-icon" onClick={() => handleDeleteWorker(w.id)} title="Remove worker"><Trash2 size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </>

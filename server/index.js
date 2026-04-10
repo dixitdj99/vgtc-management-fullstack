@@ -26,6 +26,7 @@ const sellRoutes = require('./routes/sellRoutes');
 const mileageRoutes = require('./routes/mileageRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const labourRoutes = require('./routes/labourRoutes');
 const { requireAuth } = require('./middleware/auth');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
@@ -47,6 +48,7 @@ app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
 app.use('/api/sell', requireAuth, sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/labour', labourRoutes);
 
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {
