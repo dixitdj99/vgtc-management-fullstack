@@ -18,7 +18,10 @@ const MODULES = [
   { key: 'diesel', label: 'Diesel Module' },
   { key: 'vehicle', label: 'Vehicle Management' },
   { key: 'sell', label: 'Sell' },
-  { key: 'cctv', label: 'CCTV Live' },
+  { key: 'invoice', label: 'Generate Invoice' },
+  { key: 'loading_status', label: 'Loading Realtime' },
+  { key: 'mileage', label: 'Mileage Tracker' },
+  { key: 'pay', label: 'Pay Vehicles' },
 ];
 
 function DeleteConfirm({ u, onClose, onConfirm }) {

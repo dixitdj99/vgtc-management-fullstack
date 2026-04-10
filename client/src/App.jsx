@@ -242,11 +242,11 @@ function AppInner() {
     },
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
-    { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'diesel', adminOnly: true },
-    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'balance', adminOnly: true },
+    { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
+    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'lr' },
-    { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'lr' },
+    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice' },
+    { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── JK Lakshmi ──
     { id: 'lr_jkl', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
@@ -281,11 +281,11 @@ function AppInner() {
     },
     { id: 'vehicles_jkl', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jklakshmi', permKey: 'vehicle' },
     { id: 'diesel_jkl', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jklakshmi', permKey: 'diesel' },
-    { id: 'mileage_jkl', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jklakshmi', permKey: 'diesel', adminOnly: true },
-    { id: 'pay_jkl', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jklakshmi', permKey: 'balance', adminOnly: true },
+    { id: 'mileage_jkl', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jklakshmi', permKey: 'mileage' },
+    { id: 'pay_jkl', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jklakshmi', permKey: 'pay' },
     { id: 'sell_jkl', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jklakshmi', permKey: 'sell' },
-    { id: 'invoice_jkl', label: 'Generate Invoice', Icon: FileText, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
-    { id: 'admin_loading_status_jkl', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jklakshmi', permKey: 'lr' },
+    { id: 'invoice_jkl', label: 'Generate Invoice', Icon: FileText, color: '#f59e0b', section: 'jklakshmi', permKey: 'invoice' },
+    { id: 'admin_loading_status_jkl', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jklakshmi', permKey: 'loading_status' },
 
     ...(user?.role === 'admin' ? [
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant || 'jksuper' },

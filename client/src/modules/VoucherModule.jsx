@@ -133,7 +133,7 @@ function printVoucher(v) {
             </div>
             <div class="info-col-2">
                 <div>M/s. <span style="margin-left: 10px; font-weight: normal; font-size: 13px;">${v.partyName || ''}</span>${v.partyName ? '' : '<div class="line-fill"></div>'}</div>
-                <div><div class="line-fill" style="margin-left: 0;"></div></div>
+                <div><span style="font-size: 10px;">Party Code:</span> <span style="margin-left: 5px; font-weight: normal; font-size: 12px;">${v.partyCode || ''}</span>${v.partyCode ? '' : '<div class="line-fill" style="margin-left: 0;"></div>'}</div>
                 <div><div class="line-fill" style="margin-left: 0;"></div></div>
                 <div><span>S.T.L. No.</span><span>C.S.T. No.</span></div>
             </div>
@@ -166,14 +166,14 @@ function printVoucher(v) {
                 <tr class="body-row" style="height: 180px;">
                     <td style="text-align: center; font-size: 13px;">${v.bags || ''}</td>
                     <td class="desc-text">
-                        CEMENT<br>
+                        CEMENT${v.materialName ? ' - ' + v.materialName : ''}<br>
                         Grade<br>
                         <b><i>J.K. Super Cement</i></b><br>
                         PPC<br>
                         43<br>
                         53<br>
                         Value of Goods<br>
-                        Bill No. :<br>
+                        Bill No. : ${v.billNo || ''}<br>
                         Shipment No. :<br>
                         D.I. No.
                     </td>
@@ -280,6 +280,7 @@ function EditModal({ v, onClose, onSave }) {
         weight: v.weight, bags: v.bags, rate: v.rate, pump: v.pump || PUMPS[0],
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
+        billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || ''
     });
     const [saving, setSaving] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -312,6 +313,13 @@ function EditModal({ v, onClose, onSave }) {
                         <div className="field"><label>Truck No.</label><input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase())} /></div>
                         <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
                         <div className="field"><label>Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
+                        {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill') && (
+                            <>
+                                <div className="field"><label>Party Code</label><input className="fi" type="text" value={form.partyCode} onChange={e => S('partyCode', e.target.value)} /></div>
+                                <div className="field"><label>Bill No</label><input className="fi" type="text" value={form.billNo} onChange={e => S('billNo', e.target.value)} /></div>
+                                <div className="field"><label>Material Name</label><input className="fi" type="text" value={form.materialName} onChange={e => S('materialName', e.target.value)} /></div>
+                            </>
+                        )}
                     </div>
                     <hr className="sep" style={{ margin: '2px 0' }} />
                     <div className="fg fg-3">
@@ -422,7 +430,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
         rate: '', pump: PUMPS[0], advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
-        startKm: '', endKm: '',
+        startKm: '', endKm: '', billNo: '', partyCode: '', materialName: ''
     });
     const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
     const [fetchingKm, setFetchingKm] = useState(false);
@@ -507,16 +515,22 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         // JK_Super and JK_Lakshmi use fully custom LR numbers — skip LR receipt lookup
         if (vType === 'JK_Super' || vType === 'JK_Lakshmi') return;
 
-        // Dump Bills only: Fetch LR details from receipts
+        // Determine which LR endpoint to call based on bill type
+        let lrEndpoint = '/lr'; // default for Dump
+        if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
+        else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
+
+        // Fetch LR details from the correct receipts collection
         try {
-            const all = (await ax.get(`/lr`)).data;
+            const all = (await ax.get(lrEndpoint)).data;
             const rows = all.filter(l => String(l.lrNo) === String(val));
             if (rows.length > 0) {
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
                 const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
                 const truck = rows[0].truckNo || '';
-                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination, partyName: rows[0].partyName || '' }));
+                const materialStrs = rows[0].material || '';
+                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination, partyName: rows[0].partyName || '', partyCode: rows[0].partyCode || '', materialName: materialStrs }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
             }
@@ -542,7 +556,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         try {
             await ax.post(API_V, { ...form, type: vType, brand, ...calc });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '' }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '' }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
@@ -664,6 +678,22 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 <label>Party Name</label>
                                                 <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => set('partyName', e.target.value)} />
                                             </div>
+                                            {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill') && (
+                                                <>
+                                                    <div className="field">
+                                                        <label>Party Code</label>
+                                                        <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
+                                                    </div>
+                                                    <div className="field">
+                                                        <label>Bill No</label>
+                                                        <input className="fi" type="text" placeholder="Optional" value={form.billNo} onChange={e => set('billNo', e.target.value)} />
+                                                    </div>
+                                                    <div className="field">
+                                                        <label>Material Name</label>
+                                                        <input className="fi" type="text" placeholder="To print with CEMENT" value={form.materialName} onChange={e => set('materialName', e.target.value)} />
+                                                    </div>
+                                                </>
+                                            )}
                                             <div className="field">
                                                 <label>Date</label>
                                                 <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} />

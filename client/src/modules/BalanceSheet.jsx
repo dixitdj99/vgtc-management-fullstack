@@ -42,11 +42,13 @@ function doPrint(rows, truckNo, label, tabName) {
   const net = rows.reduce((s, v) => s + calcNet(v), 0);
   const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
   const out = Math.max(0, net - paid);
-  const cols = ['#', 'Date', 'LR No.', 'Destination', 'Weight', 'Rate', 'Gross', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status'];
+  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
+  const cols = ['#', 'Date', 'LR No.', ...(isBillType ? ['Bill No.', 'Party Code'] : []), 'Destination', 'Weight', 'Rate', 'Gross', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status'];
   const tbody = rows.map((v, i) => {
     const n = calcNet(v), p = parseFloat(v.paidBalance) || 0, o = Math.max(0, n - p);
     return `<tr style="background:${i % 2 === 0 ? '#f9f9f9' : '#fff'}">
       <td>${i + 1}</td><td>${v.date || ''}</td><td>#${v.lrNo || ''}</td>
+      ${isBillType ? `<td>${v.billNo || '—'}</td><td>${v.partyCode || '—'}</td>` : ''}
       <td>${v.destination || v.partyName || '—'}</td>
       <td style="text-align:right">${v.weight || '—'}</td><td style="text-align:right">${v.rate || '—'}</td>
       <td style="text-align:right">Rs.${Math.round((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)).toLocaleString()}</td>
@@ -100,7 +102,7 @@ function doPrint(rows, truckNo, label, tabName) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -148,6 +150,8 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
       <td style={{ ...TD }}>{v.date}</td>
       <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span></td>
+      {isBillType && <td style={{ ...TD }}>{v.billNo || '—'}</td>}
+      {isBillType && <td style={{ ...TD }}>{v.partyCode || '—'}</td>}
       <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('weight', '60px') : (v.weight || '—')}</td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('rate', '60px') : (v.rate || '—')}</td>
@@ -251,6 +255,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 
 /* ── Month Section ── */
 function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions }) {
+  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const [open, setOpen] = useState(true);
 
   const monthChecked = rows.filter(v => selected.has(v.id));
@@ -356,6 +361,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <th style={TH}>#</th>
                 <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                {isBillType && <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
+                {isBillType && <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
                 <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
@@ -376,7 +383,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} />
               ))}
             </tbody>
             <tfoot>
