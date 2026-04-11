@@ -584,7 +584,7 @@ function AppInner() {
               {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
               {(active === 'invoice_dump') && <InvoiceModule brand="dump" role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
-              {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl') && <AdminLoadingStatus globalWeather={weather} role={user.role} />}
+              {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} />}
               {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>
           </AnimatePresence>

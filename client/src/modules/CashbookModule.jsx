@@ -182,25 +182,6 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const deposits = useMemo(() => cbEntries.filter(e => e.type === 'deposit'), [cbEntries]);
   const cashOuts = useMemo(() => cbEntries.filter(e => e.type === 'cash_out'), [cbEntries]);
 
-  /* ── Combined ledger sorted by date ── */
-  const ledger = useMemo(() => {
-    const rows = [
-      ...deposits.map(e => ({ ...e, _sign: +1 })),
-      ...cashOuts.map(e => ({ ...e, amount: -Math.abs(e.amount), _sign: -1 })),
-      ...voucherCashAdv.map(e => ({ ...e, _sign: -1, deletable: false })),
-    ].sort((a, b) => {
-      const da = a.date || a.createdAt || '';
-      const db = b.date || b.createdAt || '';
-      if (da !== db) return da > db ? 1 : -1;
-      return (a.createdAt || '') > (b.createdAt || '') ? 1 : -1;
-    });
-    let running = 0;
-    return rows.map(r => {
-      running += r.amount * (r._sign > 0 ? 1 : -1) * (r._sign > 0 ? 1 : 1);
-      // actually: deposit → +, voucher_cash → -, cash_out → -
-      return r;
-    });
-  }, [deposits, cashOuts, voucherCashAdv]);
 
   /* ── Running balance ledger ── */
   const ledgerWithBalance = useMemo(() => {

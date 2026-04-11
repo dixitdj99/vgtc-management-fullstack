@@ -48,6 +48,7 @@ app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
 app.use('/api/sell', requireAuth, sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/lr', requireAuth, lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 
 // Weather Proxy to avoid CORS

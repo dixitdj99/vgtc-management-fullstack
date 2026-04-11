@@ -138,8 +138,8 @@ export default function AdminPage() {
     catch { alert('Delete failed'); }
   };
 
-  const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi' };
-  const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#f59e0b', jkl: '#10b981' };
+  const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi', dump: 'Dump (JK Super General)' };
+  const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#f59e0b', jkl: '#10b981', dump: '#f43f5e' };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -500,6 +500,7 @@ export default function AdminPage() {
                       <option value="kosli">Kosli Godown</option>
                       <option value="jhajjar">Jhajjar Godown</option>
                       <option value="jkl">JK Lakshmi</option>
+                      <option value="dump">Dump — JK Super General</option>
                     </select>
                   </div>
                   {workerError && <div style={{ fontSize: '11px', color: 'var(--danger)', fontWeight: 600 }}>{workerError}</div>}

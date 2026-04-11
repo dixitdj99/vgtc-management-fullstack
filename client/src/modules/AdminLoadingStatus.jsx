@@ -58,14 +58,30 @@ function InlineVoicePlayer({ base64Audio, heard, heardBy }) {
   );
 }
 
-export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
-  const [brand, setBrand] = useState('jksuper');
+// Maps a godown string to the brand key used for API calls — defined at module
+// scope so the useState lazy initialiser and the useEffect can both reference it.
+const godownToBrand = (g) => {
+  if (g === 'jkl') return 'jklakshmi';
+  if (g === 'jhajjar') return 'jhajjar';
+  if (g === 'dump') return 'dump';
+  if (g === 'kosli') return 'kosli';
+  return null;
+};
+
+export default function AdminLoadingStatus({ globalWeather, role = 'user', userGodown = null }) {
+  const [brand, setBrand] = useState(() => godownToBrand(userGodown) || 'kosli');
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [showQR, setShowQR] = useState(false);
-  const city = 'Jharli, Jhajjar, Haryana';
+  const [lastSync, setLastSync] = useState(null);
+
+  // Sync brand when userGodown prop changes (non-admin users cannot pick manually)
+  useEffect(() => {
+    const mapped = godownToBrand(userGodown);
+    if (mapped) setBrand(mapped);
+  }, [userGodown]);
 
   // Map globalWeather properties required by the local view
   const weather = {
@@ -78,10 +94,17 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
   const fetchReceipts = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const endpoint = brand === 'jklakshmi' ? '/jkl/lr' : '/lr';
+      const endpointMap = {
+        kosli: '/kosli/lr',
+        jhajjar: '/jhajjar/lr',
+        jklakshmi: '/jkl/lr',
+        dump: '/lr',
+      };
+      const endpoint = endpointMap[brand] || '/kosli/lr';
       const res = await api.get(endpoint);
       const today = new Date().toISOString().split('T')[0];
       setReceipts(res.data.filter(r => r.date && r.date.split('T')[0] === today).reverse());
+      setLastSync(new Date());
     } catch (error) {
       console.error('Failed to fetch:', error);
     } finally {
@@ -98,8 +121,14 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const endpoint = brand === 'jklakshmi' ? `/jkl/lr/${id}` : `/lr/${id}`;
-      await api.patch(endpoint, { status: newStatus });
+      const endpointMap = {
+        kosli: '/kosli/lr',
+        jhajjar: '/jhajjar/lr',
+        jklakshmi: '/jkl/lr',
+        dump: '/lr',
+      };
+      const base = endpointMap[brand] || '/kosli/lr';
+      await api.patch(`${base}/${id}`, { status: newStatus });
       setReceipts(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
       setEditingId(null);
     } catch (error) {
@@ -135,12 +164,12 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
           <CloudRain size={24} />
           <div>
             <div style={{ fontWeight: 800, fontSize: '15px' }}>⚠️ WEATHER ALERT: POTENTIAL LOADING DELAY</div>
-            <div style={{ fontSize: '13px', fontWeight: 600 }}>Rain detected in Ahmedabad. Please ensure all material and trucks are covered.</div>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>Rain detected in Jharli, Jhajjar. Please ensure all material and trucks are covered.</div>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text)' }}>
             <Truck /> Live Loading Overview
@@ -150,18 +179,35 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
               {weather.temp}°C • Jharli, Haryana
             </span>
           </h2>
-          <span style={{ fontSize: '11px', fontWeight: 800, color: weather.isRain ? 'var(--danger)' : 'var(--accent)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {weather.advice}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: weather.isRain ? 'var(--danger)' : 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {weather.advice}
+            </span>
+            {/* Live sync indicator */}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 700, color: '#10b981' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+              LIVE{lastSync ? ` · ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+            </span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button onClick={() => setShowQR(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--primary)', background: 'var(--primary)', color: 'white', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
             <QrCode size={16} /> Share QR
           </button>
-          <select value={brand} onChange={e => setBrand(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold' }}>
-            <option value="jksuper">JK Super</option>
-            <option value="jklakshmi">JK Lakshmi</option>
-          </select>
+          {/* Only admins can switch brands */}
+          {role === 'admin' && (
+            <select value={brand} onChange={e => setBrand(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold' }}>
+              <option value="kosli">Kosli Godown</option>
+              <option value="jhajjar">Jhajjar Godown</option>
+              <option value="dump">Dump (JK Super General)</option>
+              <option value="jklakshmi">JK Lakshmi</option>
+            </select>
+          )}
+          {role !== 'admin' && (
+            <span style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '13px' }}>
+              {brand === 'jklakshmi' ? 'JK Lakshmi' : brand === 'jhajjar' ? 'Jhajjar Godown' : brand === 'dump' ? 'Dump Godown' : 'Kosli Godown'}
+            </span>
+          )}
           <button onClick={fetchReceipts} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -205,18 +251,34 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
                     borderBottom: '1px solid var(--border)', 
                     transition: 'background 0.2s', 
                     opacity: isLoaded ? 0.6 : 1,
-                    backgroundColor: isLoaded ? 'rgba(0,0,0,0.01)' : 'transparent',
-                    ':hover': { background: 'rgba(0,0,0,0.01)' } 
+                    backgroundColor: isLoaded ? 'rgba(0,0,0,0.01)' : 'transparent'
                   }}>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text-muted)' }}>{index + 1}</td>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text)', fontSize: '15px' }}>{r.truckNo}</td>
                     <td style={{ padding: '16px', color: 'var(--text-muted)', fontWeight: '600' }}>{r.lrNo}</td>
-                    <td style={{ padding: '16px', color: 'var(--text)' }}>{r.material}</td>
+                    <td style={{ padding: '16px', color: 'var(--text)' }}>
+                      <div>{r.material}</div>
+                      {r.loadingType && (
+                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', opacity: 0.8, marginTop: '3px', textTransform: 'uppercase' }}>
+                          {r.loadingType}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text)' }}>{r.totalBags} Bags</td>
                     <td style={{ padding: '16px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <ProgressBar status={r.status} startedAt={r.startedAt} loadedAt={r.loadedAt} now={now} />
-                        <span style={{ fontSize: '11px', fontWeight: 800, color: prog.color, letterSpacing: '0.05em' }}>{prog.label.toUpperCase()}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '11px', fontWeight: 800, color: prog.color, letterSpacing: '0.05em',
+                            padding: '2px 8px', borderRadius: '10px',
+                            background: `${prog.color}18`, border: `1px solid ${prog.color}30`
+                          }}>{prog.label.toUpperCase()}</span>
+                          {/* Pulse dot for In-Progress */}
+                          {r.status === 'Started' && (
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td style={{ padding: '16px' }}>

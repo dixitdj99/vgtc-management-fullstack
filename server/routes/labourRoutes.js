@@ -95,6 +95,7 @@ router.get('/today', requireLabourAuth, async (req, res) => {
             kosli: 'kosli_loading_receipts',
             jhajjar: 'jhajjar_loading_receipts',
             jkl: 'jkl_loading_receipts',
+            dump: 'loading_receipts',
         };
         const basCol = colMap[godown];
         if (!basCol) return res.status(400).json({ error: `Unknown godown: ${godown}` });
@@ -103,39 +104,85 @@ router.get('/today', requireLabourAuth, async (req, res) => {
         const prefix = getEnvPrefix();
         const fullCol = prefix ? `${prefix}${basCol}` : basCol;
 
-        const today = new Date().toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
+        const targetDate = req.query.date || todayStr;
 
         let records = [];
         if (isAvailable()) {
             const snap = await db.collection(fullCol)
-                .where('date', '>=', today)
-                .where('date', '<=', today + '\uf8ff')
-                .orderBy('date', 'desc')
+                .where('date', '>=', targetDate)
+                .where('date', '<=', targetDate + '\uf8ff')
                 .get();
-            // Deduplicate by lrNo (multiple rows per lrNo for multi-material)
+            // Deduplicate by lrNo
             const map = new Map();
             snap.docs.forEach(doc => {
                 const d = { id: doc.id, ...doc.data() };
                 if (!map.has(d.lrNo)) {
-                    map.set(d.lrNo, d);
+                    map.set(d.lrNo, {
+                        ...d,
+                        _materials: [{
+                            material: d.material,
+                            bags: parseInt(d.totalBags) || 0,
+                            challanNo: d.billing || 'N/A',
+                            partyName: d.partyName || '—'
+                        }]
+                    });
                 } else {
-                    // Accumulate materials
                     const existing = map.get(d.lrNo);
-                    if (!existing._materials) existing._materials = [{ material: existing.material, bags: existing.totalBags }];
-                    existing._materials.push({ material: d.material, bags: d.totalBags });
+                    if (!existing.note && d.note) existing.note = d.note;
+                    if (!existing.voiceMessageBase64 && d.voiceMessageBase64) existing.voiceMessageBase64 = d.voiceMessageBase64;
+                    if (!existing.loadingType && d.loadingType) existing.loadingType = d.loadingType;
+                    if (!existing.voiceHeard && d.voiceHeard) {
+                        existing.voiceHeard = true;
+                        existing.voiceHeardBy = d.voiceHeardBy;
+                    }
+                    existing._materials.push({
+                        material: d.material,
+                        bags: parseInt(d.totalBags) || 0,
+                        challanNo: d.billing || 'N/A',
+                        partyName: d.partyName || '—'
+                    });
                     map.set(d.lrNo, existing);
                 }
             });
             records = Array.from(map.values());
         } else {
             const all = localStore.getAll(fullCol);
-            const todayData = all.filter(r => (r.date || '').startsWith(today));
+            const todayData = all.filter(r => (r.date || '').startsWith(targetDate));
             const map = new Map();
             todayData.forEach(d => {
-                if (!map.has(d.lrNo)) map.set(d.lrNo, { ...d });
+                if (!map.has(d.lrNo)) {
+                    map.set(d.lrNo, {
+                        ...d,
+                        _materials: [{
+                            material: d.material,
+                            bags: parseInt(d.totalBags) || 0,
+                            challanNo: d.billing || 'N/A',
+                            partyName: d.partyName || '—'
+                        }]
+                    });
+                } else {
+                    const existing = map.get(d.lrNo);
+                    if (!existing.note && d.note) existing.note = d.note;
+                    if (!existing.voiceMessageBase64 && d.voiceMessageBase64) existing.voiceMessageBase64 = d.voiceMessageBase64;
+                    if (!existing.loadingType && d.loadingType) existing.loadingType = d.loadingType;
+                    existing._materials.push({
+                        material: d.material,
+                        bags: parseInt(d.totalBags) || 0,
+                        challanNo: d.billing || 'N/A',
+                        partyName: d.partyName || '—'
+                    });
+                }
             });
             records = Array.from(map.values());
         }
+
+        // Natural sort by lrNo (handles numeric and alphabetic parts)
+        records.sort((a, b) => {
+            const aVal = String(a.lrNo || '');
+            const bVal = String(b.lrNo || '');
+            return aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+        });
 
         res.json(records);
     } catch (err) {
@@ -158,6 +205,7 @@ router.patch('/lr/:godown/:id/heard', requireLabourAuth, async (req, res) => {
             kosli: 'kosli_loading_receipts',
             jhajjar: 'jhajjar_loading_receipts',
             jkl: 'jkl_loading_receipts',
+            dump: 'loading_receipts',
         };
         const basCol = colMap[godown];
 
@@ -193,6 +241,7 @@ router.patch('/lr/:godown/:id/status', requireLabourAuth, async (req, res) => {
             kosli: 'kosli_loading_receipts',
             jhajjar: 'jhajjar_loading_receipts',
             jkl: 'jkl_loading_receipts',
+            dump: 'loading_receipts',
         };
         const basCol = colMap[godown];
 

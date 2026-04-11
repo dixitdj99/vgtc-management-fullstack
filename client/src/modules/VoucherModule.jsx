@@ -679,7 +679,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(cleanTruckNo(e.target.value))} required />
+                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
                                             </div>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>

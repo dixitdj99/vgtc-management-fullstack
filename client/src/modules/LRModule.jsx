@@ -132,10 +132,63 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
     totalBags: row.totalBags,
     destination: row.destination || '',
     loadingType: row.loadingType || 'From Godown',
+    note: row.note || '',
+    voiceMessageBase64: row.voiceMessageBase64 || '',
   });
   const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showChalPopup, setShowChalPopup] = useState(false);
+
+  // Voice recording inside EditModal
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState('');
+  const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setVoicePreviewUrl(url);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const b64 = reader.result.split(',')[1];
+          setForm(f => ({ ...f, voiceMessageBase64: b64 }));
+        };
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorderRef.current = mr; mr.start(); setIsRecording(true);
+    } catch { alert('Mic access denied'); }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const playPreview = () => {
+    if (!voicePreviewUrl) return;
+    if (voicePreviewAudio) { voicePreviewAudio.pause(); setVoicePreviewAudio(null); setIsPlayingPreview(false); return; }
+    const audio = new Audio(voicePreviewUrl);
+    setVoicePreviewAudio(audio); setIsPlayingPreview(true); audio.play();
+    audio.onended = () => { setIsPlayingPreview(false); setVoicePreviewAudio(null); };
+  };
+
+  const clearVoice = () => {
+    if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
+    setVoicePreviewUrl('');
+    setForm(f => ({ ...f, voiceMessageBase64: '' }));
+  };
 
   // Resolution of usedChallans on mount
   useEffect(() => {
@@ -210,6 +263,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       const finalBilling = form.usedChallans.map(c => c.challanNo).join(', ');
       const payload = { ...form, billing: finalBilling };
       delete payload.usedChallans; // remove UI state
+      if (!payload.voiceMessageBase64) payload.voiceMessageBase64 = row.voiceMessageBase64 || "";
       
       let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
@@ -273,7 +327,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           <hr className="sep" style={{ margin: '4px 0' }} />
           <div className="fg fg-3">
             <div className="field">
-              <label>Material</label>
+              <label>
+                Material
+                {form.billing && form.billing !== 'No' && (
+                  <span style={{ color: '#f59e0b', marginLeft: '6px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                    Challan: {form.billing}
+                  </span>
+                )}
+              </label>
               <select className="fi" value={form.material} onChange={e => S('material', e.target.value)}>
                 {MATERIALS.map(o => <option key={o}>{o}</option>)}
               </select>
@@ -316,6 +377,38 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          <hr className="sep" style={{ margin: '4px 0' }} />
+          
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour</label>
+            <textarea className="fi" rows={2} placeholder="Add instructions..." value={form.note} onChange={e => S('note', e.target.value)} style={{ resize: 'vertical', minHeight: '60px' }} />
+          </div>
+
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {!isRecording ? (
+                <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
+                  <Mic size={13} /> {voicePreviewUrl || form.voiceMessageBase64 ? 'Change Voice' : 'Record Voice'}
+                </button>
+              ) : (
+                <button type="button" onClick={stopRecording} className="btn btn-d btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', animation: 'pulse 1s infinite' }}>
+                  <MicOff size={13} /> Stop Recording
+                </button>
+              )}
+              {(voicePreviewUrl || form.voiceMessageBase64) && !isRecording && (
+                <>
+                  <button type="button" onClick={playPreview} className="btn btn-g btn-sm">
+                    {isPlayingPreview ? <Pause size={12} /> : <Play size={12} />}
+                  </button>
+                  <button type="button" onClick={clearVoice} className="btn btn-d btn-sm"><X size={12} /></button>
+                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>✓ Voice Attached</span>
+                </>
+              )}
+              {isRecording && <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 700 }}>Recording...</span>}
             </div>
           </div>
         </div>
@@ -376,7 +469,8 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     quantity: preFill?.quantity || '',
     partyName: preFill?.partyName || '',
     destination: preFill?.destination || '',
-    remark: preFill?.remark || ''
+    remark: preFill?.remark || '',
+    challanNo: ''
   });
 
   const S = (k, v) => setChalForm(f => ({ ...f, [k]: v }));
@@ -397,7 +491,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
       const newChNo = res.data.challanNo;
       // Go back to select tab so user can see newly created challan
       setTab('select');
-      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '' });
+      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', challanNo: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
       if (onCreated) onCreated(newChNo);
@@ -507,6 +601,13 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
             {tab === 'create' && (
               <motion.div key="create" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 <form id="createChalForm" onSubmit={handleCreateRequest} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="field">
+                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Challan No. (Manual No / LR No)</span>
+                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#f59e0b' }}>OPTIONAL — Leave blank for auto-gen</span>
+                    </label>
+                    <input className="fi" type="text" placeholder="e.g. 1234 or LR-501" value={chalForm.challanNo} onChange={e => S('challanNo', e.target.value)} />
+                  </div>
                   <div className="fg fg-2">
                     <div className="field">
                       <label>Truck No. *</label>
@@ -1027,34 +1128,27 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   c.materials.forEach(m => {
                     let left = m.totalBags - m.loadedBags;
                     if (left > 0) {
-                      // Find if this material type is already in combined; if so just add bags
-                      const existing = combinedMaterials.find(cm => cm.type === m.type);
-                      if (existing) {
-                        existing.bags = String(parseInt(existing.bags || 0) + left);
-                        existing.weight = (parseInt(existing.bags) * 0.05).toFixed(2);
-                        // Append challan No if not already there
-                        const nos = existing.billing.split(',').map(s => s.trim());
-                        if (!nos.includes(c.challanNo)) {
-                            existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
-                        }
-                      } else {
-                        combinedMaterials.push({ type: m.type, loadingType: 'From Godown', bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo });
-                      }
+                      // Push as separate row (no merging)
+                      combinedMaterials.push({ 
+                        type: m.type, 
+                        loadingType: 'From Godown', 
+                        bags: String(left), 
+                        weight: (left * 0.05).toFixed(2), 
+                        billing: c.challanNo,
+                        partyName: c.partyName || '—'
+                      });
                     }
                   });
                 } else {
                   // legacy fallback
-                  const existing = combinedMaterials.find(cm => cm.type === c.material);
-                  if (existing) {
-                    existing.bags = String(parseInt(existing.bags || 0) + c.quantity);
-                    existing.weight = (parseInt(existing.bags) * 0.05).toFixed(2);
-                    const nos = existing.billing.split(',').map(s => s.trim());
-                    if (!nos.includes(c.challanNo)) {
-                        existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
-                    }
-                  } else {
-                    combinedMaterials.push({ type: c.material, loadingType: 'From Godown', bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo });
-                  }
+                  combinedMaterials.push({ 
+                    type: c.material, 
+                    loadingType: 'From Godown', 
+                    bags: String(c.quantity), 
+                    weight: (c.quantity * 0.05).toFixed(2), 
+                    billing: c.challanNo,
+                    partyName: c.partyName || '—'
+                  });
                 }
               });
 
@@ -1153,7 +1247,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 {form.materials.map((m, i) => (
                   <motion.div key={i} className="mat-row" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
                     <div className="mat-row-hd">
-                      <span className="mat-lbl">Material #{i + 1}</span>
+                      <span className="mat-lbl">
+                        Material #{i + 1}
+                        {m.billing && m.billing !== 'No' && (
+                          <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            Challan: {m.billing} • {m.partyName || '—'}
+                          </span>
+                        )}
+                      </span>
                       {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
                     </div>
                     <div className="fg" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', display: 'grid', gap: '14px' }}>

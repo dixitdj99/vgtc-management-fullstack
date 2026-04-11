@@ -197,9 +197,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       challans.forEach(c => {
         if (c.status === 'open' || c.status === 'partially_loaded') {
           if (c.materials) {
-            const m = c.materials.find(matObj => matObj.type === mat);
-            if (m) {
-              held += (m.totalBags - (m.loadedBags || 0));
+            const matObj = c.materials.find(mo => mo.type === mat);
+            if (matObj) {
+              held += (matObj.totalBags - (matObj.loadedBags || 0));
             }
           } else if (c.material === mat) {
             held += parseFloat(c.quantity) || 0;
@@ -287,15 +287,16 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   const deleteItem = async () => {
     if (!delTarget) return;
+    if (role !== 'admin') {
+      alert('Only administrators can delete entries');
+      setDelTarget(null);
+      return;
+    }
     try {
       if (delTarget.type === 'addition') await ax.delete(API + '/additions/' + delTarget.id);
       else await ax.delete(API + '/challans/' + delTarget.id);
       fetchAll();
     } catch (er) { alert('Delete failed'); }
-    if (role !== 'admin') {
-      alert('Only administrators can delete entries');
-      return;
-    }
     setDelTarget(null);
   };
 
@@ -819,7 +820,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                             )}
                             {role === 'admin' && (
                               <button className="btn btn-d btn-sm btn-icon" title="Delete"
-                                onClick={() => setDelTarget({ id: c.id, type: 'challan', label: c.challanNo + ' — ' + c.truckNo })}>
+                                onClick={() => { if (role === 'admin') setDelTarget({ id: c.id, type: 'challan', label: c.challanNo + ' — ' + c.truckNo }) }}>
                                 <Trash2 size={13} />
                               </button>
                             )}
