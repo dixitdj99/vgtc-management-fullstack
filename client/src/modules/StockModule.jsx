@@ -279,6 +279,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   const triggerChallan = e => {
     e.preventDefault(); setErr('');
+    if (!chalForm.lrNo) { setErr('LR Number required'); return; }
     if (!chalForm.truckNo) { setErr('Truck number required'); return; }
     if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234 or HR161234)'); return; }
     if (!chalForm.quantity || parseFloat(chalForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
@@ -739,6 +740,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             </div></div>
             <form onSubmit={triggerChallan} style={{ padding: '14px 18px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+                {fi('LR Number', <>
+                  <input className="fi" type="text" placeholder="e.g. 1234" required list="stock-lr-list"
+                    value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
+                  <datalist id="stock-lr-list">
+                    {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
+                  </datalist>
+                </>)}
                 {fi('Truck No. (Auto-suggests)', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="stock-truck-list"
                     value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
@@ -755,13 +763,6 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Party Name', <input className="fi" type="text" placeholder="Customer / party"
                   value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: e.target.value }))} />)}
-                {fi('Link LR No (Optional)', <>
-                  <input className="fi" type="text" placeholder="e.g. 1234" list="stock-lr-list"
-                    value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
-                  <datalist id="stock-lr-list">
-                    {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
-                  </datalist>
-                </>)}
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Notes"
                   value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}
