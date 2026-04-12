@@ -151,7 +151,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
               <button onClick={() => setShowQR(false)} style={{ background: 'var(--bg)', border: 'none', borderRadius: '50%', padding: '6px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
             </div>
             <div style={{ background: 'white', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
-               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/loading-status')}`} alt="QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
+               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/labour')}`} alt="QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
             </div>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5' }}>Scan this QR code with any smartphone camera to instantly open the public real-time driver tracking portal.</p>
           </div>
