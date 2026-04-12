@@ -169,9 +169,15 @@ async function generateVoucherPDF(v, outputPath) {
             doc.moveTo(M, y + 30).lineTo(col1, y + 30).stroke();
             doc.text(v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar', M + 5, y + 35, { align: 'center', width: col1 - M });
             
-            doc.text(`M/s.  ${v.partyName || ''}`, col1 + 5, y + 5);
+            const pName = v.partyName ? v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '') : '';
+            doc.text(`M/s.  ${pName}`, col1 + 5, y + 5, { width: 190 });
             doc.moveTo(col1, y + 15).lineTo(col2, y + 15).stroke();
+            
+            if (v.partyCode) {
+                doc.fontSize(7).text(`Party Code:  ${v.partyCode}`, col1 + 5, y + 18);
+            }
             doc.moveTo(col1, y + 30).lineTo(col2, y + 30).stroke();
+            doc.fontSize(8);
             doc.text('S.T.L. No.', col1 + 5, y + 35);
             doc.text('C.S.T. No.', col1 + 100, y + 35);
             
@@ -217,7 +223,26 @@ async function generateVoucherPDF(v, outputPath) {
             
             doc.fontSize(9).font('Helvetica').text(v.bags || '', M + 5, y + 10, { width: cw1 - 10, align: 'center' });
             const descY = y + 5;
-            doc.fontSize(7).text('CEMENT\nGrade\nJ.K. Super Cement\nPPC\n43\n53\nValue of Goods\nBill No. :\nShipment No. :\nD.I. No.', cwX[0] + 5, descY);
+            
+            doc.fontSize(8).font('Helvetica-Bold').text('CEMENT', cwX[0] + 5, descY, { align: 'center', width: cw2 - 10 });
+            doc.moveTo(cwX[0], descY + 12).lineTo(cwX[1], descY + 12).stroke();
+            
+            if (v.materials && v.materials.length > 0) {
+                let matY = descY + 15;
+                v.materials.forEach(m => {
+                    doc.fontSize(7).font('Helvetica').text(m.type || m.material, cwX[0] + 5, matY);
+                    doc.text(m.bags + ' Bags', cwX[0] + 60, matY);
+                    matY += 10;
+                });
+            } else {
+                doc.fontSize(7).font('Helvetica').text('Grade:\nJ.K. Super Cement / PPC / 43 / 53', cwX[0] + 5, descY + 15);
+            }
+            
+            doc.moveTo(cwX[0], descY + 45).lineTo(cwX[1], descY + 45).stroke();
+            doc.fontSize(7).text(`Bill No. : ${v.billNo || 'N/A'}`, cwX[0] + 5, descY + 50);
+            doc.text('Value of Goods:', cwX[0] + 5, descY + 60);
+            doc.text('Shipment No. :', cwX[0] + 5, descY + 70);
+            doc.text('D.I. No.', cwX[0] + 5, descY + 80);
             
             doc.fontSize(9).text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 10, { width: cw3 - 10, align: 'center' });
             doc.fontSize(8).text(v.rate || '', cwX[2] + 5, y + 10, { width: cw4 - 10, align: 'center' });
@@ -285,6 +310,11 @@ async function generateVoucherPDF(v, outputPath) {
         doc.font('Helvetica').text(v.truckNo || '—', M + 42, y);
         doc.font('Helvetica-Bold').text('Destination:', PW / 2, y);
         doc.font('Helvetica').text(v.destination || '—', PW / 2 + 70, y);
+        y += 16;
+        
+        doc.font('Helvetica-Bold').text('Party:', M, y);
+        const pText = v.partyName ? `${v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '')} ${v.partyCode ? `(${v.partyCode})` : ''}` : '—';
+        doc.font('Helvetica').text(pText, M + 42, y, { width: CW - 42 });
         y += 14;
 
         dashedLine(y); y += 10;
@@ -302,6 +332,23 @@ async function generateVoucherPDF(v, outputPath) {
         drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
         drawCell('Pump', v.pump || '—', M + CELLW + 6, y);
         y += CELLH + 12;
+
+        if (v.materials && v.materials.length > 0) {
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('MATERIALS', M, y);
+            y += 12;
+            doc.moveTo(M, y-2).lineTo(PW - M, y-2).strokeColor('#eee').stroke();
+            v.materials.forEach(m => {
+                doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(m.type || m.material || 'Cement', M, y);
+                doc.font('Helvetica').text(m.bags + ' Bags', M + 140, y);
+                doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, PW - M - 80, y, { align: 'right', width: 80 });
+                y += 16;
+            });
+            y += 8;
+        } else if (v.materialName) {
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('MATERIAL', M, y);
+            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(v.materialName, M + 60, y);
+            y += 18;
+        }
 
         // Calc box
         const calcH = 46 + deductions.length * 16 + (deductions.length > 0 && !dieselPending ? 20 : 0);
@@ -404,7 +451,8 @@ async function generateLoadingReceiptPDF(data, outputPath) {
 
         doc.rect(M, y, CW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
         doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('PARTY NAME', M + 10, y + 7);
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(data.partyName || '—', M + 10, y + 20);
+        const partyText = data.partyName ? `${data.partyName} ${data.partyCode ? `(${data.partyCode})` : ''}` : '—';
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(partyText, M + 10, y + 20);
         y += 44;
 
         if (data.destination) {
@@ -420,27 +468,44 @@ async function generateLoadingReceiptPDF(data, outputPath) {
             y += 16;
         }
 
-        const C1 = M, C2 = M + CW * 0.5, C3 = M + CW * 0.75;
+        const C1 = M, C2 = M + CW * 0.4, C3 = M + CW * 0.65, C4 = M + CW * 0.85;
         doc.rect(M, y, CW, 22).fill('#f1f5f9');
         doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text('MATERIAL', C1 + 8, y + 7);
-        doc.text('BAGS', C2 + 8, y + 7);
-        doc.text('WEIGHT (MT)', C3 + 8, y + 7);
+        doc.text('LOADING TYPE', C2 + 8, y + 7);
+        doc.text('BAGS', C3 + 8, y + 7);
+        doc.text('WEIGHT (MT)', C4 + 8, y + 7);
         y += 22;
 
         materials.forEach((m, i) => {
             const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-            doc.rect(M, y, CW, 20).fill(rowBg).strokeColor('#cbd5e1').lineWidth(0.3).stroke();
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(m.type || m.material || '—', C1 + 8, y + 6);
-            doc.text(String(m.bags || m.totalBags || 0), C2 + 8, y + 6);
-            doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, C3 + 8, y + 6);
-            y += 20;
+            doc.rect(M, y, CW, 24).fill(rowBg).strokeColor('#cbd5e1').lineWidth(0.3).stroke();
+            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(m.type || m.material || '—', C1 + 8, y + 8);
+            
+            // Simulating the colored tag background for loadingType
+            const lType = m.loadingType || data.loadingType || 'From Godown';
+            doc.fontSize(9).font('Helvetica-Bold').fillColor(lType === 'Crossing' ? '#92400e' : '#166534').text(lType, C2 + 8, y + 8);
+
+            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(String(m.bags || m.totalBags || 0), C3 + 8, y + 8);
+            doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, C4 + 8, y + 8);
+            y += 24;
         });
 
         doc.rect(M, y, CW, 22).fill('#f8fafc').strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('TOTAL', C1 + 8, y + 7, { width: C2 - C1 - 10, align: 'right' });
-        doc.text(String(totalBags), C2 + 8, y + 7);
-        doc.text(`${totalWeight.toFixed(2)} MT`, C3 + 8, y + 7);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('TOTAL', C1 + 8, y + 7, { width: C3 - C1 - 10, align: 'right' });
+        doc.text(String(totalBags), C3 + 8, y + 7);
+        doc.text(`${totalWeight.toFixed(2)} MT`, C4 + 8, y + 7);
         y += 26;
+
+        if (data.note) {
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('NOTES / REMARKS', M, y);
+            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(data.note, M, y + 15, { width: CW });
+            y += 35;
+        }
+
+        if (data.voiceMessageBase64) {
+            doc.fontSize(10).font('Helvetica-Oblique').fillColor('#6366f1').text('🎙 Voice message attached to this receipt (available in app).', M, y);
+            y += 20;
+        }
 
         doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
             .text(`System Backup | LR #${data.lrNo} | Generated: ${new Date().toLocaleString('en-IN')}`, M, y + 10, { width: CW, align: 'center' });
