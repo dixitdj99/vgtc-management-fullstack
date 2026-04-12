@@ -487,14 +487,25 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const executeCreate = async () => {
     setSaving(true); setIsConfirming(false);
     try {
+      // Validate duplicate challan number before creating
+      if (chalForm.challanNo && chalForm.challanNo.trim()) {
+        const existing = await ax.get(ENDPOINT).catch(() => ({ data: [] }));
+        const dup = existing.data.find(c => c.challanNo === chalForm.challanNo.trim());
+        if (dup) {
+          setErr(`Challan number "${chalForm.challanNo.trim()}" already exists. Use a different number or leave blank for auto-generation.`);
+          setSaving(false);
+          return;
+        }
+      }
       const res = await ax.post(ENDPOINT, chalForm);
-      const newChNo = res.data.challanNo;
+      const created = res.data;
       // Go back to select tab so user can see newly created challan
       setTab('select');
       setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', challanNo: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
-      if (onCreated) onCreated(newChNo);
+      // Pass full challan object (with quantity) to parent
+      if (onCreated) onCreated(created.challanNo, parseInt(chalForm.quantity) || 0);
     } catch (er) {
       setErr(er.response?.data?.error || 'Error creating challan');
     } finally {
@@ -900,15 +911,37 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
       const consumedRows = receipts.filter(l => l.material === mat);
       const totalLoaded = consumedRows.reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
-      const pending = consumedRows.filter(l => !l.billing || l.billing === 'No').reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
-      
+
+      // Pending = bags not yet covered by any challan (includes fully uncovered AND partially covered LRs)
+      let pending = 0;
+      consumedRows.forEach(l => {
+        const lrBags = parseInt(l.totalBags) || 0;
+        if (!l.billing || l.billing === 'No') {
+          pending += lrBags;
+        } else {
+          let covered = 0;
+          l.billing.split(',').forEach(cNo => {
+            const ch = allChallans.find(c => c.challanNo === cNo.trim());
+            if (ch) {
+              if (ch.materials) {
+                const matEntry = ch.materials.find(mo => mo.type === mat);
+                if (matEntry) covered += (matEntry.totalBags || 0);
+              } else if (ch.material === mat) {
+                covered += parseInt(ch.quantity || 0);
+              }
+            }
+          });
+          pending += Math.max(0, lrBags - covered);
+        }
+      });
+
       m[mat] = {
         physical: added - totalLoaded,
         pendingChallan: pending
       };
     });
     return m;
-  }, [additions, receipts, MATERIALS]);
+  }, [additions, receipts, allChallans, MATERIALS]);
 
   const updMat = (i, field, val) => {
     const m = [...form.materials]; m[i] = { ...m[i], [field]: val };
@@ -937,30 +970,61 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     setIsConfirmingSave(true);
   };
 
-  const handleChallanCreatedFromLR = async (newChNo) => {
+  const handleChallanCreatedFromLR = async (newChNo, challanQty) => {
     if (!linkingLrId) return;
     setLoading(true);
     try {
-      // 1. Update LR billing
-      await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newChNo });
-      
-      // 2. Sync stock
       const receipt = receipts.find(r => r.id === linkingLrId);
-      if (receipt) {
-        let SYNC_API;
-        if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
-        else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
-        else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
-        else SYNC_API = `${BASE_API}/stock/sync-lr`;
-        await ax.post(SYNC_API, {
-          oldChallanNos: "",
-          newChallanNos: newChNo,
-          material: receipt.material,
-          quantity: receipt.totalBags
+      if (!receipt) return;
+
+      const lrBags = parseInt(receipt.totalBags || 0);
+
+      // Calculate how many bags are already covered by existing linked challans
+      let alreadyCovered = 0;
+      if (receipt.billing && receipt.billing !== 'No') {
+        receipt.billing.split(',').forEach(cNo => {
+          const existCh = allChallans.find(c => c.challanNo === cNo.trim());
+          if (existCh) {
+            if (existCh.materials) {
+              const mat = existCh.materials.find(m => m.type === receipt.material);
+              if (mat) alreadyCovered += (mat.totalBags || 0);
+            } else if (existCh.material === receipt.material) {
+              alreadyCovered += parseInt(existCh.quantity || 0);
+            }
+          }
         });
       }
-      
-      alert(`Challan ${newChNo} created and linked to LR!`);
+
+      // Only deduct what the LR still needs (not the full challan qty)
+      const remainingNeeded = Math.max(0, lrBags - alreadyCovered);
+      const toDeduct = Math.min(parseInt(challanQty || 0), remainingNeeded);
+
+      // Build new billing: append to existing billing if already partially linked
+      const existingBilling = (receipt.billing && receipt.billing !== 'No') ? receipt.billing : '';
+      const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
+
+      // 1. Update LR billing
+      await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newBilling });
+
+      // 2. Sync stock — only deduct the bags the LR actually needs from this challan
+      let SYNC_API;
+      if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+      else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+      else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else SYNC_API = `${BASE_API}/stock/sync-lr`;
+      await ax.post(SYNC_API, {
+        oldChallanNos: '',
+        newChallanNos: newChNo,
+        material: receipt.material,
+        quantity: toDeduct
+      });
+
+      const stillRemaining = lrBags - alreadyCovered - toDeduct;
+      if (stillRemaining > 0) {
+        alert(`Challan ${newChNo} created and linked!\n\nCovered: ${toDeduct} bags. Remaining: ${stillRemaining} bag(s) still Challan Pending.`);
+      } else {
+        alert(`Challan ${newChNo} created and linked to LR! All bags covered.`);
+      }
       fetchData();
       fetchChallans();
     } catch (e) {
@@ -1099,69 +1163,104 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
             onCreated={handleChallanCreatedFromLR}
-            onToggleSelect={(ch) => {
+            onToggleSelect={async (ch) => {
+              // If we're linking a challan to an EXISTING LR row (from table button), handle separately
+              if (linkingLrId) {
+                setLoading(true);
+                try {
+                  const receipt = receipts.find(r => r.id === linkingLrId);
+                  if (!receipt) return;
+
+                  // Compute bags this challan can supply for this LR's material
+                  let challanBags = 0;
+                  if (ch.materials) {
+                    const mat = ch.materials.find(m => m.type === receipt.material);
+                    if (mat) challanBags = (mat.totalBags || 0) - (mat.loadedBags || 0);
+                  } else if (ch.material === receipt.material) {
+                    challanBags = parseInt(ch.quantity || 0) - (ch.loadedBags || 0);
+                  }
+
+                  // Compute how many bags are ALREADY covered by previously linked challans
+                  let alreadyCovered = 0;
+                  if (receipt.billing && receipt.billing !== 'No') {
+                    receipt.billing.split(',').forEach(cNo => {
+                      const existCh = allChallans.find(c => c.challanNo === cNo.trim());
+                      if (existCh) {
+                        if (existCh.materials) {
+                          const mat = existCh.materials.find(m => m.type === receipt.material);
+                          if (mat) alreadyCovered += (mat.totalBags || 0);
+                        } else if (existCh.material === receipt.material) {
+                          alreadyCovered += parseInt(existCh.quantity || 0);
+                        }
+                      }
+                    });
+                  }
+
+                  // Only deduct as many bags as the LR still needs — not the full challan capacity
+                  const remainingNeeded = Math.max(0, parseInt(receipt.totalBags || 0) - alreadyCovered);
+                  const toDeduct = Math.min(challanBags, remainingNeeded);
+
+                  const existingBilling = (receipt.billing && receipt.billing !== 'No') ? receipt.billing : '';
+                  const newBilling = existingBilling ? `${existingBilling}, ${ch.challanNo}` : ch.challanNo;
+
+                  // 1. Patch LR billing
+                  await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newBilling });
+
+                  // 2. Sync stock (deduct challan bags from open challan)
+                  let SYNC_API;
+                  if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+                  else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+                  else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+                  else SYNC_API = `${BASE_API}/stock/sync-lr`;
+                  await ax.post(SYNC_API, {
+                    oldChallanNos: '',
+                    newChallanNos: ch.challanNo,
+                    material: receipt.material,
+                    quantity: toDeduct  // only the bags the LR actually still needs
+                  });
+
+                  fetchData(); fetchChallans();
+                  setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null);
+                } catch (e) {
+                  alert('Linking failed: ' + (e.response?.data?.error || e.message));
+                } finally { setLoading(false); }
+                return; // stop here — do NOT modify the new-LR form
+              }
+
+              // --- New LR creation form flow ---
               const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
               let newUsed;
-              
               if (isSelected) {
                 newUsed = form.usedChallans.filter(c => c.challanNo !== ch.challanNo);
               } else {
-                // Vehicle mismatch warning
                 if (form.truckNo && ch.truckNo !== form.truckNo) {
-                  const confirm = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
-                  if (!confirm) return;
+                  const ok = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
+                  if (!ok) return;
                 }
                 newUsed = [...form.usedChallans, ch];
               }
 
-              // Auto-fill destination from first selected challan if empty
               if (newUsed.length > 0 && !form.destination) {
                 setForm(f => ({ ...f, destination: newUsed[0].destination || '', usedChallans: newUsed }));
               } else {
                 setForm(f => ({ ...f, usedChallans: newUsed }));
               }
 
-              // Remap materials based on latest selected challans
               const combinedMaterials = [];
               newUsed.forEach(c => {
                 if (c.materials) {
                   c.materials.forEach(m => {
-                    let left = m.totalBags - m.loadedBags;
-                    if (left > 0) {
-                      // Push as separate row (no merging)
-                      combinedMaterials.push({ 
-                        type: m.type, 
-                        loadingType: 'From Godown', 
-                        bags: String(left), 
-                        weight: (left * 0.05).toFixed(2), 
-                        billing: c.challanNo,
-                        partyName: c.partyName || '—'
-                      });
-                    }
+                    const left = m.totalBags - (m.loadedBags || 0);
+                    if (left > 0) combinedMaterials.push({ type: m.type, loadingType: 'From Godown', bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '' });
                   });
                 } else {
-                  // legacy fallback
-                  combinedMaterials.push({ 
-                    type: c.material, 
-                    loadingType: 'From Godown', 
-                    bags: String(c.quantity), 
-                    weight: (c.quantity * 0.05).toFixed(2), 
-                    billing: c.challanNo,
-                    partyName: c.partyName || '—'
-                  });
+                  combinedMaterials.push({ type: c.material, loadingType: 'From Godown', bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '' });
                 }
               });
-
               if (combinedMaterials.length === 0 && newUsed.length === 0) {
                 combinedMaterials.push({ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' });
               }
-
               setForm({ ...form, usedChallans: newUsed, materials: combinedMaterials });
-            }}
-            onCreate={async (newChNo) => {
-              await fetchChallans();
-              // Wait for fetch, then act as if it was selected manually next render, or just switch to select tab
-              setShowChalPopup(false);
             }}
           />
         )}
@@ -1274,9 +1373,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span>Bags</span>
                           {m.type && (
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[m.type]?.physical || 0}</span>
-                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>PENDING: {stockMap[m.type]?.pendingChallan || 0}</span>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>
+                                 STOCK: {stockMap[m.type]?.physical || 0} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
+                               </span>
+                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>
+                                 CHALLAN PENDING: {stockMap[m.type]?.pendingChallan || 0} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
+                               </span>
                             </div>
                           )}
                         </label>
@@ -1387,49 +1490,80 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                           {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
                         </td>
                         <td className="c">
-                          {lr.billing && lr.billing !== 'No' ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                              {lr.billing.split(',').map((cNo, idx) => {
+                          {(() => {
+                            // Determine how many bags are not yet covered by any challan
+                            const lrBags = parseInt(lr.totalBags || 0);
+                            const hasBilling = lr.billing && lr.billing !== 'No';
+                            let coveredBags = 0;
+                            if (hasBilling) {
+                              lr.billing.split(',').forEach(cNo => {
                                 const ch = allChallans.find(c => c.challanNo === cNo.trim());
-                                // Only show the challan if it contains the material of this LR row
-                                const hasMaterial = ch && ch.materials ? ch.materials.some(m => m.type === lr.material) : (ch && ch.material === lr.material);
-                                if (!hasMaterial && lr.billing.includes(',')) return null; // Hide if multi-challan and this one doesn't match
+                                if (ch) {
+                                  if (ch.materials) {
+                                    const mat = ch.materials.find(m => m.type === lr.material);
+                                    if (mat) coveredBags += (mat.totalBags || 0);
+                                  } else if (ch.material === lr.material) {
+                                    coveredBags += parseInt(ch.quantity || 0);
+                                  }
+                                }
+                              });
+                            }
+                            const remainingBags = lrBags - coveredBags;
+                            const isPartiallyCovered = hasBilling && remainingBags > 0;
+                            const isFullyCovered = hasBilling && remainingBags <= 0;
 
-                                return (
-                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800 }}>{cNo.trim()}</span>
-                                    {ch && ch.date && (
-                                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                        {new Date(ch.date).toLocaleDateString('en-GB').replace(/\//g, '-')}
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                {hasBilling && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                    {lr.billing.split(',').map((cNo, idx) => {
+                                      const ch = allChallans.find(c => c.challanNo === cNo.trim());
+                                      const hasMaterial = ch && ch.materials ? ch.materials.some(m => m.type === lr.material) : (ch && ch.material === lr.material);
+                                      if (!hasMaterial && lr.billing.includes(',')) return null;
+                                      return (
+                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800 }}>{cNo.trim()}</span>
+                                          {ch && ch.date && (
+                                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                              {new Date(ch.date).toLocaleDateString('en-GB').replace(/\//g, '-')}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {isPartiallyCovered && (
+                                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#f43f5e', background: 'rgba(244,63,94,0.1)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.25)' }}>
+                                        {remainingBags} bags ({(remainingBags * 0.05).toFixed(2)} MT) pending
                                       </span>
                                     )}
                                   </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                                <span className="badge badge-n">No Challan</span>
-                                <button
-                                    className="btn btn-a btn-sm"
-                                    onClick={() => {
+                                )}
+                                {(!hasBilling || isPartiallyCovered) && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                    {!hasBilling && <span className="badge badge-n">Pending Challan</span>}
+                                    <button
+                                      className="btn btn-a btn-sm"
+                                      onClick={() => {
                                         setLinkingLrId(lr.id);
                                         setChalPreFill({
-                                            truckNo: lr.truckNo,
-                                            material: lr.material,
-                                            quantity: lr.totalBags,
-                                            partyName: lr.partyName,
-                                            destination: lr.destination,
-                                            date: lr.date
+                                          truckNo: lr.truckNo,
+                                          material: lr.material,
+                                          quantity: isPartiallyCovered ? remainingBags : lr.totalBags,
+                                          partyName: lr.partyName,
+                                          destination: lr.destination,
+                                          date: lr.date
                                         });
                                         setShowChalPopup('create');
-                                    }}
-                                    style={{ fontSize: '9px', padding: '3px 8px', fontWeight: 800 }}
-                                >
-                                    <Tag size={10} /> Create Challan
-                                </button>
-                            </div>
-                          )}
+                                      }}
+                                      style={{ fontSize: '9px', padding: '3px 8px', fontWeight: 800 }}
+                                    >
+                                      <Tag size={10} /> Challan Pending
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}

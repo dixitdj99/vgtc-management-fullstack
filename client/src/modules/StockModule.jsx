@@ -68,7 +68,7 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
         {[
           { label: 'Total In', val: (added || 0), color: 'var(--text)' },
           { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
-          { label: 'Pending Ch.', val: (pendingChallan || 0), color: 'var(--warn)' },
+          { label: 'Challan Pending', val: (pendingChallan || 0), color: 'var(--warn)' },
           { label: 'Sold', val: (sold || 0), color: 'var(--accent)' },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: 'center', padding: '10px 6px', background: 'var(--bg)', borderRadius: '10px', border: label === 'Available' ? `1px solid ${col}44` : '1px solid transparent' }}>
@@ -190,7 +190,29 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
       const consumedRows = lrs.filter(l => l.material === mat);
       const lrUsed = consumedRows.reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
-      const pending = consumedRows.filter(l => !l.billing || l.billing === 'No').reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      // Pending = bags not yet covered by any challan (includes fully uncovered AND partially covered LRs)
+      let pending = 0;
+      consumedRows.forEach(l => {
+        const lrBags = parseInt(l.totalBags) || 0;
+        if (!l.billing || l.billing === 'No') {
+          pending += lrBags; // no challan linked at all
+        } else {
+          // Check how many bags are actually covered by the linked challans
+          let covered = 0;
+          l.billing.split(',').forEach(cNo => {
+            const ch = challans.find(c => c.challanNo === cNo.trim());
+            if (ch) {
+              if (ch.materials) {
+                const matEntry = ch.materials.find(mo => mo.type === mat);
+                if (matEntry) covered += (matEntry.totalBags || 0);
+              } else if (ch.material === mat) {
+                covered += parseInt(ch.quantity || 0);
+              }
+            }
+          });
+          pending += Math.max(0, lrBags - covered); // only the uncovered remainder
+        }
+      });
       const sold = sales.filter(s => s.material === mat).reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
 
       let held = 0;
@@ -447,7 +469,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { label: 'Net Available', val: totalAvailable, color: '#a855f7' },
           { label: 'Challan Created', val: totalHeld, color: 'var(--warn)', unit: 'bags' },
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
-          { label: 'LR Pending Ch.', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
+          { label: 'LR Challan Pending', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
         ].map(({ label, val, color, unit = 'bags' }) => (
           <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '150px' }}>
             <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>

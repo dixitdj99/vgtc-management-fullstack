@@ -164,28 +164,31 @@ function printVoucher(v) {
                 </tr>
             </thead>
             <tbody>
-                <tr class="body-row" style="height: 180px;">
-                    <td style="text-align: center; font-size: 13px;">${v.bags || ''}</td>
-                    <td class="desc-text">
-                        CEMENT${v.materialName ? ' - ' + v.materialName : ''}<br>
-                        Grade<br>
-                        <b><i>J.K. Super Cement</i></b><br>
-                        PPC<br>
-                        43<br>
-                        53<br>
-                        Value of Goods<br>
-                        Bill No. : ${v.billNo || ''}<br>
-                        Shipment No. :<br>
-                        D.I. No.
-                    </td>
-                    <td colspan="2" style="text-align: center; font-size: 13px;">${v.weight || ''} MT</td>
-                    <td style="text-align: center; font-size: 12px;">${v.rate || ''}</td>
-                    <td colspan="2" class="advance-cell">Advance = <br/>${n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString())}</td>
-                    <td class="billed-cell">To<br>be<br>Billed<br/><br/>
-                        <span style="font-size: 12px;">${n.dieselPending ? '—' : 'Rs.' + Math.round(n.net).toLocaleString()}</span>
-                    </td>
-                    <td class="remark-text">Driver Name<br>D.L. No.<br>Owner Permit No.<br>Permit No.<br>Address<br/><br/>${v.pump ? 'Pump: ' + v.pump : ''}</td>
-                </tr>
+                ${(() => {
+                    const mats = (v.materials && v.materials.length > 0)
+                        ? v.materials
+                        : [{ type: v.materialName || 'CEMENT', bags: v.bags, weight: v.weight }];
+                    const rowspan = mats.length;
+                    return mats.map((mat, idx) => `
+                    <tr class="body-row" style="height: ${Math.max(80, Math.floor(160 / rowspan))}px;">
+                        <td style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${mat.bags || ''}</td>
+                        <td class="desc-text" style="border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">
+                            CEMENT${mat.type ? ' - ' + mat.type : ''}<br>
+                            Grade<br>
+                            <b><i>J.K. Super Cement</i></b><br>
+                            ${idx === 0 ? 'Bill No. : ' + (v.billNo || '') + '<br>Shipment No. :<br>D.I. No.' : ''}
+                        </td>
+                        <td colspan="2" style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${ parseFloat(mat.weight || 0).toFixed(2)} MT</td>
+                        <td style="text-align: center; font-size: 12px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${idx === 0 ? (v.rate || '') : ''}</td>
+                        ${idx === 0 ? `
+                        <td colspan="2" class="advance-cell" rowspan="${rowspan}">Advance = <br/>${n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString())}</td>
+                        <td class="billed-cell" rowspan="${rowspan}">To<br>be<br>Billed<br/><br/>
+                            <span style="font-size: 12px;">${n.dieselPending ? '—' : 'Rs.' + Math.round(n.net).toLocaleString()}</span>
+                        </td>
+                        <td class="remark-text" rowspan="${rowspan}">Driver Name<br>D.L. No.<br>Owner Permit No.<br>Permit No.<br>Address<br/><br/>${v.pump ? 'Pump: ' + v.pump : ''}</td>
+                        ` : ''}
+                    </tr>`).join('');
+                })()}
                 <tr>
                     <td colspan="2" style="font-weight: bold; border-top: 1px solid #000; text-align: center;">Total</td>
                     <td colspan="2" style="border-top: 1px solid #000; text-align: center; font-weight: bold;">${v.weight || ''} MT</td>
@@ -439,7 +442,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
         rate: '', pump: PUMPS[0], advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
-        startKm: '', endKm: '', billNo: '', partyCode: '', materialName: ''
+        startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
+        materials: []
     });
     const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
     const [fetchingKm, setFetchingKm] = useState(false);
@@ -536,10 +540,27 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             if (rows.length > 0) {
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
-                const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
+                const tb = rows.reduce((s, r) => s + (parseInt(r.totalBags) || 0), 0);
                 const truck = rows[0].truckNo || '';
-                const materialStrs = rows[0].material || '';
-                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination, partyName: rows[0].partyName || '', partyCode: rows[0].partyCode || '', materialName: materialStrs }));
+                // Aggregate all materials into an array for multi-material bill support
+                const materialsData = rows.map(r => ({
+                    type: r.material || '',
+                    bags: parseInt(r.totalBags) || 0,
+                    weight: parseFloat(r.weight) || 0
+                }));
+                const combinedMaterialName = materialsData.map(m => m.type).filter(Boolean).join(', ');
+                setForm(f => ({
+                    ...f,
+                    truckNo: truck,
+                    date: rows[0].date || f.date,
+                    weight: tw.toFixed(2),
+                    bags: String(tb),
+                    destination: rows[0].destination || f.destination,
+                    partyName: rows[0].partyName || '',
+                    partyCode: rows[0].partyCode || '',
+                    materialName: combinedMaterialName,
+                    materials: materialsData
+                }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
             }
@@ -565,9 +586,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         setSaving(true); setIsConfirmingSave(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await ax.post(API_V, { ...form, type: vType, brand, ...calc });
+            await ax.post(API_V, { ...form, type: vType, brand, ...calc, materials: form.materials || [] });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '' }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [] }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
