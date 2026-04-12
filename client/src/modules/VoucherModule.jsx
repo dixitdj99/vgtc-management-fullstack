@@ -525,13 +525,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             return;
         }
 
-        // JK_Super and JK_Lakshmi use fully custom LR numbers — skip LR receipt lookup
-        if (vType === 'JK_Super' || vType === 'JK_Lakshmi') return;
-
-        // Determine which LR endpoint to call based on bill type
+        // Determine which LR endpoint to call based on bill type AND brand
         let lrEndpoint = '/lr'; // default for Dump
-        if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
-        else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
+        if (brand === 'jklakshmi' || brand === 'jkl') {
+            lrEndpoint = '/jkl/lr';
+        } else {
+            if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
+            else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
+        }
 
         // Fetch LR details from the correct receipts collection
         try {
