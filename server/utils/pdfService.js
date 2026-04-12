@@ -731,6 +731,62 @@ async function generateInvoicePDF(invoiceData, outputPath) {
         doc.end();
         stream.on('finish', () => resolve(outputPath));
         stream.on('error', reject);
+/**
+ * Generates a Sale Receipt PDF that mimics the SellModule print format.
+ */
+async function generateSalePDF(s, outputPath) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 40, size: 'A5' });
+        const stream = fs.createWriteStream(outputPath);
+        doc.pipe(stream);
+
+        const PW = doc.page.width;
+        const M = 40;
+
+        // Header
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text('VIKAS GOODS', M, M, { align: 'center' });
+        doc.fontSize(10).font('Helvetica').fillColor('#64748b').text('Cement Sales Receipt', M, M + 22, { align: 'center' });
+        doc.moveDown(1);
+        doc.moveTo(M, doc.y).lineTo(PW - M, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
+        doc.moveDown(1);
+
+        const drawRow = (label, value) => {
+            const currentY = doc.y;
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(label.toUpperCase(), M, currentY);
+            doc.fontSize(11).font('Helvetica').fillColor('#1e293b').text(String(value || '—'), M + 120, currentY);
+            doc.moveDown(0.8);
+            doc.moveTo(M, doc.y).lineTo(PW - M, doc.y).strokeColor('#f1f5f9').lineWidth(0.5).stroke();
+            doc.moveDown(0.5);
+        };
+
+        drawRow('Date', s.date || new Date().toLocaleDateString('en-IN'));
+        drawRow('Customer', s.customerName || 'Walk-in');
+        drawRow('Material', s.material || '—');
+        drawRow('Quantity', `${s.quantity} Bags (${(s.quantity * 0.05).toFixed(2)} MT)`);
+        drawRow('Rate', `Rs. ${s.rate || 0}`);
+        drawRow('Payment', s.paymentStatus === 'pending' ? 'Not Paid (Pending)' : s.paymentType.toUpperCase());
+
+        doc.moveDown(1);
+        doc.rect(M, doc.y, PW - M * 2, 40).fill('#f8fafc');
+        doc.fillColor('#1e293b').fontSize(14).font('Helvetica-Bold').text('TOTAL AMOUNT', M + 10, doc.y + 13);
+        doc.text(`Rs. ${s.totalAmount.toLocaleString('en-IN')}`, M, doc.y - 14, { align: 'right', width: PW - M * 2 - 10 });
+        
+        doc.moveDown(2);
+        
+        // Status Stamp
+        const isPending = s.paymentStatus === 'pending';
+        doc.save();
+        doc.rotate(-5, { origin: [PW - M - 60, doc.y + 10] });
+        doc.rect(PW - M - 140, doc.y, 140, 25).lineWidth(2).strokeColor(isPending ? '#f43f5e' : '#10b981').stroke();
+        doc.fontSize(10).font('Helvetica-Bold').fillColor(isPending ? '#f43f5e' : '#10b981')
+            .text(isPending ? 'NOT PAID' : `PAID - ${s.paymentType.toUpperCase()}`, PW - M - 140, doc.y + 7, { width: 140, align: 'center' });
+        doc.restore();
+
+        doc.fontSize(8).fillColor('#94a3b8').text(`Generated on ${new Date().toLocaleString('en-IN')}`, M, doc.page.height - 50, { align: 'center' });
+
+        doc.end();
+        stream.on('finish', () => resolve(outputPath));
+        stream.on('error', reject);
     });
 }
 
@@ -741,4 +797,5 @@ module.exports = {
     generateLoadingReceiptPDF,
     generateVoucherListPDF,
     generateInvoicePDF,
+    generateSalePDF,
 };

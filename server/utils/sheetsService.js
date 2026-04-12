@@ -100,6 +100,18 @@ const SPREADSHEETS = {
             pending: { index: 1, letter: 'A:A' }, // Truck No is unique key here
             cleared: { index: 8, letter: 'H:H' }
         }
+    },
+    sales: {
+        folder: 'Cement_Sales',
+        tabs: {
+            'dump': 'Dump Sales',
+            'jkl': 'JK Lakshmi Sales'
+        },
+        headers: {
+            default: ['Date', 'Customer Name', 'Material', 'Quantity (Bags)', 'Rate', 'Total Amount', 'Payment Type', 'Payment Status', 'Remark', 'Entry ID']
+        },
+        idColIndex: 10, // J
+        idColLetter: 'J:J'
     }
 };
 
@@ -396,6 +408,35 @@ async function deleteLrRow(lrId, brand = 'jksuper') {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CEMENT SALES
+// ─────────────────────────────────────────────────────────────────────────────
+
+function saleToRow(s) {
+    return [
+        s.date || '',
+        s.customerName || 'Walk-in',
+        s.material || '',
+        s.quantity || 0,
+        s.rate || 0,
+        s.totalAmount || 0,
+        s.paymentType || 'cash',
+        s.paymentStatus || 'paid',
+        s.remark || '',
+        s.id || ''
+    ];
+}
+
+async function upsertSaleRow(sale, brand = 'dump') {
+    const tabKey = brand === 'jkl' ? 'jkl' : 'dump';
+    return upsertRow('sales', tabKey, brand === 'jkl' ? 'jklakshmi' : 'jksuper', sale.id, saleToRow(sale));
+}
+
+async function deleteSaleRow(saleId, brand = 'dump') {
+    const tabKey = brand === 'jkl' ? 'jkl' : 'dump';
+    return deleteRow('sales', tabKey, brand === 'jkl' ? 'jklakshmi' : 'jksuper', saleId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DUMP STOCK
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -492,8 +533,9 @@ module.exports = {
     getOrCreateSpreadsheet,
     upsertVoucherRow, deleteVoucherRow,
     upsertLrRow, deleteLrRow,
+    upsertSaleRow, deleteSaleRow,
     upsertStockMigo, deleteStockMigo,
     upsertStockChallan, deleteStockChallan,
     upsertCashbook, deleteCashbook,
-    upsertPayHistory, deletePayHistory
+    upsertPayHistory, deletePayHistory,
 };
