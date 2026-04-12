@@ -130,7 +130,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
-  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
@@ -294,7 +294,56 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   const executeChallan = async () => {
     setSaving(true); setIsConfirmingChallan(false);
-    try { await ax.post(API + '/challans', chalForm); setChalForm(getEmptyChal()); fetchAll(); }
+    try { 
+      const res = await ax.post(API + '/challans', chalForm); 
+      const newChNo = res.data.challanNo;
+
+      if (chalForm.lrNo) {
+        // Link it to the provided LR
+        const lr = lrs.find(r => String(r.lrNo).trim().toLowerCase() === String(chalForm.lrNo).trim().toLowerCase());
+        if (lr) {
+           const existingBilling = (lr.billing && lr.billing !== 'No') ? lr.billing : '';
+           const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
+           await ax.patch(`${API_LR}/${lr.id}/billing`, { billing: newBilling });
+
+           let SYNC_API;
+           if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+           else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+           else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+           else SYNC_API = `${BASE_API}/stock/sync-lr`;
+
+           let challanBags = parseInt(chalForm.quantity || 0);
+           
+           // Compute already covered bags for this LR
+           let alreadyCovered = 0;
+           if (lr.billing && lr.billing !== 'No') {
+              lr.billing.split(',').forEach(cNo => {
+                 const existCh = challans.find(c => c.challanNo === cNo.trim());
+                 if (existCh) {
+                    if (existCh.materials) {
+                       const mat = existCh.materials.find(m => m.type === lr.material);
+                       if (mat) alreadyCovered += (mat.totalBags || 0);
+                    } else if (existCh.material === lr.material) {
+                       alreadyCovered += parseInt(existCh.quantity || 0);
+                    }
+                 }
+              });
+           }
+
+           const remainingNeeded = Math.max(0, parseInt(lr.totalBags || 0) - alreadyCovered);
+           const toDeduct = Math.min(challanBags, remainingNeeded);
+
+           await ax.post(SYNC_API, {
+              oldChallanNos: '',
+              newChallanNos: newChNo,
+              material: lr.material,
+              quantity: toDeduct
+           });
+        }
+      }
+
+      setChalForm(getEmptyChal()); fetchAll(); 
+    }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
 
@@ -706,6 +755,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Party Name', <input className="fi" type="text" placeholder="Customer / party"
                   value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: e.target.value }))} />)}
+                {fi('Link LR No (Optional)', <>
+                  <input className="fi" type="text" placeholder="e.g. 1234" list="stock-lr-list"
+                    value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
+                  <datalist id="stock-lr-list">
+                    {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
+                  </datalist>
+                </>)}
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Notes"
                   value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}
