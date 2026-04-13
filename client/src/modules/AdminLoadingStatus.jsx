@@ -58,18 +58,16 @@ function InlineVoicePlayer({ base64Audio, heard, heardBy }) {
   );
 }
 
-// Maps a godown string to the brand key used for API calls — defined at module
-// scope so the useState lazy initialiser and the useEffect can both reference it.
-const godownToBrand = (g) => {
-  if (g === 'jkl') return 'jklakshmi';
-  if (g === 'jhajjar') return 'jhajjar';
-  if (g === 'dump') return 'dump';
-  if (g === 'kosli') return 'kosli';
-  return null;
+// Maps a plant/godown string to the brand key used for API calls
+const getInitialBrand = (plant, godown) => {
+  if (plant === 'jklakshmi') return 'jklakshmi';
+  if (godown === 'jhajjar') return 'jhajjar';
+  if (godown === 'dump') return 'dump';
+  return 'kosli'; // fallback to kosli (covers godown='kosli' and default)
 };
 
-export default function AdminLoadingStatus({ globalWeather, role = 'user', userGodown = null }) {
-  const [brand, setBrand] = useState(() => godownToBrand(userGodown) || 'kosli');
+export default function AdminLoadingStatus({ globalWeather, role = 'user', userGodown = null, userPlant = null }) {
+  const [brand, setBrand] = useState(() => getInitialBrand(userPlant, userGodown));
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -77,11 +75,11 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
   const [showQR, setShowQR] = useState(false);
   const [lastSync, setLastSync] = useState(null);
 
-  // Sync brand when userGodown prop changes (non-admin users cannot pick manually)
+  // Sync brand when props change
   useEffect(() => {
-    const mapped = godownToBrand(userGodown);
+    const mapped = getInitialBrand(userPlant, userGodown);
     if (mapped) setBrand(mapped);
-  }, [userGodown]);
+  }, [userPlant, userGodown]);
 
   // Map globalWeather properties required by the local view
   const weather = {

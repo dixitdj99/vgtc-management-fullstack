@@ -731,6 +731,9 @@ async function generateInvoicePDF(invoiceData, outputPath) {
         doc.end();
         stream.on('finish', () => resolve(outputPath));
         stream.on('error', reject);
+    });
+}
+
 /**
  * Generates a Sale Receipt PDF that mimics the SellModule print format.
  */
