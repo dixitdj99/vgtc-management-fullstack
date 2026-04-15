@@ -1,5 +1,5 @@
 const localStore = require('../utils/localStore');
-
+const { normalizePartyName } = require('../utils/partyNameUtils');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 
@@ -32,6 +32,7 @@ const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) =>
 
 const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64 } = data;
+    const normalizedPartyName = normalizePartyName(partyName || '');
     const lrNo = await firestoreGetNextLrNo(metadataCollection);
     const batch = db.batch();
     const createdIds = [];
@@ -45,7 +46,7 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
             weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
-            partyName: mat.partyName || partyName, status: 'Created',
+            partyName: normalizePartyName(mat.partyName || normalizedPartyName), status: 'Created',
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || '',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -69,6 +70,7 @@ const localGetNextLrNo = (collectionName = 'lr_no') => {
 
 const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64 } = data;
+    const normalizedPartyName = normalizePartyName(partyName || '');
     const lrNo = localGetNextLrNo(counterCollection);
     const createdIds = [];
     materials.forEach((mat) => {
@@ -80,7 +82,7 @@ const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr
             weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
-            partyName: mat.partyName || partyName, status: 'Created',
+            partyName: normalizePartyName(mat.partyName || normalizedPartyName), status: 'Created',
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || ''
         });
@@ -122,7 +124,7 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.date !== undefined) allowed.date = data.date;
     if (data.truckNo !== undefined) allowed.truckNo = data.truckNo;
     if (data.destination !== undefined) allowed.destination = data.destination;
-    if (data.partyName !== undefined) allowed.partyName = data.partyName;
+    if (data.partyName !== undefined) allowed.partyName = normalizePartyName(data.partyName || '');
     if (data.billing !== undefined) allowed.billing = data.billing;
     if (data.material !== undefined) allowed.material = data.material;
     if (data.loadingType !== undefined) allowed.loadingType = data.loadingType;

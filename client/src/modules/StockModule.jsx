@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
+import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
@@ -38,6 +39,44 @@ const fmtWt = n => parseFloat(n || 0).toFixed(2) + ' MT';
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 /* ── form helper ── */
+const getChallanMaterialRows = (challan) => {
+  if (challan.materials && challan.materials.length > 0) {
+    return challan.materials.map(m => {
+      const totalBags = parseInt(m.totalBags || 0) || 0;
+      const loadedBags = parseInt(m.loadedBags || 0) || 0;
+      const pendingBags = Math.max(0, totalBags - loadedBags);
+      return {
+        material: m.type || 'â€”',
+        quantity: `${totalBags} bags (${(totalBags * 0.05).toFixed(2)} MT)`,
+        loadingDetails: `Loaded: ${loadedBags} | Pending: ${pendingBags}`,
+      };
+    });
+  }
+
+  const totalBags = parseInt(challan.quantity || 0) || 0;
+  const loadedBags = parseInt(challan.loadedBags || 0) || 0;
+  const pendingBags = Math.max(0, totalBags - loadedBags);
+  return [{
+    material: challan.material || 'â€”',
+    quantity: `${totalBags} bags (${(totalBags * 0.05).toFixed(2)} MT)`,
+    loadingDetails: `Loaded: ${loadedBags} | Pending: ${pendingBags}`,
+  }];
+};
+
+const buildChallanExportRows = (challans) => challans.flatMap(challan =>
+  getChallanMaterialRows(challan).map(row => ({
+    challanNo: challan.challanNo || '',
+    date: challan.date || '',
+    truckNo: challan.truckNo || '',
+    material: row.material,
+    quantity: row.quantity,
+    loadingDetails: row.loadingDetails,
+    partyName: challan.partyName || '',
+    status: challan.status || 'open',
+    remark: challan.remark || '',
+  }))
+);
+
 const fi = (label, node) => (
   <div className="field" style={{ flex: 1, minWidth: '120px' }}>
     <label>{label}</label>{node}
@@ -130,7 +169,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
-  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
+  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
@@ -257,6 +296,52 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     }));
   }, [additions, lrs, sales]);
 
+  const monthlyDetailStats = useMemo(() => {
+    const rows = {};
+    const ensureRow = (month, material, loadingType) => {
+      const key = [month, material, loadingType].join('||');
+      if (!rows[key]) {
+        rows[key] = {
+          month,
+          material,
+          loadingType,
+          in: 0,
+          lrOut: 0,
+          saleOut: 0
+        };
+      }
+      return rows[key];
+    };
+
+    additions.forEach(a => {
+      const row = ensureRow((a.date || '').slice(0, 7), a.material || 'UNKNOWN', 'Stock In');
+      row.in += parseFloat(a.quantity) || 0;
+    });
+
+    lrs.forEach(l => {
+      const row = ensureRow((l.date || '').slice(0, 7), l.material || 'UNKNOWN', l.loadingType || 'From Godown');
+      row.lrOut += parseInt(l.totalBags) || 0;
+    });
+
+    sales.forEach(s => {
+      const row = ensureRow((s.date || '').slice(0, 7), s.material || 'UNKNOWN', 'Direct Sale');
+      row.saleOut += parseInt(s.quantity) || 0;
+    });
+
+    return Object.values(rows)
+      .filter(row => row.month)
+      .sort((a, b) =>
+        a.month === b.month
+          ? `${a.material}${a.loadingType}`.localeCompare(`${b.material}${b.loadingType}`)
+          : b.month.localeCompare(a.month)
+      );
+  }, [additions, lrs, sales]);
+
+  const partySuggestions = useMemo(() => buildPartySuggestions(
+    challans.map(c => c.partyName),
+    lrs.map(l => l.partyName)
+  ), [challans, lrs]);
+
   const totalAvailable = MATS.reduce((s, mat) => s + (stockMap[mat]?.available || 0), 0);
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
 
@@ -296,7 +381,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const executeChallan = async () => {
     setSaving(true); setIsConfirmingChallan(false);
     try { 
-      const res = await ax.post(API + '/challans', chalForm); 
+      const res = await ax.post(API + '/challans', { ...chalForm, partyName: resolvePartyName(chalForm.partyName, partySuggestions) });
       const newChNo = res.data.challanNo;
 
       if (chalForm.lrNo) {
@@ -413,8 +498,25 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     return rows;
   }, [additions, lrs, sales, filters]);
 
-  const exportChallanExcel = () => exportToExcel(filteredChallans.map(c => ({ ChallanNo: c.challanNo, Date: c.date, Truck: c.truckNo, Material: c.material, Qty: c.quantity, Party: c.partyName, Status: c.status, Remark: c.remark })), `Challans_${new Date().toISOString().slice(0, 10)}`);
-  const exportChallanPDF = () => exportToPDF(filteredChallans, 'Challan List', ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'partyName', 'status', 'remark']);
+  const exportChallanExcel = () => exportToExcel(
+    buildChallanExportRows(filteredChallans).map(row => ({
+      ChallanNo: row.challanNo,
+      Date: row.date,
+      Truck: row.truckNo,
+      Material: row.material,
+      Quantity: row.quantity,
+      Loading_Details: row.loadingDetails,
+      Party: row.partyName,
+      Status: row.status,
+      Remark: row.remark
+    })),
+    `Challans_${new Date().toISOString().slice(0, 10)}`
+  );
+  const exportChallanPDF = () => exportToPDF(
+    buildChallanExportRows(filteredChallans),
+    'Challan List',
+    ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'loadingDetails', 'partyName', 'status', 'remark']
+  );
 
   const exportHistoryExcel = () => exportToExcel(historyRows.map(r => ({ Date: r.date, Type: r.displayType, Details: r.label, Truck: r.truckNo, Material: r.material, In_Bags: r.credit, Out_Bags: r.debit })), `Stock_History_${new Date().toISOString().slice(0, 10)}`);
   const exportHistoryPDF = () => exportToPDF(historyRows, 'Stock History', ['date', 'displayType', 'label', 'truckNo', 'material', 'credit', 'debit']);
@@ -584,29 +686,43 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div className="card-header">
              <div className="card-title-block">
                 <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><TrendingDown size={17} /></div>
-                <div className="card-title-text"><h3>Monthly Summary</h3><p>Stock In vs Stock Out by month</p></div>
+                <div className="card-title-text"><h3>Monthly Summary</h3><p>Detailed month, material, and loading-type report</p></div>
              </div>
           </div>
           <div className="tbl-wrap">
-            <table className="tbl" style={{ minWidth: '1000px' }}>
+            <table className="tbl" style={{ minWidth: '1280px' }}>
               <thead>
                 <tr>
                   <th>Month</th>
-                  <th className="c">Total In (Bags)</th>
+                  <th>Material</th>
+                  <th>Loading Type</th>
+                  <th className="c">Stock In</th>
+                  <th className="c">LR Out</th>
+                  <th className="c">Sale Out</th>
                   <th className="c">Total Out (Bags)</th>
                   <th className="c">Net (Bags)</th>
                   <th className="c">Net (MT)</th>
                 </tr>
               </thead>
               <tbody>
-                {monthlyStats.length === 0 ? <tr><td colSpan={5} className="t-empty">No data available</td></tr> : 
-                  monthlyStats.map(s => {
-                    const net = s.in - s.out;
+                {monthlyDetailStats.length === 0 ? <tr><td colSpan={9} className="t-empty">No data available</td></tr> :
+                  monthlyDetailStats.map(s => {
+                    const totalOut = s.lrOut + s.saleOut;
+                    const net = s.in - totalOut;
                     return (
-                      <tr key={s.month}>
+                      <tr key={`${s.month}-${s.material}-${s.loadingType}`}>
                         <td><span style={{ fontWeight: 800 }}>{new Date(s.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</span></td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getMatCol(s.material), display: 'inline-block' }} />
+                            {s.material}
+                          </span>
+                        </td>
+                        <td><span className="badge badge-tag">{s.loadingType}</span></td>
                         <td className="c"><span style={{ color: '#10b981', fontWeight: 800 }}>{s.in.toLocaleString('en-IN')}</span></td>
-                        <td className="c"><span style={{ color: '#f43f5e', fontWeight: 800 }}>{s.out.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span style={{ color: '#6366f1', fontWeight: 800 }}>{s.lrOut.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span style={{ color: '#ec4899', fontWeight: 800 }}>{s.saleOut.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span style={{ color: '#f43f5e', fontWeight: 800 }}>{totalOut.toLocaleString('en-IN')}</span></td>
                         <td className="c"><span style={{ color: net < 0 ? '#ef4444' : '#6366f1', fontWeight: 900 }}>{net.toLocaleString('en-IN')}</span></td>
                         <td className="c"><span className="badge badge-tag">{(net * 0.05).toFixed(2)} MT</span></td>
                       </tr>
@@ -761,8 +877,17 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
                   {chalForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--warn)', marginTop: '4px' }}>= {(chalForm.quantity * 0.05).toFixed(2)} MT</div>}
                 </>)}
-                {fi('Party Name', <input className="fi" type="text" placeholder="Customer / party"
-                  value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: e.target.value }))} />)}
+                {fi('Party Name', <>
+                  <input className="fi" type="text" placeholder="Customer / party" list="stock-party-list"
+                    value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
+                  <datalist id="stock-party-list">
+                    {partySuggestions.map(name => <option key={name} value={name} />)}
+                  </datalist>
+                </>)}
+                {fi('Party Code', <input className="fi" type="text" placeholder="Optional party code"
+                  value={chalForm.partyCode} onChange={e => setChalForm(f => ({ ...f, partyCode: e.target.value }))} />)}
+                {fi('Bill No', <input className="fi" type="text" placeholder="Optional bill number"
+                  value={chalForm.billNo} onChange={e => setChalForm(f => ({ ...f, billNo: e.target.value }))} />)}
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Notes"
                   value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}

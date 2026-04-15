@@ -1,5 +1,5 @@
 const localStore = require('../utils/localStore');
-
+const { normalizePartyName } = require('../utils/partyNameUtils');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 
@@ -9,7 +9,11 @@ const COLLECTION_VOUCHERS = 'vouchers';
 
 const createVoucher = async (data, col = COLLECTION_VOUCHERS) => {
     const { type, ...voucherData } = data;
-    const finalData = { ...voucherData, type };
+    const finalData = {
+        ...voucherData,
+        type,
+        partyName: normalizePartyName(voucherData.partyName || '')
+    };
 
     if (firebaseAvailable()) {
         const ref = db.collection(col).doc();
@@ -53,13 +57,18 @@ const getVouchersByTruckAndDate = async (truckNo, paymentClearedDate, col = COLL
 };
 
 const updateVoucher = async (id, data, col = COLLECTION_VOUCHERS) => {
+    const payload = {
+        ...data,
+        ...(data.partyName !== undefined ? { partyName: normalizePartyName(data.partyName || '') } : {})
+    };
+
     if (firebaseAvailable()) {
         await db.collection(col).doc(id).update({
-            ...data,
+            ...payload,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
     } else {
-        localStore.update(COLLECTION_VOUCHERS, id, data);
+        localStore.update(COLLECTION_VOUCHERS, id, payload);
     }
 };
 

@@ -1,5 +1,6 @@
 const localStore = require('./localStore');
 const { db, admin, isAvailable } = require('../firebase');
+const { normalizePartyName } = require('./partyNameUtils');
 
 const firebaseAvailable = () => isAvailable();
 
@@ -183,7 +184,8 @@ module.exports = {
     },
 
     createChallan: async (data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
-        let { challanNo, truckNo, materials, partyName, destination, date, remark, material, quantity } = data;
+        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity } = data;
+        const normalizedPartyName = normalizePartyName(partyName || '');
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
         if (!materials || !materials.length) throw new Error('Materials required');
 
@@ -212,7 +214,9 @@ module.exports = {
             }
             return await firestoreCreateChallan({
                 challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
-                partyName: partyName || '',
+                partyName: normalizedPartyName,
+                partyCode: partyCode || '',
+                billNo: billNo || '',
                 destination: destination || '',
                 date: date || new Date().toISOString().slice(0, 10),
                 remark: remark || '', status: 'open'
@@ -226,7 +230,9 @@ module.exports = {
         }
         return localStore.insert(cCol, {
             challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
-            partyName: partyName || '',
+            partyName: normalizedPartyName,
+            partyCode: partyCode || '',
+            billNo: billNo || '',
             destination: destination || '',
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '', status: 'open'

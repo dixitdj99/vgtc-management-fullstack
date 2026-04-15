@@ -2,6 +2,9 @@ const PDFDocument = require('pdfkit-table');
 const fs = require('fs');
 const path = require('path');
 
+const NONE_PUMP = 'None';
+const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
+
 /**
  * Generates a PDF report for a specific module (generic table format).
  */
@@ -186,7 +189,7 @@ async function generateVoucherPDF(v, outputPath) {
             doc.text(`From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}`, col2 + 5, y + 18);
             doc.moveTo(col2, y + 30).lineTo(PW - M, y + 30).stroke();
             doc.text(`To  ${v.destination || ''}`, col2 + 50, y + 18);
-            doc.text(`S. No. ${v.lrNo}`, col2 + 5, y + 35);
+            doc.text(`LR No. ${v.lrNo || ''}`, col2 + 5, y + 35);
             doc.font('Helvetica').text(`Date: ${v.date}`, col2 + 100, y + 35);
             
             y += 45;
@@ -249,7 +252,7 @@ async function generateVoucherPDF(v, outputPath) {
             
             doc.fontSize(8).font('Helvetica-Bold').text(`Advance = \n${dieselPending ? 'FULL (Pending)' : (!totalDeductions ? '—' : 'Rs.' + Math.round(totalDeductions).toLocaleString())}`, cwX[3] + 5, y + 30, { width: cw5*2 - 10, align: 'center' });
             doc.fontSize(10).text(`To be Billed\n\n${dieselPending ? '—' : 'Rs.' + Math.round(net).toLocaleString()}`, cwX[5] + 5, y + 20, { width: cw7 - 10, align: 'center' });
-            doc.fontSize(7).font('Helvetica').text(`Driver Name\nD.L. No.\nOwner Permit No.\nPermit No.\nAddress\n\n${v.pump ? 'Pump: ' + v.pump : ''}`, cwX[6] + 5, y + 5);
+            doc.fontSize(7).font('Helvetica').text(`Driver Name\nD.L. No.\nOwner Permit No.\nPermit No.\nAddress\n\n${getPumpDisplay(v.pump) !== '—' ? 'Pump: ' + getPumpDisplay(v.pump) : ''}`, cwX[6] + 5, y + 5);
             
             y = PH - M - 40;
             doc.moveTo(M, y).lineTo(PW - M, y).stroke();
@@ -330,7 +333,7 @@ async function generateVoucherPDF(v, outputPath) {
         drawCell('Bags', v.bags || '—', M + CELLW + 6, y);
         y += CELLH + 6;
         drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
-        drawCell('Pump', v.pump || '—', M + CELLW + 6, y);
+        drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 6, y);
         y += CELLH + 12;
 
         if (v.materials && v.materials.length > 0) {

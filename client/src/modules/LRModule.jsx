@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
+import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -119,7 +120,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {} }) {
+function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {}, partySuggestions = [] }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
@@ -138,6 +139,11 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showChalPopup, setShowChalPopup] = useState(false);
+  const resolvedPartySuggestions = useMemo(() => buildPartySuggestions(
+    partySuggestions,
+    row.partyName,
+    form.usedChallans.map(c => c.partyName)
+  ), [partySuggestions, row.partyName, form.usedChallans]);
 
   // Voice recording inside EditModal
   const mediaRecorderRef = useRef(null);
@@ -261,7 +267,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
     try {
       const finalBilling = form.usedChallans.map(c => c.challanNo).join(', ');
-      const payload = { ...form, billing: finalBilling };
+      const payload = { ...form, partyName: resolvePartyName(form.partyName, resolvedPartySuggestions), billing: finalBilling };
       delete payload.usedChallans; // remove UI state
       if (!payload.voiceMessageBase64) payload.voiceMessageBase64 = row.voiceMessageBase64 || "";
       
@@ -319,9 +325,18 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
             <div className="field">
               <label>Truck No.</label>
-              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase().replace(/\s/g, ''))} />
+              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`lr-edit-truck-list-${row.id}`} />
+              <datalist id={`lr-edit-truck-list-${row.id}`}>
+                {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
+              </datalist>
             </div>
-            <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
+            <div className="field">
+              <label><User size={11} /> Party Name</label>
+              <input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, resolvedPartySuggestions))} list={`lr-edit-party-list-${row.id}`} />
+              <datalist id={`lr-edit-party-list-${row.id}`}>
+                {resolvedPartySuggestions.map(name => <option key={name} value={name} />)}
+              </datalist>
+            </div>
             <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
           </div>
           <hr className="sep" style={{ margin: '4px 0' }} />
@@ -423,8 +438,8 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
         {showChalPopup && (
            <ChallanPopup 
-             brand={brand} openChallans={openChallans} vehicles={vehicles} 
-             selectedChallans={form.usedChallans} 
+             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
+             selectedChallans={form.usedChallans}
              onClose={() => setShowChalPopup(false)}
              onToggleSelect={(ch) => {
                 const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
@@ -446,7 +461,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [] }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
 
   // For 'create' tab
@@ -467,7 +482,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     date: preFill?.date || new Date().toISOString().split('T')[0],
     material: preFill?.material || MATERIALS[0],
     quantity: preFill?.quantity || '',
-    partyName: preFill?.partyName || '',
+    partyName: resolvePartyName(preFill?.partyName || '', partySuggestions),
     destination: preFill?.destination || '',
     remark: preFill?.remark || '',
     challanNo: ''
@@ -497,7 +512,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
           return;
         }
       }
-      const res = await ax.post(ENDPOINT, chalForm);
+      const res = await ax.post(ENDPOINT, { ...chalForm, partyName: resolvePartyName(chalForm.partyName, partySuggestions) });
       const created = res.data;
       // Go back to select tab so user can see newly created challan
       setTab('select');
@@ -622,7 +637,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label>Truck No. *</label>
-                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase().replace(/\s/g, ''))} required list="chal-truck-list" />
+                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} required list="chal-truck-list" />
                       <datalist id="chal-truck-list">
                         {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                       </datalist>
@@ -649,7 +664,10 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label><User size={11} /> Party Name</label>
-                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', e.target.value)} />
+                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, partySuggestions))} list="lr-challan-party-list" />
+                      <datalist id="lr-challan-party-list">
+                        {partySuggestions.map(name => <option key={name} value={name} />)}
+                      </datalist>
                     </div>
                     <div className="field">
                       <label>Destination</label>
@@ -805,6 +823,11 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [voicePreviewUrl, setVoicePreviewUrl] = useState('');
   const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const partySuggestions = useMemo(() => buildPartySuggestions(
+    receipts.map(r => r.partyName),
+    allChallans.map(c => c.partyName),
+    openChallans.map(c => c.partyName)
+  ), [receipts, allChallans, openChallans]);
 
   const startRecording = async () => {
     try {
@@ -1068,6 +1091,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     try {
       const payload = {
         ...form,
+        partyName: resolvePartyName(form.partyName, partySuggestions),
         billing: form.usedChallans.map(c => c.challanNo).join(', ')
       };
 
@@ -1142,7 +1166,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} partySuggestions={partySuggestions} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -1160,6 +1184,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             vehicles={vehicles.length ? vehicles.map(v => ({ ...v, brandMats: MATERIALS })) : [{ brandMats: MATERIALS }]}
             selectedChallans={form.usedChallans}
             preFill={chalPreFill}
+            partySuggestions={partySuggestions}
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
             onCreated={handleChallanCreatedFromLR}
@@ -1299,7 +1324,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </datalist>
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</span>}
                   </div>
-                  <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: e.target.value })} required /></div>
+                  <div className="field">
+                    <label><User size={11} /> Party Name</label>
+                    <input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: resolvePartyName(e.target.value, partySuggestions) })} required list="lr-party-list" />
+                    <datalist id="lr-party-list">
+                      {partySuggestions.map(name => <option key={name} value={name} />)}
+                    </datalist>
+                  </div>
                   <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
                   <div className="field">
                     <label><Tag size={11} /> Challan Selection</label>
