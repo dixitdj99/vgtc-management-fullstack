@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
   XCircle, AlertCircle, Clock, Trash2, RefreshCw, ChevronDown,
-  ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight
+  ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight, ArrowRightLeft, Users
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -86,6 +86,48 @@ const fi = (label, node) => (
 /* ─────────────────────────────────────────────
    MATERIAL CARD
 ───────────────────────────────────────────── */
+function printChallan(c) {
+  const materialsHtml = (c.materials || [{ type: c.material, totalBags: c.quantity }]).map((m, i) => `
+    <tr style="background:${i % 2 === 0 ? '#f9f9f9' : '#fff'}">
+      <td>${m.type || '—'}</td>
+      <td style="text-align:right">${m.totalBags || 0}</td>
+      <td style="text-align:right">${((m.totalBags || 0) * 0.05).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Challan #${c.challanNo}</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;padding:10mm}
+  h1{font-size:16px;font-weight:900;text-align:center;letter-spacing:1px}
+  .sub{text-align:center;font-size:10px;color:#555;margin:2px 0 10px}
+  .meta{display:flex;justify-content:space-between;margin-bottom:10px;padding:8px 12px;background:#f5f5f5;border-radius:4px}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px}th{padding:6px 8px;background:#333;color:#fff;font-size:10px;text-align:left}
+  td{padding:5px 8px;border-bottom:1px solid #e5e5e5}
+  .sig{display:flex;justify-content:space-between;margin-top:40px}
+  .sl{min-width:120px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:10px}
+  @media print{body{padding:0}}</style></head><body>
+  <h1>Vikas Goods Transport</h1>
+  <div class="sub">Challan Print</div>
+  <div class="meta">
+    <span><b>Challan No:</b> ${c.challanNo || '—'}</span>
+    <span><b>Date:</b> ${new Date(c.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+    <span><b>Truck:</b> ${c.truckNo || '—'}</span>
+  </div>
+  <div class="meta" style="background:#fff;border:1px solid #e5e5e5">
+    <span><b>Party:</b> ${c.partyName || '—'}</span>
+    <span><b>Status:</b> ${c.status ? c.status.toUpperCase() : 'OPEN'}</span>
+  </div>
+  <table>
+    <thead><tr><th>Material</th><th style="text-align:right">Total Bags</th><th style="text-align:right">Weight (MT)</th></tr></thead>
+    <tbody>${materialsHtml}</tbody>
+  </table>
+  <div style="font-size:10px;color:#444"><b>Remark:</b> ${c.remark || 'N/A'}</div>
+  <div class="sig"><div class="sl">Driver</div><div class="sl">Authorised Sign</div></div>
+  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  </body></html>`;
+  const w = window.open('', '_blank', 'width=800,height=600');
+  w.document.write(html); w.document.close();
+}
+
 function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
   const available = added - lrUsed - sold - held;
   const col = getMatCol(mat);
@@ -163,9 +205,18 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [challanFilter, setChallanFilter] = useState('open'); // open|loaded|cancelled|all
   const [delTarget, setDelTarget] = useState(null);
 
+  /* Stock Transfer state */
+  const [transfers, setTransfers] = useState([]);
+  const [transferForm, setTransferForm] = useState({ sourceMaterial: '', destMaterial: '', quantity: '', partyName: '', challanNo: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const [transferSaving, setTransferSaving] = useState(false);
+  const [transferErr, setTransferErr] = useState('');
+
   /* Excel-style filters */
   const [filters, setFilters] = useState({});
   const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
+
+  /* form helper */
+  const fi = (label, el) => (<div className="field" style={{ flex: 1, minWidth: '140px' }}><label>{label}</label>{el}</div>);
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
@@ -186,7 +237,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     setChalForm(f => ({ ...f, material: MATS[0] }));
   }, [brand]);
 
-  useEffect(() => { fetchAll(); }, [brand]);
+  useEffect(() => { fetchAll(); fetchTransfers(); }, [brand]);
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -203,6 +254,57 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
+
+  /* ── Stock Transfers ── */
+  const fetchTransfers = async () => {
+    try { setTransfers((await ax.get('/stock-transfers')).data); } catch { setTransfers([]); }
+  };
+
+  const STOCK_LOCATIONS = [
+    { key: 'kosli', label: 'Kosli Stock' },
+    { key: 'jhajjar', label: 'Jhajjar Stock' },
+    { key: 'jkl', label: 'JK Lakshmi Stock' },
+  ];
+
+  const handleTransfer = async (e) => {
+    e.preventDefault(); setTransferErr('');
+    if (!transferForm.sourceMaterial || !transferForm.destMaterial) { setTransferErr('Select both source and destination materials'); return; }
+    if (transferForm.sourceMaterial === transferForm.destMaterial) { setTransferErr('Source and destination material cannot be the same'); return; }
+    if (!transferForm.quantity || parseInt(transferForm.quantity) <= 0) { setTransferErr('Enter valid quantity'); return; }
+    setTransferSaving(true);
+    try {
+      await ax.post('/stock-transfers', { ...transferForm, stockLocation: brand });
+      setTransferForm({ sourceMaterial: '', destMaterial: '', quantity: '', partyName: '', challanNo: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+      fetchAll(); fetchTransfers();
+    } catch (er) { setTransferErr(er.response?.data?.error || 'Transfer failed'); }
+    finally { setTransferSaving(false); }
+  };
+
+  /* Party-wise summary */
+  const partySummary = useMemo(() => {
+    const map = {};
+    challans.forEach(ch => {
+      const pn = ch.partyName || 'Unknown Party';
+      if (!map[pn]) map[pn] = { partyName: pn, challans: [], trucks: new Set(), materials: {}, totalBags: 0, loadedBags: 0 };
+      map[pn].challans.push(ch);
+      if (ch.truckNo) map[pn].trucks.add(ch.truckNo);
+      if (ch.materials) {
+        ch.materials.forEach(m => {
+          if (!map[pn].materials[m.type]) map[pn].materials[m.type] = { total: 0, loaded: 0 };
+          map[pn].materials[m.type].total += (m.totalBags || 0);
+          map[pn].materials[m.type].loaded += (m.loadedBags || 0);
+          map[pn].totalBags += (m.totalBags || 0);
+          map[pn].loadedBags += (m.loadedBags || 0);
+        });
+      } else if (ch.material) {
+        if (!map[pn].materials[ch.material]) map[pn].materials[ch.material] = { total: 0, loaded: 0 };
+        const qty = parseInt(ch.quantity) || 0;
+        map[pn].materials[ch.material].total += qty;
+        map[pn].totalBags += qty;
+      }
+    });
+    return Object.values(map).sort((a, b) => b.totalBags - a.totalBags);
+  }, [challans]);
 
   /* ── Manage Materials ── */
   const handleAddMaterial = async (e) => {
@@ -598,7 +700,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {canEdit && (
+          {role === 'admin' && (
             <button onClick={() => setShowMatManager(true)} className="btn btn-g btn-sm" style={{ fontWeight: 800 }}>
                <Tag size={13} /> Manage Materials
             </button>
@@ -642,6 +744,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { id: 'history', label: 'Full History', icon: <FileText size={13} /> },
           { id: 'migo', label: 'MIGO (Stock Entry)', icon: <Plus size={13} />, restricted: true },
           { id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true },
+          { id: 'transfer', label: 'Transfer Stock', icon: <ArrowRightLeft size={13} />, restricted: true },
+          { id: 'party_summary', label: 'Party Summary', icon: <Users size={13} /> },
         ].map(({ id, label, icon, restricted }) => {
           if (restricted && !canEdit) return null;
           return (
@@ -1012,6 +1116,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                         {role === 'admin' && <td style={{ ...TD, fontSize: '12px' }}>{c.updatedBy || '—'}</td>}
                         <td style={{ ...TD }}>
                           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button className="btn btn-g btn-sm btn-icon" title="Print Challan" onClick={() => printChallan(c)}><Printer size={13} /></button>
                             {c.status !== 'loaded' && c.status !== 'cancelled' && (<>
                               <button className="btn btn-a btn-sm btn-icon" title="Mark as fully Loaded"
                                 onClick={() => updateStatus(c.id, 'loaded')}><CheckCircle2 size={13} /></button>
@@ -1054,6 +1159,183 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             </div>
           </div>
           {renderHistoryTable(historyRows)}
+        </div>
+      )}
+
+      {/* ── TRANSFER STOCK TAB ── */}
+      {tab === 'transfer' && (
+        <div>
+          <div className="card" style={{ marginBottom: '14px' }}>
+            <div className="card-header">
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}><ArrowRightLeft size={17} /></div>
+                <div className="card-title-text"><h3>Transfer Stock</h3><p>Convert material types within {STOCK_LOCATIONS.find(l => l.key === brand)?.label || brand}</p></div>
+              </div>
+            </div>
+            <form onSubmit={handleTransfer} style={{ padding: '16px 18px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+                {fi('Convert From *', <select className="fi" value={transferForm.sourceMaterial} onChange={e => setTransferForm(f => ({ ...f, sourceMaterial: e.target.value }))} required>
+                  <option value="">Select source material...</option>
+                  {MATS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>)}
+                {fi('Convert To *', <select className="fi" value={transferForm.destMaterial} onChange={e => setTransferForm(f => ({ ...f, destMaterial: e.target.value }))} required>
+                  <option value="">Select destination material...</option>
+                  {MATS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>)}
+                {fi('Quantity (bags) *', <input className="fi" type="number" min="1" placeholder="Bags" value={transferForm.quantity} onChange={e => setTransferForm(f => ({ ...f, quantity: e.target.value }))} required />)}
+                {fi('Party Name', <input className="fi" type="text" placeholder="Party" value={transferForm.partyName} onChange={e => setTransferForm(f => ({ ...f, partyName: e.target.value }))} list="transfer-party-list" />)}
+                <datalist id="transfer-party-list">{partySuggestions.map(p => <option key={p} value={p} />)}</datalist>
+                {fi('Challan No.', <input className="fi" type="text" placeholder="CH-XXXX" value={transferForm.challanNo} onChange={e => setTransferForm(f => ({ ...f, challanNo: e.target.value }))} />)}
+                {fi('Date', <input className="fi" type="date" value={transferForm.date} onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} />)}
+                {fi('Remark', <input className="fi" type="text" placeholder="Note" value={transferForm.remark} onChange={e => setTransferForm(f => ({ ...f, remark: e.target.value }))} />)}
+                <button type="submit" className="btn btn-p" disabled={transferSaving} style={{ height: '38px', fontWeight: 800 }}>
+                  {transferSaving ? '...' : <><ArrowRightLeft size={13} /> Transfer</>}
+                </button>
+              </div>
+              {transferErr && <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '8px', fontWeight: 600 }}>{transferErr}</div>}
+            </form>
+          </div>
+
+          {/* Transfer History */}
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><FileText size={17} /></div>
+                <div className="card-title-text"><h3>Transfer History</h3><p>{transfers.length} transfers recorded</p></div>
+              </div>
+            </div>
+            <div className="tbl-wrap">
+              <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={TH}>#</th>
+                  <th style={TH}>Date</th>
+                  <th style={TH}>From Material</th>
+                  <th style={TH}>To Material</th>
+                  <th style={TH}>Quantity</th>
+                  <th style={TH}>Party Name</th>
+                  <th style={TH}>Challan No.</th>
+                  <th style={TH}>Remark</th>
+                  {role === 'admin' && <th style={TH}>Action</th>}
+                </tr></thead>
+                <tbody>
+                  {transfers.length === 0 && <tr><td colSpan={role === 'admin' ? 9 : 8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No transfers recorded</td></tr>}
+                  {transfers.map((t, i) => (
+                    <tr key={t.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                      <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                      <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(t.date)}</td>
+                      <td style={TD}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: getMatCol(t.sourceMaterial), display: 'inline-block' }} />
+                          {t.sourceMaterial}
+                        </span>
+                      </td>
+                      <td style={TD}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: getMatCol(t.destMaterial), display: 'inline-block' }} />
+                          {t.destMaterial}
+                        </span>
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
+                        <div>{(t.quantity || 0).toLocaleString('en-IN')} bags</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((t.quantity || 0) * 0.05).toFixed(2)} MT</div>
+                      </td>
+                      <td style={{ ...TD, fontWeight: 700 }}>{t.partyName || '—'}</td>
+                      <td style={{ ...TD, fontWeight: 700, fontFamily: 'monospace', color: 'var(--primary)' }}>{t.challanNo || '—'}</td>
+                      <td style={TD}>{t.remark || '—'}</td>
+                      {role === 'admin' && (
+                        <td style={{ ...TD, textAlign: 'center' }}>
+                          <button className="btn btn-d btn-icon btn-sm" onClick={async () => { if (window.confirm('Delete this transfer? (Note: Stock adjustments will NOT be reversed)')) { try { await ax.delete('/stock-transfers/' + t.id); fetchTransfers(); } catch { alert('Delete failed'); } }}} title="Delete"><Trash2 size={12} /></button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PARTY SUMMARY TAB ── */}
+      {tab === 'party_summary' && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-block">
+              <div className="card-icon" style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1' }}><Users size={17} /></div>
+              <div className="card-title-text"><h3>Party-Wise Summary</h3><p>{partySummary.length} parties with challan and loading details</p></div>
+            </div>
+          </div>
+          <div className="tbl-wrap">
+            <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={TH}>#</th>
+                <th style={TH}>Party Name</th>
+                <th style={TH}>Challans</th>
+                <th style={TH}>Vehicles</th>
+                <th style={TH}>Materials</th>
+                <th style={TH}>Total Bags</th>
+                <th style={TH}>Loaded</th>
+                <th style={TH}>Pending</th>
+              </tr></thead>
+              <tbody>
+                {partySummary.length === 0 && <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No party data found</td></tr>}
+                {partySummary.map((p, i) => {
+                  const pending = p.totalBags - p.loadedBags;
+                  return (
+                    <tr key={p.partyName} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                      <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                      <td style={{ ...TD, fontWeight: 800, color: 'var(--text)' }}>{p.partyName}</td>
+                      <td style={TD}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {p.challans.map(ch => (
+                            <span key={ch.id} style={{ padding: '2px 6px', borderRadius: '4px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 700, fontFamily: 'monospace' }}>{ch.challanNo || '—'}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={TD}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {[...p.trucks].map(tn => (
+                            <span key={tn} style={{ padding: '2px 6px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: '10px', fontWeight: 700 }}>{tn}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={TD}>
+                        {Object.entries(p.materials).map(([mat, info]) => (
+                          <div key={mat} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: getMatCol(mat), display: 'inline-block' }} />
+                            <span style={{ fontWeight: 700, fontSize: '11px' }}>{mat}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({info.total} bags, loaded: {info.loaded})</span>
+                          </div>
+                        ))}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800 }}>
+                        <div>{p.totalBags.toLocaleString('en-IN')}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(p.totalBags * 0.05).toFixed(2)} MT</div>
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>
+                        <div>{p.loadedBags.toLocaleString('en-IN')}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(p.loadedBags * 0.05).toFixed(2)} MT</div>
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: pending > 0 ? 'var(--warn)' : 'var(--accent)' }}>
+                        <div>{pending.toLocaleString('en-IN')}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(pending * 0.05).toFixed(2)} MT</div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {partySummary.length > 0 && (
+                <tfoot>
+                  <tr style={{ background: 'var(--bg-tf)' }}>
+                    <td colSpan={5} style={{ ...TD, fontWeight: 800, borderTop: '2px solid var(--border)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Totals ({partySummary.length} parties)</td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 900, borderTop: '2px solid var(--border)' }}>{partySummary.reduce((s, p) => s + p.totalBags, 0).toLocaleString('en-IN')}</td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: 'var(--accent)', borderTop: '2px solid var(--border)' }}>{partySummary.reduce((s, p) => s + p.loadedBags, 0).toLocaleString('en-IN')}</td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: 'var(--warn)', borderTop: '2px solid var(--border)' }}>{partySummary.reduce((s, p) => s + (p.totalBags - p.loadedBags), 0).toLocaleString('en-IN')}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
       )}
 

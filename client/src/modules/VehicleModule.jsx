@@ -14,7 +14,8 @@ const getEmptyForm = () => ({
     driverName: '',
     driverContact: '',
     vehicleType: 'Trailer',
-    bankDetails: JSON.stringify({ name: '', bank: '', account: '', ifsc: '' })
+    bankDetails: JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
+    gpsType: 'none'
 });
 
 const parseBank = (str) => {
@@ -119,7 +120,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setForm({
             truckNo: v.truckNo || '', ownerName: v.ownerName || '', ownerContact: v.ownerContact || '',
             driverName: v.driverName || '', driverContact: v.driverContact || '',
-            vehicleType: v.vehicleType || 'Trailer', bankDetails: v.bankDetails || JSON.stringify({ name: '', bank: '', account: '', ifsc: '' })
+            vehicleType: v.vehicleType || 'Trailer', bankDetails: v.bankDetails || JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
+            gpsType: v.gpsType || 'none'
         });
         setEditId(v.id);
         setTab('add');
@@ -133,6 +135,19 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         if (duplicate) { setErr(`Truck number ${cleanTruckNo(form.truckNo)} already exists in vehicle details`); return; }
         setErr('');
         setIsConfirmingSave(true);
+    };
+
+    const executeGPSDeduction = async () => {
+        if (!window.confirm('WARNING: This will securely deduct ₹250 from the Advance Balance ledger of EVERY vehicle that has a GPS assigned. Are you completely sure you want to run the deductions for this month?')) return;
+        try {
+            const { data } = await ax.post(`${API}/deduct-gps`, {
+                date: new Date().toISOString().slice(0, 10),
+                remark: `Deducted on ${new Date().toLocaleDateString('en-IN')}`
+            });
+            alert(data.message);
+        } catch (error) {
+            alert(error.response?.data?.error || 'GPS Deduction failed');
+        }
     };
 
     const executeSave = async () => {
@@ -271,6 +286,18 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
+
+                        </div>
+
+                        <div className="fg fg-1" style={{ marginTop: '0px' }}>
+                            <div className="field">
+                                <label>GPS Navigation System</label>
+                                <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })} style={{ background: form.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : form.gpsType === 'jksuper' ? 'rgba(14,165,233,0.1)' : 'var(--bg-input)' }}>
+                                    <option value="none">None (No GPS)</option>
+                                    <option value="jkl">JK Lakshmi GPS (Deduct ₹250/m)</option>
+                                    <option value="jksuper">JK Super GPS (Deduct ₹250/m)</option>
+                                </select>
+                            </div>
                         </div>
 
                         <hr className="sep" />
@@ -381,9 +408,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 <p>{owners.length} owners, {vehicles.length} vehicles</p>
                             </div>
                         </div>
-                        <div style={{ position: 'relative', minWidth: '220px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ position: 'relative', minWidth: '220px' }}>
                             <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <input className="fi" type="text" placeholder="Search vehicle, owner, driver..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '32px' }} />
+                        </div>
+                            {role === 'admin' && (
+                                <button className="btn btn-a" onClick={executeGPSDeduction} style={{ fontSize: '11px', padding: '6px 12px' }}>
+                                    💸 Run Monthly GPS Deduction
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -456,6 +490,11 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                         <div style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '6px', borderRadius: '8px' }}><Truck size={14} /></div>
                                                                         <div style={{ fontSize: '15px', fontWeight: 900, fontFamily: 'monospace', color: 'var(--text)' }}>{v.truckNo}</div>
                                                                         <div style={{ fontSize: '10px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, color: 'var(--text-sub)' }}>{v.vehicleType || 'Trailer'}</div>
+                                                                        {v.gpsType && v.gpsType !== 'none' && (
+                                                                            <div style={{ fontSize: '10px', background: v.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : 'rgba(14,165,233,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: v.gpsType === 'jkl' ? '#10b981' : '#0ea5e9' }}>
+                                                                                {v.gpsType === 'jkl' ? 'JK Lakshmi GPS' : 'JK Super GPS'}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
 
                                                                     {(v.driverName || v.driverContact) && (

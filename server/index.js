@@ -27,6 +27,8 @@ const mileageRoutes = require('./routes/mileageRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 const labourRoutes = require('./routes/labourRoutes');
+const vehicleAdvanceRoutes = require('./routes/vehicleAdvanceRoutes');
+const stockTransferRoutes = require('./routes/stockTransferRoutes');
 const { requireAuth } = require('./middleware/auth');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
@@ -69,6 +71,8 @@ app.use('/api/jkl/lr', requireAuth, jklLrRoutes);
 app.use('/api/jkl/stock', requireAuth, jklStockRoutes);
 app.use('/api/jkl/cashbook', requireAuth, jklCashbookRoutes);
 app.use('/api/vehicles', requireAuth, vehicleRoutes);
+app.use('/api/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
+app.use('/api/stock-transfers', requireAuth, stockTransferRoutes);
 app.use('/api/mileage', requireAuth, mileageRoutes);
 
 const PORT = process.env.PORT || 5000;

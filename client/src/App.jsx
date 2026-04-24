@@ -222,6 +222,8 @@ function AppInner() {
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
+        { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'party_summary', label: 'Party Summary' },
       ]
     },
     {
@@ -230,6 +232,8 @@ function AppInner() {
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
+        { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'party_summary', label: 'Party Summary' },
       ]
     },
     {
@@ -271,6 +275,8 @@ function AppInner() {
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
+        { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'party_summary', label: 'Party Summary' },
       ]
     },
     {

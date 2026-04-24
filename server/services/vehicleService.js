@@ -13,7 +13,8 @@ const normalizeVehiclePayload = (data = {}) => ({
     driverName: String(data.driverName || '').trim(),
     driverContact: String(data.driverContact || '').trim(),
     vehicleType: data.vehicleType || 'Trailer',
-    bankDetails: data.bankDetails || ''
+    bankDetails: data.bankDetails || '',
+    gpsType: data.gpsType || 'none'
 });
 
 const normalizeVehiclePatch = (data = {}) => {
@@ -25,6 +26,7 @@ const normalizeVehiclePatch = (data = {}) => {
     if (data.driverContact !== undefined) patch.driverContact = String(data.driverContact || '').trim();
     if (data.vehicleType !== undefined) patch.vehicleType = data.vehicleType || 'Trailer';
     if (data.bankDetails !== undefined) patch.bankDetails = data.bankDetails || '';
+    if (data.gpsType !== undefined) patch.gpsType = data.gpsType || 'none';
     return patch;
 };
 
