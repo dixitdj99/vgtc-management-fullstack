@@ -1,0 +1,32 @@
+[
+  {
+    "id": "00e2aa91-667f-4414-9f5e-fbcceb64821b",
+    "name": "PPC",
+    "createdAt": "2026-04-24T11:04:49.201Z"
+  },
+  {
+    "id": "64909570-69d8-47fa-bf70-e2451d854350",
+    "name": "OPC43",
+    "createdAt": "2026-04-24T11:04:49.210Z"
+  },
+  {
+    "id": "d515a2b9-b47e-4f67-909d-90422dceef6a",
+    "name": "Adstar",
+    "createdAt": "2026-04-24T11:04:49.212Z"
+  },
+  {
+    "id": "1c4ea47e-49f9-425d-93d0-737995e9b818",
+    "name": "OPC FS",
+    "createdAt": "2026-04-24T11:04:49.214Z"
+  },
+  {
+    "id": "df32ff55-079a-4075-a22a-2114ca870d20",
+    "name": "OPC53 FS",
+    "createdAt": "2026-04-24T11:04:49.214Z"
+  },
+  {
+    "id": "9baf7e68-6b1e-4db3-9b6d-c68d80e38782",
+    "name": "Weather",
+    "createdAt": "2026-04-24T11:04:49.220Z"
+  }
+]

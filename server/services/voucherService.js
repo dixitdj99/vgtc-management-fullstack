@@ -25,8 +25,6 @@ const createVoucher = async (data, col = COLLECTION_VOUCHERS) => {
 
 const getVouchersByType = async (type, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
-        // Use only a single-field where — no orderBy — to avoid requiring a composite index.
-        // Sort by createdAt in JS after fetching.
         const snapshot = await db.collection(col)
             .where('type', '==', type)
             .get();
@@ -39,6 +37,20 @@ const getVouchersByType = async (type, col = COLLECTION_VOUCHERS) => {
     }
     return localStore.getAll(COLLECTION_VOUCHERS)
         .filter(v => v.type === type)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+};
+
+const getAllVouchers = async (col = COLLECTION_VOUCHERS) => {
+    if (firebaseAvailable()) {
+        const snapshot = await db.collection(col).get();
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return docs.sort((a, b) => {
+            const aTime = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
+            const bTime = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+            return bTime - aTime;
+        });
+    }
+    return localStore.getAll(COLLECTION_VOUCHERS)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
@@ -97,4 +109,5 @@ module.exports = {
     updateVoucher,
     deleteVoucher,
     getVoucherById,
+    getAllVouchers,
 };

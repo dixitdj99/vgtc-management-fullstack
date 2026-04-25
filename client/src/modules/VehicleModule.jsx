@@ -14,6 +14,7 @@ const getEmptyForm = () => ({
     driverName: '',
     driverContact: '',
     vehicleType: 'Trailer',
+    ownershipType: 'market',
     bankDetails: JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
     gpsType: 'none'
 });
@@ -120,7 +121,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setForm({
             truckNo: v.truckNo || '', ownerName: v.ownerName || '', ownerContact: v.ownerContact || '',
             driverName: v.driverName || '', driverContact: v.driverContact || '',
-            vehicleType: v.vehicleType || 'Trailer', bankDetails: v.bankDetails || JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
+            vehicleType: v.vehicleType || 'Trailer', ownershipType: v.ownershipType || 'market', bankDetails: v.bankDetails || JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
             gpsType: v.gpsType || 'none'
         });
         setEditId(v.id);
@@ -130,6 +131,9 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
     const handleSaveRequest = (e) => {
         e.preventDefault();
+        if (form.ownershipType === 'self') {
+            form.ownerName = 'Vikas Transport (Self)';
+        }
         if (!form.truckNo || !form.ownerName) { setErr('Truck Number and Owner Name are required'); return; }
         const duplicate = vehicles.find(v => v.id !== editId && cleanTruckNo(v.truckNo) === cleanTruckNo(form.truckNo));
         if (duplicate) { setErr(`Truck number ${cleanTruckNo(form.truckNo)} already exists in vehicle details`); return; }
@@ -269,7 +273,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         </div>
                     </div>
                     <form className="card-body" onSubmit={handleSaveRequest}>
-                        <div className="fg fg-2">
+                        <div className="fg fg-3">
                             <div className="field">
                                 <label>Truck No. *</label>
                                 <input className="fi" type="text" placeholder="e.g. RJ01AB1234 or HR361234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="vehicle-truck-list" />
@@ -286,72 +290,83 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
-
+                            <div className="field">
+                                <label>Ownership Type</label>
+                                <select className="fi" value={form.ownershipType} onChange={e => setForm({ ...form, ownershipType: e.target.value })}>
+                                    <option value="market">Market Vehicle</option>
+                                    <option value="self">Self Vehicle (Tracks Mileage)</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div className="fg fg-1" style={{ marginTop: '0px' }}>
                             <div className="field">
                                 <label>GPS Navigation System</label>
-                                <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })} style={{ background: form.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : form.gpsType === 'jksuper' ? 'rgba(14,165,233,0.1)' : 'var(--bg-input)' }}>
+                                <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })} style={{ background: form.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : form.gpsType === 'jksuper' ? 'rgba(14,165,233,0.1)' : form.gpsType === 'both' ? 'rgba(99,102,241,0.1)' : 'var(--bg-input)' }}>
                                     <option value="none">None (No GPS)</option>
                                     <option value="jkl">JK Lakshmi GPS (Deduct ₹250/m)</option>
                                     <option value="jksuper">JK Super GPS (Deduct ₹250/m)</option>
+                                    <option value="both">Both GPS (Deduct ₹500/m)</option>
                                 </select>
                             </div>
                         </div>
 
-                        <hr className="sep" />
-                        <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <User size={15} color="var(--primary)" /> Owner Information
-                        </h4>
+                        {form.ownershipType !== 'self' && (
+                            <>
+                                <hr className="sep" />
+                                <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <User size={15} color="var(--primary)" /> Owner Information
+                                </h4>
 
-                        <div className="fg fg-2">
-                            <div className="field">
-                                <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select existing to copy bank details)</span></label>
-                                <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required list="owner-list" />
-                                <datalist id="owner-list">
-                                    {uniqueOwners.map(o => <option key={o} value={o} />)}
-                                </datalist>
-                            </div>
-                            <div className="field">
-                                <label>Owner Contact</label>
-                                <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
-                            </div>
-                        </div>
-
-                        <div className="field">
-                            <label><CreditCard size={11} /> Bank Payment Details (for Owner)</label>
-                            <div style={{ padding: '12px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <div className="fg fg-2" style={{ marginBottom: 0 }}>
-                                    <div className="field" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '10px' }}>Account Holder Name</label>
-                                        <input className="fi" type="text" placeholder="Name on account" value={parseBank(form.bankDetails).name} onChange={e => {
-                                            const b = parseBank(form.bankDetails); b.name = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                        }} />
+                                <div className="fg fg-2">
+                                    <div className="field">
+                                        <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select existing to copy bank details)</span></label>
+                                        <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required={form.ownershipType !== 'self'} list="owner-list" />
+                                        <datalist id="owner-list">
+                                            {uniqueOwners.map(o => <option key={o} value={o} />)}
+                                        </datalist>
                                     </div>
-                                    <div className="field" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '10px' }}>Bank Name</label>
-                                        <input className="fi" type="text" placeholder="e.g. HDFC Bank" value={parseBank(form.bankDetails).bank} onChange={e => {
-                                            const b = parseBank(form.bankDetails); b.bank = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                        }} />
+                                    <div className="field">
+                                        <label>Owner Contact</label>
+                                        <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
                                     </div>
                                 </div>
-                                <div className="fg fg-2" style={{ marginBottom: 0 }}>
-                                    <div className="field" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '10px' }}>Account Number</label>
-                                        <input className="fi" type="text" placeholder="Account no." value={parseBank(form.bankDetails).account} onChange={e => {
-                                            const b = parseBank(form.bankDetails); b.account = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                        }} />
-                                    </div>
-                                    <div className="field" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '10px' }}>IFSC Code</label>
-                                        <input className="fi" type="text" placeholder="IFSC Code" value={parseBank(form.bankDetails).ifsc} onChange={e => {
-                                            const b = parseBank(form.bankDetails); b.ifsc = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                        }} />
+
+                                <div className="field">
+                                    <label><CreditCard size={11} /> Bank Payment Details (for Owner)</label>
+                                    <div style={{ padding: '12px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <div className="fg fg-2" style={{ marginBottom: 0 }}>
+                                            <div className="field" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '10px' }}>Account Holder Name</label>
+                                                <input className="fi" type="text" placeholder="Name on account" value={parseBank(form.bankDetails).name} onChange={e => {
+                                                    const b = parseBank(form.bankDetails); b.name = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
+                                                }} />
+                                            </div>
+                                            <div className="field" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '10px' }}>Bank Name</label>
+                                                <input className="fi" type="text" placeholder="e.g. HDFC Bank" value={parseBank(form.bankDetails).bank} onChange={e => {
+                                                    const b = parseBank(form.bankDetails); b.bank = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
+                                                }} />
+                                            </div>
+                                        </div>
+                                        <div className="fg fg-2" style={{ marginBottom: 0 }}>
+                                            <div className="field" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '10px' }}>Account Number</label>
+                                                <input className="fi" type="text" placeholder="Account no." value={parseBank(form.bankDetails).account} onChange={e => {
+                                                    const b = parseBank(form.bankDetails); b.account = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
+                                                }} />
+                                            </div>
+                                            <div className="field" style={{ marginBottom: 0 }}>
+                                                <label style={{ fontSize: '10px' }}>IFSC Code</label>
+                                                <input className="fi" type="text" placeholder="IFSC Code" value={parseBank(form.bankDetails).ifsc} onChange={e => {
+                                                    const b = parseBank(form.bankDetails); b.ifsc = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
+                                                }} />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
+                            </>
+                        )}
 
                         <hr className="sep" />
                         <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -490,9 +505,14 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                         <div style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '6px', borderRadius: '8px' }}><Truck size={14} /></div>
                                                                         <div style={{ fontSize: '15px', fontWeight: 900, fontFamily: 'monospace', color: 'var(--text)' }}>{v.truckNo}</div>
                                                                         <div style={{ fontSize: '10px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, color: 'var(--text-sub)' }}>{v.vehicleType || 'Trailer'}</div>
+                                                                        {v.ownershipType === 'self' && (
+                                                                            <div style={{ fontSize: '10px', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: '#f59e0b' }}>
+                                                                                Self Vehicle
+                                                                            </div>
+                                                                        )}
                                                                         {v.gpsType && v.gpsType !== 'none' && (
-                                                                            <div style={{ fontSize: '10px', background: v.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : 'rgba(14,165,233,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: v.gpsType === 'jkl' ? '#10b981' : '#0ea5e9' }}>
-                                                                                {v.gpsType === 'jkl' ? 'JK Lakshmi GPS' : 'JK Super GPS'}
+                                                                            <div style={{ fontSize: '10px', background: v.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : v.gpsType === 'both' ? 'rgba(99,102,241,0.1)' : 'rgba(14,165,233,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: v.gpsType === 'jkl' ? '#10b981' : v.gpsType === 'both' ? '#6366f1' : '#0ea5e9' }}>
+                                                                                {v.gpsType === 'jkl' ? 'JK Lakshmi GPS' : v.gpsType === 'both' ? 'Both GPS' : 'JK Super GPS'}
                                                                             </div>
                                                                         )}
                                                                     </div>

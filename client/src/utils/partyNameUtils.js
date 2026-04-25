@@ -3,7 +3,6 @@ const PARTY_PREFIX_REGEX = /^M\/S\.?\s*/i;
 export const normalizePartyName = (value) =>
   String(value ?? '')
     .replace(/\s+/g, ' ')
-    .trim()
     .toUpperCase();
 
 export const getPartySimilarityKey = (value) =>

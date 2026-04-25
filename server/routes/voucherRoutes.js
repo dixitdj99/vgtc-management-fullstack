@@ -78,6 +78,16 @@ router.get('/:type', async (req, res) => {
     }
 });
 
+// ─── Get all ──────────────────────────────────────────────────────────
+router.get('/', async (req, res) => {
+    try {
+        const vouchers = await voucherService.getAllVouchers(getCol(BASE_COL, req));
+        res.json(vouchers);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ─── Update (includes balance-sheet edits + mark-paid) ───────────────────────
 router.patch('/:id', async (req, res) => {
     try {

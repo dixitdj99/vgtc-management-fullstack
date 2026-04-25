@@ -794,6 +794,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
   const [receipts, setReceipts] = useState([]);
+  const [allVouchers, setAllVouchers] = useState([]);
   const [openChallans, setOpenChallans] = useState([]);
   const [allChallans, setAllChallans] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -890,6 +891,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     try {
       const data = (await ax.get(API)).data;
       setReceipts([...data].sort((a, b) => b.lrNo - a.lrNo));
+      try {
+         const vRes = await ax.get(`/vouchers`);
+         setAllVouchers(vRes.data || []);
+      } catch(e) { console.error('Failed to fetch vouchers', e); }
     } catch { }
   };
 
@@ -1502,12 +1507,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </div>
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th className="c" style={{ padding: '8px 12px' }}>Voucher Status</th>
                   {role === 'admin' && <th style={{ padding: '8px 12px' }}>Created By</th>}
                   {role === 'admin' && <th style={{ padding: '8px 12px' }}>Updated By</th>}
                   <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 9 : 7} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
+                  {filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
                         <td><span className="t-lr">#{lr.lrNo}</span></td>
@@ -1593,6 +1599,30 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                                   </div>
                                 )}
                               </div>
+                            );
+                          })()}
+                        </td>
+                        <td className="c">
+                          {(() => {
+                            const usedInVouchers = allVouchers.filter(v => {
+                               if (!v.lrNo) return false;
+                               const vLrs = String(v.lrNo).split(',').map(s => s.trim());
+                               return vLrs.includes(String(lr.lrNo));
+                            });
+                            
+                            if (usedInVouchers.length === 0) {
+                               return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)' }}>Unbilled</span>;
+                            }
+                            
+                            return (
+                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                 {usedInVouchers.map(v => (
+                                    <div key={v.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '3px 8px' }}>
+                                       <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981' }}>{v.type ? v.type.replace('_', ' ') : 'Voucher'}</span>
+                                       {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>Bill: {v.billNo}</span>}
+                                    </div>
+                                 ))}
+                               </div>
                             );
                           })()}
                         </td>

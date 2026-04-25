@@ -288,13 +288,14 @@ ${n.dieselPending
 }
 
 /* ── Edit Modal ── */
-function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [] }) {
+function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false }) {
     const [form, setForm] = useState({
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
         weight: v.weight, bags: v.bags, rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel),
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
-        billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || ''
+        billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
+        startKm: v.startKm || '', endKm: v.endKm || ''
     });
     const [saving, setSaving] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -396,6 +397,14 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         <input type="checkbox" id="ec" checked={form.hasCommission} onChange={e => S('hasCommission', e.target.checked)} />
                         <label htmlFor="ec">Commission — Rs.20/MT</label>
                     </div>
+                    {isVGTCTruck(form.truckNo) && (
+                        <div className="fg fg-1" style={{ marginTop: '8px' }}>
+                            <div className="field">
+                                <label><Gauge size={11}/> Current Odometer</label>
+                                <input className="fi" type="number" value={form.endKm} onChange={e => S('endKm', e.target.value)} />
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
@@ -491,7 +500,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             const numbers = [...new Set((r.data || []).map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
             const vgtcSet = new Set(
                 r.data
-                    .filter(v => (v.ownerName || '').toLowerCase().includes('vikas'))
+                    .filter(v => (v.ownerName || '').toLowerCase().includes('vikas') || v.ownershipType === 'self')
                     .map(v => cleanTruckNo(v.truckNo))
             );
             setVehicleNumbers(numbers);
@@ -561,8 +570,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         setLrMaterials([]);
         if (!val) return;
 
-        // Check if this LR is already assigned to an existing voucher of the same type
-        const alreadyUsed = vouchers.some(v => String(v.lrNo) === String(val));
+        const lrNumbers = val.split(',').map(s => s.trim()).filter(Boolean);
+        if (lrNumbers.length === 0) return;
+
+        // Check if ANY of these LRs are already assigned to an existing voucher of the same type
+        const alreadyUsed = vouchers.some(v => {
+            if (!v.lrNo) return false;
+            const vLrs = String(v.lrNo).split(',').map(s => s.trim());
+            return lrNumbers.some(lr => vLrs.includes(lr));
+        });
+        
         if (alreadyUsed) {
             setLrAlreadyUsed(true);
             return;
@@ -580,7 +597,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         // Fetch LR details from the correct receipts collection
         try {
             const all = (await ax.get(lrEndpoint)).data;
-            const rows = all.filter(l => String(l.lrNo) === String(val));
+            const rows = all.filter(l => lrNumbers.includes(String(l.lrNo)));
             if (rows.length > 0) {
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
@@ -592,16 +609,20 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     bags: parseInt(r.totalBags) || 0,
                     weight: parseFloat(r.weight) || 0
                 }));
-                const combinedMaterialName = materialsData.map(m => m.type).filter(Boolean).join(', ');
+                const combinedMaterialName = [...new Set(materialsData.map(m => m.type).filter(Boolean))].join(', ');
+                const combinedPartyName = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' & ');
+                const combinedPartyCode = [...new Set(rows.map(r => r.partyCode).filter(Boolean))].join(', ');
+                const combinedDestination = [...new Set(rows.map(r => r.destination).filter(Boolean))].join(', ');
+                
                 setForm(f => ({
                     ...f,
                     truckNo: truck,
                     date: rows[0].date || f.date,
                     weight: tw.toFixed(2),
                     bags: String(tb),
-                    destination: rows[0].destination || f.destination,
-                    partyName: resolvePartyName(rows[0].partyName || '', knownPartyNames),
-                    partyCode: rows[0].partyCode || '',
+                    destination: combinedDestination || f.destination,
+                    partyName: combinedPartyName || f.partyName,
+                    partyCode: combinedPartyCode || f.partyCode,
                     materialName: combinedMaterialName,
                     materials: materialsData
                 }));
@@ -707,7 +728,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 message={`Are you sure you want to create a new Voucher for LR #${form.lrNo}?`}
                 isSaving={saving}
             />
-            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
 
             <div>
@@ -873,18 +894,18 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     <Gauge size={14} color="#f59e0b" />
                                                     <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odometer / Mileage</span>
                                                 </div>
-                                                <div className="fg fg-2">
+                                                <div className="fg fg-1">
                                                     <div className="field">
                                                         <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                            <Navigation size={11} /> Start KM
+                                                            <Gauge size={11} /> Current Odometer
                                                             {fetchingKm && <Loader2 size={10} className="spin" style={{ opacity: 0.5 }} />}
                                                         </label>
                                                         <input
                                                             className="fi"
                                                             type="number"
-                                                            placeholder="e.g. 45200"
-                                                            value={form.startKm}
-                                                            onChange={e => set('startKm', e.target.value)}
+                                                            placeholder="e.g. 45850"
+                                                            value={form.endKm}
+                                                            onChange={e => set('endKm', e.target.value)}
                                                         />
                                                         {lastKmInfo && (
                                                             <div style={{ marginTop: '4px', fontSize: '10px', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -893,22 +914,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         )}
                                                         {!lastKmInfo && form.truckNo && !fetchingKm && (
                                                             <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                                                No previous trip found — enter manually
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="field">
-                                                        <label>End KM (at destination)</label>
-                                                        <input
-                                                            className="fi"
-                                                            type="number"
-                                                            placeholder="e.g. 45850"
-                                                            value={form.endKm}
-                                                            onChange={e => set('endKm', e.target.value)}
-                                                        />
-                                                        {form.startKm && form.endKm && parseFloat(form.endKm) > parseFloat(form.startKm) && (
-                                                            <div style={{ marginTop: '4px', fontSize: '10px', color: '#6366f1', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <Gauge size={10} /> Distance: {(parseFloat(form.endKm) - parseFloat(form.startKm)).toFixed(0)} km this trip
+                                                                No previous trip found — entering this will start tracking
                                                             </div>
                                                         )}
                                                     </div>
@@ -1014,7 +1020,17 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                                         <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span></td>
                                         <td style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
-                                        <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo}</td>
+                                        <td style={{ ...TD, fontWeight: 700 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {v.truckNo}
+                                                {v.endKm && (
+                                                    <span style={{ fontSize: '9px', fontWeight: 800, background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '2px 5px', borderRadius: '4px' }} title={`Mileage Tracked: Odo ${v.endKm}`}>
+                                                        <Gauge size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '2px' }} />
+                                                        TRIP
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td style={{ ...TD }}>{v.destination || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{v.weight}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>

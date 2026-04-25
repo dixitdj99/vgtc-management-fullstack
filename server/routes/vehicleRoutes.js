@@ -36,16 +36,18 @@ router.post('/deduct-gps', async (req, res) => {
         const { date, remark } = req.body;
         
         for (const v of gpsVehicles) {
+            const amount = v.gpsType === 'both' ? 500 : 250;
+            const gpsName = v.gpsType === 'both' ? 'JK Lakshmi & JK Super' : (v.gpsType === 'jkl' ? 'JK Lakshmi' : 'JK Super');
             await advanceService.createAdvance({
                 truckNo: v.truckNo,
                 type: 'debit',
-                amount: 250,
+                amount: amount,
                 date: date || new Date().toISOString().slice(0, 10),
-                remark: `Monthly ${v.gpsType === 'jkl' ? 'JK Lakshmi' : 'JK Super'} GPS Deduction ${remark ? '- ' + remark : ''}`
+                remark: `Monthly ${gpsName} GPS Deduction ${remark ? '- ' + remark : ''}`
             }, advanceCol);
             count++;
         }
-        res.json({ message: `Successfully deducted ₹250 from ${count} vehicles.`, count });
+        res.json({ message: `Successfully deducted GPS fees from ${count} vehicles.` });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
