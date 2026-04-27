@@ -85,86 +85,25 @@ router.get('/vehicle/:truckNo', async (req, res) => {
     }
 });
 
+const mileageService = require('../services/mileageService');
+
 /**
  * GET /api/mileage/all-vehicles
  * Returns summary stats per truck across all voucher types.
  */
 router.get('/all-vehicles', async (req, res) => {
     try {
-        let allDocs = [];
-
-        if (!isAvailable()) {
-            const vouchers = localStore.getAll(BASE_COL);
-            const fuelLogs = localStore.getAll('fuel_logs');
-            allDocs = [
-                ...vouchers.map(d => ({ ...d, _type: 'voucher' })),
-                ...fuelLogs.map(d => ({ ...d, _type: 'fuel_log' }))
-            ];
-        } else {
-            const [vouchersSnap, fuelSnap] = await Promise.all([
-                db.collection(getCol(BASE_COL, req)).get(),
-                db.collection(getCol('fuel_logs', req)).get()
-            ]);
-            
-            allDocs = [
-                ...vouchersSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'voucher' })),
-                ...fuelSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'fuel_log' }))
-            ];
-        }
-
-        const byTruck = {};
-        allDocs.forEach(doc => {
-            if (!doc.truckNo) return;
-            const cleanNo = doc.truckNo.replace(/\s/g, '').toUpperCase();
-            if (!byTruck[cleanNo]) byTruck[cleanNo] = [];
-            byTruck[cleanNo].push(doc);
-        });
-
-        const result = Object.entries(byTruck).map(([truckNo, trips]) => {
-            const sortedAsc = [...trips].sort((a, b) => {
-                const aTime = a.createdAt?.seconds || 0;
-                const bTime = b.createdAt?.seconds || 0;
-                if (a.date !== b.date) return (a.date || '').localeCompare(b.date || '');
-                return aTime - bTime;
-            });
-            
-            let lastEndKm = null;
-            let totalKm = 0;
-            let mileageTripCount = 0;
-            let totalDiesel = 0;
-            
-            sortedAsc.forEach(t => {
-                if (t.endKm && String(t.endKm).trim() !== '') {
-                    const currKm = parseFloat(t.endKm);
-                    if (lastEndKm !== null && currKm >= lastEndKm) {
-                        totalKm += (currKm - lastEndKm);
-                    }
-                    lastEndKm = currKm;
-                    mileageTripCount++;
-                }
-                const amt = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
-                totalDiesel += amt;
-            });
-
-            const sortedDesc = [...sortedAsc].reverse();
-            return {
-                truckNo,
-                tripCount: trips.length,
-                mileageTripCount,
-                totalKm: totalKm.toFixed(1),
-                totalDieselRs: totalDiesel,
-                lastEndKm: lastEndKm,
-                lastDate: sortedDesc[0]?.date || null,
-            };
-        });
-
-        res.json(result);
+        const result = await mileageService.calculateMileageSummary(req);
+        const arrayResult = Object.entries(result).map(([truckNo, stats]) => ({
+            truckNo,
+            ...stats
+        }));
+        return res.json(arrayResult);
     } catch (err) {
         console.error('mileage all-vehicles error:', err);
         res.status(500).json({ error: err.message });
     }
 });
-
 /**
  * GET /api/mileage/fuel
  * Returns ALL manual fuel logs (optionally filtered by ?truckNo=).

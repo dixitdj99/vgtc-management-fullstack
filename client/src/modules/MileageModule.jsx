@@ -489,8 +489,16 @@ export default function MileageModule() {
                                             </div>
                                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '4px', alignItems: 'center' }}>
                                                 <Calendar size={10} />
-                                                {s.mileageTripCount} trips tracked
+                                                {s.mileageTripCount || 0} trips
                                             </div>
+                                            {s.fuelBalance != null && (
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                    <Droplets size={10} color={s.fuelBalance < 0 ? '#f43f5e' : '#3b82f6'} />
+                                                    <span style={{ fontWeight: 800, color: s.fuelBalance < 0 ? '#f43f5e' : '#3b82f6' }}>
+                                                        {s.fuelBalance} L
+                                                    </span>
+                                                </div>
+                                            )}
                                             {kmPerL != null && (
                                                 <span style={{ fontSize: '11px', fontWeight: 800, color: mColor, background: `${mColor}15`, padding: '1px 7px', borderRadius: '5px' }}>
                                                     {kmPerL.toFixed(1)} km/L avg

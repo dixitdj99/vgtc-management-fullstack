@@ -27,7 +27,8 @@ const getEmptyForm = () => ({
     gpsType: 'none',
     emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [] }),
     docs: JSON.stringify({ rc: '', pollution: '', permit: '', insurance: '', fitness: '', tax: '' }),
-    fastag: ''
+    fastag: '',
+    targetMileage: 0
 });
 
 const parseJson = (str, fallback = {}) => {
@@ -409,7 +410,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                             </div>
                         </div>
 
-                        <div className="fg fg-2">
+                        <div className="fg fg-3">
                             <div className="field">
                                 <label>Registration Date (Age: {calculateAge(form.regDate)})</label>
                                 <input className="fi" type="date" value={form.regDate} onChange={e => setForm({ ...form, regDate: e.target.value })} />
@@ -417,6 +418,10 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                             <div className="field">
                                 <label>National Permit Expiry</label>
                                 <input className="fi" type="date" value={form.nationalPermitDate} onChange={e => setForm({ ...form, nationalPermitDate: e.target.value })} />
+                            </div>
+                            <div className="field">
+                                <label>Target Average (KM/L)</label>
+                                <input className="fi" type="number" step="0.1" placeholder="e.g. 4.5" value={form.targetMileage} onChange={e => setForm({ ...form, targetMileage: e.target.value })} />
                             </div>
                         </div>
 

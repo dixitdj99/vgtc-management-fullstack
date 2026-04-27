@@ -25,7 +25,8 @@ const normalizeVehiclePayload = (data = {}) => ({
     docs: data.docs || '',
     fastag: data.fastag || '',
     bankDetails: data.bankDetails || '',
-    gpsType: data.gpsType || 'none'
+    gpsType: data.gpsType || 'none',
+    targetMileage: parseFloat(data.targetMileage) || 0
 });
 
 const normalizeVehiclePatch = (data = {}) => {

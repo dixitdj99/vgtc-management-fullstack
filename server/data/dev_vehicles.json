@@ -263,7 +263,8 @@
     "fastag": "",
     "updatedAt": "2026-04-27T11:42:43.319Z",
     "make": "Tata",
-    "rcDetails": "{\"engineNo\":\"\",\"chassisNo\":\"\",\"fitnessNo\":\"\"}"
+    "rcDetails": "{\"engineNo\":\"\",\"chassisNo\":\"\",\"fitnessNo\":\"\"}",
+    "targetMileage": 5.5
   },
   {
     "id": "803e2425-6ef5-45d4-bba3-2d6bb9ba1c75",

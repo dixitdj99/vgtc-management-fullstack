@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const vehicleService = require('./vehicleService');
+const mileageService = require('./mileageService');
 require('dotenv').config();
 
 const ALERT_EMAIL = "vikaskumar909040@gmail.com";
@@ -29,11 +30,22 @@ const sendDailyAlertReport = async (col) => {
 
     try {
         const vehicles = await vehicleService.getAllVehicles(col);
+        const mileageStats = await mileageService.calculateMileageSummary({ query: { col } });
+        
         let criticalAlerts = [];
 
-        vehicles.forEach(v => {
+        for (const v of vehicles) {
             let issues = [];
             
+            // Fuel Average Mismatch Check
+            const stats = mileageStats[v.truckNo.replace(/\s/g, '').toUpperCase()];
+            if (stats && v.targetMileage > 0) {
+                const diff = v.targetMileage - stats.avg;
+                if (diff > 0.5) { // Threshold of 0.5 km/l
+                    issues.push(`⛽ <b>Fuel Average Mismatch:</b> Actual <b>${stats.avg}</b> vs Target <b>${v.targetMileage}</b> (Difference: ${diff.toFixed(2)})`);
+                }
+            }
+
             // Document Checks
             try {
                 const docs = JSON.parse(v.docs || '{}');
@@ -58,7 +70,8 @@ const sendDailyAlertReport = async (col) => {
                     const dueDay = new Date(emi.startDate).getDate();
                     const today = new Date().getDate();
                     if (Math.abs(dueDay - today) <= 3) {
-                        issues.push(`💰 EMI Due in approx ${Math.abs(dueDay - today)} days (Due Date: Day ${dueDay})`);
+                        const amount = emi.due ? `₹${emi.due}` : 'Amount TBD';
+                        issues.push(`💰 EMI Due: <b>${amount}</b> in approx ${Math.abs(dueDay - today)} days (Monthly Date: ${dueDay}th)`);
                     }
                 }
             } catch (e) {}
@@ -69,7 +82,7 @@ const sendDailyAlertReport = async (col) => {
                     issues: issues
                 });
             }
-        });
+        }
 
         if (criticalAlerts.length === 0) return { success: true, message: "No alerts today." };
 
