@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db, isAvailable } = require('../firebase');
 const { getCol } = require('../utils/collectionUtils');
+const localStore = require('../utils/localStore');
 
 const BASE_COL = 'vouchers';
 
@@ -12,25 +13,23 @@ const BASE_COL = 'vouchers';
 router.get('/last-km/:truckNo', async (req, res) => {
     const { truckNo } = req.params;
     try {
-        if (!isAvailable()) return res.json({ endKm: null });
-
+        let docs = [];
         const cleanTruckNo = truckNo.replace(/\s/g, '').toUpperCase();
-        const snapshot = await db.collection(getCol(BASE_COL, req)).get();
-
-        const allDocs = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
-
-        if (allDocs.length === 0) return res.json({ endKm: null });
-
-        // Get most recent doc with endKm set
-        const docs = allDocs
-            .filter(d => d.endKm != null && d.endKm !== '')
-            .sort((a, b) => {
+        
+        if (!isAvailable()) {
+            docs = localStore.getAll(BASE_COL).filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+            docs = docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        } else {
+            const snapshot = await db.collection(getCol(BASE_COL, req)).get();
+            docs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+            docs = docs.sort((a, b) => {
                 const aT = a.createdAt?.seconds || 0;
                 const bT = b.createdAt?.seconds || 0;
                 return bT - aT;
             });
+        }
 
         if (docs.length === 0) return res.json({ endKm: null });
 
@@ -48,20 +47,36 @@ router.get('/last-km/:truckNo', async (req, res) => {
 router.get('/vehicle/:truckNo', async (req, res) => {
     const { truckNo } = req.params;
     try {
-        if (!isAvailable()) return res.json([]);
-
         const cleanTruckNo = truckNo.replace(/\s/g, '').toUpperCase();
-        const snapshot = await db.collection(getCol(BASE_COL, req)).get();
-        
-        let docs = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+        let allDocs = [];
 
-        docs = docs.sort((a, b) => {
-                const aT = a.createdAt?.seconds || 0;
-                const bT = b.createdAt?.seconds || 0;
-                return bT - aT;
-            });
+        if (!isAvailable()) {
+            const vouchers = localStore.getAll(BASE_COL);
+            const fuelLogs = localStore.getAll('fuel_logs');
+            allDocs = [
+                ...vouchers.map(d => ({ ...d, _type: 'voucher' })),
+                ...fuelLogs.map(d => ({ ...d, _type: 'fuel_log' }))
+            ];
+        } else {
+            const [vouchersSnap, fuelSnap] = await Promise.all([
+                db.collection(getCol(BASE_COL, req)).get(),
+                db.collection(getCol('fuel_logs', req)).get()
+            ]);
+            allDocs = [
+                ...vouchersSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'voucher' })),
+                ...fuelSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'fuel_log' }))
+            ];
+        }
+
+        let docs = allDocs.filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+
+        const getTime = (c) => {
+            if (!c) return 0;
+            if (c.seconds) return c.seconds * 1000;
+            return new Date(c).getTime() || 0;
+        };
+
+        docs = docs.sort((a, b) => getTime(b.createdAt) - getTime(a.createdAt));
 
         return res.json(docs);
     } catch (err) {
@@ -76,17 +91,33 @@ router.get('/vehicle/:truckNo', async (req, res) => {
  */
 router.get('/all-vehicles', async (req, res) => {
     try {
-        if (!isAvailable()) return res.json([]);
+        let allDocs = [];
 
-        const snapshot = await db.collection(getCol(BASE_COL, req)).get();
+        if (!isAvailable()) {
+            const vouchers = localStore.getAll(BASE_COL);
+            const fuelLogs = localStore.getAll('fuel_logs');
+            allDocs = [
+                ...vouchers.map(d => ({ ...d, _type: 'voucher' })),
+                ...fuelLogs.map(d => ({ ...d, _type: 'fuel_log' }))
+            ];
+        } else {
+            const [vouchersSnap, fuelSnap] = await Promise.all([
+                db.collection(getCol(BASE_COL, req)).get(),
+                db.collection(getCol('fuel_logs', req)).get()
+            ]);
+            
+            allDocs = [
+                ...vouchersSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'voucher' })),
+                ...fuelSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'fuel_log' }))
+            ];
+        }
 
         const byTruck = {};
-        snapshot.docs.forEach(doc => {
-            const d = { id: doc.id, ...doc.data() };
-            if (!d.truckNo) return;
-            const cleanNo = d.truckNo.replace(/\s/g, '').toUpperCase();
+        allDocs.forEach(doc => {
+            if (!doc.truckNo) return;
+            const cleanNo = doc.truckNo.replace(/\s/g, '').toUpperCase();
             if (!byTruck[cleanNo]) byTruck[cleanNo] = [];
-            byTruck[cleanNo].push(d);
+            byTruck[cleanNo].push(doc);
         });
 
         const result = Object.entries(byTruck).map(([truckNo, trips]) => {
@@ -111,7 +142,8 @@ router.get('/all-vehicles', async (req, res) => {
                     lastEndKm = currKm;
                     mileageTripCount++;
                 }
-                totalDiesel += parseFloat(t.advanceDiesel) || 0;
+                const amt = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
+                totalDiesel += amt;
             });
 
             const sortedDesc = [...sortedAsc].reverse();
@@ -139,15 +171,23 @@ router.get('/all-vehicles', async (req, res) => {
  */
 router.get('/fuel', async (req, res) => {
     try {
-        if (!isAvailable()) return res.json([]);
-        let query = db.collection(getCol('fuel_logs', req));
-        if (req.query.truckNo) {
-            query = query.where('truckNo', '==', req.query.truckNo);
+        let docs = [];
+        if (!isAvailable()) {
+            let query = localStore.getAll('fuel_logs');
+            if (req.query.truckNo) {
+                query = query.filter(d => d.truckNo === req.query.truckNo);
+            }
+            docs = query.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        } else {
+            let query = db.collection(getCol('fuel_logs', req));
+            if (req.query.truckNo) {
+                query = query.where('truckNo', '==', req.query.truckNo);
+            }
+            const snapshot = await query.get();
+            docs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         }
-        const snapshot = await query.get();
-        const docs = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         res.json(docs);
     } catch (err) {
         console.error('get all fuel logs error:', err);
@@ -162,14 +202,20 @@ router.get('/fuel', async (req, res) => {
 router.get('/fuel/:truckNo', async (req, res) => {
     const { truckNo } = req.params;
     try {
-        if (!isAvailable()) return res.json([]);
-        const snapshot = await db.collection(getCol('fuel_logs', req))
-            .where('truckNo', '==', truckNo)
-            .get();
+        let docs = [];
+        if (!isAvailable()) {
+            docs = localStore.getAll('fuel_logs')
+                .filter(d => d.truckNo === truckNo)
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+        } else {
+            const snapshot = await db.collection(getCol('fuel_logs', req))
+                .where('truckNo', '==', truckNo)
+                .get();
 
-        const docs = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
+            docs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+        }
 
         res.json(docs);
     } catch (err) {
@@ -186,16 +232,21 @@ router.post('/fuel', async (req, res) => {
     try {
         if (!isAvailable()) return res.status(400).json({ error: 'Database unavailable' });
         if (!req.body.truckNo) return res.status(400).json({ error: 'truckNo is required' });
-        if (!req.body.litres || parseFloat(req.body.litres) <= 0) return res.status(400).json({ error: 'litres must be greater than 0' });
         
         const payload = {
             ...req.body,
-            litres: parseFloat(req.body.litres),
             createdAt: new Date().toISOString()
         };
         
-        const docRef = await db.collection(getCol('fuel_logs', req)).add(payload);
-        res.json({ id: docRef.id, ...payload });
+        let docRefId;
+        if (!isAvailable()) {
+            const doc = localStore.insert('fuel_logs', payload);
+            docRefId = doc.id;
+        } else {
+            const docRef = await db.collection(getCol('fuel_logs', req)).add(payload);
+            docRefId = docRef.id;
+        }
+        res.json({ id: docRefId, ...payload });
     } catch (err) {
         console.error('add fuel log error:', err);
         res.status(500).json({ error: err.message });
@@ -208,8 +259,11 @@ router.post('/fuel', async (req, res) => {
  */
 router.delete('/fuel/:id', async (req, res) => {
     try {
-        if (!isAvailable()) return res.status(400).json({ error: 'Database unavailable' });
-        await db.collection(getCol('fuel_logs', req)).doc(req.params.id).delete();
+        if (!isAvailable()) {
+            localStore.delete('fuel_logs', req.params.id);
+        } else {
+            await db.collection(getCol('fuel_logs', req)).doc(req.params.id).delete();
+        }
         res.json({ message: 'Fuel log deleted' });
     } catch (err) {
         console.error('delete fuel log error:', err);

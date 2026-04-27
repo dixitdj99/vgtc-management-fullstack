@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Gauge, Truck, ArrowLeft, TrendingUp, Fuel, MapPin, Calendar,
+    Gauge, Truck, ArrowLeft, TrendingUp, Fuel, MapPin, Calendar, Globe,
     ChevronRight, AlertCircle, Loader2, Navigation, BarChart3, Plus, Droplets, Trash2
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
@@ -41,6 +41,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
+    const [showFuelModal, setShowFuelModal] = useState(false);
+    const [fuelForm, setFuelForm] = useState({ date: new Date().toISOString().split('T')[0], endKm: '', amount: '', pump: '' });
+    const [submitting, setSubmitting] = useState(false);
 
     const loadData = () => {
         setLoading(true);
@@ -50,6 +53,31 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
         })
         .catch(() => { setTrips([]); })
         .finally(() => setLoading(false));
+    };
+
+    const handleFuelSubmit = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+            const litres = (parseFloat(fuelForm.amount) || 0) / DIESEL_PRICE_PER_LITRE;
+            await ax.post('/mileage/fuel', {
+                truckNo,
+                date: fuelForm.date,
+                endKm: fuelForm.endKm,
+                advanceDiesel: fuelForm.amount,
+                amount: fuelForm.amount,
+                litres,
+                pump: fuelForm.pump
+            });
+            setShowFuelModal(false);
+            setFuelForm({ date: new Date().toISOString().split('T')[0], endKm: '', amount: '', pump: '' });
+            loadData();
+        } catch (err) {
+            console.error(err);
+            alert('Failed to add fuel entry');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     useEffect(() => { loadData(); }, [truckNo]);
@@ -79,7 +107,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
             }
             t.calculatedDistance = dist;
 
-            const dieselRs = parseFloat(t.advanceDiesel) || 0;
+            const dieselRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
             const addedLitres = dieselRs / DIESEL_PRICE_PER_LITRE;
             const consumed = (dist || 0) / ASSUMED_MILEAGE;
             currentBalance = currentBalance + addedLitres - consumed;
@@ -110,7 +138,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
         });
 
         const totalDieselRs = processedTrips.reduce((s, t) => {
-            const d = parseFloat(t.advanceDiesel);
+            const d = parseFloat(t.advanceDiesel) || parseFloat(t.amount);
             return s + (isNaN(d) ? 0 : d);
         }, 0);
         
@@ -159,6 +187,11 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>{trips.length} total trips · {stats.mileageTripCount} with KM data</div>
                     </div>
                 </div>
+                <div style={{ marginLeft: 'auto' }}>
+                    <button className="btn btn-primary btn-sm" onClick={() => setShowFuelModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Fuel size={14} /> Quick Diesel Entry
+                    </button>
+                </div>
             </div>
 
             {/* Stats */}
@@ -189,7 +222,21 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
                 </div>
             )}
 
-
+            {/* Live Tracking Integration Placeholder */}
+            <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '10px', borderRadius: '10px' }}>
+                        <Globe size={20} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Live Diesel & GPS Telematics</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px' }}>Connect OBD-II API to sync exact real-time engine diesel consumption.</div>
+                    </div>
+                </div>
+                <button className="btn btn-g btn-sm" onClick={() => alert('Live API Integration Module coming soon!')} style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                    Configure API
+                </button>
+            </div>
 
             {/* Trip Table */}
             <div className="card">
@@ -216,7 +263,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
                                 <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>No trips found</td></tr>
                             ) : paginatedTrips.map((t, i) => {
                                 const dist = t.calculatedDistance;
-                                const dieselRs = parseFloat(t.advanceDiesel) || 0;
+                                const dieselRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
                                 const litres = dieselRs / DIESEL_PRICE_PER_LITRE;
                                 const kmPerL = (dist != null && dist > 0 && litres > 0) ? dist / litres : null;
                                 const mColor = getMileageColor(kmPerL);
@@ -228,7 +275,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}
                                     >
-                                        <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{t.lrNo}</td>
+                                        <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', fontFamily: 'monospace', fontWeight: 800, color: t._type === 'fuel_log' ? '#10b981' : 'var(--primary)' }}>
+                                            {t._type === 'fuel_log' ? 'FUEL ONLY' : `#${t.lrNo}`}
+                                        </td>
                                         <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)', whiteSpace: 'nowrap' }}>{t.date}</td>
                                         <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)' }}>{t.destination || '—'}</td>
                                         <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)', fontFamily: 'monospace' }}>{t.endKm || '—'}</td>
@@ -263,6 +312,47 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
                     onPageChange={setCurrentPage}
                 />
             </div>
+
+            {/* Quick Diesel Entry Modal */}
+            <AnimatePresence>
+                {showFuelModal && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            style={{ background: 'var(--bg)', borderRadius: '12px', width: '400px', maxWidth: '90%', border: '1px solid var(--border)', overflow: 'hidden' }}
+                        >
+                            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontWeight: 800 }}>Quick Diesel Entry</div>
+                                <button className="btn" onClick={() => setShowFuelModal(false)} style={{ padding: '4px', background: 'transparent' }}>X</button>
+                            </div>
+                            <form onSubmit={handleFuelSubmit} style={{ padding: '20px' }}>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>DATE</label>
+                                    <input type="date" className="fi" value={fuelForm.date} onChange={e => setFuelForm({ ...fuelForm, date: e.target.value })} required />
+                                </div>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>CURRENT ODOMETER (KM)</label>
+                                    <input type="number" className="fi" placeholder="e.g. 45020" value={fuelForm.endKm} onChange={e => setFuelForm({ ...fuelForm, endKm: e.target.value })} />
+                                </div>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>DIESEL AMOUNT (₹)</label>
+                                    <input type="number" className="fi" placeholder="e.g. 5000" value={fuelForm.amount} onChange={e => setFuelForm({ ...fuelForm, amount: e.target.value })} required />
+                                </div>
+                                <div style={{ marginBottom: '20px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>PUMP NAME</label>
+                                    <input type="text" className="fi" placeholder="e.g. Reliance Jaipur" value={fuelForm.pump} onChange={e => setFuelForm({ ...fuelForm, pump: e.target.value })} />
+                                </div>
+                                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={submitting}>
+                                    {submitting ? 'Saving...' : 'Add Fuel Entry'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
         </motion.div>
     );
 }
