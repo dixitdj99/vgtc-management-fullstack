@@ -7,7 +7,6 @@ import { useAuth } from '../auth/AuthContext';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
-const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
 
 export default function DieselModule({ role = 'user', permissions = {} }) {
     const { plant } = useAuth();
@@ -18,6 +17,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
     const [saving, setSaving] = useState(false);
     const [dieselTab, setDieselTab] = useState('records'); // records|pump_ledger
     const [expandedPump, setExpandedPump] = useState(null);
+    const [profiles, setProfiles] = useState([]);
     
     // Filters
     const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
@@ -33,6 +33,10 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
     const fetchData = async () => {
         setLoading(true);
         try {
+            // Fetch profiles for pump list
+            const pRes = await ax.get('/profiles');
+            setProfiles(pRes.data || []);
+
             // Types change based on plant
             const types = plant === 'jklakshmi' ? ['Dump', 'JK_Lakshmi'] : ['Dump', 'JK_Super'];
             const all = await Promise.all(types.map(t => ax.get(`${API_V}/${t}`)));
@@ -122,6 +126,11 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
     /* Pump Ledger — group by pump name */
     const pumpGroups = useMemo(() => {
         const map = {};
+        // Initialize with all pump profiles
+        profiles.filter(p => p.type === 'Pump').forEach(p => {
+            map[p.name] = { pump: p.name, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0 };
+        });
+
         vouchers.forEach(v => {
             const pump = v.pump || 'Unknown Pump';
             if (!map[pump]) map[pump] = { pump, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0 };
@@ -137,7 +146,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
             }
         });
         return Object.values(map).sort((a, b) => b.totalAmount - a.totalAmount);
-    }, [vouchers]);
+    }, [vouchers, profiles]);
 
     const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
     const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';

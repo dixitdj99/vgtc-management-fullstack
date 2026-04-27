@@ -13,15 +13,14 @@ const PAGE_SIZE = 20;
 
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
-const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
 const NONE_PUMP = 'None';
-const PUMP_OPTIONS = [NONE_PUMP, ...PUMPS];
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 const hasDieselAdvance = (value) => String(value ?? '').trim() !== '';
-const getAllowedPump = (pump, advanceDiesel) => {
+const getAllowedPump = (pump, advanceDiesel, pumpOptions = []) => {
     if (!hasDieselAdvance(advanceDiesel)) return NONE_PUMP;
-    return pump && pump !== NONE_PUMP ? pump : PUMPS[0];
+    const pumps = pumpOptions.filter(p => p !== NONE_PUMP);
+    return pump && pump !== NONE_PUMP ? pump : (pumps[0] || NONE_PUMP);
 };
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
 const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill';
@@ -288,10 +287,10 @@ ${n.dieselPending
 }
 
 /* ── Edit Modal ── */
-function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false }) {
+function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, pumpOptions = [] }) {
     const [form, setForm] = useState({
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
-        weight: v.weight, bags: v.bags, rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel),
+        weight: v.weight, bags: v.bags, rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
@@ -304,10 +303,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
 
     useEffect(() => {
         setForm(f => {
-            const nextPump = getAllowedPump(f.pump, f.advanceDiesel);
+            const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions);
             return f.pump === nextPump ? f : { ...f, pump: nextPump };
         });
-    }, [form.advanceDiesel]);
+    }, [form.advanceDiesel, pumpOptions]);
 
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
@@ -389,8 +388,8 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         <div className="field"><label>Online Advance</label><input className="fi" type="number" value={form.advanceOnline} onChange={e => S('advanceOnline', e.target.value)} /></div>
                     </div>
                     <div className="field"><label>Fuel Station</label>
-                        <select className="fi" value={form.pump} onChange={e => S('pump', e.target.value)} disabled={!hasDieselAdvance(form.advanceDiesel)}>
-                            {PUMP_OPTIONS.map(p => <option key={p}>{p}</option>)}
+                        <select className="fi" value={form.pump} onChange={e => S('pump', e.target.value)}>
+                            {pumpOptions.map(p => <option key={p}>{p}</option>)}
                         </select>
                     </div>
                     <div className="chk-row">
@@ -481,6 +480,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         setCurrentPage(1);
     };
 
+    const [profiles, setProfiles] = useState([]);
+    const pumpOptions = useMemo(() => {
+        const names = profiles
+            .filter(p => p.type?.toLowerCase() === 'pump')
+            .map(p => p.name);
+        return [NONE_PUMP, ...new Set(names)];
+    }, [profiles]);
+
     const [form, setForm] = useState({
         lrNo: '', date: new Date().toISOString().split('T')[0],
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
@@ -494,8 +501,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [vgtcTrucks, setVgtcTrucks] = useState(new Set()); // truck numbers owned by Vikas Goods Transport
     const [vehicleNumbers, setVehicleNumbers] = useState([]);
 
-    // Fetch vehicle registry to know which trucks are VGTC-owned
-    useEffect(() => {
+    // Fetch vehicle registry and profiles
+    const refreshData = useCallback(() => {
         ax.get('/vehicles').then(r => {
             const numbers = [...new Set((r.data || []).map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
             const vgtcSet = new Set(
@@ -506,7 +513,17 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             setVehicleNumbers(numbers);
             setVgtcTrucks(vgtcSet);
         }).catch(() => {});
+
+        ax.get('/profiles').then(r => setProfiles(r.data || [])).catch(() => {});
     }, []);
+
+    useEffect(() => {
+        refreshData();
+    }, [refreshData]);
+
+    useEffect(() => {
+        if (formOpen) refreshData();
+    }, [formOpen, refreshData]);
 
     const isVGTCTruck = (truckNo) => vgtcTrucks.has(truckNo);
 
@@ -666,10 +683,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     useEffect(() => {
         setForm(f => {
-            const nextPump = getAllowedPump(f.pump, f.advanceDiesel);
+            const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions);
             return f.pump === nextPump ? f : { ...f, pump: nextPump };
         });
-    }, [form.advanceDiesel]);
+    }, [form.advanceDiesel, pumpOptions]);
 
     /* Sort helper */
     const toggleSort = col => {
@@ -728,7 +745,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 message={`Are you sure you want to create a new Voucher for LR #${form.lrNo}?`}
                 isSaving={saving}
             />
-            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
 
             <div>
@@ -864,8 +881,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" placeholder="0" value={form.rate} onChange={e => set('rate', e.target.value)} /></div>
                                             <div className="field"><label>Fuel Station</label>
-                                                <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)} disabled={!hasDieselAdvance(form.advanceDiesel)}>
-                                                    {PUMP_OPTIONS.map(p => <option key={p}>{p}</option>)}
+                                                <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
+                                                    {pumpOptions.map(p => <option key={p}>{p}</option>)}
                                                 </select>
                                             </div>
                                         </div>

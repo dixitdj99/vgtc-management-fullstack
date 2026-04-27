@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 const backupService = require('./utils/backupService');
+const alertService = require('./services/alertService');
 require('dotenv').config();
 
 const lrRoutes = require('./routes/lrRoutes'); // Legacy
@@ -29,6 +30,8 @@ const publicRoutes = require('./routes/publicRoutes');
 const labourRoutes = require('./routes/labourRoutes');
 const vehicleAdvanceRoutes = require('./routes/vehicleAdvanceRoutes');
 const stockTransferRoutes = require('./routes/stockTransferRoutes');
+const profileRoutes = require('./routes/profileRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 const { requireAuth } = require('./middleware/auth');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
@@ -74,6 +77,8 @@ app.use('/api/vehicles', requireAuth, vehicleRoutes);
 app.use('/api/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
 app.use('/api/stock-transfers', requireAuth, stockTransferRoutes);
 app.use('/api/mileage', requireAuth, mileageRoutes);
+app.use('/api/profiles', requireAuth, profileRoutes);
+app.use('/api/payments', requireAuth, paymentRoutes);
 
 const PORT = process.env.PORT || 5000;
 
@@ -118,6 +123,12 @@ if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
         cron.schedule('0 0 * * 0', () => {
             console.log('[Cron] Running scheduled weekly backup...');
             backupService.runWeeklyBackup();
+        });
+
+        // Schedule daily fleet alerts: every day at 09:00 AM
+        cron.schedule('0 9 * * *', () => {
+            console.log('[Cron] Running daily fleet alert checks...');
+            alertService.sendDailyAlertReport('vehicles'); 
         });
     });
 }

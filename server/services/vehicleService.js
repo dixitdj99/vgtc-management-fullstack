@@ -13,20 +13,25 @@ const normalizeVehiclePayload = (data = {}) => ({
     driverName: String(data.driverName || '').trim(),
     driverContact: String(data.driverContact || '').trim(),
     vehicleType: data.vehicleType || 'Trailer',
+    make: data.make || 'Tata',
+    model: data.model || '',
+    grossWeight: parseFloat(data.grossWeight) || 0,
+    unladenWeight: parseFloat(data.unladenWeight) || 0,
+    regDate: data.regDate || '',
+    nationalPermitDate: data.nationalPermitDate || '',
+    rcDetails: data.rcDetails || '',
+    docNumbers: data.docNumbers || '',
+    emiDetails: data.emiDetails || '',
+    docs: data.docs || '',
+    fastag: data.fastag || '',
     bankDetails: data.bankDetails || '',
     gpsType: data.gpsType || 'none'
 });
 
 const normalizeVehiclePatch = (data = {}) => {
     const patch = { ...data };
-    if (data.truckNo !== undefined) patch.truckNo = normalizeTruckNo(data.truckNo);
-    if (data.ownerName !== undefined) patch.ownerName = String(data.ownerName || '').trim();
-    if (data.ownerContact !== undefined) patch.ownerContact = String(data.ownerContact || '').trim();
-    if (data.driverName !== undefined) patch.driverName = String(data.driverName || '').trim();
-    if (data.driverContact !== undefined) patch.driverContact = String(data.driverContact || '').trim();
-    if (data.vehicleType !== undefined) patch.vehicleType = data.vehicleType || 'Trailer';
-    if (data.bankDetails !== undefined) patch.bankDetails = data.bankDetails || '';
-    if (data.gpsType !== undefined) patch.gpsType = data.gpsType || 'none';
+    if (patch.truckNo !== undefined) patch.truckNo = normalizeTruckNo(patch.truckNo);
+    // All other fields are passed as is or can be handled by spreading
     return patch;
 };
 

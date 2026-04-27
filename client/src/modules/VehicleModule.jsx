@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
+import { AlertTriangle, Banknote, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 
 const API = `/vehicles`;
@@ -15,18 +15,65 @@ const getEmptyForm = () => ({
     driverContact: '',
     vehicleType: 'Trailer',
     ownershipType: 'market',
+    make: 'Tata',
+    model: '',
+    grossWeight: '',
+    unladenWeight: '',
+    regDate: '',
+    nationalPermitDate: '',
+    rcDetails: JSON.stringify({ engineNo: '', chassisNo: '', fitnessNo: '' }),
+    docNumbers: JSON.stringify({ rcNo: '', insuranceNo: '', pollutionNo: '', permitNo: '', fitnessNo: '', taxNo: '' }),
     bankDetails: JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
-    gpsType: 'none'
+    gpsType: 'none',
+    emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [] }),
+    docs: JSON.stringify({ rc: '', pollution: '', permit: '', insurance: '', fitness: '', tax: '' }),
+    fastag: ''
 });
 
-const parseBank = (str) => {
+const parseJson = (str, fallback = {}) => {
     try {
         const parsed = JSON.parse(str);
         if (typeof parsed === 'object' && parsed !== null) return parsed;
     } catch { }
-    // Legacy fallback
-    return { name: '', bank: '', account: str || '', ifsc: '' };
+    return fallback;
 };
+
+/* ── Vehicle Visualizer ── */
+function VehicleVisualizer() {
+    return (
+        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="card" style={{ marginBottom: '24px', overflow: 'hidden', border: '1px solid var(--primary-glow)' }}>
+            <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="card-title-block">
+                    <div className="card-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}><Info size={17} /></div>
+                    <div className="card-title-text">
+                        <h3>Vehicle Anatomy & Parts Guide</h3>
+                        <p>Locate key components for maintenance (Tata/Ashok Leyland style)</p>
+                    </div>
+                </div>
+            </div>
+            <div style={{ position: 'relative', background: '#0f172a', padding: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px' }}>
+                <img src="/commercial_vehicle_parts_diagram_1777288985862.png" alt="Vehicle Parts Diagram" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} />
+                
+                <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '10px', color: '#10b981', fontWeight: 800 }}>ENGINE AREA</div>
+                    <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '10px', color: '#3b82f6', fontWeight: 800 }}>CHASSIS FRAME</div>
+                    <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '10px', color: '#f59e0b', fontWeight: 800 }}>AXLE SYSTEM</div>
+                </div>
+
+                <div style={{ position: 'absolute', bottom: '20px', left: '20px', background: 'rgba(0,0,0,0.7)', padding: '12px 20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(8px)', maxWidth: '280px' }}>
+                    <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', marginBottom: '8px' }}>Maintenance Checkpoints</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        {['Fuel Tank', 'Battery Box', 'Air Filter', 'Propeller Shaft'].map(p => (
+                            <div key={p} style={{ fontSize: '11px', color: '#f1f5f9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#3b82f6' }} /> {p}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
 
 /* ── Delete Modal ── */
 function DeleteConfirm({ vehicle, onClose, onConfirm }) {
@@ -39,13 +86,13 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
             <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
-                style={{ width: '90%', maxWidth: '380px', background: '#0f172a', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}>
+                style={{ width: '90%', maxWidth: '380px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}>
                 <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                     <AlertTriangle size={26} color="#f43f5e" />
                 </div>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: '#f1f5f9', marginBottom: '8px' }}>Delete Vehicle?</div>
-                <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}><strong style={{ color: '#f1f5f9' }}>{vehicle.truckNo}</strong> ({vehicle.ownerName})</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '22px' }}>This action cannot be undone.</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Vehicle?</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '6px' }}><strong style={{ color: 'var(--text)' }}>{vehicle.truckNo}</strong> ({vehicle.ownerName})</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This action cannot be undone.</div>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                     <button className="btn btn-g" onClick={onClose}>Cancel</button>
                     <button className="btn btn-d" onClick={handleDelete} disabled={deleting}>
@@ -63,10 +110,31 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [saving, setSaving] = useState(false);
 
     // UI State
-    const [tab, setTab] = useState('list'); // 'list' or 'add'
+    const [tab, setTab] = useState('list'); 
+    const [ownershipFilter, setOwnershipFilter] = useState('all'); 
     const [fSearch, setFSearch] = useState('');
     const [expandedOwners, setExpandedOwners] = useState({});
+    const [profiles, setProfiles] = useState([]);
+    const [loadingProfiles, setLoadingProfiles] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
+    
+    const fetchData = useCallback(async () => {
+        try {
+            setLoading(true);
+            const [vRes, pRes] = await Promise.all([
+                ax.get(API),
+                ax.get('/profiles')
+            ]);
+            setVehicles(vRes.data || []);
+            setProfiles(pRes.data || []);
+        } catch (error) {
+            console.error("Failed to load data", error);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     // Form State
     const [form, setForm] = useState(getEmptyForm());
@@ -74,55 +142,40 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [err, setErr] = useState('');
 
-    const fetchData = async () => {
-        try {
-            const { data } = await ax.get(API);
-            setVehicles(data);
-        } catch (error) {
-            console.error("Failed to load vehicles", error);
-        } finally {
-            setLoading(false);
-        }
+    const checkExpiry = (dateStr) => {
+        if (!dateStr) return null;
+        const expiry = new Date(dateStr);
+        const now = new Date();
+        const diff = (expiry - now) / (1000 * 60 * 60 * 24);
+        if (diff < 0) return 'expired';
+        if (diff < 30) return 'near';
+        return 'ok';
     };
 
-    useEffect(() => { fetchData(); }, []);
+    const isNearExpiry = (v) => {
+        const d = parseJson(v.docs);
+        return Object.values(d).some(date => checkExpiry(date) === 'near' || checkExpiry(date) === 'expired');
+    };
 
-    // Compute grouped owners
-    const owners = useMemo(() => {
-        const map = {};
-        const lowerSearch = fSearch.toLowerCase();
-
-        vehicles.forEach(v => {
-            // filtering
-            const match = `${v.truckNo} ${v.ownerName} ${v.ownerContact} ${v.driverName}`.toLowerCase().includes(lowerSearch);
-            if (fSearch && !match) return;
-
-            const oName = v.ownerName || 'Unknown Owner';
-            if (!map[oName]) {
-                map[oName] = {
-                    name: oName,
-                    vehicles: [],
-                    bankDetails: v.bankDetails || '', // Use the first available bank details
-                    contact: v.ownerContact || ''
-                };
-            }
-
-            // Upgrade bank details if we find a better one from another vehicle
-            if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
-            if (!map[oName].contact && v.ownerContact) map[oName].contact = v.ownerContact;
-
-            map[oName].vehicles.push(v);
-        });
-
-        return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
-    }, [vehicles, fSearch]);
+    const getDocIcon = (type, date) => {
+        const status = checkExpiry(date);
+        if (!date) return null;
+        const color = status === 'expired' ? 'var(--danger)' : status === 'near' ? '#f59e0b' : '#10b981';
+        return (
+            <div key={type} style={{ fontSize: '10px', color, display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${status === 'ok' ? 'var(--border)' : color}` }}>
+                {status !== 'ok' && <AlertTriangle size={10} />}
+                <span style={{ fontWeight: 800 }}>{type.toUpperCase()}:</span> {new Date(date).toLocaleDateString('en-IN')}
+            </div>
+        );
+    };
 
     const handleEdit = (v) => {
         setForm({
-            truckNo: v.truckNo || '', ownerName: v.ownerName || '', ownerContact: v.ownerContact || '',
-            driverName: v.driverName || '', driverContact: v.driverContact || '',
-            vehicleType: v.vehicleType || 'Trailer', ownershipType: v.ownershipType || 'market', bankDetails: v.bankDetails || JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
-            gpsType: v.gpsType || 'none'
+            ...getEmptyForm(),
+            ...v,
+            bankDetails: v.bankDetails || getEmptyForm().bankDetails,
+            emiDetails: v.emiDetails || getEmptyForm().emiDetails,
+            docs: v.docs || getEmptyForm().docs
         });
         setEditId(v.id);
         setTab('add');
@@ -136,13 +189,13 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         }
         if (!form.truckNo || !form.ownerName) { setErr('Truck Number and Owner Name are required'); return; }
         const duplicate = vehicles.find(v => v.id !== editId && cleanTruckNo(v.truckNo) === cleanTruckNo(form.truckNo));
-        if (duplicate) { setErr(`Truck number ${cleanTruckNo(form.truckNo)} already exists in vehicle details`); return; }
+        if (duplicate) { setErr(`Truck number ${cleanTruckNo(form.truckNo)} already exists`); return; }
         setErr('');
         setIsConfirmingSave(true);
     };
 
     const executeGPSDeduction = async () => {
-        if (!window.confirm('WARNING: This will securely deduct ₹250 from the Advance Balance ledger of EVERY vehicle that has a GPS assigned. Are you completely sure you want to run the deductions for this month?')) return;
+        if (!window.confirm('Run monthly GPS deduction? (₹250 per device)')) return;
         try {
             const { data } = await ax.post(`${API}/deduct-gps`, {
                 date: new Date().toISOString().slice(0, 10),
@@ -158,18 +211,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setSaving(true); setIsConfirmingSave(false);
         try {
             if (editId) {
-                if (!(role === 'admin' || permissions?.vehicle === 'edit')) {
-                    setErr('Permission denied (Edit access required)');
-                    setSaving(false);
-                    return;
-                }
                 await ax.patch(`${API}/${editId}`, form);
             } else {
-                if (!(role === 'admin' || permissions?.vehicle === 'edit')) {
-                    setErr('Permission denied (Add access required)');
-                    setSaving(false);
-                    return;
-                }
                 await ax.post(API, form);
             }
             await fetchData();
@@ -201,347 +244,379 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         }
     };
 
-    const toggleToNew = () => {
-        if (!(role === 'admin' || permissions?.vehicle === 'edit')) {
-            alert('Permission denied');
-            return;
+    const calculateEMI = (p, r, n) => {
+        const principal = parseFloat(p) || 0;
+        const rate = (parseFloat(r) || 0) / 12 / 100;
+        const months = parseInt(n) || 0;
+        if (!principal || !rate || !months) return 0;
+        const emi = principal * rate * (Math.pow(1 + rate, months) / (Math.pow(1 + rate, months) - 1));
+        return Math.round(emi);
+    };
+
+    const handleMarkPaid = async (v) => {
+        if (!window.confirm('Mark current month EMI as paid/deducted?')) return;
+        const d = parseJson(v.emiDetails);
+        const paid = d.paidEmis || [];
+        paid.push(new Date().toISOString().slice(0, 7)); // Save YYYY-MM
+        d.paidEmis = [...new Set(paid)];
+        try {
+            await ax.patch(`${API}/${v.id}`, { emiDetails: JSON.stringify(d) });
+            fetchData();
+        } catch { alert('Update failed'); }
+    };
+
+    const calculateAge = (date) => {
+        if (!date) return 'N/A';
+        const start = new Date(date);
+        const now = new Date();
+        const diff = now.getFullYear() - start.getFullYear();
+        return diff > 0 ? `${diff} Years` : 'New';
+    };
+
+    const handleSendAlerts = async () => {
+        const email = "VIKASKUMAR909040@GMAIL.COM";
+        
+        try {
+            // Trigger Backend Email Alert
+            const res = await ax.get('/vehicles/alerts/report');
+            if (res.data.success) {
+                alert(`Alerts Processed! Email report sent to ${email} (Check your Inbox/Spam).`);
+            } else {
+                alert(`Email skip: ${res.data.message || 'No alerts to send today.'}`);
+            }
+        } catch (err) {
+            console.error('Email trigger failed:', err);
+            alert('Failed to send email alert. Check server connection.');
         }
+    };
+
+    const toggleToNew = () => {
         setForm(getEmptyForm());
         setEditId(null);
         setTab('add');
     };
 
-    // Unique owners for datalist
+    // Owners grouping
+    const owners = useMemo(() => {
+        const map = {};
+        const lowerSearch = fSearch.toLowerCase();
+        vehicles.forEach(v => {
+            if (ownershipFilter !== 'all' && v.ownershipType !== ownershipFilter) return;
+            const match = `${v.truckNo} ${v.ownerName} ${v.ownerContact} ${v.driverName} ${v.fastag}`.toLowerCase().includes(lowerSearch);
+            if (fSearch && !match) return;
+
+            const oName = v.ownerName || 'Unknown Owner';
+            if (!map[oName]) map[oName] = { name: oName, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
+            if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
+            map[oName].vehicles.push(v);
+        });
+        return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+    }, [vehicles, fSearch, ownershipFilter]);
+
     const uniqueOwners = [...new Set(vehicles.map(v => v.ownerName))].filter(Boolean);
     const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
 
     return (
         <div>
-            {/* Delete Modal */}
             <AnimatePresence>
-                {deleteTarget && (
-                    <DeleteConfirm 
-                        vehicle={deleteTarget} 
-                        onClose={() => setDeleteTarget(null)} 
-                        onConfirm={() => { 
-                            setDeleteTarget(null); 
-                            fetchData();
-                            if (editId === deleteTarget.id) {
-                                setEditId(null);
-                                setForm(getEmptyForm());
-                                setTab('list');
-                            }
-                        }} 
-                    />
-                )}
+                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchData(); }} />}
             </AnimatePresence>
 
-            <ConfirmSaveModal
-                isOpen={isConfirmingSave}
-                onClose={() => setIsConfirmingSave(false)}
-                onConfirm={executeSave}
-                title={editId ? "Update Vehicle" : "Add Vehicle"}
-                message={`Are you sure you want to save ${form.truckNo} for ${form.ownerName}?`}
-                isSaving={saving}
-            />
+            <ConfirmSaveModal isOpen={isConfirmingSave} onClose={() => setIsConfirmingSave(false)} onConfirm={executeSave} title={editId ? "Update Vehicle" : "Add Vehicle"} message={`Save changes for ${form.truckNo}?`} isSaving={saving} />
 
             <div className="page-hd">
-                <div>
-                    <h1><Truck size={20} color="#10b981" /> Vehicle & Owner Directory</h1>
-                    <p>Manage transport vehicles, owners, drivers and bank details</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '12px', boxShadow: '0 8px 16px var(--primary-glow)' }}><Truck size={24} /></div>
+                    <div>
+                        <h1>Fleet & Asset Management</h1>
+                        <p>Detailed RC inventory, EMI tracking, and commercial documentation</p>
+                    </div>
                 </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}>
-                    <Briefcase size={14} /> Owner Directory
-                </button>
-                <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>
-                    {editId ? <><Edit3 size={14} /> Edit Vehicle</> : <><Plus size={14} /> Add New Vehicle</>}
-                </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Briefcase size={14} /> Asset List</button>
+                    <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Update Record</> : <><Plus size={14} /> New Vehicle Profile</>}</button>
+                </div>
+                {tab === 'list' && (
+                    <div className="tab-grp">
+                        <button className="tab-btn tab-indigo" onClick={handleSendAlerts} style={{ marginRight: '10px', background: '#3b82f6', color: 'white' }}>
+                            <FileText size={14} /> Send Email Alerts
+                        </button>
+                        <button className={`tab-btn${ownershipFilter === 'all' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('all')}>All</button>
+                        <button className={`tab-btn${ownershipFilter === 'self' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('self')}>Self</button>
+                        <button className={`tab-btn${ownershipFilter === 'market' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('market')}>Market</button>
+                    </div>
+                )}
             </div>
+
+            {tab === 'list' && ownershipFilter === 'self' && <VehicleVisualizer />}
 
             {tab === 'add' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card">
-                    <div className="card-header">
-                        <div className="card-title-block">
-                            <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}><Truck size={17} /></div>
-                            <div className="card-title-text">
-                                <h3>{editId ? 'Edit Vehicle Details' : 'Register New Vehicle'}</h3>
-                                <p>Add vehicle, ownership, and payment info</p>
-                            </div>
-                        </div>
-                    </div>
                     <form className="card-body" onSubmit={handleSaveRequest}>
                         <div className="fg fg-3">
                             <div className="field">
                                 <label>Truck No. *</label>
-                                <input className="fi" type="text" placeholder="e.g. RJ01AB1234 or HR361234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="vehicle-truck-list" />
-                                <datalist id="vehicle-truck-list">
-                                    {uniqueTruckNos.map(no => <option key={no} value={no} />)}
-                                </datalist>
+                                <input className="fi" type="text" placeholder="RJXX-XXXX" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
+                                <datalist id="truck-list">{uniqueTruckNos.map(no => <option key={no} value={no} />)}</datalist>
                             </div>
                             <div className="field">
-                                <label>Vehicle Type</label>
+                                <label>Make & Model</label>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <select className="fi" style={{ flex: 1 }} value={form.make} onChange={e => setForm({ ...form, make: e.target.value })}>
+                                        <option value="Tata">Tata</option>
+                                        <option value="Ashok Leyland">Ashok Leyland</option>
+                                        <option value="BharatBenz">BharatBenz</option>
+                                        <option value="Eicher">Eicher</option>
+                                        <option value="Mahindra">Mahindra</option>
+                                    </select>
+                                    <input className="fi" style={{ flex: 1 }} type="text" placeholder="e.g. 3518, 4018" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
+                                </div>
+                            </div>
+                            <div className="field">
+                                <label>Type</label>
                                 <select className="fi" value={form.vehicleType} onChange={e => setForm({ ...form, vehicleType: e.target.value })}>
                                     <option value="Trailer">Trailer</option>
-                                    <option value="Canter">Canter</option>
                                     <option value="Dump Truck">Dump Truck</option>
-                                    <option value="Other">Other</option>
+                                    <option value="Canter">Canter</option>
                                 </select>
                             </div>
                             <div className="field">
-                                <label>Ownership Type</label>
+                                <label>Ownership</label>
                                 <select className="fi" value={form.ownershipType} onChange={e => setForm({ ...form, ownershipType: e.target.value })}>
                                     <option value="market">Market Vehicle</option>
-                                    <option value="self">Self Vehicle (Tracks Mileage)</option>
+                                    <option value="self">Self Vehicle</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div className="fg fg-1" style={{ marginTop: '0px' }}>
+                        <div className="fg fg-3">
                             <div className="field">
-                                <label>GPS Navigation System</label>
-                                <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })} style={{ background: form.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : form.gpsType === 'jksuper' ? 'rgba(14,165,233,0.1)' : form.gpsType === 'both' ? 'rgba(99,102,241,0.1)' : 'var(--bg-input)' }}>
-                                    <option value="none">None (No GPS)</option>
-                                    <option value="jkl">JK Lakshmi GPS (Deduct ₹250/m)</option>
-                                    <option value="jksuper">JK Super GPS (Deduct ₹250/m)</option>
-                                    <option value="both">Both GPS (Deduct ₹500/m)</option>
-                                </select>
+                                <label>Gross Weight (KG)</label>
+                                <input className="fi" type="number" placeholder="GVW" value={form.grossWeight} onChange={e => setForm({ ...form, grossWeight: e.target.value })} />
+                            </div>
+                            <div className="field">
+                                <label>Unladen Weight (KG)</label>
+                                <input className="fi" type="number" placeholder="Kerb weight" value={form.unladenWeight} onChange={e => setForm({ ...form, unladenWeight: e.target.value })} />
+                            </div>
+                            <div className="field">
+                                <label>Payload (Calculated)</label>
+                                <div className="fi" style={{ background: 'var(--bg-th)', color: 'var(--primary)', fontWeight: 800 }}>
+                                    {Math.max(0, (parseFloat(form.grossWeight) || 0) - (parseFloat(form.unladenWeight) || 0))} KG
+                                </div>
                             </div>
                         </div>
-
-                        {form.ownershipType !== 'self' && (
-                            <>
-                                <hr className="sep" />
-                                <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <User size={15} color="var(--primary)" /> Owner Information
-                                </h4>
-
-                                <div className="fg fg-2">
-                                    <div className="field">
-                                        <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select existing to copy bank details)</span></label>
-                                        <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required={form.ownershipType !== 'self'} list="owner-list" />
-                                        <datalist id="owner-list">
-                                            {uniqueOwners.map(o => <option key={o} value={o} />)}
-                                        </datalist>
-                                    </div>
-                                    <div className="field">
-                                        <label>Owner Contact</label>
-                                        <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
-                                    </div>
-                                </div>
-
-                                <div className="field">
-                                    <label><CreditCard size={11} /> Bank Payment Details (for Owner)</label>
-                                    <div style={{ padding: '12px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        <div className="fg fg-2" style={{ marginBottom: 0 }}>
-                                            <div className="field" style={{ marginBottom: 0 }}>
-                                                <label style={{ fontSize: '10px' }}>Account Holder Name</label>
-                                                <input className="fi" type="text" placeholder="Name on account" value={parseBank(form.bankDetails).name} onChange={e => {
-                                                    const b = parseBank(form.bankDetails); b.name = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                                }} />
-                                            </div>
-                                            <div className="field" style={{ marginBottom: 0 }}>
-                                                <label style={{ fontSize: '10px' }}>Bank Name</label>
-                                                <input className="fi" type="text" placeholder="e.g. HDFC Bank" value={parseBank(form.bankDetails).bank} onChange={e => {
-                                                    const b = parseBank(form.bankDetails); b.bank = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                                }} />
-                                            </div>
-                                        </div>
-                                        <div className="fg fg-2" style={{ marginBottom: 0 }}>
-                                            <div className="field" style={{ marginBottom: 0 }}>
-                                                <label style={{ fontSize: '10px' }}>Account Number</label>
-                                                <input className="fi" type="text" placeholder="Account no." value={parseBank(form.bankDetails).account} onChange={e => {
-                                                    const b = parseBank(form.bankDetails); b.account = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                                }} />
-                                            </div>
-                                            <div className="field" style={{ marginBottom: 0 }}>
-                                                <label style={{ fontSize: '10px' }}>IFSC Code</label>
-                                                <input className="fi" type="text" placeholder="IFSC Code" value={parseBank(form.bankDetails).ifsc} onChange={e => {
-                                                    const b = parseBank(form.bankDetails); b.ifsc = e.target.value; setForm({ ...form, bankDetails: JSON.stringify(b) });
-                                                }} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        <hr className="sep" />
-                        <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Car size={15} color="var(--primary)" /> Driver Information (Optional)
-                        </h4>
 
                         <div className="fg fg-2">
                             <div className="field">
-                                <label>Driver Name</label>
-                                <input className="fi" type="text" placeholder="Current driver" value={form.driverName} onChange={e => setForm({ ...form, driverName: e.target.value })} />
+                                <label>Registration Date (Age: {calculateAge(form.regDate)})</label>
+                                <input className="fi" type="date" value={form.regDate} onChange={e => setForm({ ...form, regDate: e.target.value })} />
                             </div>
                             <div className="field">
-                                <label>Driver Contact</label>
-                                <input className="fi" type="text" placeholder="Phone number" value={form.driverContact} onChange={e => setForm({ ...form, driverContact: e.target.value })} />
+                                <label>National Permit Expiry</label>
+                                <input className="fi" type="date" value={form.nationalPermitDate} onChange={e => setForm({ ...form, nationalPermitDate: e.target.value })} />
                             </div>
                         </div>
 
-                        {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600, marginTop: '8px' }}>{err}</div>}
+                        <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>
+                            <div className="fg fg-3">
+                                <div className="field">
+                                    <label>RC Number</label>
+                                    <input className="fi" type="text" value={parseJson(form.docNumbers).rcNo} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
+                                </div>
+                                <div className="field">
+                                    <label>Insurance Policy No.</label>
+                                    <input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
+                                </div>
+                                <div className="field">
+                                    <label>Permit Number</label>
+                                    <input className="fi" type="text" value={parseJson(form.docNumbers).permitNo} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
+                                </div>
+                            </div>
+                            <div className="fg fg-3">
+                                <div className="field">
+                                    <label>Engine No.</label>
+                                    <input className="fi" type="text" value={parseJson(form.rcDetails).engineNo} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} />
+                                </div>
+                                <div className="field">
+                                    <label>Chassis No.</label>
+                                    <input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} />
+                                </div>
+                                <div className="field">
+                                    <label>Fastag Serial</label>
+                                    <input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} />
+                                </div>
+                            </div>
+                        </div>
 
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                            <button type="submit" className="btn btn-p" disabled={saving} style={{ flex: 1 }}>
-                                {saving ? 'Saving...' : <><Check size={14} /> Save Vehicle Record</>}
-                            </button>
-                            {editId && (
-                                <>
-                                    {(role === 'admin' || permissions?.vehicle === 'edit') && (
-                                        <button 
-                                            type="button" 
-                                            className="btn btn-d" 
-                                            onClick={() => {
-                                                const v = vehicles.find(v => v.id === editId);
-                                                if (v) setDeleteTarget(v);
-                                            }}
-                                            style={{ padding: '0 20px' }}
-                                        >
-                                            <Trash2 size={14} /> Delete
-                                        </button>
-                                    )}
-                                    <button type="button" className="btn btn-g" onClick={toggleToNew}>Cancel Edit</button>
-                                </>
+                        {form.ownershipType === 'self' && (
+                            <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(59,130,246,0.05)', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.1)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Banknote size={16} color="#3b82f6" /> EMI Loan Calculator & Tracking</h4>
+                                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '4px 10px', borderRadius: '20px' }}>AUTO CALCULATE ENABLED</div>
+                                </div>
+                                <div className="fg fg-3">
+                                    <div className="field"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                </div>
+                                <div className="fg fg-3">
+                                    <div className="field"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                </div>
+                                <div className="fg fg-2">
+                                    <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} /> Virtual RC & Documents</h4>
+                            <div className="fg fg-3">
+                                {['rc', 'pollution', 'permit', 'insurance', 'fitness', 'tax'].map(doc => (
+                                    <div className="field" key={doc}>
+                                        <label>{doc.toUpperCase()} Expiry</label>
+                                        <input className="fi" type="date" value={parseJson(form.docs)[doc]} onChange={e => { const d = parseJson(form.docs); d[doc] = e.target.value; setForm({ ...form, docs: JSON.stringify(d) }); }} />
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="field" style={{ marginTop: '12px' }}><label>Fastag ID</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
+                        </div>
+
+                        <div className="fg fg-2" style={{ marginTop: '20px' }}>
+                            {form.ownershipType !== 'self' && (
+                                <div className="field">
+                                    <label>Owner Name</label>
+                                    <input className="fi" type="text" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} list="owner-list" />
+                                    <datalist id="owner-list">{uniqueOwners.map(o => <option key={o} value={o} />)}</datalist>
+                                </div>
                             )}
+                            <div className="field">
+                                <label>Driver Name</label>
+                                <select className="fi" value={form.driverName} onChange={e => { const p = profiles.find(x => x.name === e.target.value); setForm({ ...form, driverName: e.target.value, driverContact: p?.mobileNumbers?.[0] || '' }); }}>
+                                    <option value="">Select Driver</option>
+                                    {profiles.filter(p => p.type === 'Driver').map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                        {err && <div style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '12px', fontWeight: 600 }}>{err}</div>}
+                        <div style={{ marginTop: '24px', display: 'flex', gap: '10px' }}>
+                            <button type="submit" className="btn btn-p" disabled={saving} style={{ flex: 1 }}>{saving ? 'Saving...' : 'Save Vehicle'}</button>
+                            <button type="button" className="btn btn-g" onClick={() => setTab('list')}>Cancel</button>
                         </div>
                     </form>
                 </motion.div>
             )}
 
             {tab === 'list' && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card">
-                    <div className="card-header" style={{ flexWrap: 'wrap', gap: '10px' }}>
-                        <div className="card-title-block">
-                            <div className="card-icon ci-indigo"><Briefcase size={17} /></div>
-                            <div className="card-title-text" style={{ flex: 1 }}>
-                                <h3>Registered Owners</h3>
-                                <p>{owners.length} owners, {vehicles.length} vehicles</p>
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <div style={{ position: 'relative', minWidth: '220px' }}>
-                            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input className="fi" type="text" placeholder="Search vehicle, owner, driver..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '32px' }} />
-                        </div>
-                            {role === 'admin' && (
-                                <button className="btn btn-a" onClick={executeGPSDeduction} style={{ fontSize: '11px', padding: '6px 12px' }}>
-                                    💸 Run Monthly GPS Deduction
-                                </button>
-                            )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="card" style={{ padding: '16px' }}>
+                        <div style={{ position: 'relative' }}>
+                            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input className="fi" type="text" placeholder="Search vehicle or owner..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '40px' }} />
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        {loading ? (
-                            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>Loading vehicles...</div>
-                        ) : owners.length === 0 ? (
-                            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>No vehicles or owners found.</div>
-                        ) : (
-                            owners.map(owner => {
-                                const isExp = expandedOwners[owner.name] !== false; // Default expanded
-                                return (
-                                    <div key={owner.name} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <div
-                                            onClick={() => toggleOwner(owner.name)}
-                                            style={{ padding: '16px 20px', background: isExp ? 'var(--bg-th)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'background 0.2s' }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div style={{ color: 'var(--text-muted)', display: 'flex' }}>
-                                                    {isExp ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                                                </div>
-                                                <div>
-                                                    <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>{owner.name}</div>
-                                                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                                                        <span style={{ fontWeight: 700, color: 'var(--primary)', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{owner.vehicles.length} Vehicle(s)</span>
-                                                        {owner.contact && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={10} /> {owner.contact}</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {owner.bankDetails && (
-                                                <div style={{ fontSize: '11px', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    <CreditCard size={13} style={{ flexShrink: 0 }} /> Bank Info Saved
-                                                </div>
-                                            )}
+                    {owners.map(owner => (
+                        <div key={owner.name} className="card" style={{ overflow: 'hidden' }}>
+                            <div onClick={() => toggleOwner(owner.name)} style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: expandedOwners[owner.name] ? 'var(--bg-th)' : 'transparent' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    {expandedOwners[owner.name] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                    <div>
+                                        <div style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            {owner.name}
+                                            {owner.vehicles.some(v => isNearExpiry(v)) && <span style={{ background: 'var(--danger)', color: 'white', fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>ALERT</span>}
                                         </div>
-
-                                        <AnimatePresence>
-                                            {isExp && (
-                                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-                                                    <div style={{ padding: '0 20px 16px 44px' }}>
-                                                        {owner.bankDetails && (() => {
-                                                            const b = parseBank(owner.bankDetails);
-                                                            return (
-                                                                <div style={{ marginBottom: '12px', padding: '12px', background: 'var(--bg-input)', border: '1px dashed var(--border-input)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-sub)' }}>
-                                                                    <strong style={{ color: 'var(--text)', display: 'block', marginBottom: '6px' }}>💳 Bank Details:</strong>
-                                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                                                        {b.name && <div><span style={{ opacity: 0.6 }}>Name:</span> <strong style={{ color: 'var(--text)' }}>{b.name}</strong></div>}
-                                                                        {b.bank && <div><span style={{ opacity: 0.6 }}>Bank:</span> <strong style={{ color: 'var(--text)' }}>{b.bank}</strong></div>}
-                                                                        {b.account && <div><span style={{ opacity: 0.6 }}>A/C No:</span> <strong style={{ color: 'var(--text)', fontFamily: 'monospace' }}>{b.account}</strong></div>}
-                                                                        {b.ifsc && <div><span style={{ opacity: 0.6 }}>IFSC:</span> <strong style={{ color: 'var(--text)', fontFamily: 'monospace' }}>{b.ifsc}</strong></div>}
-                                                                    </div>
-                                                                    {(!b.name && !b.bank && !b.ifsc && b.account) && <div>{b.account}</div>}
-                                                                </div>
-                                                            )
-                                                        })()}
-
-                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-                                                            {owner.vehicles.map(v => (
-                                                                <div key={v.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', position: 'relative' }}>
-                                                                    <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '4px' }}>
-                                                                        {(role === 'admin' || permissions?.vehicle === 'edit') && (
-                                                                            <button className="btn btn-g btn-icon btn-sm" onClick={() => handleEdit(v)} title="Edit"><Edit3 size={12} /></button>
-                                                                        )}
-                                                                        {role === 'admin' && (
-                                                                            <button className="btn btn-d btn-icon btn-sm" onClick={() => setDeleteTarget(v)} title="Delete"><Trash2 size={12} /></button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                                                        <div style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '6px', borderRadius: '8px' }}><Truck size={14} /></div>
-                                                                        <div style={{ fontSize: '15px', fontWeight: 900, fontFamily: 'monospace', color: 'var(--text)' }}>{v.truckNo}</div>
-                                                                        <div style={{ fontSize: '10px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, color: 'var(--text-sub)' }}>{v.vehicleType || 'Trailer'}</div>
-                                                                        {v.ownershipType === 'self' && (
-                                                                            <div style={{ fontSize: '10px', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: '#f59e0b' }}>
-                                                                                Self Vehicle
-                                                                            </div>
-                                                                        )}
-                                                                        {v.gpsType && v.gpsType !== 'none' && (
-                                                                            <div style={{ fontSize: '10px', background: v.gpsType === 'jkl' ? 'rgba(16,185,129,0.1)' : v.gpsType === 'both' ? 'rgba(99,102,241,0.1)' : 'rgba(14,165,233,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: v.gpsType === 'jkl' ? '#10b981' : v.gpsType === 'both' ? '#6366f1' : '#0ea5e9' }}>
-                                                                                {v.gpsType === 'jkl' ? 'JK Lakshmi GPS' : v.gpsType === 'both' ? 'Both GPS' : 'JK Super GPS'}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-
-                                                                    {(v.driverName || v.driverContact) && (
-                                                                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)', fontSize: '12px', color: 'var(--text-sub)' }}>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}><User size={12} /> <strong style={{ color: 'var(--text)' }}>Driver:</strong> {v.driverName || 'N/A'}</div>
-                                                                            {v.driverContact && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '18px' }}><Phone size={10} /> {v.driverContact}</div>}
-                                                                        </div>
-                                                                    )}
-                                                                    {(role === 'admin' && (v.createdBy || v.updatedBy)) && (
-                                                                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)', fontSize: '10px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-                                                                            <span>Created: {v.createdBy || '—'}</span>
-                                                                            <span>Updated: {v.updatedBy || '—'}</span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{owner.vehicles.length} Vehicles • {owner.contact || 'No Contact'}</div>
                                     </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </motion.div>
+                                </div>
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}><CreditCard size={12} /> Bank Details Linked</div>
+                            </div>
+                            
+                            <AnimatePresence>
+                                {expandedOwners[owner.name] && (
+                                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
+                                        <div style={{ padding: '20px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+                                            {owner.vehicles.map(v => (
+                                                <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: isNearExpiry(v) ? 'rgba(239,68,68,0.02)' : 'var(--bg-card)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                                        <div>
+                                                            <div style={{ fontWeight: 900, fontSize: '16px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <Truck size={16} /> {v.truckNo}
+                                                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>({v.make} {v.model})</span>
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
+                                                                <span>{v.ownershipType.toUpperCase()}</span>
+                                                                <span>• {calculateAge(v.regDate)}</span>
+                                                                <span>• {v.grossWeight ? `${v.grossWeight}KG GVW` : ''}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={() => handleEdit(v)} style={{ color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer' }}><Edit3 size={14} /></button>
+                                                    </div>
+                                                    
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                                                        {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
+                                                        {v.nationalPermitDate && getDocIcon('National Permit', v.nationalPermitDate)}
+                                                    </div>
+
+                                                    {v.ownershipType === 'self' && parseJson(v.emiDetails).loanNo && (() => {
+                                                        const emi = parseJson(v.emiDetails);
+                                                        const paidCount = (emi.paidEmis || []).length;
+                                                        const totalTenure = parseInt(emi.tenure) || 0;
+                                                        const pendingEmis = totalTenure - paidCount;
+                                                        return (
+                                                            <div style={{ padding: '12px', background: 'rgba(59,130,246,0.05)', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.1)', marginBottom: '12px' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                                    <div style={{ fontWeight: 800, color: '#3b82f6', fontSize: '11px' }}>{emi.bankName || 'BANK'} — {emi.loanNo}</div>
+                                                                    <button 
+                                                                        onClick={() => handleMarkPaid(v)}
+                                                                        style={{ fontSize: '10px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                                                                    >
+                                                                        Mark Paid
+                                                                    </button>
+                                                                </div>
+                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px' }}>
+                                                                    <div><span style={{ opacity: 0.6 }}>EMI:</span> <strong style={{ color: 'var(--text)' }}>₹{parseFloat(emi.due).toLocaleString()}</strong></div>
+                                                                    <div style={{ textAlign: 'right' }}><span style={{ opacity: 0.6 }}>Rate:</span> <strong style={{ color: 'var(--text)' }}>{emi.interestRate}%</strong></div>
+                                                                    <div><span style={{ opacity: 0.6 }}>Paid:</span> <strong style={{ color: '#10b981' }}>{paidCount} EMIs</strong></div>
+                                                                    <div style={{ textAlign: 'right' }}><span style={{ opacity: 0.6 }}>Pending:</span> <strong style={{ color: 'var(--danger)' }}>{pendingEmis} EMIs</strong></div>
+                                                                </div>
+                                                                {emi.pending && (
+                                                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '10px', color: 'var(--text-sub)' }}>
+                                                                        Outstanding Principal: <strong>₹{parseFloat(emi.pending).toLocaleString()}</strong>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {/* RC Quick Info */}
+                                                    {v.rcDetails && parseJson(v.rcDetails).engineNo && (
+                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                                                            <div>E: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).engineNo}</span></div>
+                                                            <div>C: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).chassisNo}</span></div>
+                                                        </div>
+                                                    )}
+
+                                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', color: 'var(--text-sub)' }}>
+                                                        <span><User size={12} /> {v.driverName || 'No Driver'}</span>
+                                                        {v.fastag && <span><CreditCard size={12} /> {v.fastag}</span>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    ))}
+                </div>
             )}
         </div>
     );

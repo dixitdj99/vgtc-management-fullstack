@@ -42,8 +42,21 @@ export default function PayModule({ brand, role, permissions }) {
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
   const [selectedLrs, setSelectedLrs] = useState(new Set());
+  const [view, setView] = useState('freight'); // 'freight' or 'firm'
+  const [profiles, setProfiles] = useState([]);
+  const [firmPayments, setFirmPayments] = useState([]);
+  const [showLedger, setShowLedger] = useState(null);
   
-  // Date Filters
+  // Firm Payment Form
+  const [firmForm, setFirmForm] = useState({
+    profileId: '',
+    otherProfileName: '',
+    category: 'Advance',
+    amount: '',
+    date: new Date().toISOString().slice(0, 10),
+    remark: '',
+    paymentMethod: 'Cash'
+  });
   const [dateFilter, setDateFilter] = useState('all'); // 'all', 'month', '15days', 'custom'
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -60,6 +73,16 @@ export default function PayModule({ brand, role, permissions }) {
   const [vehiclesInfo, setVehiclesInfo] = useState([]);
   const [receiptModal, setReceiptModal] = useState(null);
 
+  // Vehicle Advance states (synced with Balance Sheet)
+  const [advances, setAdvances] = useState([]);
+  const [advForm, setAdvForm] = useState({ type: 'debit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const [advSaving, setAdvSaving] = useState(false);
+  const [showAdvForm, setShowAdvForm] = useState(false);
+
+  const advanceBalance = useMemo(() =>
+    advances.reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0),
+  [advances]);
+
   const getTypesForBrand = () => {
     if (brand === 'jkl') return ['Dump', 'JK_Lakshmi'];
     if (brand === 'dump') return ['Dump', 'JK_Super'];
@@ -69,11 +92,93 @@ export default function PayModule({ brand, role, permissions }) {
   useEffect(() => {
     fetchVouchers();
     fetchVehicles();
+    fetchProfiles();
+    fetchFirmPayments();
     setSelTruck(null);
     setSelectedLrs(new Set());
     setDateFilter('all');
     setDetailTab('pending');
+    setAdvances([]);
   }, [brand]);
+
+  useEffect(() => {
+    if (selTruck) fetchAdvances(selTruck);
+    else setAdvances([]);
+  }, [selTruck]);
+
+  const fetchAdvances = async (truck) => {
+    try { setAdvances((await ax.get('/vehicle-advances/' + encodeURIComponent(truck))).data); }
+    catch { setAdvances([]); }
+  };
+
+  const handleAdvSubmit = async (e) => {
+    e.preventDefault();
+    if (!advForm.amount || parseFloat(advForm.amount) <= 0) return;
+    setAdvSaving(true);
+    try {
+      await ax.post('/vehicle-advances', { ...advForm, truckNo: selTruck });
+      setAdvForm({ type: 'debit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+      setShowAdvForm(false);
+      fetchAdvances(selTruck);
+    } catch (er) { alert(er.response?.data?.error || 'Failed to save advance'); }
+    finally { setAdvSaving(false); }
+  };
+
+  const handleAdvDelete = async (id) => {
+    if (!window.confirm('Delete this advance entry?')) return;
+    try { await ax.delete('/vehicle-advances/' + id); fetchAdvances(selTruck); }
+    catch { alert('Delete failed'); }
+  };
+
+  const fetchProfiles = async () => {
+    try {
+      const { data } = await ax.get('/profiles');
+      setProfiles(data);
+    } catch (e) { console.error(e); }
+  };
+
+  const calculateSalary = (joined, exit, fixedSalary, leaves = []) => {
+    if (!joined || !fixedSalary) return 0;
+    const start = new Date(joined);
+    const end = exit ? new Date(exit) : new Date();
+    if (isNaN(start.getTime()) || start > end) return 0;
+
+    const diffTime = Math.abs(end - start);
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    let leaveDays = 0;
+    (leaves || []).forEach(l => {
+        if (l.start && l.end) {
+            const lStart = new Date(l.start);
+            const lEnd = new Date(l.end);
+            if (!isNaN(lStart.getTime()) && !isNaN(lEnd.getTime())) {
+                if (lStart <= end && lEnd >= start) {
+                    const actualStart = lStart < start ? start : lStart;
+                    const actualEnd = lEnd > end ? end : lEnd;
+                    const lDiff = Math.abs(actualEnd - actualStart);
+                    leaveDays += Math.ceil(lDiff / (1000 * 60 * 60 * 24)) + 1;
+                }
+            }
+        }
+    });
+    const workingDays = Math.max(0, totalDays - leaveDays);
+    const perDaySalary = (parseFloat(fixedSalary) || 0) / 30;
+    const result = Math.round(perDaySalary * workingDays);
+    return isNaN(result) ? 0 : result;
+  };
+
+  const getProfileBalance = (p) => {
+    const earned = calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves);
+    const paid = firmPayments.filter(pay => pay.profileId === p.id).reduce((s, pay) => s + parseFloat(pay.amount || 0), 0);
+    return earned - paid;
+  };
+
+  const fetchFirmPayments = async () => {
+    try {
+      const { data } = await ax.get('/payments');
+      setFirmPayments(data);
+    } catch (e) { console.error(e); }
+  };
 
   const fetchVehicles = async () => {
     try {
@@ -325,11 +430,141 @@ export default function PayModule({ brand, role, permissions }) {
           <p>{selTruck ? `Clearing payments for ${selTruck}` : 'Vehicle payment settlement system'}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {selTruck && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelectedLrs(new Set());}}><ChevronLeft size={14} /> All Trucks</button>}
+          <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+            <button className={`btn btn-sm ${view === 'freight' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('freight')}>Freight Pay</button>
+            <button className={`btn btn-sm ${view === 'firm' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('firm')}>Firm Pay</button>
+          </div>
+          {selTruck && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelectedLrs(new Set());}}><ChevronLeft size={14} /> All Trucks</button>}
         </div>
       </div>
 
-      {!selTruck ? (
+      {view === 'firm' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '20px' }}>
+          {/* Firm Payment Form */}
+          <div className="card" style={{ padding: '24px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <HandCoins size={20} color="var(--primary)" /> Record Firm Payment
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ margin: 0 }}>Select Profile</label>
+                  {firmForm.profileId && firmForm.profileId !== '__other__' && (
+                    <button onClick={() => setShowLedger(profiles.find(p => p.id === firmForm.profileId))} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>View Full Ledger</button>
+                  )}
+                </div>
+                <select className="fi" value={firmForm.profileId} onChange={e => setFirmForm({...firmForm, profileId: e.target.value, otherProfileName: ''})}>
+                  <option value="">-- Select Profile --</option>
+                  {profiles.map(p => {
+                    const bal = getProfileBalance(p);
+                    return (
+                      <option key={p.id} value={p.id}>{p.name} ({p.type}) | Bal: ₹{bal.toLocaleString()}</option>
+                    );
+                  })}
+                  <option value="__other__">➕ Other (Type Manually)</option>
+                </select>
+                {firmForm.profileId === '__other__' && (
+                  <input
+                    className="fi"
+                    style={{ marginTop: '8px' }}
+                    type="text"
+                    placeholder="Enter name (e.g. vendor, supplier, expense...)"
+                    value={firmForm.otherProfileName}
+                    onChange={e => setFirmForm({...firmForm, otherProfileName: e.target.value})}
+                    autoFocus
+                  />
+                )}
+              </div>
+              <div className="field">
+                <label>Payment Category</label>
+                <select className="fi" value={firmForm.category} onChange={e => setFirmForm({...firmForm, category: e.target.value})}>
+                  <option value="Salary">Staff Salary</option>
+                  <option value="Advance">Advance Payment</option>
+                  <option value="Tyre">Tyre Expense</option>
+                  <option value="Maintenance">Vehicle Maintenance</option>
+                  <option value="Other">Other Expenses</option>
+                </select>
+              </div>
+              <div className="fg fg-2">
+                <div className="field">
+                  <label>Amount (₹)</label>
+                  <input type="number" className="fi" value={firmForm.amount} onChange={e => setFirmForm({...firmForm, amount: e.target.value})} placeholder="0.00" />
+                </div>
+                <div className="field">
+                  <label>Date</label>
+                  <input type="date" className="fi" value={firmForm.date} onChange={e => setFirmForm({...firmForm, date: e.target.value})} />
+                </div>
+              </div>
+              <div className="field">
+                <label>Remark / Note</label>
+                <textarea className="fi" value={firmForm.remark} onChange={e => setFirmForm({...firmForm, remark: e.target.value})} placeholder="Payment details..." style={{ minHeight: '80px' }} />
+              </div>
+              <button className="btn btn-p" style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 700 }} 
+                onClick={async () => {
+                  if (!firmForm.profileId || !firmForm.amount) { alert('Please select a profile and enter an amount'); return; }
+                  if (firmForm.profileId === '__other__' && !firmForm.otherProfileName.trim()) { alert('Please enter a name for Other'); return; }
+                  try {
+                    const payload = {
+                      ...firmForm,
+                      profileId: firmForm.profileId === '__other__' ? null : firmForm.profileId,
+                      profileName: firmForm.profileId === '__other__' ? firmForm.otherProfileName.trim() : (profiles.find(p => p.id === firmForm.profileId)?.name || ''),
+                    };
+                    await ax.post('/payments', payload);
+                    setFirmForm({...firmForm, amount: '', remark: '', otherProfileName: ''});
+                    fetchFirmPayments();
+                    alert('Payment recorded successfully');
+                  } catch (e) { alert('Failed to record payment'); }
+                }}>
+                Confirm Payment
+              </button>
+            </div>
+          </div>
+
+          {/* Recent Firm Payments */}
+          <div className="card">
+            <div className="card-header border-b">
+              <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Recent Firm Payments</h3>
+            </div>
+            <div className="tbl-wrap">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    <th style={TH}>Date</th>
+                    <th style={TH}>Profile</th>
+                    <th style={TH}>Category</th>
+                    <th style={TH}>Amount</th>
+                    <th style={TH}>Remark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {firmPayments.slice(0, 20).map((p, i) => {
+                    const prof = profiles.find(pr => pr.id === p.profileId);
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                        <td style={TD}>{fmtDate(p.date)}</td>
+                        <td style={TD}>
+                          <div style={{ fontWeight: 700 }}>{p.profileName || profiles.find(pr => pr.id === p.profileId)?.name || 'Unknown'}</div>
+                          <div style={{ fontSize: '10px', opacity: 0.6 }}>{p.profileId ? (profiles.find(pr => pr.id === p.profileId)?.type || 'Profile') : 'Other'}</div>
+                        </td>
+                        <td style={TD}>
+                          <span style={{ padding: '2px 6px', background: 'var(--bg-input)', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{p.category}</span>
+                        </td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)' }}>₹{parseFloat(p.amount).toLocaleString()}</td>
+                        <td style={{ ...TD, whiteSpace: 'normal', fontSize: '11px' }}>{p.remark}</td>
+                      </tr>
+                    );
+                  })}
+                  {firmPayments.length === 0 && (
+                    <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', padding: '40px' }}>No firm payments recorded yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <React.Fragment>
+          {!selTruck ? (
         // OVERVIEW LIST
         <div className="card">
           <div className="card-header border-b">
@@ -422,6 +657,10 @@ export default function PayModule({ brand, role, permissions }) {
                 <button className={`btn btn-sm ${detailTab === 'history' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('history')}>
                   History ({paidLrs.length})
                 </button>
+                <button className={`btn btn-sm ${detailTab === 'advance' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none', position: 'relative' }} onClick={() => setDetailTab('advance')}>
+                  Advance Pay
+                  {advances.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: advanceBalance >= 0 ? '#10b981' : '#f43f5e', color: 'white', borderRadius: '50%', width: '14px', height: '14px', fontSize: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>{advances.length}</span>}
+                </button>
               </div>
             </div>
 
@@ -503,6 +742,89 @@ export default function PayModule({ brand, role, permissions }) {
               </table>
                   </div>
               </React.Fragment>
+            ) : detailTab === 'advance' ? (
+              // ADVANCE PAY TAB
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '16px' }}>
+                {/* Form */}
+                <div className="card" style={{ padding: '20px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Banknote size={16} color="var(--primary)" /> Record Advance
+                  </h3>
+                  <form onSubmit={handleAdvSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="field">
+                      <label>Transaction Type</label>
+                      <select className="fi" value={advForm.type} onChange={e => setAdvForm(f => ({ ...f, type: e.target.value }))}>
+                        <option value="debit">We Give Advance to Owner (Debit −)</option>
+                        <option value="credit">Owner Returns / We Receive (Credit +)</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Amount (₹)</label>
+                      <input className="fi" type="number" step="any" min="1" placeholder="Amount" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} required />
+                    </div>
+                    <div className="field">
+                      <label>Date</label>
+                      <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
+                    </div>
+                    <div className="field">
+                      <label>Remark</label>
+                      <input className="fi" type="text" placeholder="e.g. Advance for fuel / Return of advance" value={advForm.remark} onChange={e => setAdvForm(f => ({ ...f, remark: e.target.value }))} />
+                    </div>
+                    <div style={{ padding: '12px', borderRadius: '8px', background: advanceBalance >= 0 ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)', border: `1px solid ${advanceBalance >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`, textAlign: 'center' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Current Advance Balance</div>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(advanceBalance)}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{advanceBalance >= 0 ? 'Owner has given advance' : 'We have given advance'}</div>
+                    </div>
+                    <button type="submit" className="btn btn-p" style={{ width: '100%', padding: '12px', fontWeight: 700 }} disabled={advSaving}>
+                      {advSaving ? 'Saving...' : <><Check size={14} /> Save Entry</>}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Advance Ledger */}
+                <div className="card tbl-wrap">
+                  <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', fontWeight: 800, fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Advance Ledger — {selTruck}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' }}>Balance: {fmtRs(advanceBalance)}</span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr>
+                        <th style={TH}>#</th>
+                        <th style={TH}>Date</th>
+                        <th style={TH}>Type</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Credit (+)</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Debit (−)</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Balance</th>
+                        <th style={TH}>Remark</th>
+                        {role === 'admin' && <th style={TH}>Del</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {advances.length === 0 && <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No advance entries yet</td></tr>}
+                      {[...advances].reverse().map((a, i, arr) => {
+                        const runBal = arr.slice(0, i + 1).reduce((s, x) => s + (x.type === 'credit' ? x.amount : -x.amount), 0);
+                        return (
+                          <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                            <td style={TD}>{fmtDate(a.date)}</td>
+                            <td style={TD}>
+                              {a.type === 'credit'
+                                ? <span style={{ padding: '2px 7px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: '10px', fontWeight: 800 }}>↓ Received</span>
+                                : <span style={{ padding: '2px 7px', borderRadius: '5px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', fontSize: '10px', fontWeight: 800 }}>↑ Given</span>}
+                            </td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#10b981' }}>{a.type === 'credit' ? fmtRs(a.amount) : '—'}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f43f5e' }}>{a.type === 'debit' ? fmtRs(a.amount) : '—'}</td>
+                            <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: runBal >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(runBal)}</td>
+                            <td style={{ ...TD, color: 'var(--text-sub)' }}>{a.remark || '—'}</td>
+                            {role === 'admin' && <td style={{ ...TD, textAlign: 'center' }}><button className="btn btn-d btn-icon btn-sm" onClick={() => handleAdvDelete(a.id)} title="Delete"><X size={12} /></button></td>}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             ) : (
               // HISTORY TABLE
               <div className="card tbl-wrap">
@@ -554,7 +876,15 @@ export default function PayModule({ brand, role, permissions }) {
               <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Banknote size={16} /> Settlement Panel
               </h3>
-              
+
+              {/* Advance Balance Quick View */}
+              {advances.length > 0 && (
+                <div style={{ padding: '10px 14px', borderRadius: '8px', marginBottom: '12px', background: advanceBalance >= 0 ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)', border: `1px solid ${advanceBalance >= 0 ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Advance Balance:</span>
+                  <span style={{ fontSize: '14px', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(advanceBalance)}</span>
+                </div>
+              )}
+
               <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Selected LRs:</span>
@@ -598,10 +928,105 @@ export default function PayModule({ brand, role, permissions }) {
                   </span>
                 )}
               </button>
+
+              <button className="btn btn-g" style={{ width: '100%', padding: '10px', marginTop: '8px', fontSize: '12px', fontWeight: 700 }}
+                onClick={() => setDetailTab('advance')}>
+                <Banknote size={13} /> Add Advance Entry
+              </button>
             </div>
           )}
         </div>
       )}
+        </React.Fragment>
+      )}
+
+      {/* Ledger Modal in Pay Module */}
+      {showLedger && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'var(--bg-card)', width: '100%', maxWidth: '900px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--primary)', color: 'white' }}>
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800 }}>Profile Ledger: {showLedger.name}</h2>
+                                <div style={{ fontSize: '12px', opacity: 0.8 }}>{showLedger.type}</div>
+                            </div>
+                            <button onClick={() => setShowLedger(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', width: '32px', height: '32px', borderRadius: '50%', color: 'white', fontSize: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&times;</button>
+                        </div>
+                        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                <thead>
+                                    <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border)' }}>
+                                        <th style={{ padding: '12px' }}>Date</th>
+                                        <th style={{ padding: '12px' }}>Description</th>
+                                        <th style={{ padding: '12px', textAlign: 'right' }}>Credit (+)</th>
+                                        <th style={{ padding: '12px', textAlign: 'right' }}>Debit (-)</th>
+                                        <th style={{ padding: '12px', textAlign: 'right' }}>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        let runningBalance = 0;
+                                        const entries = [
+                                            ...(() => {
+                                                const credits = [];
+                                                const start = new Date(showLedger.dateJoined);
+                                                const end = showLedger.dateExit ? new Date(showLedger.dateExit) : new Date();
+                                                let current = new Date(start.getFullYear(), start.getMonth(), 1);
+                                                while (current <= end) {
+                                                    const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
+                                                    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+                                                    const activeMonthStart = monthStart < start ? start : monthStart;
+                                                    const activeMonthEnd = monthEnd > end ? end : monthEnd;
+                                                    const daysInPeriod = Math.ceil(Math.abs(activeMonthEnd - activeMonthStart) / (1000 * 60 * 60 * 24)) + 1;
+                                                    let leaveInMonth = 0;
+                                                    (showLedger.leaves || []).forEach(l => {
+                                                        if (l.start && l.end) {
+                                                            const lStart = new Date(l.start);
+                                                            const lEnd = new Date(l.end);
+                                                            if (lStart <= activeMonthEnd && lEnd >= activeMonthStart) {
+                                                                const overlapStart = lStart < activeMonthStart ? activeMonthStart : lStart;
+                                                                const overlapEnd = lEnd > activeMonthEnd ? activeMonthEnd : lEnd;
+                                                                leaveInMonth += Math.ceil(Math.abs(overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)) + 1;
+                                                            }
+                                                        }
+                                                    });
+                                                    const billableDays = Math.max(0, daysInPeriod - leaveInMonth);
+                                                    credits.push({
+                                                        date: activeMonthEnd,
+                                                        desc: `Salary Credit - ${current.toLocaleString('default', { month: 'long', year: 'numeric' })} (${billableDays} working days)`,
+                                                        credit: Math.round((showLedger.fixedSalary / 30) * billableDays),
+                                                        debit: 0
+                                                    });
+                                                    current.setMonth(current.getMonth() + 1);
+                                                }
+                                                return credits;
+                                            })(),
+                                            ...firmPayments.filter(p => p.profileId === showLedger.id).map(p => ({
+                                                date: new Date(p.date),
+                                                desc: `${p.category}: ${p.remark}`,
+                                                credit: 0,
+                                                debit: parseFloat(p.amount || 0)
+                                            }))
+                                        ].sort((a, b) => a.date - b.date);
+
+                                        return entries.map((e, idx) => {
+                                            runningBalance += (e.credit - e.debit);
+                                            return (
+                                                <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                    <td style={{ padding: '12px' }}>{e.date.toLocaleDateString()}</td>
+                                                    <td style={{ padding: '12px' }}>{e.desc}</td>
+                                                    <td style={{ padding: '12px', textAlign: 'right', color: 'var(--primary)', fontWeight: 600 }}>{e.credit > 0 ? `₹${e.credit.toLocaleString()}` : '-'}</td>
+                                                    <td style={{ padding: '12px', textAlign: 'right', color: 'var(--danger)', fontWeight: 600 }}>{e.debit > 0 ? `₹${e.debit.toLocaleString()}` : '-'}</td>
+                                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800 }}>₹{runningBalance.toLocaleString()}</td>
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
     </div>
   );
 }

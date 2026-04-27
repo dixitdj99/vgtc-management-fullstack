@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const vehicleService = require('../services/vehicleService');
 const advanceService = require('../services/vehicleAdvanceService');
+const alertService = require('../services/alertService');
 const { getCol } = require('../utils/collectionUtils');
 const BASE_COL = 'vehicles';
 
@@ -48,6 +49,16 @@ router.post('/deduct-gps', async (req, res) => {
             count++;
         }
         res.json({ message: `Successfully deducted GPS fees from ${count} vehicles.` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Trigger Alert Report (Email Intent)
+router.get('/alerts/report', async (req, res) => {
+    try {
+        const result = await alertService.sendDailyAlertReport(getCol(BASE_COL, req));
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
