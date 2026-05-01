@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
-import { cleanTruckNo } from '../utils/vehicleUtils';
-import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
@@ -14,17 +12,7 @@ const PAGE_SIZE = 20;
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
 const PUMPS = ['S.K Pump', 'Shiva Pump', 'Karoli'];
-const NONE_PUMP = 'None';
-const PUMP_OPTIONS = [NONE_PUMP, ...PUMPS];
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
-
-const hasDieselAdvance = (value) => String(value ?? '').trim() !== '';
-const getAllowedPump = (pump, advanceDiesel) => {
-    if (!hasDieselAdvance(advanceDiesel)) return NONE_PUMP;
-    return pump && pump !== NONE_PUMP ? pump : PUMPS[0];
-};
-const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
-const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill';
 
 const getCalc = (w, r, hasComm) => {
     const wt = parseFloat(w) || 0, rt = parseFloat(r) || 0;
@@ -103,6 +91,7 @@ function printVoucher(v) {
         .info-col-3 > div:last-child { border-bottom: none; justify-content: space-between; align-items: center; }
         .line-fill { flex-grow: 1; border-bottom: 1px solid #000; margin-left: 5px; height: 10px; }
         .dotted-fill { flex-grow: 1; border-bottom: 1px dotted #000; margin-left: 5px; height: 10px; }
+        .sno-handwritten { display: inline-block; font-family: 'Comic Sans MS', cursive, sans-serif; font-size: 16px; font-weight: 900; transform: rotate(-5deg) translateY(-2px); margin-left: 10px; }
         .main-table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; flex-grow: 1; }
         .main-table th, .main-table td { border: 1px solid #000; padding: 3px; }
         .main-table th { font-weight: bold; text-align: center; }
@@ -144,7 +133,7 @@ function printVoucher(v) {
             </div>
             <div class="info-col-2">
                 <div>M/s. <span style="margin-left: 10px; font-weight: normal; font-size: 13px;">${v.partyName || ''}</span>${v.partyName ? '' : '<div class="line-fill"></div>'}</div>
-                <div><span style="font-size: 10px;">Party Code:</span> <span style="margin-left: 5px; font-weight: normal; font-size: 12px;">${v.partyCode || ''}</span>${v.partyCode ? '' : '<div class="line-fill" style="margin-left: 0;"></div>'}</div>
+                <div><div class="line-fill" style="margin-left: 0;"></div></div>
                 <div><div class="line-fill" style="margin-left: 0;"></div></div>
                 <div><span>S.T.L. No.</span><span>C.S.T. No.</span></div>
             </div>
@@ -152,7 +141,7 @@ function printVoucher(v) {
                 <div>Truck No. <span style="margin-left: 5px; font-weight: normal;">${v.truckNo || ''}</span>${v.truckNo ? '' : '<div class="dotted-fill"></div>'}</div>
                 <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}</div>
                 <div>To <span style="margin-left: 5px; font-weight: normal;">${v.destination || ''}</span>${v.destination ? '' : '<div class="line-fill"></div>'}</div>
-                <div><span>LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal;">Date: ${v.date}</span></div>
+                <div><span>S. No. <span class="sno-handwritten">${v.lrNo}</span></span><span style="font-weight: normal;">Date: ${v.date}</span></div>
             </div>
         </div>
         <table class="main-table">
@@ -174,31 +163,28 @@ function printVoucher(v) {
                 </tr>
             </thead>
             <tbody>
-                ${(() => {
-                    const mats = (v.materials && v.materials.length > 0)
-                        ? v.materials
-                        : [{ type: v.materialName || 'CEMENT', bags: v.bags, weight: v.weight }];
-                    const rowspan = mats.length;
-                    return mats.map((mat, idx) => `
-                    <tr class="body-row" style="height: ${Math.max(80, Math.floor(160 / rowspan))}px;">
-                        <td style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${mat.bags || ''}</td>
-                        <td class="desc-text" style="border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">
-                            CEMENT${mat.type ? ' - ' + mat.type : ''}<br>
-                            Grade<br>
-                            <b><i>J.K. Super Cement</i></b><br>
-                            ${idx === 0 ? 'Bill No. : ' + (v.billNo || '') + '<br>Shipment No. :<br>D.I. No.' : ''}
-                        </td>
-                        <td colspan="2" style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${ parseFloat(mat.weight || 0).toFixed(2)} MT</td>
-                        <td style="text-align: center; font-size: 12px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${idx === 0 ? (v.rate || '') : ''}</td>
-                        ${idx === 0 ? `
-                        <td colspan="2" class="advance-cell" rowspan="${rowspan}">Advance = <br/>${n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString())}</td>
-                        <td class="billed-cell" rowspan="${rowspan}">To<br>be<br>Billed<br/><br/>
-                            <span style="font-size: 12px;">${n.dieselPending ? '—' : 'Rs.' + Math.round(n.net).toLocaleString()}</span>
-                        </td>
-                        <td class="remark-text" rowspan="${rowspan}">Driver Name<br>D.L. No.<br>Owner Permit No.<br>Permit No.<br>Address<br/><br/>${getPumpDisplay(v.pump) !== '—' ? 'Pump: ' + getPumpDisplay(v.pump) : ''}</td>
-                        ` : ''}
-                    </tr>`).join('');
-                })()}
+                <tr class="body-row" style="height: 180px;">
+                    <td style="text-align: center; font-size: 13px;">${v.bags || ''}</td>
+                    <td class="desc-text">
+                        CEMENT<br>
+                        Grade<br>
+                        <b><i>J.K. Super Cement</i></b><br>
+                        PPC<br>
+                        43<br>
+                        53<br>
+                        Value of Goods<br>
+                        Bill No. :<br>
+                        Shipment No. :<br>
+                        D.I. No.
+                    </td>
+                    <td colspan="2" style="text-align: center; font-size: 13px;">${v.weight || ''} MT</td>
+                    <td style="text-align: center; font-size: 12px;">${v.rate || ''}</td>
+                    <td colspan="2" class="advance-cell">Advance = <br/>${n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString())}</td>
+                    <td class="billed-cell">To<br>be<br>Billed<br/><br/>
+                        <span style="font-size: 12px;">${n.dieselPending ? '—' : 'Rs.' + Math.round(n.net).toLocaleString()}</span>
+                    </td>
+                    <td class="remark-text">Driver Name<br>D.L. No.<br>Owner Permit No.<br>Permit No.<br>Address<br/><br/>${v.pump ? 'Pump: ' + v.pump : ''}</td>
+                </tr>
                 <tr>
                     <td colspan="2" style="font-weight: bold; border-top: 1px solid #000; text-align: center;">Total</td>
                     <td colspan="2" style="border-top: 1px solid #000; text-align: center; font-weight: bold;">${v.weight || ''} MT</td>
@@ -260,7 +246,7 @@ h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
 <div class="cell"><div class="cell-lbl">Weight</div><div class="cell-val">${v.weight} MT</div></div>
 <div class="cell"><div class="cell-lbl">Bags</div><div class="cell-val">${v.bags}</div></div>
 <div class="cell"><div class="cell-lbl">Rate</div><div class="cell-val">Rs.${v.rate}/MT</div></div>
-<div class="cell"><div class="cell-lbl">Pump</div><div class="cell-val">${getPumpDisplay(v.pump)}</div></div>
+<div class="cell"><div class="cell-lbl">Pump</div><div class="cell-val">${v.pump || '—'}</div></div>
 </div>
 <div class="calc-box">
 <div class="calc-title">Payment Calculation</div>
@@ -288,36 +274,22 @@ ${n.dieselPending
 }
 
 /* ── Edit Modal ── */
-function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [] }) {
+function EditModal({ v, onClose, onSave }) {
     const [form, setForm] = useState({
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
-        weight: v.weight, bags: v.bags, rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel),
+        weight: v.weight, bags: v.bags, rate: v.rate, pump: v.pump || PUMPS[0],
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
-        billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || ''
     });
     const [saving, setSaving] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
     const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
-    const setPartyName = (value) => S('partyName', resolvePartyName(value, partySuggestions));
-
-    useEffect(() => {
-        setForm(f => {
-            const nextPump = getAllowedPump(f.pump, f.advanceDiesel);
-            return f.pump === nextPump ? f : { ...f, pump: nextPump };
-        });
-    }, [form.advanceDiesel]);
 
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
-        if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) {
-            alert('Bill No is required for bills');
-            setSaving(false);
-            return;
-        }
         try {
-            await ax.patch(API_V + '/' + v.id, { ...form, partyName: resolvePartyName(form.partyName, partySuggestions), ...calc });
+            await ax.patch(API_V + '/' + v.id, { ...form, ...calc });
             onSave();
         } catch { alert('Update failed'); } finally { setSaving(false); }
     };
@@ -337,28 +309,9 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                     <div className="fg fg-3">
                         <div className="field"><label>LR No.</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
                         <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
-                        <div className="field">
-                            <label>Truck No.</label>
-                            <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`voucher-truck-list-${v.id}`} />
-                            <datalist id={`voucher-truck-list-${v.id}`}>
-                                {vehicleNumbers.map(no => <option key={no} value={no} />)}
-                            </datalist>
-                        </div>
+                        <div className="field"><label>Truck No.</label><input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase())} /></div>
                         <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
-                        <div className="field">
-                            <label>Party Name</label>
-                            <input className="fi" type="text" value={form.partyName} onChange={e => setPartyName(e.target.value)} list={`voucher-party-list-${v.id}`} />
-                            <datalist id={`voucher-party-list-${v.id}`}>
-                                {partySuggestions.map(name => <option key={name} value={name} />)}
-                            </datalist>
-                        </div>
-                        {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill') && (
-                            <>
-                                <div className="field"><label>Party Code</label><input className="fi" type="text" value={form.partyCode} onChange={e => S('partyCode', e.target.value)} /></div>
-                                <div className="field"><label>Bill No</label><input className="fi" type="text" value={form.billNo} onChange={e => S('billNo', e.target.value)} required /></div>
-                                <div className="field"><label>Material Name</label><input className="fi" type="text" value={form.materialName} onChange={e => S('materialName', e.target.value)} /></div>
-                            </>
-                        )}
+                        <div className="field"><label>Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
                     </div>
                     <hr className="sep" style={{ margin: '2px 0' }} />
                     <div className="fg fg-3">
@@ -387,9 +340,9 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         <div className="field"><label>Cash Advance</label><input className="fi" type="number" value={form.advanceCash} onChange={e => S('advanceCash', e.target.value)} /></div>
                         <div className="field"><label>Online Advance</label><input className="fi" type="number" value={form.advanceOnline} onChange={e => S('advanceOnline', e.target.value)} /></div>
                     </div>
-                    <div className="field"><label>Fuel Station</label>
-                        <select className="fi" value={form.pump} onChange={e => S('pump', e.target.value)} disabled={!hasDieselAdvance(form.advanceDiesel)}>
-                            {PUMP_OPTIONS.map(p => <option key={p}>{p}</option>)}
+                    <div className="field"><label>Petrol Pump</label>
+                        <select className="fi" value={form.pump} onChange={e => S('pump', e.target.value)}>
+                            {PUMPS.map(p => <option key={p}>{p}</option>)}
                         </select>
                     </div>
                     <div className="chk-row">
@@ -443,15 +396,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
-    // canEdit: checks brand-specific voucher key and generic fallback
-    const voucherKey = brand === 'jklakshmi' ? 'voucher_jkl' : 'voucher_jksuper';
-    const canEdit = role === 'admin'
-        || permissions?.[voucherKey] === 'edit'
-        || permissions?.voucher === 'edit'
-        || permissions?.bill_kosli === 'edit'
-        || permissions?.bill_jhajjar === 'edit';
     const [vType, setVType] = useState(lockedType || initialTab || 'Kosli_Bill');
-
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
@@ -475,26 +420,22 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [form, setForm] = useState({
         lrNo: '', date: new Date().toISOString().split('T')[0],
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
-        rate: '', pump: NONE_PUMP, advanceDiesel: '', advanceCash: '', advanceOnline: '',
+        rate: '', pump: PUMPS[0], advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
-        startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
-        materials: []
+        startKm: '', endKm: '',
     });
     const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
     const [fetchingKm, setFetchingKm] = useState(false);
     const [vgtcTrucks, setVgtcTrucks] = useState(new Set()); // truck numbers owned by Vikas Goods Transport
-    const [vehicleNumbers, setVehicleNumbers] = useState([]);
 
     // Fetch vehicle registry to know which trucks are VGTC-owned
     useEffect(() => {
         ax.get('/vehicles').then(r => {
-            const numbers = [...new Set((r.data || []).map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
             const vgtcSet = new Set(
                 r.data
                     .filter(v => (v.ownerName || '').toLowerCase().includes('vikas'))
-                    .map(v => cleanTruckNo(v.truckNo))
+                    .map(v => v.truckNo)
             );
-            setVehicleNumbers(numbers);
             setVgtcTrucks(vgtcSet);
         }).catch(() => {});
     }, []);
@@ -514,11 +455,6 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const fetchVouchers = async () => {
         try { setVouchers((await ax.get(API_V + '/' + vType)).data); } catch { }
     };
-
-    const knownPartyNames = useMemo(() => buildPartySuggestions(
-        vouchers.map(v => v.partyName),
-        lrMaterials.map(m => m.partyName)
-    ), [vouchers, lrMaterials]);
 
     // For JK types: compute next LR number from existing voucher list
     const nextLrNo = useMemo(() => {
@@ -568,43 +504,19 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             return;
         }
 
-        // Determine which LR endpoint to call based on bill type AND brand
-        let lrEndpoint = '/lr'; // default for Dump
-        if (brand === 'jklakshmi' || brand === 'jkl') {
-            lrEndpoint = '/jkl/lr';
-        } else {
-            if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
-            else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
-        }
+        // JK_Super and JK_Lakshmi use fully custom LR numbers — skip LR receipt lookup
+        if (vType === 'JK_Super' || vType === 'JK_Lakshmi') return;
 
-        // Fetch LR details from the correct receipts collection
+        // Dump Bills only: Fetch LR details from receipts
         try {
-            const all = (await ax.get(lrEndpoint)).data;
+            const all = (await ax.get(`/lr`)).data;
             const rows = all.filter(l => String(l.lrNo) === String(val));
             if (rows.length > 0) {
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
-                const tb = rows.reduce((s, r) => s + (parseInt(r.totalBags) || 0), 0);
+                const tb = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
                 const truck = rows[0].truckNo || '';
-                // Aggregate all materials into an array for multi-material bill support
-                const materialsData = rows.map(r => ({
-                    type: r.material || '',
-                    bags: parseInt(r.totalBags) || 0,
-                    weight: parseFloat(r.weight) || 0
-                }));
-                const combinedMaterialName = materialsData.map(m => m.type).filter(Boolean).join(', ');
-                setForm(f => ({
-                    ...f,
-                    truckNo: truck,
-                    date: rows[0].date || f.date,
-                    weight: tw.toFixed(2),
-                    bags: String(tb),
-                    destination: rows[0].destination || f.destination,
-                    partyName: resolvePartyName(rows[0].partyName || '', knownPartyNames),
-                    partyCode: rows[0].partyCode || '',
-                    materialName: combinedMaterialName,
-                    materials: materialsData
-                }));
+                setForm(f => ({ ...f, truckNo: truck, date: rows[0].date || f.date, weight: tw.toFixed(2), bags: String(tb), destination: rows[0].destination || f.destination, partyName: rows[0].partyName || '' }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
             }
@@ -614,20 +526,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     // When user manually changes truckNo (not via LR auto-fill), also fetch last km
     const handleTruckNoChange = (val) => {
-        const clean = cleanTruckNo(val);
-        set('truckNo', clean);
-        fetchLastKm(clean);
+        set('truckNo', val.toUpperCase());
+        fetchLastKm(val.toUpperCase());
     };
-    const handlePartyNameChange = (val) => set('partyName', resolvePartyName(val, knownPartyNames));
-
 
     const handleFormRequest = e => {
         e.preventDefault();
         if (lrAlreadyUsed) return;  // Block save if LR is already assigned
-        if (isBillVoucherType(vType) && !String(form.billNo || '').trim()) {
-            alert('Bill No is required for bills');
-            return;
-        }
         setIsConfirmingSave(true);
     };
 
@@ -635,20 +540,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         setSaving(true); setIsConfirmingSave(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await ax.post(API_V, { ...form, partyName: resolvePartyName(form.partyName, knownPartyNames), type: vType, brand, ...calc, materials: form.materials || [] });
+            await ax.post(API_V, { ...form, type: vType, brand, ...calc });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [] }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '' }));
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-    useEffect(() => {
-        setForm(f => {
-            const nextPump = getAllowedPump(f.pump, f.advanceDiesel);
-            return f.pump === nextPump ? f : { ...f, pump: nextPump };
-        });
-    }, [form.advanceDiesel]);
 
     /* Sort helper */
     const toggleSort = col => {
@@ -694,7 +592,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         total: filtered.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
     }), [filtered]);
 
-    const exportVoucherExcel = () => exportToExcel(filtered.map(v => ({ LR: v.lrNo, Date: v.date, Truck: v.truckNo, Dest: v.destination, Weight: v.weight, Bags: v.bags, Rate: v.rate, Pump: getPumpDisplay(v.pump), Diesel_Adv: v.advanceDiesel, Cash_Adv: v.advanceCash, Online_Adv: v.advanceOnline, Munshi: v.munshi, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0) })), `Vouchers_${vType}_${new Date().toISOString().slice(0, 10)}`);
+    const exportVoucherExcel = () => exportToExcel(filtered.map(v => ({ LR: v.lrNo, Date: v.date, Truck: v.truckNo, Dest: v.destination, Weight: v.weight, Bags: v.bags, Rate: v.rate, Pump: v.pump, Diesel_Adv: v.advanceDiesel, Cash_Adv: v.advanceCash, Online_Adv: v.advanceOnline, Munshi: v.munshi, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0) })), `Vouchers_${vType}_${new Date().toISOString().slice(0, 10)}`);
     const exportVoucherPDF = () => exportToPDF(filtered, `${vType.replace('_', ' ')} Vouchers`, ['lrNo', 'date', 'truckNo', 'destination', 'weight', 'bags', 'rate', 'pump', 'advanceDiesel', 'advanceCash', 'advanceOnline', 'total']);
 
     return (
@@ -707,7 +605,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 message={`Are you sure you want to create a new Voucher for LR #${form.lrNo}?`}
                 isSaving={saving}
             />
-            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
 
             <div>
@@ -756,10 +654,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
-                                                <datalist id="voucher-truck-list">
-                                                    {vehicleNumbers.map(no => <option key={no} value={no} />)}
-                                                </datalist>
+                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required />
                                             </div>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>
@@ -767,27 +662,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                             <div className="field">
                                                 <label>Party Name</label>
-                                                <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => handlePartyNameChange(e.target.value)} list="voucher-party-list" />
-                                                <datalist id="voucher-party-list">
-                                                    {knownPartyNames.map(name => <option key={name} value={name} />)}
-                                                </datalist>
+                                                <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => set('partyName', e.target.value)} />
                                             </div>
-                                            {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill') && (
-                                                <>
-                                                    <div className="field">
-                                                        <label>Party Code</label>
-                                                        <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
-                                                    </div>
-                                                    <div className="field">
-                                                        <label>Bill No</label>
-                                                        <input className="fi" type="text" placeholder="Required" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
-                                                    </div>
-                                                    <div className="field">
-                                                        <label>Material Name</label>
-                                                        <input className="fi" type="text" placeholder="To print with CEMENT" value={form.materialName} onChange={e => set('materialName', e.target.value)} />
-                                                    </div>
-                                                </>
-                                            )}
                                             <div className="field">
                                                 <label>Date</label>
                                                 <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} />
@@ -842,9 +718,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 />
                                             </div>
                                             <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" placeholder="0" value={form.rate} onChange={e => set('rate', e.target.value)} /></div>
-                                            <div className="field"><label>Fuel Station</label>
-                                                <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)} disabled={!hasDieselAdvance(form.advanceDiesel)}>
-                                                    {PUMP_OPTIONS.map(p => <option key={p}>{p}</option>)}
+                                            <div className="field"><label>Petrol Pump</label>
+                                                <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
+                                                    {PUMPS.map(p => <option key={p}>{p}</option>)}
                                                 </select>
                                             </div>
                                         </div>
@@ -1022,7 +898,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div>
                                         </td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.rate}</td>
-                                        <td style={{ ...TD }}>{getPumpDisplay(v.pump)}</td>
+                                        <td style={{ ...TD }}>{v.pump || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
@@ -1060,7 +936,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
                                                 <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v)}><Printer size={13} /></button>
-                                                {canEdit && (
+                                                {(role === 'admin' || permissions?.voucher === 'edit') && (
                                                     <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
                                                 )}
                                                 {role === 'admin' && (

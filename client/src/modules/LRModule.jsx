@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
-import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
-import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, Package, Pencil, Plus, Printer, Receipt, Search, Tag, Trash2, User, X, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -16,7 +14,13 @@ const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
 const MATS_JKL_FALLBACK = ['PPC', 'OPC43', 'Pro+'];
 
-// validateTruckNo and cleanTruckNo imported from ../utils/vehicleUtils
+const validateTruckNo = (no) => {
+  if (!no) return false;
+  const clean = no.replace(/\s/g, '').toUpperCase();
+  // Standard Indian Vehicle Number: 2 letters, 1-2 digits, 1-3 letters, 4 digits
+  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+  return regex.test(clean);
+};
 
 /* ── Print helper ── */
 function printReceipt(allRows, lrNo, allChallans = []) {
@@ -26,19 +30,10 @@ function printReceipt(allRows, lrNo, allChallans = []) {
   const materialsHtml = rows.map(m => `
     <tr>
       <td style="padding:5px 10px;border:1px solid #ccc;">${m.material}</td>
-      <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">
-        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;
-          background:${m.loadingType === 'Crossing' ? '#fef3c7' : '#dcfce7'};
-          color:${m.loadingType === 'Crossing' ? '#92400e' : '#166534'};
-          border:1px solid ${m.loadingType === 'Crossing' ? '#fcd34d' : '#86efac'}">
-          ${m.loadingType || 'From Godown'}
-        </span>
-      </td>
       <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">${m.totalBags}</td>
       <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">${Number(m.weight).toFixed(2)} MT</td>
     </tr>
   `).join('');
-
   const totalBags = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
 
@@ -101,11 +96,11 @@ function printReceipt(allRows, lrNo, allChallans = []) {
       </div>
       ${challanLine}
       <table>
-        <thead><tr><th>Material</th><th style="text-align:center;">Loading Type</th><th style="text-align:center;">Bags</th><th style="text-align:center;">Weight (MT)</th></tr></thead>
+        <thead><tr><th>Material</th><th style="text-align:center;">Bags</th><th style="text-align:center;">Weight (MT)</th></tr></thead>
         <tbody>
           ${materialsHtml}
           <tr class="tot">
-            <td colspan="2" style="text-align:right;">Total</td>
+            <td style="text-align:right;">Total</td>
             <td style="text-align:center;">${totalBags}</td>
             <td style="text-align:center;">${totalWeight} MT</td>
           </tr>
@@ -120,7 +115,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {}, partySuggestions = [] }) {
+function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {} }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
@@ -132,69 +127,10 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
     weight: row.weight,
     totalBags: row.totalBags,
     destination: row.destination || '',
-    loadingType: row.loadingType || 'From Godown',
-    note: row.note || '',
-    voiceMessageBase64: row.voiceMessageBase64 || '',
   });
   const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showChalPopup, setShowChalPopup] = useState(false);
-  const resolvedPartySuggestions = useMemo(() => buildPartySuggestions(
-    partySuggestions,
-    row.partyName,
-    form.usedChallans.map(c => c.partyName)
-  ), [partySuggestions, row.partyName, form.usedChallans]);
-
-  // Voice recording inside EditModal
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [voicePreviewUrl, setVoicePreviewUrl] = useState('');
-  const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunksRef.current = [];
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        setVoicePreviewUrl(url);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const b64 = reader.result.split(',')[1];
-          setForm(f => ({ ...f, voiceMessageBase64: b64 }));
-        };
-        reader.readAsDataURL(blob);
-        stream.getTracks().forEach(t => t.stop());
-      };
-      mediaRecorderRef.current = mr; mr.start(); setIsRecording(true);
-    } catch { alert('Mic access denied'); }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const playPreview = () => {
-    if (!voicePreviewUrl) return;
-    if (voicePreviewAudio) { voicePreviewAudio.pause(); setVoicePreviewAudio(null); setIsPlayingPreview(false); return; }
-    const audio = new Audio(voicePreviewUrl);
-    setVoicePreviewAudio(audio); setIsPlayingPreview(true); audio.play();
-    audio.onended = () => { setIsPlayingPreview(false); setVoicePreviewAudio(null); };
-  };
-
-  const clearVoice = () => {
-    if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
-    setVoicePreviewUrl('');
-    setForm(f => ({ ...f, voiceMessageBase64: '' }));
-  };
 
   // Resolution of usedChallans on mount
   useEffect(() => {
@@ -267,9 +203,8 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
     try {
       const finalBilling = form.usedChallans.map(c => c.challanNo).join(', ');
-      const payload = { ...form, partyName: resolvePartyName(form.partyName, resolvedPartySuggestions), billing: finalBilling };
+      const payload = { ...form, billing: finalBilling };
       delete payload.usedChallans; // remove UI state
-      if (!payload.voiceMessageBase64) payload.voiceMessageBase64 = row.voiceMessageBase64 || "";
       
       let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
@@ -325,40 +260,17 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
             <div className="field">
               <label>Truck No.</label>
-              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`lr-edit-truck-list-${row.id}`} />
-              <datalist id={`lr-edit-truck-list-${row.id}`}>
-                {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-              </datalist>
+              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase().replace(/\s/g, ''))} />
             </div>
-            <div className="field">
-              <label><User size={11} /> Party Name</label>
-              <input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, resolvedPartySuggestions))} list={`lr-edit-party-list-${row.id}`} />
-              <datalist id={`lr-edit-party-list-${row.id}`}>
-                {resolvedPartySuggestions.map(name => <option key={name} value={name} />)}
-              </datalist>
-            </div>
+            <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', e.target.value)} /></div>
             <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
           </div>
           <hr className="sep" style={{ margin: '4px 0' }} />
           <div className="fg fg-3">
             <div className="field">
-              <label>
-                Material
-                {form.billing && form.billing !== 'No' && (
-                  <span style={{ color: '#f59e0b', marginLeft: '6px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                    Challan: {form.billing}
-                  </span>
-                )}
-              </label>
+              <label>Material</label>
               <select className="fi" value={form.material} onChange={e => S('material', e.target.value)}>
                 {MATERIALS.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Loading Type</label>
-              <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
-                <option value="From Godown">From Godown</option>
-                <option value="Crossing">Crossing</option>
               </select>
             </div>
             <div className="field">
@@ -394,38 +306,6 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               </div>
             </div>
           </div>
-
-          <hr className="sep" style={{ margin: '4px 0' }} />
-          
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour</label>
-            <textarea className="fi" rows={2} placeholder="Add instructions..." value={form.note} onChange={e => S('note', e.target.value)} style={{ resize: 'vertical', minHeight: '60px' }} />
-          </div>
-
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message</label>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {!isRecording ? (
-                <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
-                  <Mic size={13} /> {voicePreviewUrl || form.voiceMessageBase64 ? 'Change Voice' : 'Record Voice'}
-                </button>
-              ) : (
-                <button type="button" onClick={stopRecording} className="btn btn-d btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', animation: 'pulse 1s infinite' }}>
-                  <MicOff size={13} /> Stop Recording
-                </button>
-              )}
-              {(voicePreviewUrl || form.voiceMessageBase64) && !isRecording && (
-                <>
-                  <button type="button" onClick={playPreview} className="btn btn-g btn-sm">
-                    {isPlayingPreview ? <Pause size={12} /> : <Play size={12} />}
-                  </button>
-                  <button type="button" onClick={clearVoice} className="btn btn-d btn-sm"><X size={12} /></button>
-                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>✓ Voice Attached</span>
-                </>
-              )}
-              {isRecording && <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 700 }}>Recording...</span>}
-            </div>
-          </div>
         </div>
 
         {/* Modal footer */}
@@ -438,8 +318,8 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
         {showChalPopup && (
            <ChallanPopup 
-             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
-             selectedChallans={form.usedChallans}
+             brand={brand} openChallans={openChallans} vehicles={vehicles} 
+             selectedChallans={form.usedChallans} 
              onClose={() => setShowChalPopup(false)}
              onToggleSelect={(ch) => {
                 const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
@@ -461,7 +341,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [] }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
 
   // For 'create' tab
@@ -482,10 +362,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     date: preFill?.date || new Date().toISOString().split('T')[0],
     material: preFill?.material || MATERIALS[0],
     quantity: preFill?.quantity || '',
-    partyName: resolvePartyName(preFill?.partyName || '', partySuggestions),
+    partyName: preFill?.partyName || '',
     destination: preFill?.destination || '',
-    remark: preFill?.remark || '',
-    challanNo: ''
+    remark: preFill?.remark || ''
   });
 
   const S = (k, v) => setChalForm(f => ({ ...f, [k]: v }));
@@ -502,25 +381,14 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   const executeCreate = async () => {
     setSaving(true); setIsConfirming(false);
     try {
-      // Validate duplicate challan number before creating
-      if (chalForm.challanNo && chalForm.challanNo.trim()) {
-        const existing = await ax.get(ENDPOINT).catch(() => ({ data: [] }));
-        const dup = existing.data.find(c => c.challanNo === chalForm.challanNo.trim());
-        if (dup) {
-          setErr(`Challan number "${chalForm.challanNo.trim()}" already exists. Use a different number or leave blank for auto-generation.`);
-          setSaving(false);
-          return;
-        }
-      }
-      const res = await ax.post(ENDPOINT, { ...chalForm, partyName: resolvePartyName(chalForm.partyName, partySuggestions) });
-      const created = res.data;
+      const res = await ax.post(ENDPOINT, chalForm);
+      const newChNo = res.data.challanNo;
       // Go back to select tab so user can see newly created challan
       setTab('select');
-      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', challanNo: '' });
+      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
-      // Pass full challan object (with quantity) to parent
-      if (onCreated) onCreated(created.challanNo, parseInt(chalForm.quantity) || 0);
+      if (onCreated) onCreated(newChNo);
     } catch (er) {
       setErr(er.response?.data?.error || 'Error creating challan');
     } finally {
@@ -627,21 +495,14 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
             {tab === 'create' && (
               <motion.div key="create" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 <form id="createChalForm" onSubmit={handleCreateRequest} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div className="field">
-                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Challan No. (Manual No / LR No)</span>
-                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#f59e0b' }}>OPTIONAL — Leave blank for auto-gen</span>
-                    </label>
-                    <input className="fi" type="text" placeholder="e.g. 1234 or LR-501" value={chalForm.challanNo} onChange={e => S('challanNo', e.target.value)} />
-                  </div>
                   <div className="fg fg-2">
                     <div className="field">
                       <label>Truck No. *</label>
-                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} required list="chal-truck-list" />
+                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', e.target.value.toUpperCase().replace(/\s/g, ''))} required list="chal-truck-list" />
                       <datalist id="chal-truck-list">
                         {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                       </datalist>
-                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</div>}
+                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Standard: RJ07GA1234</div>}
                     </div>
                     <div className="field">
                       <label><Calendar size={11} /> Date *</label>
@@ -664,10 +525,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label><User size={11} /> Party Name</label>
-                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, partySuggestions))} list="lr-challan-party-list" />
-                      <datalist id="lr-challan-party-list">
-                        {partySuggestions.map(name => <option key={name} value={name} />)}
-                      </datalist>
+                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', e.target.value)} />
                     </div>
                     <div className="field">
                       <label>Destination</label>
@@ -770,10 +628,6 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
-  // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
-  const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : 'lr_jkl';
-  const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
-
   let API, API_STOCK;
   if (brand === 'jkl') {
     API = `${BASE_API}/jkl/lr`;
@@ -810,74 +664,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     date: new Date().toISOString().split('T')[0],
     truckNo: '', partyName: '',
     destination: '',
-    note: '',
-    voiceMessageBase64: '',
     usedChallans: [], // array of selected challan objects
-    materials: [{ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }],
+    materials: [{ type: MATERIALS[0], weight: '', bags: '', billing: 'No' }],
   });
-
-  // ── Voice Recording State ──────────────────────────────
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [voicePreviewUrl, setVoicePreviewUrl] = useState('');
-  const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const partySuggestions = useMemo(() => buildPartySuggestions(
-    receipts.map(r => r.partyName),
-    allChallans.map(c => c.partyName),
-    openChallans.map(c => c.partyName)
-  ), [receipts, allChallans, openChallans]);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunksRef.current = [];
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        setVoicePreviewUrl(url);
-        // Convert to base64
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const b64 = reader.result.split(',')[1];
-          setForm(f => ({ ...f, voiceMessageBase64: b64 }));
-        };
-        reader.readAsDataURL(blob);
-        stream.getTracks().forEach(t => t.stop());
-      };
-      mediaRecorderRef.current = mr;
-      mr.start();
-      setIsRecording(true);
-    } catch (e) {
-      alert('Microphone access denied. Please allow mic access to record.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const playPreview = () => {
-    if (!voicePreviewUrl) return;
-    if (voicePreviewAudio) { voicePreviewAudio.pause(); setVoicePreviewAudio(null); setIsPlayingPreview(false); return; }
-    const audio = new Audio(voicePreviewUrl);
-    setVoicePreviewAudio(audio);
-    setIsPlayingPreview(true);
-    audio.play();
-    audio.onended = () => { setIsPlayingPreview(false); setVoicePreviewAudio(null); };
-  };
-
-  const clearVoice = () => {
-    if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
-    setVoicePreviewUrl('');
-    setForm(f => ({ ...f, voiceMessageBase64: '' }));
-  };
 
   /* Excel-style filters */
   const [filters, setFilters] = useState({});
@@ -934,44 +723,22 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
       const consumedRows = receipts.filter(l => l.material === mat);
       const totalLoaded = consumedRows.reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
-
-      // Pending = bags not yet covered by any challan (includes fully uncovered AND partially covered LRs)
-      let pending = 0;
-      consumedRows.forEach(l => {
-        const lrBags = parseInt(l.totalBags) || 0;
-        if (!l.billing || l.billing === 'No') {
-          pending += lrBags;
-        } else {
-          let covered = 0;
-          l.billing.split(',').forEach(cNo => {
-            const ch = allChallans.find(c => c.challanNo === cNo.trim());
-            if (ch) {
-              if (ch.materials) {
-                const matEntry = ch.materials.find(mo => mo.type === mat);
-                if (matEntry) covered += (matEntry.totalBags || 0);
-              } else if (ch.material === mat) {
-                covered += parseInt(ch.quantity || 0);
-              }
-            }
-          });
-          pending += Math.max(0, lrBags - covered);
-        }
-      });
-
+      const pending = consumedRows.filter(l => !l.billing || l.billing === 'No').reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
+      
       m[mat] = {
         physical: added - totalLoaded,
         pendingChallan: pending
       };
     });
     return m;
-  }, [additions, receipts, allChallans, MATERIALS]);
+  }, [additions, receipts, MATERIALS]);
 
   const updMat = (i, field, val) => {
     const m = [...form.materials]; m[i] = { ...m[i], [field]: val };
     if (field === 'bags' && val) m[i].weight = (parseFloat(val) * 0.05).toFixed(2);
     setForm({ ...form, materials: m });
   };
-  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], weight: '', bags: '', billing: 'No' }] });
   const removeMat = idx => setForm({ ...form, materials: form.materials.filter((_, i) => i !== idx) });
 
   const handleFormRequest = e => {
@@ -993,61 +760,30 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     setIsConfirmingSave(true);
   };
 
-  const handleChallanCreatedFromLR = async (newChNo, challanQty) => {
+  const handleChallanCreatedFromLR = async (newChNo) => {
     if (!linkingLrId) return;
     setLoading(true);
     try {
+      // 1. Update LR billing
+      await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newChNo });
+      
+      // 2. Sync stock
       const receipt = receipts.find(r => r.id === linkingLrId);
-      if (!receipt) return;
-
-      const lrBags = parseInt(receipt.totalBags || 0);
-
-      // Calculate how many bags are already covered by existing linked challans
-      let alreadyCovered = 0;
-      if (receipt.billing && receipt.billing !== 'No') {
-        receipt.billing.split(',').forEach(cNo => {
-          const existCh = allChallans.find(c => c.challanNo === cNo.trim());
-          if (existCh) {
-            if (existCh.materials) {
-              const mat = existCh.materials.find(m => m.type === receipt.material);
-              if (mat) alreadyCovered += (mat.totalBags || 0);
-            } else if (existCh.material === receipt.material) {
-              alreadyCovered += parseInt(existCh.quantity || 0);
-            }
-          }
+      if (receipt) {
+        let SYNC_API;
+        if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+        else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
+        else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+        else SYNC_API = `${BASE_API}/stock/sync-lr`;
+        await ax.post(SYNC_API, {
+          oldChallanNos: "",
+          newChallanNos: newChNo,
+          material: receipt.material,
+          quantity: receipt.totalBags
         });
       }
-
-      // Only deduct what the LR still needs (not the full challan qty)
-      const remainingNeeded = Math.max(0, lrBags - alreadyCovered);
-      const toDeduct = Math.min(parseInt(challanQty || 0), remainingNeeded);
-
-      // Build new billing: append to existing billing if already partially linked
-      const existingBilling = (receipt.billing && receipt.billing !== 'No') ? receipt.billing : '';
-      const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
-
-      // 1. Update LR billing
-      await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newBilling });
-
-      // 2. Sync stock — only deduct the bags the LR actually needs from this challan
-      let SYNC_API;
-      if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
-      else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
-      else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
-      else SYNC_API = `${BASE_API}/stock/sync-lr`;
-      await ax.post(SYNC_API, {
-        oldChallanNos: '',
-        newChallanNos: newChNo,
-        material: receipt.material,
-        quantity: toDeduct
-      });
-
-      const stillRemaining = lrBags - alreadyCovered - toDeduct;
-      if (stillRemaining > 0) {
-        alert(`Challan ${newChNo} created and linked!\n\nCovered: ${toDeduct} bags. Remaining: ${stillRemaining} bag(s) still Challan Pending.`);
-      } else {
-        alert(`Challan ${newChNo} created and linked to LR! All bags covered.`);
-      }
+      
+      alert(`Challan ${newChNo} created and linked to LR!`);
       fetchData();
       fetchChallans();
     } catch (e) {
@@ -1091,7 +827,6 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     try {
       const payload = {
         ...form,
-        partyName: resolvePartyName(form.partyName, partySuggestions),
         billing: form.usedChallans.map(c => c.challanNo).join(', ')
       };
 
@@ -1115,9 +850,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       alert('Receipt #' + res.data.lrNo + ' created!');
       fetchData(); fetchChallans();
-      clearVoice();
-      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
-
+      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', usedChallans: [], materials: [{ type: 'PPC', weight: '', bags: '' }] });
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
@@ -1166,7 +899,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} partySuggestions={partySuggestions} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -1184,108 +917,79 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             vehicles={vehicles.length ? vehicles.map(v => ({ ...v, brandMats: MATERIALS })) : [{ brandMats: MATERIALS }]}
             selectedChallans={form.usedChallans}
             preFill={chalPreFill}
-            partySuggestions={partySuggestions}
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
             onCreated={handleChallanCreatedFromLR}
-            onToggleSelect={async (ch) => {
-              // If we're linking a challan to an EXISTING LR row (from table button), handle separately
-              if (linkingLrId) {
-                setLoading(true);
-                try {
-                  const receipt = receipts.find(r => r.id === linkingLrId);
-                  if (!receipt) return;
-
-                  // Compute bags this challan can supply for this LR's material
-                  let challanBags = 0;
-                  if (ch.materials) {
-                    const mat = ch.materials.find(m => m.type === receipt.material);
-                    if (mat) challanBags = (mat.totalBags || 0) - (mat.loadedBags || 0);
-                  } else if (ch.material === receipt.material) {
-                    challanBags = parseInt(ch.quantity || 0) - (ch.loadedBags || 0);
-                  }
-
-                  // Compute how many bags are ALREADY covered by previously linked challans
-                  let alreadyCovered = 0;
-                  if (receipt.billing && receipt.billing !== 'No') {
-                    receipt.billing.split(',').forEach(cNo => {
-                      const existCh = allChallans.find(c => c.challanNo === cNo.trim());
-                      if (existCh) {
-                        if (existCh.materials) {
-                          const mat = existCh.materials.find(m => m.type === receipt.material);
-                          if (mat) alreadyCovered += (mat.totalBags || 0);
-                        } else if (existCh.material === receipt.material) {
-                          alreadyCovered += parseInt(existCh.quantity || 0);
-                        }
-                      }
-                    });
-                  }
-
-                  // Only deduct as many bags as the LR still needs — not the full challan capacity
-                  const remainingNeeded = Math.max(0, parseInt(receipt.totalBags || 0) - alreadyCovered);
-                  const toDeduct = Math.min(challanBags, remainingNeeded);
-
-                  const existingBilling = (receipt.billing && receipt.billing !== 'No') ? receipt.billing : '';
-                  const newBilling = existingBilling ? `${existingBilling}, ${ch.challanNo}` : ch.challanNo;
-
-                  // 1. Patch LR billing
-                  await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newBilling });
-
-                  // 2. Sync stock (deduct challan bags from open challan)
-                  let SYNC_API;
-                  if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
-                  else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
-                  else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
-                  else SYNC_API = `${BASE_API}/stock/sync-lr`;
-                  await ax.post(SYNC_API, {
-                    oldChallanNos: '',
-                    newChallanNos: ch.challanNo,
-                    material: receipt.material,
-                    quantity: toDeduct  // only the bags the LR actually still needs
-                  });
-
-                  fetchData(); fetchChallans();
-                  setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null);
-                } catch (e) {
-                  alert('Linking failed: ' + (e.response?.data?.error || e.message));
-                } finally { setLoading(false); }
-                return; // stop here — do NOT modify the new-LR form
-              }
-
-              // --- New LR creation form flow ---
+            onToggleSelect={(ch) => {
               const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
               let newUsed;
+              
               if (isSelected) {
                 newUsed = form.usedChallans.filter(c => c.challanNo !== ch.challanNo);
               } else {
+                // Vehicle mismatch warning
                 if (form.truckNo && ch.truckNo !== form.truckNo) {
-                  const ok = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
-                  if (!ok) return;
+                  const confirm = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
+                  if (!confirm) return;
                 }
                 newUsed = [...form.usedChallans, ch];
               }
 
+              // Auto-fill destination from first selected challan if empty
               if (newUsed.length > 0 && !form.destination) {
                 setForm(f => ({ ...f, destination: newUsed[0].destination || '', usedChallans: newUsed }));
               } else {
                 setForm(f => ({ ...f, usedChallans: newUsed }));
               }
 
+              // Remap materials based on latest selected challans
               const combinedMaterials = [];
               newUsed.forEach(c => {
                 if (c.materials) {
                   c.materials.forEach(m => {
-                    const left = m.totalBags - (m.loadedBags || 0);
-                    if (left > 0) combinedMaterials.push({ type: m.type, loadingType: 'From Godown', bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '' });
+                    let left = m.totalBags - m.loadedBags;
+                    if (left > 0) {
+                      // Find if this material type is already in combined; if so just add bags
+                      const existing = combinedMaterials.find(cm => cm.type === m.type);
+                      if (existing) {
+                        existing.bags = String(parseInt(existing.bags || 0) + left);
+                        existing.weight = (parseInt(existing.bags) * 0.05).toFixed(2);
+                        // Append challan No if not already there
+                        const nos = existing.billing.split(',').map(s => s.trim());
+                        if (!nos.includes(c.challanNo)) {
+                            existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
+                        }
+                      } else {
+                        combinedMaterials.push({ type: m.type, bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo });
+                      }
+                    }
                   });
                 } else {
-                  combinedMaterials.push({ type: c.material, loadingType: 'From Godown', bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '' });
+                  // legacy fallback
+                  const existing = combinedMaterials.find(cm => cm.type === c.material);
+                  if (existing) {
+                    existing.bags = String(parseInt(existing.bags || 0) + c.quantity);
+                    existing.weight = (parseInt(existing.bags) * 0.05).toFixed(2);
+                    const nos = existing.billing.split(',').map(s => s.trim());
+                    if (!nos.includes(c.challanNo)) {
+                        existing.billing = existing.billing === 'No' ? c.challanNo : existing.billing + ', ' + c.challanNo;
+                    }
+                  } else {
+                    combinedMaterials.push({ type: c.material, bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo });
+                  }
                 }
               });
+
               if (combinedMaterials.length === 0 && newUsed.length === 0) {
-                combinedMaterials.push({ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' });
+                combinedMaterials.push({ type: MATERIALS[0], weight: '', bags: '', billing: 'No' });
               }
+
               setForm({ ...form, usedChallans: newUsed, materials: combinedMaterials });
+            }}
+            onCreate={async (newChNo) => {
+              await fetchChallans();
+              // Wait for fetch, then act as if it was selected manually next render, or just switch to select tab
+              setShowChalPopup(false);
             }}
           />
         )}
@@ -1318,19 +1022,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
                   <div className="field">
                     <label>Truck No. (Auto-suggests from Vehicles)</label>
-                    <input className="fi" type="text" placeholder="e.g. RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
+                    <input className="fi" type="text" placeholder="RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') })} required list="truck-list" />
                     <datalist id="truck-list">
                       {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                     </datalist>
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</span>}
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Format: RJ07GA1234</span>}
                   </div>
-                  <div className="field">
-                    <label><User size={11} /> Party Name</label>
-                    <input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: resolvePartyName(e.target.value, partySuggestions) })} required list="lr-party-list" />
-                    <datalist id="lr-party-list">
-                      {partySuggestions.map(name => <option key={name} value={name} />)}
-                    </datalist>
-                  </div>
+                  <div className="field"><label><User size={11} /> Party Name</label><input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: e.target.value })} required /></div>
                   <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
                   <div className="field">
                     <label><Tag size={11} /> Challan Selection</label>
@@ -1377,40 +1075,22 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 {form.materials.map((m, i) => (
                   <motion.div key={i} className="mat-row" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
                     <div className="mat-row-hd">
-                      <span className="mat-lbl">
-                        Material #{i + 1}
-                        {m.billing && m.billing !== 'No' && (
-                          <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                            Challan: {m.billing} • {m.partyName || '—'}
-                          </span>
-                        )}
-                      </span>
+                      <span className="mat-lbl">Material #{i + 1}</span>
                       {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
                     </div>
-                    <div className="fg" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', display: 'grid', gap: '14px' }}>
+                    <div className="fg fg-3">
                       <div className="field"><label>Type</label>
                         <select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
                         </select>
                       </div>
                       <div className="field">
-                        <label>Loading Type</label>
-                        <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
-                          <option value="From Godown">From Godown</option>
-                          <option value="Crossing">Crossing</option>
-                        </select>
-                      </div>
-                      <div className="field">
                         <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span>Bags</span>
                           {m.type && (
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>
-                                 STOCK: {stockMap[m.type]?.physical || 0} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
-                               </span>
-                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>
-                                 CHALLAN PENDING: {stockMap[m.type]?.pendingChallan || 0} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
-                               </span>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[m.type]?.physical || 0}</span>
+                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>PENDING: {stockMap[m.type]?.pendingChallan || 0}</span>
                             </div>
                           )}
                         </label>
@@ -1420,42 +1100,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </div>
                   </motion.div>
                 ))}
-                <hr className="sep" style={{ margin: '8px 0' }} />
-                {/* Note */}
-                <div className="field" style={{ marginBottom: '10px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour (optional)</label>
-                  <textarea className="fi" rows={2} placeholder="e.g. Handle carefully, load from gate 2..." value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
-                    style={{ resize: 'vertical', minHeight: '60px' }} />
-                </div>
-                {/* Voice Message */}
-                <div className="field" style={{ marginBottom: '14px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message (optional)</label>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {!isRecording ? (
-                      <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
-                        <Mic size={13} /> {voicePreviewUrl ? 'Re-record' : 'Record Voice'}
-                      </button>
-                    ) : (
-                      <button type="button" onClick={stopRecording} className="btn btn-d btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', animation: 'pulse 1s infinite' }}>
-                        <MicOff size={13} /> Stop Recording
-                      </button>
-                    )}
-                    {voicePreviewUrl && (
-                      <>
-                        <button type="button" onClick={playPreview} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          {isPlayingPreview ? <><Pause size={12} /> Pause</> : <><Play size={12} /> Preview</>}
-                        </button>
-                        <button type="button" onClick={clearVoice} className="btn btn-d btn-sm" title="Remove voice">
-                          <X size={12} />
-                        </button>
-                        <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>✓ Voice recorded</span>
-                      </>
-                    )}
-                    {isRecording && <span style={{ fontSize: '11px', color: '#f43f5e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f43f5e', display: 'inline-block', animation: 'pulse 1s infinite' }} /> Recording...</span>}
-                  </div>
-                </div>
                 <button type="submit" className="btn btn-p btn-full" disabled={loading}>{loading ? 'Saving...' : 'Save Receipt'}</button>
-
               </form>
             </div>
           </div>
@@ -1498,7 +1143,6 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <th style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -1518,83 +1162,51 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td>
                           <span className="badge badge-tag">{lr.material}</span>
                           <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
-                          {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
                         </td>
                         <td className="c">
-                          {(() => {
-                            // Determine how many bags are not yet covered by any challan
-                            const lrBags = parseInt(lr.totalBags || 0);
-                            const hasBilling = lr.billing && lr.billing !== 'No';
-                            let coveredBags = 0;
-                            if (hasBilling) {
-                              lr.billing.split(',').forEach(cNo => {
+                          {lr.billing && lr.billing !== 'No' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                              {lr.billing.split(',').map((cNo, idx) => {
                                 const ch = allChallans.find(c => c.challanNo === cNo.trim());
-                                if (ch) {
-                                  if (ch.materials) {
-                                    const mat = ch.materials.find(m => m.type === lr.material);
-                                    if (mat) coveredBags += (mat.totalBags || 0);
-                                  } else if (ch.material === lr.material) {
-                                    coveredBags += parseInt(ch.quantity || 0);
-                                  }
-                                }
-                              });
-                            }
-                            const remainingBags = lrBags - coveredBags;
-                            const isPartiallyCovered = hasBilling && remainingBags > 0;
-                            const isFullyCovered = hasBilling && remainingBags <= 0;
+                                // Only show the challan if it contains the material of this LR row
+                                const hasMaterial = ch && ch.materials ? ch.materials.some(m => m.type === lr.material) : (ch && ch.material === lr.material);
+                                if (!hasMaterial && lr.billing.includes(',')) return null; // Hide if multi-challan and this one doesn't match
 
-                            return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                {hasBilling && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                    {lr.billing.split(',').map((cNo, idx) => {
-                                      const ch = allChallans.find(c => c.challanNo === cNo.trim());
-                                      const hasMaterial = ch && ch.materials ? ch.materials.some(m => m.type === lr.material) : (ch && ch.material === lr.material);
-                                      if (!hasMaterial && lr.billing.includes(',')) return null;
-                                      return (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800 }}>{cNo.trim()}</span>
-                                          {ch && ch.date && (
-                                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                              {new Date(ch.date).toLocaleDateString('en-GB').replace(/\//g, '-')}
-                                            </span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                    {isPartiallyCovered && (
-                                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#f43f5e', background: 'rgba(244,63,94,0.1)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.25)' }}>
-                                        {remainingBags} bags ({(remainingBags * 0.05).toFixed(2)} MT) pending
+                                return (
+                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800 }}>{cNo.trim()}</span>
+                                    {ch && ch.date && (
+                                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                        {new Date(ch.date).toLocaleDateString('en-GB').replace(/\//g, '-')}
                                       </span>
                                     )}
                                   </div>
-                                )}
-                                {(!hasBilling || isPartiallyCovered) && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                    {!hasBilling && <span className="badge badge-n">Pending Challan</span>}
-                                    <button
-                                      className="btn btn-a btn-sm"
-                                      onClick={() => {
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                <span className="badge badge-n">No Challan</span>
+                                <button
+                                    className="btn btn-a btn-sm"
+                                    onClick={() => {
                                         setLinkingLrId(lr.id);
                                         setChalPreFill({
-                                          truckNo: lr.truckNo,
-                                          material: lr.material,
-                                          quantity: isPartiallyCovered ? remainingBags : lr.totalBags,
-                                          partyName: lr.partyName,
-                                          destination: lr.destination,
-                                          date: lr.date
+                                            truckNo: lr.truckNo,
+                                            material: lr.material,
+                                            quantity: lr.totalBags,
+                                            partyName: lr.partyName,
+                                            destination: lr.destination,
+                                            date: lr.date
                                         });
                                         setShowChalPopup('create');
-                                      }}
-                                      style={{ fontSize: '9px', padding: '3px 8px', fontWeight: 800 }}
-                                    >
-                                      <Tag size={10} /> Challan Pending
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
+                                    }}
+                                    style={{ fontSize: '9px', padding: '3px 8px', fontWeight: 800 }}
+                                >
+                                    <Tag size={10} /> Create Challan
+                                </button>
+                            </div>
+                          )}
                         </td>
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
@@ -1603,7 +1215,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans)}>
                               <Printer size={14} />
                             </button>
-                            {canEdit && (
+                            {(role === 'admin' || permissions?.lr === 'edit') && (
                               <button className="btn btn-g btn-icon" title="Edit" onClick={() => setEditRow(lr)}>
                                 <Pencil size={14} />
                               </button>

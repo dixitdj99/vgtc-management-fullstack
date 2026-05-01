@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
-import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
@@ -129,8 +128,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const handleSaveRequest = (e) => {
         e.preventDefault();
         if (!form.truckNo || !form.ownerName) { setErr('Truck Number and Owner Name are required'); return; }
-        const duplicate = vehicles.find(v => v.id !== editId && cleanTruckNo(v.truckNo) === cleanTruckNo(form.truckNo));
-        if (duplicate) { setErr(`Truck number ${cleanTruckNo(form.truckNo)} already exists in vehicle details`); return; }
         setErr('');
         setIsConfirmingSave(true);
     };
@@ -194,7 +191,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
     // Unique owners for datalist
     const uniqueOwners = [...new Set(vehicles.map(v => v.ownerName))].filter(Boolean);
-    const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
 
     return (
         <div>
@@ -257,10 +253,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         <div className="fg fg-2">
                             <div className="field">
                                 <label>Truck No. *</label>
-                                <input className="fi" type="text" placeholder="e.g. RJ01AB1234 or HR361234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="vehicle-truck-list" />
-                                <datalist id="vehicle-truck-list">
-                                    {uniqueTruckNos.map(no => <option key={no} value={no} />)}
-                                </datalist>
+                                <input className="fi" type="text" placeholder="e.g. RJ01AB1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: e.target.value.toUpperCase() })} required />
                             </div>
                             <div className="field">
                                 <label>Vehicle Type</label>

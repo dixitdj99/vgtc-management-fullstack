@@ -33,8 +33,7 @@ const TD = { padding: '7px 9px', fontSize: '12px', color: 'var(--text-sub)', ver
 
 // Utility to check if an LR requires diesel verification and isn't verified yet
 function hasUnverifiedDiesel(v) {
-  const dieselVal = parseFloat(v.advanceDiesel);
-  const hasDiesel = (!isNaN(dieselVal) && dieselVal > 0) || v.advanceDiesel === 'FULL' || v.isFullTank;
+  const hasDiesel = (v.advanceDiesel && v.advanceDiesel !== '0') || v.isFullTank;
   return hasDiesel && !v.isDieselVerified;
 }
 

@@ -55,13 +55,9 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
         });
     };
 
-    const handleQuickVerify = async (v) => {
-        if (v.advanceDiesel === 'FULL' || (v.isFullTank && (!v.advanceDiesel || isNaN(parseFloat(v.advanceDiesel))))) {
-            alert('This voucher is marked as Full Tank. Please click the Edit/Pencil icon to enter the actual amount in Rupees before verifying.');
-            return;
-        }
+    const handleQuickVerify = async (id) => {
         try {
-            await ax.patch(`${API_V}/${v.id}`, { isDieselVerified: true });
+            await ax.patch(`${API_V}/${id}`, { isDieselVerified: true });
             fetchData();
         } catch (err) {
             alert('Verification failed');
@@ -231,7 +227,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                                                 className="btn btn-p btn-icon btn-sm" 
                                                                 title="Quick Verify" 
                                                                 style={{ background: '#10b981', borderColor: '#10b981' }}
-                                                                onClick={() => handleQuickVerify(v)}
+                                                                onClick={() => handleQuickVerify(v.id)}
                                                             >
                                                                 <Check size={14} />
                                                             </button>

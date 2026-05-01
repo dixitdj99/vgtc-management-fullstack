@@ -1,55 +1,36 @@
 import React, { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { User, Lock, LogIn, Truck, MapPin, KeyRound, ArrowLeft, Building2, Factory } from 'lucide-react';
+import { User, Lock, LogIn, Truck, Building2, KeyRound, ArrowLeft } from 'lucide-react';
 
-const LOCATIONS = [
+const PLANTS = [
   {
-    id: 'jharli',
-    label: 'Jharli Dump & Plant',
-    desc: 'JK Lakshmi Dump · Factory · JK Super Factory',
-    color: '#f59e0b',
-    glow: 'rgba(245,158,11,0.35)',
-    bg: 'rgba(245,158,11,0.1)',
-    border: 'rgba(245,158,11,0.35)',
-    icon: Factory,
-    // Maps to internal values:
-    plant: 'jklakshmi',
-    godown: '',
-  },
-  {
-    id: 'kosli',
-    label: 'Kosli Dump',
-    desc: 'Kosli LR · Bill · Balance · Stock',
+    id: 'jksuper',
+    label: 'JK Super',
+    desc: 'Dump, JK Super Voucher & Balance',
     color: '#6366f1',
     glow: 'rgba(99,102,241,0.35)',
     bg: 'rgba(99,102,241,0.1)',
     border: 'rgba(99,102,241,0.35)',
-    icon: Truck,
-    plant: 'jksuper',
-    godown: 'kosli',
   },
   {
-    id: 'jhajjar',
-    label: 'Jajjhar Dump',
-    desc: 'Jhajjar LR · Bill · Balance · Stock',
-    color: '#14b8a6',
-    glow: 'rgba(20,184,166,0.35)',
-    bg: 'rgba(20,184,166,0.1)',
-    border: 'rgba(20,184,166,0.35)',
-    icon: Building2,
-    plant: 'jksuper',
-    godown: 'jhajjar',
+    id: 'jklakshmi',
+    label: 'J.K Lakshmi',
+    desc: 'Lakshmi LR, Voucher & Balance',
+    color: '#f59e0b',
+    glow: 'rgba(245,158,11,0.3)',
+    bg: 'rgba(245,158,11,0.1)',
+    border: 'rgba(245,158,11,0.35)',
   },
 ];
 
 export default function LoginPage() {
   const { login, verifyOtp, resendOtp } = useAuth();
-  const [locationId, setLocationId] = useState('');
+  const [plant, setPlant] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
+  
   // OTP States
   const [otpMode, setOtpMode] = useState(false);
   const [otp, setOtp] = useState('');
@@ -57,19 +38,18 @@ export default function LoginPage() {
   const [userEmail, setUserEmail] = useState('');
   const [resending, setResending] = useState(false);
 
-  const selectedLocation = LOCATIONS.find(l => l.id === locationId);
+  const selectedPlant = PLANTS.find(p => p.id === plant);
 
   const handleSubmit = async e => {
     e.preventDefault();
-    if (!locationId) { setError('Please select a location first'); return; }
+    if (!plant) { setError('Please select a plant first'); return; }
     setError('');
     setLoading(true);
     try {
-      const loc = selectedLocation;
       if (otpMode) {
-        await verifyOtp(userId, otp, loc.plant, loc.godown);
+        await verifyOtp(userId, otp, plant);
       } else {
-        const result = await login(username, password, loc.plant, loc.godown);
+        const result = await login(username, password, plant);
         if (result && result.requireOtp) {
           setOtpMode(true);
           setUserId(result.userId);
@@ -90,7 +70,7 @@ export default function LoginPage() {
     setError('');
     try {
       await resendOtp(userId);
-      setError('A new OTP has been sent to your email.');
+      setError('A new OTP has been sent to your email.'); // Using error area for success message temporarily
     } catch (err) {
       setError('Failed to resend OTP');
     } finally {
@@ -98,8 +78,8 @@ export default function LoginPage() {
     }
   };
 
-  const accentColor = selectedLocation?.color || '#6366f1';
-  const accentGlow = selectedLocation?.glow || 'rgba(99,102,241,0.35)';
+  const accentColor = selectedPlant?.color || '#6366f1';
+  const accentGlow = selectedPlant?.glow || 'rgba(99,102,241,0.35)';
 
   return (
     <div style={{
@@ -110,8 +90,7 @@ export default function LoginPage() {
       <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
         <div style={{
           position: 'absolute', top: '-20%', left: '30%', width: '600px', height: '600px',
-          background: `radial-gradient(circle, ${accentGlow.replace('0.35', '0.12')} 0%, transparent 65%)`,
-          filter: 'blur(40px)', transition: 'background 0.4s'
+          background: `radial-gradient(circle, ${accentGlow.replace('0.35', '0.12')} 0%, transparent 65%)`, filter: 'blur(40px)', transition: 'background 0.4s'
         }} />
         <div style={{
           position: 'absolute', bottom: '-10%', right: '20%', width: '400px', height: '400px',
@@ -119,7 +98,7 @@ export default function LoginPage() {
         }} />
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '480px', padding: '0 20px' }}>
+      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '460px', padding: '0 20px' }}>
         {/* Brand */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{
@@ -146,39 +125,33 @@ export default function LoginPage() {
 
           {!otpMode && (
             <>
-              {/* Location selection */}
+              {/* Plant selection */}
               <div style={{ marginBottom: '22px' }}>
-                <label style={{
+                <div style={{
                   fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
                   textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center',
-                  gap: '6px', marginBottom: '8px'
+                  gap: '6px', marginBottom: '10px'
                 }}>
-                  <MapPin size={12} /> Select Location
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <select
-                    id="location-select"
-                    value={locationId}
-                    onChange={(e) => { setLocationId(e.target.value); setError(''); }}
-                    style={{
-                      width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      borderRadius: '10px', padding: '12px 14px', color: locationId ? 'var(--text)' : 'var(--text-muted)',
-                      fontSize: '14px', fontWeight: 700, outline: 'none', transition: 'all 0.18s',
-                      appearance: 'none', cursor: 'pointer', fontFamily: 'inherit', boxSizing: 'border-box'
-                    }}
-                    onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                  >
-                    <option value="" disabled>Choose your location...</option>
-                    {LOCATIONS.map(loc => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.label} — {loc.desc}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                  </div>
+                  <Building2 size={12} /> Select Plant
+                </div>
+                <div className="login-plant-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                  {PLANTS.map(p => (
+                    <button key={p.id} type="button" onClick={() => { setPlant(p.id); setError(''); }}
+                      style={{
+                        background: plant === p.id ? p.bg : 'var(--bg-input)',
+                        border: `2px solid ${plant === p.id ? p.border : 'var(--border)'}`,
+                        borderRadius: '12px', padding: '12px 14px', cursor: 'pointer',
+                        textAlign: 'left', transition: 'all 0.18s',
+                        outline: plant === p.id ? `0px solid ${p.color}30` : 'none',
+                      }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: plant === p.id ? p.color : 'var(--text)' }}>
+                        {p.label}
+                      </div>
+                      <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '3px', lineHeight: 1.4 }}>
+                        {p.desc}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -189,7 +162,7 @@ export default function LoginPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
             <div>
               <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>
-                {otpMode ? 'Enter Security Code' : `Sign in${selectedLocation ? ` — ${selectedLocation.label}` : ''}`}
+                {otpMode ? 'Enter Security Code' : `Sign in ${selectedPlant ? `— ${selectedPlant.label}` : ''}`}
               </div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
                 {otpMode ? `Authentication code sent to ${userEmail.replace(/(.{3})(.*)(@.*)/, '$1***$3')}` : 'Enter your credentials to continue'}
@@ -221,7 +194,6 @@ export default function LoginPage() {
                       transform: 'translateY(-50%)', color: 'var(--text-muted)'
                     }} />
                     <input
-                      id="login-username"
                       type="text" value={username} onChange={e => setUsername(e.target.value)}
                       placeholder="e.g. admin" autoFocus required
                       style={{
@@ -249,7 +221,6 @@ export default function LoginPage() {
                       transform: 'translateY(-50%)', color: 'var(--text-muted)'
                     }} />
                     <input
-                      id="login-password"
                       type="password" value={password} onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••" required
                       style={{
@@ -278,13 +249,12 @@ export default function LoginPage() {
                     transform: 'translateY(-50%)', color: 'var(--text-muted)'
                   }} />
                   <input
-                    id="login-otp"
                     type="text" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="123456" autoFocus required maxLength={6}
                     style={{
                       width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
                       borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
-                      fontSize: '18px', fontWeight: 800, letterSpacing: '0.2em', outline: 'none',
+                      fontSize: '18px', fontWeight: 800, letterSpacing: '0.2em', outline: 'none', 
                       transition: 'border 0.18s', fontFamily: 'inherit', boxSizing: 'border-box'
                     }}
                     onFocus={e => e.target.style.borderColor = accentColor + '80'}
@@ -296,9 +266,9 @@ export default function LoginPage() {
 
             {error && (
               <div style={{
-                background: error.includes('sent') ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)',
+                background: error.includes('sent') ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)', 
                 border: `1px solid ${error.includes('sent') ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`,
-                borderRadius: '10px', padding: '10px 14px', fontSize: '12.5px',
+                borderRadius: '10px', padding: '10px 14px', fontSize: '12.5px', 
                 color: error.includes('sent') ? '#10b981' : 'var(--danger)',
                 fontWeight: 600, marginBottom: '16px'
               }}>
@@ -306,22 +276,16 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button
-              id="login-submit"
-              type="submit"
-              disabled={loading || !locationId}
-              style={{
-                width: '100%', padding: '13px', borderRadius: '12px', border: 'none',
-                background: locationId ? `linear-gradient(135deg,${accentColor},${accentColor}dd)` : 'var(--bg-input)',
-                color: locationId ? 'white' : 'var(--text-muted)',
-                fontSize: '14px', fontWeight: 800,
-                cursor: locationId ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                boxShadow: locationId ? `0 4px 20px ${accentGlow}` : 'none',
-                opacity: loading ? 0.7 : 1, transition: 'all 0.3s',
-                fontFamily: 'inherit',
-              }}
-            >
+            <button type="submit" disabled={loading || !plant} style={{
+              width: '100%', padding: '13px', borderRadius: '12px', border: 'none',
+              background: plant ? `linear-gradient(135deg,${accentColor},${accentColor}dd)` : 'var(--bg-input)',
+              color: plant ? 'white' : 'var(--text-muted)',
+              fontSize: '14px', fontWeight: 800, cursor: plant ? 'pointer' : 'not-allowed',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              boxShadow: plant ? `0 4px 20px ${accentGlow}` : 'none',
+              opacity: loading ? 0.7 : 1, transition: 'all 0.3s',
+              fontFamily: 'inherit',
+            }}>
               {loading ? (otpMode ? 'Verifying…' : 'Signing in…') : (
                 <>{otpMode ? <><KeyRound size={16} /> Verify OTP</> : <><LogIn size={16} /> Sign In</>}</>
               )}
@@ -339,6 +303,7 @@ export default function LoginPage() {
             )}
           </form>
         </div>
+
       </div>
     </div>
   );

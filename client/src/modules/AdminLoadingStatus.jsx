@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause } from 'lucide-react';
+import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X } from 'lucide-react';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -33,53 +33,14 @@ const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   );
 };
 
-// Compact inline voice player for admin table
-function InlineVoicePlayer({ base64Audio, heard, heardBy }) {
-  const [playing, setPlaying] = useState(false);
-  const audioRef = useRef(null);
-  const play = () => {
-    if (playing && audioRef.current) { audioRef.current.pause(); audioRef.current = null; setPlaying(false); return; }
-    const byteChars = atob(base64Audio);
-    const byteArr = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteArr], { type: 'audio/webm' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.play(); setPlaying(true);
-    audio.onended = () => { setPlaying(false); audioRef.current = null; URL.revokeObjectURL(url); };
-  };
-  return (
-    <button onClick={play} title={heard ? `Heard by ${heardBy || 'labour'}` : 'Play voice message'}
-      style={{ background: heard ? 'rgba(16,185,129,0.1)' : 'rgba(99,102,241,0.1)', border: `1px solid ${heard ? 'rgba(16,185,129,0.3)' : 'rgba(99,102,241,0.3)'}`, borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: heard ? '#10b981' : '#6366f1' }}>
-      {playing ? <Pause size={11} /> : <Play size={11} />}
-      {heard ? '✓ Heard' : 'Voice'}
-    </button>
-  );
-}
-
-// Maps a plant/godown string to the brand key used for API calls
-const getInitialBrand = (plant, godown) => {
-  if (plant === 'jklakshmi') return 'jklakshmi';
-  if (godown === 'jhajjar') return 'jhajjar';
-  if (godown === 'dump') return 'dump';
-  return 'kosli'; // fallback to kosli (covers godown='kosli' and default)
-};
-
-export default function AdminLoadingStatus({ globalWeather, role = 'user', userGodown = null, userPlant = null }) {
-  const [brand, setBrand] = useState(() => getInitialBrand(userPlant, userGodown));
+export default function AdminLoadingStatus({ globalWeather, role = 'user' }) {
+  const [brand, setBrand] = useState('jksuper');
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [showQR, setShowQR] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
-
-  // Sync brand when props change
-  useEffect(() => {
-    const mapped = getInitialBrand(userPlant, userGodown);
-    if (mapped) setBrand(mapped);
-  }, [userPlant, userGodown]);
+  const city = 'Jharli, Jhajjar, Haryana';
 
   // Map globalWeather properties required by the local view
   const weather = {
@@ -92,17 +53,10 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
   const fetchReceipts = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const endpointMap = {
-        kosli: '/kosli/lr',
-        jhajjar: '/jhajjar/lr',
-        jklakshmi: '/jkl/lr',
-        dump: '/lr',
-      };
-      const endpoint = endpointMap[brand] || '/kosli/lr';
+      const endpoint = brand === 'jklakshmi' ? '/jkl/lr' : '/lr';
       const res = await api.get(endpoint);
       const today = new Date().toISOString().split('T')[0];
       setReceipts(res.data.filter(r => r.date && r.date.split('T')[0] === today).reverse());
-      setLastSync(new Date());
     } catch (error) {
       console.error('Failed to fetch:', error);
     } finally {
@@ -119,14 +73,8 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const endpointMap = {
-        kosli: '/kosli/lr',
-        jhajjar: '/jhajjar/lr',
-        jklakshmi: '/jkl/lr',
-        dump: '/lr',
-      };
-      const base = endpointMap[brand] || '/kosli/lr';
-      await api.patch(`${base}/${id}`, { status: newStatus });
+      const endpoint = brand === 'jklakshmi' ? `/jkl/lr/${id}` : `/lr/${id}`;
+      await api.patch(endpoint, { status: newStatus });
       setReceipts(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
       setEditingId(null);
     } catch (error) {
@@ -149,7 +97,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
               <button onClick={() => setShowQR(false)} style={{ background: 'var(--bg)', border: 'none', borderRadius: '50%', padding: '6px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
             </div>
             <div style={{ background: 'white', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
-               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/labour')}`} alt="QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
+               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/loading-status')}`} alt="QR Code" style={{ display: 'block', width: '200px', height: '200px' }} />
             </div>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5' }}>Scan this QR code with any smartphone camera to instantly open the public real-time driver tracking portal.</p>
           </div>
@@ -162,12 +110,12 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
           <CloudRain size={24} />
           <div>
             <div style={{ fontWeight: 800, fontSize: '15px' }}>⚠️ WEATHER ALERT: POTENTIAL LOADING DELAY</div>
-            <div style={{ fontSize: '13px', fontWeight: 600 }}>Rain detected in Jharli, Jhajjar. Please ensure all material and trucks are covered.</div>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>Rain detected in Ahmedabad. Please ensure all material and trucks are covered.</div>
           </div>
         </div>
       )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text)' }}>
             <Truck /> Live Loading Overview
@@ -177,35 +125,18 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
               {weather.temp}°C • Jharli, Haryana
             </span>
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: weather.isRain ? 'var(--danger)' : 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {weather.advice}
-            </span>
-            {/* Live sync indicator */}
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 700, color: '#10b981' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-              LIVE{lastSync ? ` · ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
-            </span>
-          </div>
+          <span style={{ fontSize: '11px', fontWeight: 800, color: weather.isRain ? 'var(--danger)' : 'var(--accent)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {weather.advice}
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => setShowQR(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--primary)', background: 'var(--primary)', color: 'white', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
             <QrCode size={16} /> Share QR
           </button>
-          {/* Only admins can switch brands */}
-          {role === 'admin' && (
-            <select value={brand} onChange={e => setBrand(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold' }}>
-              <option value="kosli">Kosli Godown</option>
-              <option value="jhajjar">Jhajjar Godown</option>
-              <option value="dump">Dump (JK Super General)</option>
-              <option value="jklakshmi">JK Lakshmi</option>
-            </select>
-          )}
-          {role !== 'admin' && (
-            <span style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '13px' }}>
-              {brand === 'jklakshmi' ? 'JK Lakshmi' : brand === 'jhajjar' ? 'Jhajjar Godown' : brand === 'dump' ? 'Dump Godown' : 'Kosli Godown'}
-            </span>
-          )}
+          <select value={brand} onChange={e => setBrand(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold' }}>
+            <option value="jksuper">JK Super</option>
+            <option value="jklakshmi">JK Lakshmi</option>
+          </select>
           <button onClick={fetchReceipts} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -230,7 +161,6 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Quantity</th>
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Visual Status</th>
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Duration</th>
-                <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Note / Voice</th>
                 <th style={{ padding: '16px', fontSize: '13px', color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
@@ -249,34 +179,18 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
                     borderBottom: '1px solid var(--border)', 
                     transition: 'background 0.2s', 
                     opacity: isLoaded ? 0.6 : 1,
-                    backgroundColor: isLoaded ? 'rgba(0,0,0,0.01)' : 'transparent'
+                    backgroundColor: isLoaded ? 'rgba(0,0,0,0.01)' : 'transparent',
+                    ':hover': { background: 'rgba(0,0,0,0.01)' } 
                   }}>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text-muted)' }}>{index + 1}</td>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text)', fontSize: '15px' }}>{r.truckNo}</td>
                     <td style={{ padding: '16px', color: 'var(--text-muted)', fontWeight: '600' }}>{r.lrNo}</td>
-                    <td style={{ padding: '16px', color: 'var(--text)' }}>
-                      <div>{r.material}</div>
-                      {r.loadingType && (
-                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', opacity: 0.8, marginTop: '3px', textTransform: 'uppercase' }}>
-                          {r.loadingType}
-                        </div>
-                      )}
-                    </td>
+                    <td style={{ padding: '16px', color: 'var(--text)' }}>{r.material}</td>
                     <td style={{ padding: '16px', fontWeight: 'bold', color: 'var(--text)' }}>{r.totalBags} Bags</td>
                     <td style={{ padding: '16px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <ProgressBar status={r.status} startedAt={r.startedAt} loadedAt={r.loadedAt} now={now} />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{
-                            fontSize: '11px', fontWeight: 800, color: prog.color, letterSpacing: '0.05em',
-                            padding: '2px 8px', borderRadius: '10px',
-                            background: `${prog.color}18`, border: `1px solid ${prog.color}30`
-                          }}>{prog.label.toUpperCase()}</span>
-                          {/* Pulse dot for In-Progress */}
-                          {r.status === 'Started' && (
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-                          )}
-                        </div>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: prog.color, letterSpacing: '0.05em' }}>{prog.label.toUpperCase()}</span>
                       </div>
                     </td>
                     <td style={{ padding: '16px' }}>
@@ -298,22 +212,6 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
                         </div>
                       ) : <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>}
                     </td>
-                    {/* Note + Voice column */}
-                    <td style={{ padding: '12px 16px', maxWidth: '220px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        {r.note && (
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '6px', padding: '5px 8px' }}>
-                            <MessageSquare size={11} color="#f59e0b" style={{ marginTop: '1px', flexShrink: 0 }} />
-                            <span style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.4, wordBreak: 'break-word' }}>{r.note}</span>
-                          </div>
-                        )}
-                        {r.voiceMessageBase64 && (
-                          <InlineVoicePlayer base64Audio={r.voiceMessageBase64} heard={r.voiceHeard} heardBy={r.voiceHeardBy} />
-                        )}
-                        {!r.note && !r.voiceMessageBase64 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>}
-                      </div>
-                    </td>
-
                     <td style={{ padding: '16px', textAlign: 'right' }}>
                       {role === 'admin' ? (
                         editingId === r.id ? (

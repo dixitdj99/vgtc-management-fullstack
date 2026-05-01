@@ -1,20 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const voucherService = require('../services/voucherService');
-const vehicleService = require('../services/vehicleService');
 const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 
 const BASE_COL = 'vouchers';
-const VEHICLE_COL = 'vehicles';
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
         const result = await voucherService.createVoucher(req.body, getCol(BASE_COL, req));
-        await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
-            console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
-        });
 
         // Real-time backup — runs whenever Google Drive is authorized
         const authorized = await driveService.isAuthorized();
@@ -83,11 +78,6 @@ router.patch('/:id', async (req, res) => {
     try {
         const col = getCol(BASE_COL, req);
         await voucherService.updateVoucher(req.params.id, req.body, col);
-        if (req.body.truckNo) {
-            await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
-                console.error('[Voucher-Hook] Vehicle ensure failed on update:', error.message);
-            });
-        }
 
         // Sync updated row to Google Sheet — runs whenever Drive is authorized
         if (await driveService.isAuthorized()) {

@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
-import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
-import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
@@ -26,8 +24,12 @@ const getMatCol = (mat) => {
   return `hsl(${hue}, 75%, 50%)`;
 };
 
-// validateTruckNo and cleanTruckNo imported from ../utils/vehicleUtils
-
+const validateTruckNo = (no) => {
+  if (!no) return false;
+  const clean = no.replace(/\s/g, '').toUpperCase();
+  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+  return regex.test(clean);
+};
 const STATUS_META = {
   open: { label: 'Challan Created', color: 'var(--warn)', Icon: Clock },
   loaded: { label: 'Loaded', color: 'var(--accent)', Icon: CheckCircle2 },
@@ -39,44 +41,6 @@ const fmtWt = n => parseFloat(n || 0).toFixed(2) + ' MT';
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 /* ── form helper ── */
-const getChallanMaterialRows = (challan) => {
-  if (challan.materials && challan.materials.length > 0) {
-    return challan.materials.map(m => {
-      const totalBags = parseInt(m.totalBags || 0) || 0;
-      const loadedBags = parseInt(m.loadedBags || 0) || 0;
-      const pendingBags = Math.max(0, totalBags - loadedBags);
-      return {
-        material: m.type || 'â€”',
-        quantity: `${totalBags} bags (${(totalBags * 0.05).toFixed(2)} MT)`,
-        loadingDetails: `Loaded: ${loadedBags} | Pending: ${pendingBags}`,
-      };
-    });
-  }
-
-  const totalBags = parseInt(challan.quantity || 0) || 0;
-  const loadedBags = parseInt(challan.loadedBags || 0) || 0;
-  const pendingBags = Math.max(0, totalBags - loadedBags);
-  return [{
-    material: challan.material || 'â€”',
-    quantity: `${totalBags} bags (${(totalBags * 0.05).toFixed(2)} MT)`,
-    loadingDetails: `Loaded: ${loadedBags} | Pending: ${pendingBags}`,
-  }];
-};
-
-const buildChallanExportRows = (challans) => challans.flatMap(challan =>
-  getChallanMaterialRows(challan).map(row => ({
-    challanNo: challan.challanNo || '',
-    date: challan.date || '',
-    truckNo: challan.truckNo || '',
-    material: row.material,
-    quantity: row.quantity,
-    loadingDetails: row.loadingDetails,
-    partyName: challan.partyName || '',
-    status: challan.status || 'open',
-    remark: challan.remark || '',
-  }))
-);
-
 const fi = (label, node) => (
   <div className="field" style={{ flex: 1, minWidth: '120px' }}>
     <label>{label}</label>{node}
@@ -107,7 +71,7 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
         {[
           { label: 'Total In', val: (added || 0), color: 'var(--text)' },
           { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
-          { label: 'Challan Pending', val: (pendingChallan || 0), color: 'var(--warn)' },
+          { label: 'Pending Ch.', val: (pendingChallan || 0), color: 'var(--warn)' },
           { label: 'Sold', val: (sold || 0), color: 'var(--accent)' },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: 'center', padding: '10px 6px', background: 'var(--bg)', borderRadius: '10px', border: label === 'Available' ? `1px solid ${col}44` : '1px solid transparent' }}>
@@ -127,11 +91,7 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
    MAIN
 ═════════════════════════════════════════════════ */
 export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
-  // canEdit: checks brand-specific key first, then generic 'stock' key
-  const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : 'stock_jkl';
-  const canEdit = role === 'admin' || permissions?.[stockKey] === 'edit' || permissions?.stock === 'edit';
   let API, API_LR;
-
   if (brand === 'jkl') {
     API = `${BASE_API}/jkl/stock`;
     API_LR = `${BASE_API}/jkl/lr`;
@@ -169,7 +129,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
-  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
+  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', date: new Date().toISOString().slice(0, 10), remark: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
@@ -229,38 +189,16 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       const added = additions.filter(a => a.material === mat).reduce((s, a) => s + (parseFloat(a.quantity) || 0), 0);
       const consumedRows = lrs.filter(l => l.material === mat);
       const lrUsed = consumedRows.reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
-      // Pending = bags not yet covered by any challan (includes fully uncovered AND partially covered LRs)
-      let pending = 0;
-      consumedRows.forEach(l => {
-        const lrBags = parseInt(l.totalBags) || 0;
-        if (!l.billing || l.billing === 'No') {
-          pending += lrBags; // no challan linked at all
-        } else {
-          // Check how many bags are actually covered by the linked challans
-          let covered = 0;
-          l.billing.split(',').forEach(cNo => {
-            const ch = challans.find(c => c.challanNo === cNo.trim());
-            if (ch) {
-              if (ch.materials) {
-                const matEntry = ch.materials.find(mo => mo.type === mat);
-                if (matEntry) covered += (matEntry.totalBags || 0);
-              } else if (ch.material === mat) {
-                covered += parseInt(ch.quantity || 0);
-              }
-            }
-          });
-          pending += Math.max(0, lrBags - covered); // only the uncovered remainder
-        }
-      });
+      const pending = consumedRows.filter(l => !l.billing || l.billing === 'No').reduce((s, l) => s + (parseInt(l.totalBags) || 0), 0);
       const sold = sales.filter(s => s.material === mat).reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
 
       let held = 0;
       challans.forEach(c => {
         if (c.status === 'open' || c.status === 'partially_loaded') {
           if (c.materials) {
-            const matObj = c.materials.find(mo => mo.type === mat);
-            if (matObj) {
-              held += (matObj.totalBags - (matObj.loadedBags || 0));
+            const m = c.materials.find(matObj => matObj.type === mat);
+            if (m) {
+              held += (m.totalBags - (m.loadedBags || 0));
             }
           } else if (c.material === mat) {
             held += parseFloat(c.quantity) || 0;
@@ -296,52 +234,6 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     }));
   }, [additions, lrs, sales]);
 
-  const monthlyDetailStats = useMemo(() => {
-    const rows = {};
-    const ensureRow = (month, material, loadingType) => {
-      const key = [month, material, loadingType].join('||');
-      if (!rows[key]) {
-        rows[key] = {
-          month,
-          material,
-          loadingType,
-          in: 0,
-          lrOut: 0,
-          saleOut: 0
-        };
-      }
-      return rows[key];
-    };
-
-    additions.forEach(a => {
-      const row = ensureRow((a.date || '').slice(0, 7), a.material || 'UNKNOWN', 'Stock In');
-      row.in += parseFloat(a.quantity) || 0;
-    });
-
-    lrs.forEach(l => {
-      const row = ensureRow((l.date || '').slice(0, 7), l.material || 'UNKNOWN', l.loadingType || 'From Godown');
-      row.lrOut += parseInt(l.totalBags) || 0;
-    });
-
-    sales.forEach(s => {
-      const row = ensureRow((s.date || '').slice(0, 7), s.material || 'UNKNOWN', 'Direct Sale');
-      row.saleOut += parseInt(s.quantity) || 0;
-    });
-
-    return Object.values(rows)
-      .filter(row => row.month)
-      .sort((a, b) =>
-        a.month === b.month
-          ? `${a.material}${a.loadingType}`.localeCompare(`${b.material}${b.loadingType}`)
-          : b.month.localeCompare(a.month)
-      );
-  }, [additions, lrs, sales]);
-
-  const partySuggestions = useMemo(() => buildPartySuggestions(
-    challans.map(c => c.partyName),
-    lrs.map(l => l.partyName)
-  ), [challans, lrs]);
-
   const totalAvailable = MATS.reduce((s, mat) => s + (stockMap[mat]?.available || 0), 0);
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
 
@@ -354,7 +246,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   };
   const executeMigo = async () => {
     setSaving(true); setIsConfirmingMigo(false);
-    if (!validateTruckNo(migoForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234 or HR161234)'); setSaving(false); return; }
+    if (!validateTruckNo(migoForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); setSaving(false); return; }
     try { await ax.post(API + '/additions', migoForm); setMigoForm(getEmptyMigo()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
@@ -364,9 +256,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   const triggerChallan = e => {
     e.preventDefault(); setErr('');
-    if (!chalForm.lrNo) { setErr('LR Number required'); return; }
     if (!chalForm.truckNo) { setErr('Truck number required'); return; }
-    if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234 or HR161234)'); return; }
+    if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234)'); return; }
     if (!chalForm.quantity || parseFloat(chalForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
     // Check availability
     const avail = stockMap[chalForm.material]?.available || 0;
@@ -380,61 +271,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   const executeChallan = async () => {
     setSaving(true); setIsConfirmingChallan(false);
-    try { 
-      const res = await ax.post(API + '/challans', { ...chalForm, partyName: resolvePartyName(chalForm.partyName, partySuggestions) });
-      const newChNo = res.data.challanNo;
-
-      if (chalForm.lrNo) {
-        // Link it to the provided LR
-        const lr = lrs.find(r => String(r.lrNo).trim().toLowerCase() === String(chalForm.lrNo).trim().toLowerCase());
-        if (lr) {
-           const existingBilling = (lr.billing && lr.billing !== 'No') ? lr.billing : '';
-           const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
-           await ax.patch(`${API_LR}/${lr.id}/billing`, { billing: newBilling });
-
-           let SYNC_API;
-           if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
-           else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
-           else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
-           else SYNC_API = `${BASE_API}/stock/sync-lr`;
-
-           let challanBags = parseInt(chalForm.quantity || 0);
-           
-           // Compute already covered bags for this LR
-           let alreadyCovered = 0;
-           if (lr.billing && lr.billing !== 'No') {
-              lr.billing.split(',').forEach(cNo => {
-                 const existCh = challans.find(c => c.challanNo === cNo.trim());
-                 if (existCh) {
-                    if (existCh.materials) {
-                       const mat = existCh.materials.find(m => m.type === lr.material);
-                       if (mat) alreadyCovered += (mat.totalBags || 0);
-                    } else if (existCh.material === lr.material) {
-                       alreadyCovered += parseInt(existCh.quantity || 0);
-                    }
-                 }
-              });
-           }
-
-           const remainingNeeded = Math.max(0, parseInt(lr.totalBags || 0) - alreadyCovered);
-           const toDeduct = Math.min(challanBags, remainingNeeded);
-
-           await ax.post(SYNC_API, {
-              oldChallanNos: '',
-              newChallanNos: newChNo,
-              material: lr.material,
-              quantity: toDeduct
-           });
-        }
-      }
-
-      setChalForm(getEmptyChal()); fetchAll(); 
-    }
+    try { await ax.post(API + '/challans', chalForm); setChalForm(getEmptyChal()); fetchAll(); }
     catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
   };
 
   const updateStatus = async (id, status) => {
-    if (!canEdit) {
+    if (!(role === 'admin' || permissions?.stock === 'edit')) {
       alert('Permission denied (Edit access required)');
       return;
     }
@@ -444,16 +286,15 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   const deleteItem = async () => {
     if (!delTarget) return;
-    if (role !== 'admin') {
-      alert('Only administrators can delete entries');
-      setDelTarget(null);
-      return;
-    }
     try {
       if (delTarget.type === 'addition') await ax.delete(API + '/additions/' + delTarget.id);
       else await ax.delete(API + '/challans/' + delTarget.id);
       fetchAll();
     } catch (er) { alert('Delete failed'); }
+    if (role !== 'admin') {
+      alert('Only administrators can delete entries');
+      return;
+    }
     setDelTarget(null);
   };
 
@@ -498,25 +339,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     return rows;
   }, [additions, lrs, sales, filters]);
 
-  const exportChallanExcel = () => exportToExcel(
-    buildChallanExportRows(filteredChallans).map(row => ({
-      ChallanNo: row.challanNo,
-      Date: row.date,
-      Truck: row.truckNo,
-      Material: row.material,
-      Quantity: row.quantity,
-      Loading_Details: row.loadingDetails,
-      Party: row.partyName,
-      Status: row.status,
-      Remark: row.remark
-    })),
-    `Challans_${new Date().toISOString().slice(0, 10)}`
-  );
-  const exportChallanPDF = () => exportToPDF(
-    buildChallanExportRows(filteredChallans),
-    'Challan List',
-    ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'loadingDetails', 'partyName', 'status', 'remark']
-  );
+  const exportChallanExcel = () => exportToExcel(filteredChallans.map(c => ({ ChallanNo: c.challanNo, Date: c.date, Truck: c.truckNo, Material: c.material, Qty: c.quantity, Party: c.partyName, Status: c.status, Remark: c.remark })), `Challans_${new Date().toISOString().slice(0, 10)}`);
+  const exportChallanPDF = () => exportToPDF(filteredChallans, 'Challan List', ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'partyName', 'status', 'remark']);
 
   const exportHistoryExcel = () => exportToExcel(historyRows.map(r => ({ Date: r.date, Type: r.displayType, Details: r.label, Truck: r.truckNo, Material: r.material, In_Bags: r.credit, Out_Bags: r.debit })), `Stock_History_${new Date().toISOString().slice(0, 10)}`);
   const exportHistoryPDF = () => exportToPDF(historyRows, 'Stock History', ['date', 'displayType', 'label', 'truckNo', 'material', 'credit', 'debit']);
@@ -598,7 +422,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {canEdit && (
+          {(role === 'admin' || permissions?.stock === 'edit') && (
             <button onClick={() => setShowMatManager(true)} className="btn btn-g btn-sm" style={{ fontWeight: 800 }}>
                <Tag size={13} /> Manage Materials
             </button>
@@ -621,7 +445,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { label: 'Net Available', val: totalAvailable, color: '#a855f7' },
           { label: 'Challan Created', val: totalHeld, color: 'var(--warn)', unit: 'bags' },
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
-          { label: 'LR Challan Pending', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
+          { label: 'LR Pending Ch.', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
         ].map(({ label, val, color, unit = 'bags' }) => (
           <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '150px' }}>
             <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
@@ -643,7 +467,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { id: 'migo', label: 'MIGO (Stock Entry)', icon: <Plus size={13} />, restricted: true },
           { id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true },
         ].map(({ id, label, icon, restricted }) => {
-          if (restricted && !canEdit) return null;
+          if (restricted && !(role === 'admin' || permissions?.stock === 'edit')) return null;
           return (
             <button key={id} onClick={() => setTab(id)}
             style={{
@@ -686,43 +510,29 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div className="card-header">
              <div className="card-title-block">
                 <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><TrendingDown size={17} /></div>
-                <div className="card-title-text"><h3>Monthly Summary</h3><p>Detailed month, material, and loading-type report</p></div>
+                <div className="card-title-text"><h3>Monthly Summary</h3><p>Stock In vs Stock Out by month</p></div>
              </div>
           </div>
           <div className="tbl-wrap">
-            <table className="tbl" style={{ minWidth: '1280px' }}>
+            <table className="tbl" style={{ minWidth: '1000px' }}>
               <thead>
                 <tr>
                   <th>Month</th>
-                  <th>Material</th>
-                  <th>Loading Type</th>
-                  <th className="c">Stock In</th>
-                  <th className="c">LR Out</th>
-                  <th className="c">Sale Out</th>
+                  <th className="c">Total In (Bags)</th>
                   <th className="c">Total Out (Bags)</th>
                   <th className="c">Net (Bags)</th>
                   <th className="c">Net (MT)</th>
                 </tr>
               </thead>
               <tbody>
-                {monthlyDetailStats.length === 0 ? <tr><td colSpan={9} className="t-empty">No data available</td></tr> :
-                  monthlyDetailStats.map(s => {
-                    const totalOut = s.lrOut + s.saleOut;
-                    const net = s.in - totalOut;
+                {monthlyStats.length === 0 ? <tr><td colSpan={5} className="t-empty">No data available</td></tr> : 
+                  monthlyStats.map(s => {
+                    const net = s.in - s.out;
                     return (
-                      <tr key={`${s.month}-${s.material}-${s.loadingType}`}>
+                      <tr key={s.month}>
                         <td><span style={{ fontWeight: 800 }}>{new Date(s.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</span></td>
-                        <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
-                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getMatCol(s.material), display: 'inline-block' }} />
-                            {s.material}
-                          </span>
-                        </td>
-                        <td><span className="badge badge-tag">{s.loadingType}</span></td>
                         <td className="c"><span style={{ color: '#10b981', fontWeight: 800 }}>{s.in.toLocaleString('en-IN')}</span></td>
-                        <td className="c"><span style={{ color: '#6366f1', fontWeight: 800 }}>{s.lrOut.toLocaleString('en-IN')}</span></td>
-                        <td className="c"><span style={{ color: '#ec4899', fontWeight: 800 }}>{s.saleOut.toLocaleString('en-IN')}</span></td>
-                        <td className="c"><span style={{ color: '#f43f5e', fontWeight: 800 }}>{totalOut.toLocaleString('en-IN')}</span></td>
+                        <td className="c"><span style={{ color: '#f43f5e', fontWeight: 800 }}>{s.out.toLocaleString('en-IN')}</span></td>
                         <td className="c"><span style={{ color: net < 0 ? '#ef4444' : '#6366f1', fontWeight: 900 }}>{net.toLocaleString('en-IN')}</span></td>
                         <td className="c"><span className="badge badge-tag">{(net * 0.05).toFixed(2)} MT</span></td>
                       </tr>
@@ -762,7 +572,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
                 {fi('Truck Number', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="migo-truck-list"
-                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
+                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') }))} />
                   <datalist id="migo-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                   </datalist>
@@ -777,7 +587,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 {fi('Date', <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
                   value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-a" disabled={saving || !canEdit} style={{ height: '38px', alignSelf: 'flex-end', fontWeight: 800 }}>
+                <button type="submit" className="btn btn-a" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end', fontWeight: 800 }}>
                   {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
                 </button>
               </div>
@@ -856,16 +666,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             </div></div>
             <form onSubmit={triggerChallan} style={{ padding: '14px 18px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
-                {fi('LR Number', <>
-                  <input className="fi" type="text" placeholder="e.g. 1234" required list="stock-lr-list"
-                    value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
-                  <datalist id="stock-lr-list">
-                    {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
-                  </datalist>
-                </>)}
                 {fi('Truck No. (Auto-suggests)', <>
                   <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="stock-truck-list"
-                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
+                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: e.target.value.toUpperCase().replace(/\s/g, '') }))} />
                   <datalist id="stock-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                   </datalist>
@@ -877,21 +680,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
                   {chalForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--warn)', marginTop: '4px' }}>= {(chalForm.quantity * 0.05).toFixed(2)} MT</div>}
                 </>)}
-                {fi('Party Name', <>
-                  <input className="fi" type="text" placeholder="Customer / party" list="stock-party-list"
-                    value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
-                  <datalist id="stock-party-list">
-                    {partySuggestions.map(name => <option key={name} value={name} />)}
-                  </datalist>
-                </>)}
-                {fi('Party Code', <input className="fi" type="text" placeholder="Optional party code"
-                  value={chalForm.partyCode} onChange={e => setChalForm(f => ({ ...f, partyCode: e.target.value }))} />)}
-                {fi('Bill No', <input className="fi" type="text" placeholder="Optional bill number"
-                  value={chalForm.billNo} onChange={e => setChalForm(f => ({ ...f, billNo: e.target.value }))} />)}
+                {fi('Party Name', <input className="fi" type="text" placeholder="Customer / party"
+                  value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: e.target.value }))} />)}
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Notes"
                   value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ height: '38px', alignSelf: 'flex-end' }}>
+                <button type="submit" className="btn btn-p" disabled={saving || !(role === 'admin' || permissions?.stock === 'edit')} style={{ height: '38px', alignSelf: 'flex-end' }}>
                   {saving ? '…' : <><Tag size={14} /> Create Challan</>}
                 </button>
               </div>
@@ -1024,7 +818,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                             )}
                             {role === 'admin' && (
                               <button className="btn btn-d btn-sm btn-icon" title="Delete"
-                                onClick={() => { if (role === 'admin') setDelTarget({ id: c.id, type: 'challan', label: c.challanNo + ' — ' + c.truckNo }) }}>
+                                onClick={() => setDelTarget({ id: c.id, type: 'challan', label: c.challanNo + ' — ' + c.truckNo })}>
                                 <Trash2 size={13} />
                               </button>
                             )}
