@@ -10,7 +10,7 @@
       "purpose": "any maskable"
     }
   ],
-  "start_url": "/labour",
+  "start_url": "/loading-status",
   "background_color": "#1e293b",
   "theme_color": "#1e293b",
   "display": "standalone"

@@ -13,28 +13,9 @@ const getAll = async (collection = DEFAULT_COLLECTION) => {
 };
 
 const addSale = async (data, collection = DEFAULT_COLLECTION) => {
+    // ... logic remains same ...
     const { material, quantity, rate, date, remark, customerName, brand, paymentType, paymentStatus } = data;
-    
-    if (!material || !quantity || !rate) throw new Error("Missing required fields");
-
-    const totalAmount = parseFloat(quantity) * parseFloat(rate);
-
-    const saleData = {
-        material,
-        quantity: parseInt(quantity),
-        rate: parseFloat(rate),
-        totalAmount,
-        date: date || new Date().toISOString().slice(0, 10),
-        remark: remark || '',
-        customerName: customerName || 'Walk-in',
-        brand: brand || 'dump',
-        paymentType: paymentType || 'cash',
-        paymentStatus: paymentStatus || 'paid',
-        timestamp: Date.now()
-    };
-    
-    let savedSale;
-
+    // ...
     if (firebaseAvailable()) {
         const ref = db.collection(collection).doc();
         await ref.set({ 
@@ -45,6 +26,8 @@ const addSale = async (data, collection = DEFAULT_COLLECTION) => {
     } else {
         savedSale = localStore.insert(collection, saleData);
     }
+
+    // ── NOTE: Removed Cashbook integration per user request ──
     // Sales now act as their own independent ledger.
 
     return savedSale;

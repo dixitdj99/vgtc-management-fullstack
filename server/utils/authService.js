@@ -61,7 +61,6 @@ const getAll = async () => {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), password: undefined, otpCode: undefined }));
     }
     return localStore.getAll(getUCol()).map(u => ({ ...u, password: undefined, otpCode: undefined }));
-    // NOTE: plainPassword is intentionally included (not stripped) for admin display
 };
 
 const findByUsername = async (username) => {
@@ -94,7 +93,6 @@ const createUser = async (name, username, password, role = 'user', email = '', p
         name,
         username,
         password: hash,
-        plainPassword: password, // stored for admin display only (internal system)
         role,
         email,
         isOtpEnabled: false,
@@ -114,13 +112,12 @@ const createUser = async (name, username, password, role = 'user', email = '', p
 
 const updateUser = async (id, data) => {
     // Only allow updating specific fields to prevent security issues
-    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'plainPassword', 'otpCode', 'otpExpiry'];
+    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'otpCode', 'otpExpiry'];
     const filteredData = {};
     Object.keys(data).forEach(k => {
         if (allowedFields.includes(k)) {
-            if (k === 'password' && data[k]) {
+            if (k === 'password') {
                 filteredData[k] = bcrypt.hashSync(data[k], 10);
-                filteredData['plainPassword'] = data[k]; // keep plaintext in sync
             } else {
                 filteredData[k] = data[k];
             }

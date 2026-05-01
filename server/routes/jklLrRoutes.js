@@ -37,9 +37,6 @@ router.post('/', async (req, res) => {
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 
-                    const sheetsService = require('../utils/sheetsService');
-                    await sheetsService.upsertLrRow(fullData, 'jklakshmi');
-
                     await driveService.logActivity('JKL_LR_Create', 'success', `Backed up: ${fileName}`);
                     console.log(`[Backup-Hook] JKL LR backed up successfully: ${fileName}`);
                 } catch (e) {
@@ -71,13 +68,6 @@ router.get('/', async (req, res) => {
 router.patch('/:id/billing', async (req, res) => {
     try {
         await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
-        const driveService = require('../utils/driveService');
-        if (await driveService.isAuthorized()) {
-            const sheetsService = require('../utils/sheetsService');
-            const all = await lrService.getAllLoadingReceipts(getCol(JKL_LR_COL, req));
-            const doc = all.find(r => r.id === req.params.id);
-            if (doc) await sheetsService.upsertLrRow(doc, 'jklakshmi').catch(()=>{});
-        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -88,12 +78,6 @@ router.patch('/:id/billing', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
-        const driveService = require('../utils/driveService');
-        if (await driveService.isAuthorized()) {
-            const sheetsService = require('../utils/sheetsService');
-            const updated = { id: req.params.id, ...req.body };
-            await sheetsService.upsertLrRow(updated, 'jklakshmi').catch(()=>{});
-        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -102,13 +86,7 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
-        const driveService = require('../utils/driveService');
-        if (await driveService.isAuthorized()) {
-            const sheetsService = require('../utils/sheetsService');
-            const updated = { id: req.params.id, ...req.body };
-            await sheetsService.upsertLrRow(updated, 'jklakshmi').catch(()=>{});
-        }
+        await lrService.updateLoadingReceipt(req.params.id, req.body, JKL_LR_COL);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -119,11 +97,6 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         await lrService.deleteLoadingReceipt(req.params.id, getCol(JKL_LR_COL, req));
-        const driveService = require('../utils/driveService');
-        if (await driveService.isAuthorized()) {
-            const sheetsService = require('../utils/sheetsService');
-            await sheetsService.deleteLrRow(req.params.id, 'jklakshmi').catch(()=>{});
-        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });

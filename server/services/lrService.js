@@ -1,5 +1,5 @@
 const localStore = require('../utils/localStore');
-const { normalizePartyName } = require('../utils/partyNameUtils');
+
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 
@@ -31,8 +31,7 @@ const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) =>
 };
 
 const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
-    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64 } = data;
-    const normalizedPartyName = normalizePartyName(partyName || '');
+    const { materials, date, truckNo, partyName, billing, destination } = data;
     const lrNo = await firestoreGetNextLrNo(metadataCollection);
     const batch = db.batch();
     const createdIds = [];
@@ -41,14 +40,10 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
         batch.set(ref, {
             lrNo, date: date || new Date().toISOString(), truckNo,
             destination: destination || '',
-            material: mat.type, 
-            loadingType: mat.loadingType || 'From Godown',
-            weight: parseFloat(mat.weight) || 0,
+            material: mat.type, weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
-            partyName: normalizePartyName(mat.partyName || normalizedPartyName), status: 'Created',
-            note: note || '',
-            voiceMessageBase64: voiceMessageBase64 || '',
+            partyName, status: 'Created',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         createdIds.push(ref.id);
@@ -69,22 +64,17 @@ const localGetNextLrNo = (collectionName = 'lr_no') => {
 };
 
 const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
-    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64 } = data;
-    const normalizedPartyName = normalizePartyName(partyName || '');
+    const { materials, date, truckNo, partyName, billing, destination } = data;
     const lrNo = localGetNextLrNo(counterCollection);
     const createdIds = [];
     materials.forEach((mat) => {
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
             destination: destination || '',
-            material: mat.type,
-            loadingType: mat.loadingType || 'From Godown',
-            weight: parseFloat(mat.weight) || 0,
+            material: mat.type, weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
-            partyName: normalizePartyName(mat.partyName || normalizedPartyName), status: 'Created',
-            note: note || '',
-            voiceMessageBase64: voiceMessageBase64 || ''
+            partyName, status: 'Created'
         });
         createdIds.push(doc.id);
     });
@@ -124,10 +114,9 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     if (data.date !== undefined) allowed.date = data.date;
     if (data.truckNo !== undefined) allowed.truckNo = data.truckNo;
     if (data.destination !== undefined) allowed.destination = data.destination;
-    if (data.partyName !== undefined) allowed.partyName = normalizePartyName(data.partyName || '');
+    if (data.partyName !== undefined) allowed.partyName = data.partyName;
     if (data.billing !== undefined) allowed.billing = data.billing;
     if (data.material !== undefined) allowed.material = data.material;
-    if (data.loadingType !== undefined) allowed.loadingType = data.loadingType;
     if (data.weight !== undefined) allowed.weight = parseFloat(data.weight) || 0;
     if (data.totalBags !== undefined) allowed.totalBags = parseInt(data.totalBags) || 0;
     if (data.status !== undefined) {
@@ -141,52 +130,14 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     }
     if (data.invoiceGenerated !== undefined) allowed.invoiceGenerated = data.invoiceGenerated;
     if (data.invoiceNumber !== undefined) allowed.invoiceNumber = data.invoiceNumber;
-    if (data.note !== undefined) allowed.note = data.note;
-    if (data.voiceMessageBase64 !== undefined) allowed.voiceMessageBase64 = data.voiceMessageBase64;
 
     if (firebaseAvailable()) {
-        const docRef = db.collection(lrCollection).doc(id);
-        
-        // Propagate global fields (note, voice) to all docs with same lrNo
-        if (allowed.note !== undefined || allowed.voiceMessageBase64 !== undefined) {
-            try {
-                const doc = await docRef.get();
-                if (doc.exists) {
-                    const { lrNo } = doc.data();
-                    if (lrNo) {
-                        const snap = await db.collection(lrCollection).where('lrNo', '==', lrNo).get();
-                        const batch = db.batch();
-                        snap.docs.forEach(d => {
-                            const updateData = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-                            if (allowed.note !== undefined) updateData.note = allowed.note;
-                            if (allowed.voiceMessageBase64 !== undefined) updateData.voiceMessageBase64 = allowed.voiceMessageBase64;
-                            batch.update(d.ref, updateData);
-                        });
-                        await batch.commit();
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to propagate LR note/voice:', err);
-            }
-        }
-
-        await docRef.update({
+        await db.collection(lrCollection).doc(id).update({
             ...allowed,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
     } else {
         localStore.update(lrCollection, id, allowed);
-        // Propagation for local store (optional, but good for parity)
-        const current = localStore.get(lrCollection, id);
-        if (current && current.lrNo && (allowed.note !== undefined || allowed.voiceMessageBase64 !== undefined)) {
-            const others = localStore.getAll(lrCollection).filter(r => r.lrNo === current.lrNo && r.id !== id);
-            others.forEach(o => {
-                const up = {};
-                if (allowed.note !== undefined) up.note = allowed.note;
-                if (allowed.voiceMessageBase64 !== undefined) up.voiceMessageBase64 = allowed.voiceMessageBase64;
-                localStore.update(lrCollection, o.id, up);
-            });
-        }
     }
 };
 
