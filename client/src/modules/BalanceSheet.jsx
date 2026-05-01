@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -42,11 +42,13 @@ function doPrint(rows, truckNo, label, tabName) {
   const net = rows.reduce((s, v) => s + calcNet(v), 0);
   const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
   const out = Math.max(0, net - paid);
-  const cols = ['#', 'Date', 'LR No.', 'Destination', 'Weight', 'Rate', 'Gross', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status'];
+  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
+  const cols = ['#', 'Date', 'LR No.', ...(isBillType ? ['Bill No.', 'Party Code'] : []), 'Destination', 'Weight', 'Rate', 'Gross', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status'];
   const tbody = rows.map((v, i) => {
     const n = calcNet(v), p = parseFloat(v.paidBalance) || 0, o = Math.max(0, n - p);
     return `<tr style="background:${i % 2 === 0 ? '#f9f9f9' : '#fff'}">
       <td>${i + 1}</td><td>${v.date || ''}</td><td>#${v.lrNo || ''}</td>
+      ${isBillType ? `<td>${v.billNo || '—'}</td><td>${v.partyCode || '—'}</td>` : ''}
       <td>${v.destination || v.partyName || '—'}</td>
       <td style="text-align:right">${v.weight || '—'}</td><td style="text-align:right">${v.rate || '—'}</td>
       <td style="text-align:right">Rs.${Math.round((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)).toLocaleString()}</td>
@@ -100,7 +102,7 @@ function doPrint(rows, truckNo, label, tabName) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -148,6 +150,8 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
       <td style={{ ...TD }}>{v.date}</td>
       <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span></td>
+      {isBillType && <td style={{ ...TD }}>{v.billNo || '—'}</td>}
+      {isBillType && <td style={{ ...TD }}>{v.partyCode || '—'}</td>}
       <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('weight', '60px') : (v.weight || '—')}</td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('rate', '60px') : (v.rate || '—')}</td>
@@ -251,6 +255,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 
 /* ── Month Section ── */
 function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions }) {
+  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const [open, setOpen] = useState(true);
 
   const monthChecked = rows.filter(v => selected.has(v.id));
@@ -356,6 +361,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <th style={TH}>#</th>
                 <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                {isBillType && <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
+                {isBillType && <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
                 <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
@@ -376,7 +383,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} />
               ))}
             </tbody>
             <tfoot>
@@ -437,6 +444,13 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [marking, setMarking] = useState(false);
   const [paymentClearedDate, setPaymentClearedDate] = useState(new Date().toISOString().slice(0, 10));
 
+  // Vehicle Advance states
+  const [advances, setAdvances] = useState([]);
+  const [showAdvanceForm, setShowAdvanceForm] = useState(false);
+  const [advForm, setAdvForm] = useState({ type: 'credit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const [advSaving, setAdvSaving] = useState(false);
+  const [showAdvances, setShowAdvances] = useState(false);
+
   // Excel-style filters
   const [filters, setFilters] = useState({});
   const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
@@ -447,10 +461,38 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
 
   useEffect(() => { fetchVouchers(); setSelTruck(null); setTruckSearch(''); setSelected(new Set()); }, [tab]);
   useEffect(() => { setSelected(new Set()); }, [selTruck, filters]);
+  useEffect(() => { if (selTruck) fetchAdvances(selTruck); }, [selTruck]);
 
   const fetchVouchers = async () => {
     try { setVouchers((await ax.get(API_V + '/' + tab)).data); } catch { }
   };
+
+  const fetchAdvances = async (truck) => {
+    try { setAdvances((await ax.get('/vehicle-advances/' + encodeURIComponent(truck))).data); } catch { setAdvances([]); }
+  };
+
+  const handleAdvSubmit = async (e) => {
+    e.preventDefault();
+    if (!advForm.amount || parseFloat(advForm.amount) <= 0) return;
+    setAdvSaving(true);
+    try {
+      await ax.post('/vehicle-advances', { ...advForm, truckNo: selTruck });
+      setAdvForm({ type: 'credit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+      setShowAdvanceForm(false);
+      fetchAdvances(selTruck);
+    } catch (er) { alert(er.response?.data?.error || 'Failed'); }
+    finally { setAdvSaving(false); }
+  };
+
+  const handleAdvDelete = async (id) => {
+    if (!window.confirm('Delete this advance entry?')) return;
+    try { await ax.delete('/vehicle-advances/' + id); fetchAdvances(selTruck); }
+    catch { alert('Delete failed'); }
+  };
+
+  const advanceBalance = useMemo(() => {
+    return advances.reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0);
+  }, [advances]);
 
   const truckGroups = useMemo(() => {
     const map = {};
@@ -585,6 +627,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               { label: 'Net Balance', val: fmtRs(truckTotals.net), color: 'var(--text)' },
               { label: 'Total Paid', val: fmtRs(truckTotals.paid), color: 'var(--accent)' },
               { label: 'Outstanding', val: fmtRs(truckTotals.outstanding), color: truckTotals.outstanding > 0 ? 'var(--warn)' : 'var(--accent)' },
+              { label: 'Advance Balance', val: fmtRs(advanceBalance), color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' },
             ].map(({ label, val, color }) => (
               <div key={label} style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
@@ -594,6 +637,125 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 <span style={{ fontSize: '17px', fontWeight: 900, color, lineHeight: 1 }}>{val}</span>
               </div>
             ))}
+          </div>
+
+          {/* ── Vehicle Advance Ledger ── */}
+          <div className="card" style={{ marginBottom: '14px' }}>
+            <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setShowAdvances(s => !s)}>
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}><Wallet size={17} /></div>
+                <div className="card-title-text">
+                  <h3>Vehicle Advance Ledger</h3>
+                  <p>{advances.length} entries · Balance: {fmtRs(advanceBalance)}</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {(role === 'admin' || permissions?.balance === 'edit') && (
+                  <button className="btn btn-p btn-sm" onClick={(e) => { e.stopPropagation(); setShowAdvanceForm(f => !f); setShowAdvances(true); }}>
+                    <Plus size={12} /> Add Entry
+                  </button>
+                )}
+                {showAdvances ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {showAdvances && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
+
+                  {/* Add Advance Form */}
+                  {showAdvanceForm && (
+                    <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-input)' }}>
+                      <form onSubmit={handleAdvSubmit} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+                        <div className="field" style={{ flex: '0 0 auto', minWidth: '140px' }}>
+                          <label>Type</label>
+                          <select className="fi" value={advForm.type} onChange={e => setAdvForm(f => ({ ...f, type: e.target.value }))}>
+                            <option value="credit">Vehicle Owner Submits (Credit +)</option>
+                            <option value="debit">We Give to Owner (Debit −)</option>
+                          </select>
+                        </div>
+                        <div className="field" style={{ flex: 1, minWidth: '100px' }}>
+                          <label>Amount (Rs.)</label>
+                          <input className="fi" type="number" step="any" min="1" placeholder="Amount" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} required />
+                        </div>
+                        <div className="field" style={{ flex: 1, minWidth: '120px' }}>
+                          <label>Date</label>
+                          <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
+                        </div>
+                        <div className="field" style={{ flex: 2, minWidth: '140px' }}>
+                          <label>Remark</label>
+                          <input className="fi" type="text" placeholder="e.g. Cash received" value={advForm.remark} onChange={e => setAdvForm(f => ({ ...f, remark: e.target.value }))} />
+                        </div>
+                        <button type="submit" className="btn btn-p" disabled={advSaving} style={{ height: '38px' }}>
+                          {advSaving ? '...' : <><Check size={13} /> Save</>}
+                        </button>
+                        <button type="button" className="btn btn-g" onClick={() => setShowAdvanceForm(false)} style={{ height: '38px' }}>
+                          <X size={13} />
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* Advance Transactions Table */}
+                  <div className="tbl-wrap">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr>
+                          <th style={TH}>#</th>
+                          <th style={TH}>Date</th>
+                          <th style={TH}>Type</th>
+                          <th style={TH}>Credit (+)</th>
+                          <th style={TH}>Debit (−)</th>
+                          <th style={TH}>Running Balance</th>
+                          <th style={TH}>Remark</th>
+                          {role === 'admin' && <th style={TH}>Action</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {advances.length === 0 && (
+                          <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No advance transactions for this vehicle</td></tr>
+                        )}
+                        {[...advances].reverse().map((a, i, arr) => {
+                          const runBal = arr.slice(0, i + 1).reduce((s, x) => s + (x.type === 'credit' ? x.amount : -x.amount), 0);
+                          return (
+                            <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                              <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                              <td style={TD}>{fmtDate(a.date)}</td>
+                              <td style={TD}>
+                                {a.type === 'credit'
+                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: '10px', fontWeight: 800 }}><ArrowDownCircle size={11} /> Received</span>
+                                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '5px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', fontSize: '10px', fontWeight: 800 }}><ArrowUpCircle size={11} /> Given</span>
+                                }
+                              </td>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#10b981' }}>{a.type === 'credit' ? fmtRs(a.amount) : '—'}</td>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f43f5e' }}>{a.type === 'debit' ? fmtRs(a.amount) : '—'}</td>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: runBal >= 0 ? '#10b981' : '#f43f5e', fontSize: '13px' }}>{fmtRs(runBal)}</td>
+                              <td style={{ ...TD, color: 'var(--text-sub)' }}>{a.remark || '—'}</td>
+                              {role === 'admin' && (
+                                <td style={{ ...TD, textAlign: 'center' }}>
+                                  <button className="btn btn-d btn-icon btn-sm" onClick={() => handleAdvDelete(a.id)} title="Delete"><Trash2 size={12} /></button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {advances.length > 0 && (
+                        <tfoot>
+                          <tr>
+                            <td colSpan={3} style={{ ...TDF, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Total ({advances.length} entries)</td>
+                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{fmtRs(advances.filter(a => a.type === 'credit').reduce((s, a) => s + a.amount, 0))}</td>
+                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#f43f5e' }}>{fmtRs(advances.filter(a => a.type === 'debit').reduce((s, a) => s + a.amount, 0))}</td>
+                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e', fontSize: '14px' }}>{fmtRs(advanceBalance)}</td>
+                            <td colSpan={role === 'admin' ? 2 : 1} style={TDF}></td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Active Filters Summary */}

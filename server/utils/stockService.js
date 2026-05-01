@@ -1,5 +1,6 @@
 const localStore = require('./localStore');
 const { db, admin, isAvailable } = require('../firebase');
+const { normalizePartyName } = require('./partyNameUtils');
 
 const firebaseAvailable = () => isAvailable();
 
@@ -183,7 +184,8 @@ module.exports = {
     },
 
     createChallan: async (data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
-        let { truckNo, materials, partyName, destination, date, remark, material, quantity } = data;
+        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity } = data;
+        const normalizedPartyName = normalizePartyName(partyName || '');
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
         if (!materials || !materials.length) throw new Error('Materials required');
 
@@ -205,13 +207,16 @@ module.exports = {
         if (!truckNo) throw new Error('Truck number required');
 
         if (firebaseAvailable()) {
-            // Firestore doesn't have an auto-incrementing simple counter easily without extra setup.
-            // Using a simple "CH-TIMESTAMP" or sequential fetch for now.
-            const snap = await db.collection(cCol).get();
-            const challanNo = 'CH-' + String(snap.size + 1).padStart(4, '0');
+            let finalChallanNo = challanNo;
+            if (!finalChallanNo) {
+                const snap = await db.collection(cCol).get();
+                finalChallanNo = 'CH-' + String(snap.size + 1).padStart(4, '0');
+            }
             return await firestoreCreateChallan({
-                challanNo, truckNo, materials: cleanMaterials,
-                partyName: partyName || '',
+                challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
+                partyName: normalizedPartyName,
+                partyCode: partyCode || '',
+                billNo: billNo || '',
                 destination: destination || '',
                 date: date || new Date().toISOString().slice(0, 10),
                 remark: remark || '', status: 'open'
@@ -219,10 +224,15 @@ module.exports = {
         }
 
         const existing = localStore.getAll(cCol);
-        const challanNo = 'CH-' + String(existing.length + 1).padStart(4, '0');
+        let finalChallanNo = challanNo;
+        if (!finalChallanNo) {
+            finalChallanNo = 'CH-' + String(existing.length + 1).padStart(4, '0');
+        }
         return localStore.insert(cCol, {
-            challanNo, truckNo, materials: cleanMaterials,
-            partyName: partyName || '',
+            challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
+            partyName: normalizedPartyName,
+            partyCode: partyCode || '',
+            billNo: billNo || '',
             destination: destination || '',
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '', status: 'open'

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "0f713de4-89dc-4d74-9a2e-e6fe2b402f1d",
+    "challanNo": "20",
+    "truckNo": "HR63E9632",
+    "materials": [
+      {
+        "type": "OPC43",
+        "totalBags": 200,
+        "loadedBags": 0
+      }
+    ],
+    "partyName": "NAVEEN",
+    "partyCode": "",
+    "billNo": "",
+    "destination": "gannur",
+    "date": "2026-04-07",
+    "remark": "",
+    "status": "open",
+    "createdAt": "2026-04-24T18:43:31.301Z"
+  }
+]

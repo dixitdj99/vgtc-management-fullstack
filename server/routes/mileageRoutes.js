@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db, isAvailable } = require('../firebase');
 const { getCol } = require('../utils/collectionUtils');
+const localStore = require('../utils/localStore');
 
 const BASE_COL = 'vouchers';
 
@@ -12,23 +13,23 @@ const BASE_COL = 'vouchers';
 router.get('/last-km/:truckNo', async (req, res) => {
     const { truckNo } = req.params;
     try {
-        if (!isAvailable()) return res.json({ endKm: null });
-
-        const snapshot = await db.collection(getCol(BASE_COL, req))
-            .where('truckNo', '==', truckNo)
-            .get();
-
-        if (snapshot.empty) return res.json({ endKm: null });
-
-        // Get most recent doc with endKm set
-        const docs = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(d => d.endKm != null && d.endKm !== '')
-            .sort((a, b) => {
+        let docs = [];
+        const cleanTruckNo = truckNo.replace(/\s/g, '').toUpperCase();
+        
+        if (!isAvailable()) {
+            docs = localStore.getAll(BASE_COL).filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+            docs = docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        } else {
+            const snapshot = await db.collection(getCol(BASE_COL, req)).get();
+            docs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+            docs = docs.sort((a, b) => {
                 const aT = a.createdAt?.seconds || 0;
                 const bT = b.createdAt?.seconds || 0;
                 return bT - aT;
             });
+        }
 
         if (docs.length === 0) return res.json({ endKm: null });
 
@@ -46,19 +47,36 @@ router.get('/last-km/:truckNo', async (req, res) => {
 router.get('/vehicle/:truckNo', async (req, res) => {
     const { truckNo } = req.params;
     try {
-        if (!isAvailable()) return res.json([]);
+        const cleanTruckNo = truckNo.replace(/\s/g, '').toUpperCase();
+        let allDocs = [];
 
-        const snapshot = await db.collection(getCol(BASE_COL, req))
-            .where('truckNo', '==', truckNo)
-            .get();
+        if (!isAvailable()) {
+            const vouchers = localStore.getAll(BASE_COL);
+            const fuelLogs = localStore.getAll('fuel_logs');
+            allDocs = [
+                ...vouchers.map(d => ({ ...d, _type: 'voucher' })),
+                ...fuelLogs.map(d => ({ ...d, _type: 'fuel_log' }))
+            ];
+        } else {
+            const [vouchersSnap, fuelSnap] = await Promise.all([
+                db.collection(getCol(BASE_COL, req)).get(),
+                db.collection(getCol('fuel_logs', req)).get()
+            ]);
+            allDocs = [
+                ...vouchersSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'voucher' })),
+                ...fuelSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'fuel_log' }))
+            ];
+        }
 
-        const docs = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .sort((a, b) => {
-                const aT = a.createdAt?.seconds || 0;
-                const bT = b.createdAt?.seconds || 0;
-                return bT - aT;
-            });
+        let docs = allDocs.filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+
+        const getTime = (c) => {
+            if (!c) return 0;
+            if (c.seconds) return c.seconds * 1000;
+            return new Date(c).getTime() || 0;
+        };
+
+        docs = docs.sort((a, b) => getTime(b.createdAt) - getTime(a.createdAt));
 
         return res.json(docs);
     } catch (err) {
@@ -67,43 +85,127 @@ router.get('/vehicle/:truckNo', async (req, res) => {
     }
 });
 
+const mileageService = require('../services/mileageService');
+
 /**
  * GET /api/mileage/all-vehicles
  * Returns summary stats per truck across all voucher types.
  */
 router.get('/all-vehicles', async (req, res) => {
     try {
-        if (!isAvailable()) return res.json([]);
-
-        const snapshot = await db.collection(getCol(BASE_COL, req)).get();
-
-        const byTruck = {};
-        snapshot.docs.forEach(doc => {
-            const d = { id: doc.id, ...doc.data() };
-            if (!d.truckNo) return;
-            if (!byTruck[d.truckNo]) byTruck[d.truckNo] = [];
-            byTruck[d.truckNo].push(d);
-        });
-
-        const result = Object.entries(byTruck).map(([truckNo, trips]) => {
-            const mileageTrips = trips.filter(t => t.startKm != null && t.endKm != null && t.endKm !== '' && t.startKm !== '');
-            const totalKm = mileageTrips.reduce((s, t) => s + (parseFloat(t.endKm) - parseFloat(t.startKm)), 0);
-            const totalDiesel = mileageTrips.reduce((s, t) => s + (parseFloat(t.advanceDiesel) || 0), 0);
-            const sorted = [...trips].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-            return {
-                truckNo,
-                tripCount: trips.length,
-                mileageTripCount: mileageTrips.length,
-                totalKm: totalKm.toFixed(1),
-                totalDieselRs: totalDiesel,
-                lastEndKm: sorted.find(t => t.endKm)?.endKm || null,
-                lastDate: sorted[0]?.date || null,
-            };
-        });
-
-        res.json(result);
+        const result = await mileageService.calculateMileageSummary(req);
+        const arrayResult = Object.entries(result).map(([truckNo, stats]) => ({
+            truckNo,
+            ...stats
+        }));
+        return res.json(arrayResult);
     } catch (err) {
         console.error('mileage all-vehicles error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+/**
+ * GET /api/mileage/fuel
+ * Returns ALL manual fuel logs (optionally filtered by ?truckNo=).
+ */
+router.get('/fuel', async (req, res) => {
+    try {
+        let docs = [];
+        if (!isAvailable()) {
+            let query = localStore.getAll('fuel_logs');
+            if (req.query.truckNo) {
+                query = query.filter(d => d.truckNo === req.query.truckNo);
+            }
+            docs = query.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        } else {
+            let query = db.collection(getCol('fuel_logs', req));
+            if (req.query.truckNo) {
+                query = query.where('truckNo', '==', req.query.truckNo);
+            }
+            const snapshot = await query.get();
+            docs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        }
+        res.json(docs);
+    } catch (err) {
+        console.error('get all fuel logs error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /api/mileage/fuel/:truckNo
+ * Returns manual fuel logs for a specific truck.
+ */
+router.get('/fuel/:truckNo', async (req, res) => {
+    const { truckNo } = req.params;
+    try {
+        let docs = [];
+        if (!isAvailable()) {
+            docs = localStore.getAll('fuel_logs')
+                .filter(d => d.truckNo === truckNo)
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+        } else {
+            const snapshot = await db.collection(getCol('fuel_logs', req))
+                .where('truckNo', '==', truckNo)
+                .get();
+
+            docs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+        }
+
+        res.json(docs);
+    } catch (err) {
+        console.error('get fuel logs error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/mileage/fuel
+ * Adds a manual fuel log for a truck.
+ */
+router.post('/fuel', async (req, res) => {
+    try {
+        if (!isAvailable()) return res.status(400).json({ error: 'Database unavailable' });
+        if (!req.body.truckNo) return res.status(400).json({ error: 'truckNo is required' });
+        
+        const payload = {
+            ...req.body,
+            createdAt: new Date().toISOString()
+        };
+        
+        let docRefId;
+        if (!isAvailable()) {
+            const doc = localStore.insert('fuel_logs', payload);
+            docRefId = doc.id;
+        } else {
+            const docRef = await db.collection(getCol('fuel_logs', req)).add(payload);
+            docRefId = docRef.id;
+        }
+        res.json({ id: docRefId, ...payload });
+    } catch (err) {
+        console.error('add fuel log error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * DELETE /api/mileage/fuel/:id
+ * Deletes a manual fuel log by its document ID.
+ */
+router.delete('/fuel/:id', async (req, res) => {
+    try {
+        if (!isAvailable()) {
+            localStore.delete('fuel_logs', req.params.id);
+        } else {
+            await db.collection(getCol('fuel_logs', req)).doc(req.params.id).delete();
+        }
+        res.json({ message: 'Fuel log deleted' });
+    } catch (err) {
+        console.error('delete fuel log error:', err);
         res.status(500).json({ error: err.message });
     }
 });
