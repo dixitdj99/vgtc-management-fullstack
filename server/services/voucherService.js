@@ -1,5 +1,5 @@
 const localStore = require('../utils/localStore');
-const { normalizePartyName } = require('../utils/partyNameUtils');
+
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 
@@ -9,11 +9,7 @@ const COLLECTION_VOUCHERS = 'vouchers';
 
 const createVoucher = async (data, col = COLLECTION_VOUCHERS) => {
     const { type, ...voucherData } = data;
-    const finalData = {
-        ...voucherData,
-        type,
-        partyName: normalizePartyName(voucherData.partyName || '')
-    };
+    const finalData = { ...voucherData, type };
 
     if (firebaseAvailable()) {
         const ref = db.collection(col).doc();
@@ -25,6 +21,8 @@ const createVoucher = async (data, col = COLLECTION_VOUCHERS) => {
 
 const getVouchersByType = async (type, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
+        // Use only a single-field where — no orderBy — to avoid requiring a composite index.
+        // Sort by createdAt in JS after fetching.
         const snapshot = await db.collection(col)
             .where('type', '==', type)
             .get();
@@ -37,20 +35,6 @@ const getVouchersByType = async (type, col = COLLECTION_VOUCHERS) => {
     }
     return localStore.getAll(COLLECTION_VOUCHERS)
         .filter(v => v.type === type)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-};
-
-const getAllVouchers = async (col = COLLECTION_VOUCHERS) => {
-    if (firebaseAvailable()) {
-        const snapshot = await db.collection(col).get();
-        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        return docs.sort((a, b) => {
-            const aTime = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
-            const bTime = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
-            return bTime - aTime;
-        });
-    }
-    return localStore.getAll(COLLECTION_VOUCHERS)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
@@ -69,18 +53,13 @@ const getVouchersByTruckAndDate = async (truckNo, paymentClearedDate, col = COLL
 };
 
 const updateVoucher = async (id, data, col = COLLECTION_VOUCHERS) => {
-    const payload = {
-        ...data,
-        ...(data.partyName !== undefined ? { partyName: normalizePartyName(data.partyName || '') } : {})
-    };
-
     if (firebaseAvailable()) {
         await db.collection(col).doc(id).update({
-            ...payload,
+            ...data,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
     } else {
-        localStore.update(COLLECTION_VOUCHERS, id, payload);
+        localStore.update(COLLECTION_VOUCHERS, id, data);
     }
 };
 
@@ -109,5 +88,4 @@ module.exports = {
     updateVoucher,
     deleteVoucher,
     getVoucherById,
-    getAllVouchers,
 };

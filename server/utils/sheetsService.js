@@ -25,27 +25,11 @@ const SPREADSHEETS = {
                 'Net Balance (Rs)', 'Paid Balance (Rs)', 'Outstanding (Rs)',
                 'Payment Status', 'Payment Cleared Date',
                 'Pump', 'Bags', 'Diesel Verified', 'Created At',
-                'Voucher ID',
-                'Party Name', 'Party Code', 'Bill No.', 'Materials'
+                'Voucher ID'
             ]
         },
         idColIndex: 23, // W
         idColLetter: 'W:W'
-    },
-    lr_receipts: {
-        folder: 'LR_Receipts',
-        tabs: {
-            'receipts': 'All Receipts',
-        },
-        headers: {
-            default: [
-                'LR No.', 'Date', 'Truck No.', 'Party Name', 'Party Code', 'Destination',
-                'Material', 'Bags', 'Weight (MT)', 'Loading Type', 'Billing Status',
-                'Voice Message Attached', 'Notes', 'Created By', 'Entry ID'
-            ]
-        },
-        idColIndex: 15, // O
-        idColLetter: 'O:O'
     },
     stock: {
         folder: 'Dump_Stock',
@@ -100,18 +84,6 @@ const SPREADSHEETS = {
             pending: { index: 1, letter: 'A:A' }, // Truck No is unique key here
             cleared: { index: 8, letter: 'H:H' }
         }
-    },
-    sales: {
-        folder: 'Cement_Sales',
-        tabs: {
-            'dump': 'Dump Sales',
-            'jkl': 'JK Lakshmi Sales'
-        },
-        headers: {
-            default: ['Date', 'Customer Name', 'Material', 'Quantity (Bags)', 'Rate', 'Total Amount', 'Payment Type', 'Payment Status', 'Remark', 'Entry ID']
-        },
-        idColIndex: 10, // J
-        idColLetter: 'J:J'
     }
 };
 
@@ -351,10 +323,6 @@ function voucherToRow(v) {
         createdAtStr = d.toLocaleDateString('en-IN');
     }
 
-    const materialBreakdown = v.materials && v.materials.length > 0 
-        ? v.materials.map(m => m.type).join(', ') 
-        : (v.materialName || 'CEMENT');
-
     return [
         v.lrNo || '', v.date || '', v.truckNo || '', v.destination || '',
         v.weight || '', v.rate || '', Math.round(gross),
@@ -363,7 +331,6 @@ function voucherToRow(v) {
         Math.round(net), Math.round(paid), Math.round(outstanding),
         outstanding <= 0 ? 'Cleared' : 'Pending', v.paymentClearedDate || '',
         v.pump || '', v.bags || '', v.isDieselVerified ? 'Yes' : 'No', createdAtStr, v.id || '',
-        v.partyName || '', v.partyCode || '', v.billNo || '', materialBreakdown
     ];
 }
 
@@ -373,67 +340,6 @@ async function upsertVoucherRow(voucher, voucherType, brand = 'jksuper') {
 
 async function deleteVoucherRow(voucherId, voucherType, brand = 'jksuper') {
     return deleteRow('balance', voucherType, brand, voucherId);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LOADING RECEIPTS (LRs)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function lrToRow(lr) {
-    return [
-        lr.lrNo || '', 
-        lr.date || '', 
-        lr.truckNo || '', 
-        lr.partyName || '', 
-        lr.partyCode || '', 
-        lr.destination || '',
-        lr.material || '', 
-        lr.totalBags || '', 
-        lr.weight || '', 
-        lr.loadingType || '', 
-        lr.billing || 'Pending',
-        lr.voiceMessageBase64 ? 'Yes' : 'No', 
-        lr.note || '', 
-        lr.createdBy || '', 
-        lr.id || ''
-    ];
-}
-
-async function upsertLrRow(lr, brand = 'jksuper') {
-    return upsertRow('lr_receipts', 'receipts', brand, lr.id, lrToRow(lr));
-}
-
-async function deleteLrRow(lrId, brand = 'jksuper') {
-    return deleteRow('lr_receipts', 'receipts', brand, lrId);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CEMENT SALES
-// ─────────────────────────────────────────────────────────────────────────────
-
-function saleToRow(s) {
-    return [
-        s.date || '',
-        s.customerName || 'Walk-in',
-        s.material || '',
-        s.quantity || 0,
-        s.rate || 0,
-        s.totalAmount || 0,
-        s.paymentType || 'cash',
-        s.paymentStatus || 'paid',
-        s.remark || '',
-        s.id || ''
-    ];
-}
-
-async function upsertSaleRow(sale, brand = 'dump') {
-    const tabKey = brand === 'jkl' ? 'jkl' : 'dump';
-    return upsertRow('sales', tabKey, brand === 'jkl' ? 'jklakshmi' : 'jksuper', sale.id, saleToRow(sale));
-}
-
-async function deleteSaleRow(saleId, brand = 'dump') {
-    const tabKey = brand === 'jkl' ? 'jkl' : 'dump';
-    return deleteRow('sales', tabKey, brand === 'jkl' ? 'jklakshmi' : 'jksuper', saleId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -532,10 +438,8 @@ async function deletePayHistory(voucherId, brand) {
 module.exports = { 
     getOrCreateSpreadsheet,
     upsertVoucherRow, deleteVoucherRow,
-    upsertLrRow, deleteLrRow,
-    upsertSaleRow, deleteSaleRow,
     upsertStockMigo, deleteStockMigo,
     upsertStockChallan, deleteStockChallan,
     upsertCashbook, deleteCashbook,
-    upsertPayHistory, deletePayHistory,
+    upsertPayHistory, deletePayHistory
 };

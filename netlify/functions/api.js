@@ -11,10 +11,6 @@ const authRoutes = require('../../server/routes/authRoutes');
 const userRoutes = require('../../server/routes/userRoutes');
 const cashbookRoutes = require('../../server/routes/cashbookRoutes');
 const stockRoutes = require('../../server/routes/stockRoutes');
-const kosliLrRoutes = require('../../server/routes/kosliLrRoutes');
-const jhajjarLrRoutes = require('../../server/routes/jhajjarLrRoutes');
-const kosliStockRoutes = require('../../server/routes/kosliStockRoutes');
-const jhajjarStockRoutes = require('../../server/routes/jhajjarStockRoutes');
 const jklLrRoutes = require('../../server/routes/jklLrRoutes');
 const jklStockRoutes = require('../../server/routes/jklStockRoutes');
 const jklCashbookRoutes = require('../../server/routes/jklCashbookRoutes');
@@ -22,38 +18,27 @@ const vehicleRoutes = require('../../server/routes/vehicleRoutes');
 const sellRoutes = require('../../server/routes/sellRoutes');
 const mileageRoutes = require('../../server/routes/mileageRoutes');
 const backupRoutes = require('../../server/routes/backupRoutes');
-const publicRoutes = require('../../server/routes/publicRoutes');
-const labourRoutes = require('../../server/routes/labourRoutes');
-const { requireAuth } = require('../../server/middleware/auth');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json());
 
 // Main router to handle various possible prefixes
 const apiRouter = express.Router();
 
-apiRouter.use('/kosli/lr', requireAuth, kosliLrRoutes);
-apiRouter.use('/jhajjar/lr', requireAuth, jhajjarLrRoutes);
-apiRouter.use('/vouchers', requireAuth, voucherRoutes);
+apiRouter.use('/lr', lrRoutes);
+apiRouter.use('/vouchers', voucherRoutes);
 apiRouter.use('/auth', authRoutes);
 apiRouter.use('/users', userRoutes);
-apiRouter.use('/cashbook', requireAuth, cashbookRoutes);
-apiRouter.use('/kosli/stock', requireAuth, kosliStockRoutes);
-apiRouter.use('/jhajjar/stock', requireAuth, jhajjarStockRoutes);
-apiRouter.use('/sell', requireAuth, sellRoutes);
+apiRouter.use('/cashbook', cashbookRoutes);
+apiRouter.use('/stock', stockRoutes);
+apiRouter.use('/jkl/lr', jklLrRoutes);
+apiRouter.use('/jkl/stock', jklStockRoutes);
+apiRouter.use('/jkl/cashbook', jklCashbookRoutes);
+apiRouter.use('/vehicles', vehicleRoutes);
+apiRouter.use('/sell', sellRoutes);
+apiRouter.use('/mileage', mileageRoutes);
 apiRouter.use('/backup', backupRoutes);
-apiRouter.use('/public', publicRoutes);
-apiRouter.use('/lr', requireAuth, lrRoutes); // Legacy JK Super route
-apiRouter.use('/labour', labourRoutes);
-apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
-
-// JKL Routes
-apiRouter.use('/jkl/lr', requireAuth, jklLrRoutes);
-apiRouter.use('/jkl/stock', requireAuth, jklStockRoutes);
-apiRouter.use('/jkl/cashbook', requireAuth, jklCashbookRoutes);
-apiRouter.use('/vehicles', requireAuth, vehicleRoutes);
-apiRouter.use('/mileage', requireAuth, mileageRoutes);
 
 // Root route for base URL pings
 apiRouter.all('/', (req, res) => {
