@@ -1,3 +1,4 @@
+// SAP Fiori UI Transformation - Force Re-compile
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
@@ -170,41 +171,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
-    const fetchData = useCallback(async () => {
-        try {
-            setLoading(true);
-            const [vRes, pRes] = await Promise.all([
-                ax.get(API),
-                ax.get('/profiles')
-            ]);
-            setVehicles(vRes.data || []);
-            setProfiles(pRes.data || []);
-        } catch (error) {
-            console.error("Failed to load data", error);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    // Form State
-    const [form, setForm] = useState(getEmptyForm());
-    const [editId, setEditId] = useState(null);
-    const [isConfirmingSave, setIsConfirmingSave] = useState(false);
-    const [err, setErr] = useState('');
-
-    const checkExpiry = (dateStr) => {
-        if (!dateStr) return null;
-        const expiry = new Date(dateStr);
-        const now = new Date();
-        const diff = (expiry - now) / (1000 * 60 * 60 * 24);
-        if (diff < 0) return 'expired';
-        if (diff < 30) return 'near';
-        return 'ok';
-    };
-
-    const fetchData = async () => {
+    const fetchVehicleData = useCallback(async () => {
         try {
             setLoading(true);
             const [vRes, pRes, prRes] = await Promise.all([
@@ -220,6 +187,24 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    useEffect(() => { fetchVehicleData(); }, [fetchVehicleData]);
+
+    // Form State
+    const [form, setForm] = useState(getEmptyForm());
+    const [editId, setEditId] = useState(null);
+    const [isConfirmingSave, setIsConfirmingSave] = useState(false);
+    const [err, setErr] = useState('');
+
+    const checkExpiry = (dateStr) => {
+        if (!dateStr) return null;
+        const expiry = new Date(dateStr);
+        const now = new Date();
+        const diff = (expiry - now) / (1000 * 60 * 60 * 24);
+        if (diff < 0) return 'expired';
+        if (diff < 30) return 'near';
+        return 'ok';
     };
 
     const isNearExpiry = (v) => {
@@ -285,7 +270,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             } else {
                 await ax.post(API, form);
             }
-            await fetchData();
+            await fetchVehicleData();
             setForm(getEmptyForm());
             setEditId(null);
             setTab('list');
@@ -345,7 +330,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         d.paidEmis = [...new Set(paid)];
         try {
             await ax.patch(`${API}/${v.id}`, { emiDetails: JSON.stringify(d) });
-            fetchData();
+            fetchVehicleData();
         } catch { alert('Update failed'); }
     };
 
@@ -403,7 +388,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     return (
         <div>
             <AnimatePresence>
-                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchData(); }} />}
+                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchVehicleData(); }} />}
             </AnimatePresence>
 
             <AnimatePresence>
@@ -534,6 +519,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                         <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
                                     </div>
                                 </div>
+                            </>
+                        )}
 
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>

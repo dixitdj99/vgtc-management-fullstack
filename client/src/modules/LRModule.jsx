@@ -892,7 +892,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     setCurrentPage(1);
   };
 
-  const fetchData = async () => {
+  const fetchLRData = async () => {
     try {
       const [dataRes, partiesRes] = await Promise.all([
         ax.get(API),
@@ -938,7 +938,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials()]).finally(() => setLoading(false));
+    Promise.all([fetchLRData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials()]).finally(() => setLoading(false));
     setCurrentPage(1);
   }, [brand]);
 
@@ -1062,7 +1062,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       } else {
         alert(`Challan ${newChNo} created and linked to LR! All bags covered.`);
       }
-      fetchData();
+      fetchLRData();
       fetchChallans();
     } catch (e) {
       alert('Linking failed: ' + (e.response?.data?.error || e.message));
@@ -1128,7 +1128,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       }
 
       alert('Receipt #' + res.data.lrNo + ' created!');
-      fetchData(); fetchChallans();
+      fetchLRData(); fetchChallans();
       clearVoice();
       setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
 
@@ -1180,12 +1180,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} partySuggestions={partySuggestions} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} partySuggestions={partySuggestions} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchLRData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
       <AnimatePresence>
-        {deleteRow && <DeleteConfirm row={deleteRow} apiUrl={API} onClose={() => setDeleteRow(null)} onConfirm={() => { setDeleteRow(null); fetchData(); }} />}
+        {deleteRow && <DeleteConfirm row={deleteRow} apiUrl={API} onClose={() => setDeleteRow(null)} onConfirm={() => { setDeleteRow(null); fetchLRData(); }} />}
       </AnimatePresence>
 
       {/* Challan Selection Popup */}
@@ -1258,7 +1258,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     quantity: toDeduct  // only the bags the LR actually still needs
                   });
 
-                  fetchData(); fetchChallans();
+                  fetchLRData(); fetchChallans();
                   setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null);
                 } catch (e) {
                   alert('Linking failed: ' + (e.response?.data?.error || e.message));
