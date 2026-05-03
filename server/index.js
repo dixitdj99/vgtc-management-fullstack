@@ -32,6 +32,7 @@ const vehicleAdvanceRoutes = require('./routes/vehicleAdvanceRoutes');
 const stockTransferRoutes = require('./routes/stockTransferRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const { requireAuth } = require('./middleware/auth');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
@@ -79,6 +80,7 @@ app.use('/api/stock-transfers', requireAuth, stockTransferRoutes);
 app.use('/api/mileage', requireAuth, mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);
 app.use('/api/payments', requireAuth, paymentRoutes);
+app.use('/api/maintenance', requireAuth, maintenanceRoutes);
 
 const PORT = process.env.PORT || 5000;
 

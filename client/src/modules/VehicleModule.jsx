@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Banknote, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
+import { AlertTriangle, Banknote, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import MaintenanceTracker from '../components/MaintenanceTracker';
 
 const API = `/vehicles`;
 
@@ -76,30 +77,78 @@ function VehicleVisualizer() {
     );
 }
 
-/* ── Delete Modal ── */
+/* ── Delete Modal (Dual Verification) ── */
 function DeleteConfirm({ vehicle, onClose, onConfirm }) {
+    const [step, setStep] = useState(1);
+    const [confirmText, setConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
+    const truckNo = vehicle.truckNo || '';
+    const isMatch = confirmText.toUpperCase().replace(/\s/g, '') === truckNo.toUpperCase().replace(/\s/g, '');
+
     const handleDelete = async () => {
         setDeleting(true);
         try { await ax.delete(`${API}/${vehicle.id}`); onConfirm(); }
         catch { alert('Delete failed'); } finally { setDeleting(false); }
     };
+
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
             <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
-                style={{ width: '90%', maxWidth: '380px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}>
+                style={{ width: '90%', maxWidth: '420px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}>
                 <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                     <AlertTriangle size={26} color="#f43f5e" />
                 </div>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Vehicle?</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '6px' }}><strong style={{ color: 'var(--text)' }}>{vehicle.truckNo}</strong> ({vehicle.ownerName})</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This action cannot be undone.</div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    <button className="btn btn-g" onClick={onClose}>Cancel</button>
-                    <button className="btn btn-d" onClick={handleDelete} disabled={deleting}>
-                        {deleting ? 'Deleting...' : <><Trash2 size={13} /> Delete</>}
-                    </button>
+
+                {/* Step indicator */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <div style={{ width: '28px', height: '4px', borderRadius: '2px', background: '#f43f5e' }} />
+                    <div style={{ width: '28px', height: '4px', borderRadius: '2px', background: step === 2 ? '#f43f5e' : 'var(--border)' }} />
                 </div>
+
+                {step === 1 ? (
+                    <>
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Vehicle?</div>
+                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                            <strong style={{ color: 'var(--text)' }}>{truckNo}</strong> ({vehicle.ownerName || 'No Owner'})
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#f43f5e', marginBottom: '22px', fontWeight: 600 }}>
+                            ⚠️ This will permanently remove this vehicle and all its data.
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                            <button className="btn btn-g" onClick={onClose}>Cancel</button>
+                            <button className="btn btn-d" onClick={() => setStep(2)}>
+                                <AlertTriangle size={13} /> Yes, I want to delete
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: '#f43f5e', marginBottom: '8px' }}>⚠️ Final Confirmation</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                            Type <strong style={{ color: 'var(--text)', fontFamily: 'monospace', background: 'var(--bg-input)', padding: '2px 8px', borderRadius: '4px', letterSpacing: '1px' }}>{truckNo}</strong> to confirm deletion
+                        </div>
+                        <input
+                            className="fi"
+                            type="text"
+                            placeholder={`Type ${truckNo} here...`}
+                            value={confirmText}
+                            onChange={e => setConfirmText(e.target.value)}
+                            style={{ textAlign: 'center', fontSize: '16px', fontWeight: 700, letterSpacing: '1px', marginBottom: '16px', border: isMatch ? '2px solid #f43f5e' : '1px solid var(--border)' }}
+                            autoFocus
+                        />
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                            <button className="btn btn-g" onClick={onClose}>Cancel</button>
+                            <button
+                                className="btn btn-d"
+                                onClick={handleDelete}
+                                disabled={!isMatch || deleting}
+                                style={{ opacity: isMatch ? 1 : 0.4, cursor: isMatch ? 'pointer' : 'not-allowed' }}
+                            >
+                                {deleting ? 'Deleting...' : <><Trash2 size={13} /> Permanently Delete</>}
+                            </button>
+                        </div>
+                    </>
+                )}
             </motion.div>
         </div>
     );
@@ -118,6 +167,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [profiles, setProfiles] = useState([]);
     const [loadingProfiles, setLoadingProfiles] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
+    const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
     const fetchData = useCallback(async () => {
         try {
@@ -303,7 +353,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         const lowerSearch = fSearch.toLowerCase();
         vehicles.forEach(v => {
             if (ownershipFilter !== 'all' && v.ownershipType !== ownershipFilter) return;
-            const match = `${v.truckNo} ${v.ownerName} ${v.ownerContact} ${v.driverName} ${v.fastag}`.toLowerCase().includes(lowerSearch);
+            const match = `${v.truckNo} ${v.ownerName} ${v.ownerContact} ${v.driverName} ${v.fastag} ${v.make} ${v.model}`.toLowerCase().includes(lowerSearch);
             if (fSearch && !match) return;
 
             const oName = v.ownerName || 'Unknown Owner';
@@ -321,6 +371,10 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         <div>
             <AnimatePresence>
                 {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchData(); }} />}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {maintenanceTarget && <MaintenanceTracker truckNo={maintenanceTarget.truckNo} onClose={() => setMaintenanceTarget(null)} />}
             </AnimatePresence>
 
             <ConfirmSaveModal isOpen={isConfirmingSave} onClose={() => setIsConfirmingSave(false)} onConfirm={executeSave} title={editId ? "Update Vehicle" : "Add Vehicle"} message={`Save changes for ${form.truckNo}?`} isSaving={saving} />
@@ -552,17 +606,26 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                 <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: isNearExpiry(v) ? 'rgba(239,68,68,0.02)' : 'var(--bg-card)' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                                                         <div>
-                                                            <div style={{ fontWeight: 900, fontSize: '16px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                <Truck size={16} /> {v.truckNo}
-                                                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>({v.make} {v.model})</span>
+                                                            <div style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px' }}>
+                                                                <Truck size={18} style={{ color: '#3b82f6' }} /> {v.truckNo}
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', marginBottom: '8px' }}>
+                                                                <span style={{ fontSize: '11px', fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}</span>
+                                                                {v.model && <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--bg-th)', color: 'var(--text)', padding: '2px 8px', borderRadius: '4px' }}>{v.model}</span>}
                                                             </div>
                                                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
-                                                                <span>{v.ownershipType.toUpperCase()}</span>
-                                                                <span>• {calculateAge(v.regDate)}</span>
-                                                                <span>• {v.grossWeight ? `${v.grossWeight}KG GVW` : ''}</span>
+                                                                <span style={{ fontWeight: 700 }}>{v.ownershipType.toUpperCase()}</span>
+                                                                <span>• Age: {calculateAge(v.regDate)}</span>
+                                                                {v.grossWeight > 0 && <span>• {v.grossWeight.toLocaleString()} KG</span>}
                                                             </div>
                                                         </div>
-                                                        <button onClick={() => handleEdit(v)} style={{ color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer' }}><Edit3 size={14} /></button>
+                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                            {v.ownershipType === 'self' && (
+                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'rgba(245,158,11,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Wrench size={14} /></button>
+                                                            )}
+                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'rgba(59,130,246,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Edit3 size={14} /></button>
+                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'rgba(244,63,94,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Trash2 size={14} /></button>
+                                                        </div>
                                                     </div>
                                                     
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
@@ -576,25 +639,34 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                         const totalTenure = parseInt(emi.tenure) || 0;
                                                         const pendingEmis = totalTenure - paidCount;
                                                         return (
-                                                            <div style={{ padding: '12px', background: 'rgba(59,130,246,0.05)', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.1)', marginBottom: '12px' }}>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                                    <div style={{ fontWeight: 800, color: '#3b82f6', fontSize: '11px' }}>{emi.bankName || 'BANK'} — {emi.loanNo}</div>
+                                                            <div style={{ padding: '14px', background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05))', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.15)', marginBottom: '12px' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                                                    <div>
+                                                                        <div style={{ fontWeight: 900, color: '#3b82f6', fontSize: '14px', letterSpacing: '0.5px' }}>🏦 {emi.bankName || 'BANK'}</div>
+                                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo}</div>
+                                                                    </div>
                                                                     <button 
                                                                         onClick={() => handleMarkPaid(v)}
-                                                                        style={{ fontSize: '10px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                                                                        style={{ fontSize: '10px', fontWeight: 800, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer' }}
                                                                     >
                                                                         Mark Paid
                                                                     </button>
                                                                 </div>
-                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px' }}>
-                                                                    <div><span style={{ opacity: 0.6 }}>EMI:</span> <strong style={{ color: 'var(--text)' }}>₹{parseFloat(emi.due).toLocaleString()}</strong></div>
-                                                                    <div style={{ textAlign: 'right' }}><span style={{ opacity: 0.6 }}>Rate:</span> <strong style={{ color: 'var(--text)' }}>{emi.interestRate}%</strong></div>
-                                                                    <div><span style={{ opacity: 0.6 }}>Paid:</span> <strong style={{ color: '#10b981' }}>{paidCount} EMIs</strong></div>
-                                                                    <div style={{ textAlign: 'right' }}><span style={{ opacity: 0.6 }}>Pending:</span> <strong style={{ color: 'var(--danger)' }}>{pendingEmis} EMIs</strong></div>
+                                                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px', padding: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '10px' }}>
+                                                                    <div style={{ textAlign: 'center' }}>
+                                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
+                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{parseFloat(emi.due).toLocaleString()}</div>
+                                                                        {emi.dueDate && <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>Due: {emi.dueDate}</div>}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px', textAlign: 'center' }}>
+                                                                    <div style={{ padding: '6px', background: 'rgba(16,185,129,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Paid</div><strong style={{ color: '#10b981', fontSize: '14px' }}>{paidCount}</strong></div>
+                                                                    <div style={{ padding: '6px', background: 'rgba(239,68,68,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Pending</div><strong style={{ color: '#ef4444', fontSize: '14px' }}>{pendingEmis}</strong></div>
+                                                                    <div style={{ padding: '6px', background: 'rgba(59,130,246,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Rate</div><strong style={{ color: '#3b82f6', fontSize: '14px' }}>{emi.interestRate}%</strong></div>
                                                                 </div>
                                                                 {emi.pending && (
-                                                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '10px', color: 'var(--text-sub)' }}>
-                                                                        Outstanding Principal: <strong>₹{parseFloat(emi.pending).toLocaleString()}</strong>
+                                                                    <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '11px', color: 'var(--text-sub)', textAlign: 'center' }}>
+                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{parseFloat(emi.pending).toLocaleString()}</strong>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -608,6 +680,11 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                             <div>C: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).chassisNo}</span></div>
                                                         </div>
                                                     )}
+
+                                                    {/* Maintenance Quick Button */}
+                                                    <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '8px', background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03))', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '10px' }}>
+                                                        <Wrench size={12} /> Open Maintenance Tracker
+                                                    </button>
 
                                                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', color: 'var(--text-sub)' }}>
                                                         <span><User size={12} /> {v.driverName || 'No Driver'}</span>
