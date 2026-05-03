@@ -173,12 +173,14 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const [vRes, pRes] = await Promise.all([
+            const [vRes, pRes, prRes] = await Promise.all([
                 ax.get(API),
-                ax.get('/profiles')
+                ax.get('/parties').catch(() => ({ data: [] })),
+                ax.get('/profiles').catch(() => ({ data: [] }))
             ]);
             setVehicles(vRes.data || []);
-            setProfiles(pRes.data || []);
+            setParties(pRes.data || []);
+            setProfiles(prRes.data || []);
         } catch (error) {
             console.error("Failed to load data", error);
         } finally {
@@ -204,23 +206,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         return 'ok';
     };
 
-    const fetchData = async () => {
-        try {
-            setLoading(true);
-            const [vRes, pRes, prRes] = await Promise.all([
-                ax.get(API),
-                ax.get('/parties').catch(() => ({ data: [] })),
-                ax.get('/profiles').catch(() => ({ data: [] }))
-            ]);
-            setVehicles(vRes.data || []);
-            setParties(pRes.data || []);
-            setProfiles(prRes.data || []);
-        } catch (error) {
-            console.error("Failed to load data", error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const isNearExpiry = (v) => {
         const d = parseJson(v.docs);
@@ -534,7 +519,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                         <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
                                     </div>
                                 </div>
-
+                            </>
+                        )}
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>
                             <div className="fg fg-3">
