@@ -156,6 +156,7 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
 
 export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [vehicles, setVehicles] = useState([]);
+    const [parties, setParties] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
@@ -201,6 +202,24 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         if (diff < 0) return 'expired';
         if (diff < 30) return 'near';
         return 'ok';
+    };
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const [vRes, pRes, prRes] = await Promise.all([
+                ax.get(API),
+                ax.get('/parties').catch(() => ({ data: [] })),
+                ax.get('/profiles').catch(() => ({ data: [] }))
+            ]);
+            setVehicles(vRes.data || []);
+            setParties(pRes.data || []);
+            setProfiles(prRes.data || []);
+        } catch (error) {
+            console.error("Failed to load data", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const isNearExpiry = (v) => {
@@ -282,6 +301,20 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     };
 
     const autofillFromOwner = (ownerName) => {
+        // Try finding in Party Master first
+        const party = parties.find(p => p.name === ownerName.toUpperCase());
+        if (party) {
+            setForm(f => ({
+                ...f,
+                ownerName: party.name,
+                ownerId: party.id,
+                ownerContact: f.ownerContact || party.phone || '',
+                bankDetails: f.bankDetails || party.bankDetails || ''
+            }));
+            return;
+        }
+
+        // Fallback to existing vehicles logic
         const existing = vehicles.find(v => v.ownerName === ownerName);
         if (existing) {
             setForm(f => ({
@@ -364,7 +397,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
     }, [vehicles, fSearch, ownershipFilter]);
 
-    const uniqueOwners = [...new Set(vehicles.map(v => v.ownerName))].filter(Boolean);
+    const uniqueOwners = [...new Set([...parties.filter(p => p.type === 'supplier' || p.type === 'transporter').map(p => p.name), ...vehicles.map(v => v.ownerName)])].filter(Boolean).sort();
     const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
 
     return (
@@ -478,6 +511,29 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 <input className="fi" type="number" step="0.1" placeholder="e.g. 4.5" value={form.targetMileage} onChange={e => setForm({ ...form, targetMileage: e.target.value })} />
                             </div>
                         </div>
+                        {form.ownershipType !== 'self' && (
+                            <>
+                                <hr className="sep" />
+                                <h4 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <User size={15} color="var(--primary)" /> Owner Information
+                                </h4>
+
+                                <div className="fg fg-2">
+                                    <div className="field">
+                                        <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select from Party Master to sync bank info)</span></label>
+                                        <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required={form.ownershipType !== 'self'} list="owner-list" />
+                                        <datalist id="owner-list">
+                                            {uniqueOwners.map(o => {
+                                                const isMaster = parties.some(p => p.name === o);
+                                                return <option key={o} value={o}>{isMaster ? '⭐ (Master Data)' : ''}</option>;
+                                            })}
+                                        </datalist>
+                                    </div>
+                                    <div className="field">
+                                        <label>Owner Contact</label>
+                                        <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
+                                    </div>
+                                </div>
 
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>

@@ -2,9 +2,30 @@ const localStore = require('../utils/localStore');
 const { normalizePartyName } = require('../utils/partyNameUtils');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
+const partyService = require('./partyService');
 
 const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
+
+// ── Party Sync Helper ──────────────────────────────────────────────────────────
+const syncParty = async (partyName) => {
+    if (!partyName) return null;
+    try {
+        const parties = await partyService.getAllParties();
+        let party = parties.find(p => p.name === partyName.toUpperCase());
+        if (!party) {
+            party = await partyService.createParty({
+                name: partyName,
+                type: 'customer',
+                isActive: true
+            });
+        }
+        return party.id;
+    } catch (err) {
+        console.error('Failed to sync party for LR:', err);
+        return null;
+    }
+};
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
@@ -31,12 +52,19 @@ const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) =>
 };
 
 const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
-    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64 } = data;
+    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
     const normalizedPartyName = normalizePartyName(partyName || '');
+    const finalPartyId = partyId || await syncParty(normalizedPartyName);
+
     const lrNo = await firestoreGetNextLrNo(metadataCollection);
     const batch = db.batch();
     const createdIds = [];
-    materials.forEach((mat) => {
+    
+    // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
+    for (const mat of materials) {
+        const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(matPartyName));
+
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
             lrNo, date: date || new Date().toISOString(), truckNo,
@@ -46,13 +74,15 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
             weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
-            partyName: normalizePartyName(mat.partyName || normalizedPartyName), status: 'Created',
+            partyName: matPartyName,
+            partyId: matPartyId || null,
+            status: 'Created',
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || '',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         createdIds.push(ref.id);
-    });
+    }
     await batch.commit();
     return { lrNo, ids: createdIds };
 };
@@ -68,12 +98,18 @@ const localGetNextLrNo = (collectionName = 'lr_no') => {
     return localStore.getCounter(collectionName);
 };
 
-const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
-    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64 } = data;
+const localCreate = async (data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
+    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
     const normalizedPartyName = normalizePartyName(partyName || '');
+    const finalPartyId = partyId || await syncParty(normalizedPartyName);
+    
     const lrNo = localGetNextLrNo(counterCollection);
     const createdIds = [];
-    materials.forEach((mat) => {
+    
+    for (const mat of materials) {
+        const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(matPartyName));
+
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
             destination: destination || '',
@@ -82,12 +118,14 @@ const localCreate = (data, lrCollection = COLLECTION_LR, counterCollection = 'lr
             weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
-            partyName: normalizePartyName(mat.partyName || normalizedPartyName), status: 'Created',
+            partyName: matPartyName,
+            partyId: matPartyId || null,
+            status: 'Created',
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || ''
         });
         createdIds.push(doc.id);
-    });
+    }
     return { lrNo, ids: createdIds };
 };
 
@@ -102,7 +140,7 @@ const createLoadingReceipt = async (data, lrCollection = COLLECTION_LR, counterC
     if (firebaseAvailable()) return await firestoreCreate(data, lrCollection, counterCollection);
     // for local store, if the collection is jkl_loading_receipts, use jkl_lr_no for counter
     const localCounter = lrCollection === COLLECTION_LR ? 'lr_no' : lrCollection + '_counter';
-    return localCreate(data, lrCollection, localCounter);
+    return await localCreate(data, lrCollection, localCounter);
 };
 
 const getAllLoadingReceipts = async (lrCollection = COLLECTION_LR) => {

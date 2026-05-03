@@ -1,84 +1,88 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
-/* â”€â”€ DARK theme (default) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── SAP Horizon Light theme (Default) ──────────────────── */
 :root,
-[data-theme="dark"] {
-  --bg: #020617;
-  --bg-card: rgba(15, 23, 42, 0.92);
-  --bg-input: rgba(8, 12, 28, 0.95);
-  --bg-th: rgba(8, 12, 28, 0.7);
-  --bg-tf: rgba(8, 12, 28, 0.9);
-  --bg-filter: rgba(8, 12, 28, 0.4);
-  --bg-row-even: transparent;
-  --bg-row-odd: rgba(255, 255, 255, 0.018);
-  --bg-row-hover: rgba(99, 102, 241, 0.07);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-row: rgba(255, 255, 255, 0.04);
-  --primary: #6366f1;
-  --primary-glow: rgba(99, 102, 241, 0.2);
-  --accent: #10b981;
-  --warn: #f59e0b;
-  --danger: #f43f5e;
-  --text: #f1f5f9;
-  --text-muted: #64748b;
-  --text-sub: #94a3b8;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-  --topbar-bg: rgba(8, 12, 28, 0.6);
-  --sidebar-bg: rgba(15, 23, 42, 0.9);
-}
-
-/* â”€â”€ LIGHT theme â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 [data-theme="light"] {
-  --bg: #f1f5f9;
-  --bg-card: #ffffff;
-  --bg-input: #f8fafc;
-  --bg-th: #f1f5f9;
-  --bg-tf: #e2e8f0;
-  --bg-filter: #f8fafc;
-  --bg-row-even: #ffffff;
-  --bg-row-odd: #f8fafc;
-  --bg-row-hover: rgba(99, 102, 241, 0.05);
-  --border: rgba(0, 0, 0, 0.08);
-  --border-row: rgba(0, 0, 0, 0.05);
-  --primary: #6366f1;
-  --primary-glow: rgba(99, 102, 241, 0.15);
-  --accent: #059669;
-  --warn: #d97706;
-  --danger: #e11d48;
-  --text: #0f172a;
-  --text-muted: #94a3b8;
-  --text-sub: #475569;
-  --shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
-  --topbar-bg: rgba(255, 255, 255, 0.9);
-  --sidebar-bg: #ffffff;
+  --bg: #F4F4F6;
+  --bg-card: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-th: #F2F2F2;
+  --bg-tf: #E6E6E6;
+  --bg-filter: #FFFFFF;
+  --bg-row-even: #FFFFFF;
+  --bg-row-odd: #F9F9F9;
+  --bg-row-hover: #E5F0FA;
+  --border: #D9D9D9;
+  --border-row: #E5E5E5;
+  --primary: #0A6ED1;
+  --primary-glow: rgba(10, 110, 209, 0.2);
+  --accent: #107E3E;
+  --warn: #E9730C;
+  --danger: #BB0000;
+  --text: #1D2D3E;
+  --text-muted: #556B82;
+  --text-sub: #32363A;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: 0 0.125rem 0.25rem 0 rgba(0, 0, 0, 0.08), 0 0.25rem 0.5rem 0 rgba(0, 0, 0, 0.04);
+  --topbar-bg: #354A5F;
+  --sidebar-bg: #FFFFFF;
 }
 
-/* â”€â”€ SEPIA theme â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── SAP Evening Horizon (Dark theme) ────────────────────── */
+[data-theme="dark"] {
+  --bg: #1C2228;
+  --bg-card: #29313A;
+  --bg-input: #1C2228;
+  --bg-th: #22282E;
+  --bg-tf: #181D22;
+  --bg-filter: #29313A;
+  --bg-row-even: #29313A;
+  --bg-row-odd: #242A31;
+  --bg-row-hover: #19324B;
+  --border: #4A5661;
+  --border-row: #3A4550;
+  --primary: #4DB1FF;
+  --primary-glow: rgba(77, 177, 255, 0.2);
+  --accent: #2B8A4D;
+  --warn: #E9730C;
+  --danger: #FF4444;
+  --text: #FAFAFA;
+  --text-muted: #9BB0C5;
+  --text-sub: #D1DDE8;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: 0 0.125rem 0.25rem 0 rgba(0, 0, 0, 0.2), 0 0.25rem 0.5rem 0 rgba(0, 0, 0, 0.1);
+  --topbar-bg: #161C20;
+  --sidebar-bg: #29313A;
+}
+
+/* ── Fallback Sepia to Light ── */
 [data-theme="sepia"] {
-  --bg: #f5f0e8;
-  --bg-card: #fffdf7;
-  --bg-input: #faf8f2;
-  --bg-th: #f0ebe0;
-  --bg-tf: #e8e0d0;
-  --bg-filter: #faf8f2;
-  --bg-row-even: #fffdf7;
-  --bg-row-odd: #faf5e9;
-  --bg-row-hover: rgba(139, 90, 43, 0.06);
-  --border: rgba(139, 90, 43, 0.12);
-  --border-row: rgba(139, 90, 43, 0.07);
-  --primary: #8b5e3c;
-  --primary-glow: rgba(139, 90, 43, 0.15);
-  --accent: #2d7a4f;
-  --warn: #b45309;
-  --danger: #c0392b;
-  --text: #2c1a0e;
-  --text-muted: #9a7960;
-  --text-sub: #5a3e28;
-  --shadow: 0 2px 16px rgba(139, 90, 43, 0.12);
-  --topbar-bg: rgba(255, 253, 247, 0.9);
-  --sidebar-bg: #fffdf7;
+  --bg: #F4F4F6;
+  --bg-card: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-th: #F2F2F2;
+  --bg-tf: #E6E6E6;
+  --bg-filter: #FFFFFF;
+  --bg-row-even: #FFFFFF;
+  --bg-row-odd: #F9F9F9;
+  --bg-row-hover: #E5F0FA;
+  --border: #D9D9D9;
+  --border-row: #E5E5E5;
+  --primary: #0A6ED1;
+  --primary-glow: rgba(10, 110, 209, 0.2);
+  --accent: #107E3E;
+  --warn: #E9730C;
+  --danger: #BB0000;
+  --text: #1D2D3E;
+  --text-muted: #556B82;
+  --text-sub: #32363A;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: 0 0.125rem 0.25rem 0 rgba(0, 0, 0, 0.08), 0 0.25rem 0.5rem 0 rgba(0, 0, 0, 0.04);
+  --topbar-bg: #354A5F;
+  --sidebar-bg: #FFFFFF;
 }
 
 *,
@@ -96,7 +100,7 @@ body,
 }
 
 body {
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -654,18 +658,18 @@ textarea {
 .fi {
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 9px 13px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 14px;
   color: var(--text);
   outline: none;
   width: 100%;
-  transition: all 0.18s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .fi:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .fi::placeholder {
@@ -690,26 +694,27 @@ select.fi option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 9px 18px;
+  gap: 6px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
-  border: none;
-  font-size: 13px;
-  font-weight: 700;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all 0.15s;
   white-space: nowrap;
 }
 
 .btn-p {
   background: var(--primary);
   color: #fff;
-  box-shadow: 0 3px 12px rgba(99, 102, 241, 0.3);
+  border-color: var(--primary);
+  box-shadow: none;
 }
 
 .btn-p:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
+  background: #0854A0;
+  border-color: #0854A0;
 }
 
 .btn-p:disabled {
@@ -720,8 +725,8 @@ select.fi option {
 
 .btn-g {
   background: transparent;
-  color: var(--text-sub);
-  border: 1px solid var(--border);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .btn-g:hover {
@@ -861,14 +866,15 @@ select.fi option {
 }
 
 .tbl th {
-  padding: 11px 15px;
+  padding: 10px 14px;
   text-align: left;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: var(--bg-th);
   border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .tbl th.r {
@@ -880,10 +886,11 @@ select.fi option {
 }
 
 .tbl td {
-  padding: 13px 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  font-size: 12.5px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-row);
+  font-size: 13px;
   vertical-align: middle;
+  background: var(--bg-card);
 }
 
 .tbl td.r {
@@ -899,7 +906,7 @@ select.fi option {
 }
 
 .tbl tr:hover td {
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--bg-row-hover);
 }
 
 .t-lr {
