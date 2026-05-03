@@ -207,6 +207,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         return 'ok';
     };
 
+
     const isNearExpiry = (v) => {
         const d = parseJson(v.docs);
         return Object.values(d).some(date => checkExpiry(date) === 'near' || checkExpiry(date) === 'expired');
