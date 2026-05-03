@@ -39,6 +39,8 @@ if (!process.env.NETLIFY) {
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
+const partyRoutes = require('./routes/partyRoutes');
+
 app.use('/api/kosli/lr', requireAuth, kosliLrRoutes);
 app.use('/api/jhajjar/lr', requireAuth, jhajjarLrRoutes);
 app.use('/api/vouchers', requireAuth, voucherRoutes);
@@ -52,6 +54,7 @@ app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/lr', requireAuth, lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
+app.use('/api/parties', requireAuth, partyRoutes);
 
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {

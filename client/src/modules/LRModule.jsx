@@ -794,6 +794,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
   const [receipts, setReceipts] = useState([]);
+  const [parties, setParties] = useState([]);
   const [allVouchers, setAllVouchers] = useState([]);
   const [openChallans, setOpenChallans] = useState([]);
   const [allChallans, setAllChallans] = useState([]);
@@ -824,11 +825,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [voicePreviewUrl, setVoicePreviewUrl] = useState('');
   const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const partySuggestions = useMemo(() => buildPartySuggestions(
-    receipts.map(r => r.partyName),
-    allChallans.map(c => c.partyName),
-    openChallans.map(c => c.partyName)
-  ), [receipts, allChallans, openChallans]);
+  const partySuggestions = useMemo(() => {
+    const validParties = parties.filter(p => p.type === 'customer' || p.type === 'broker');
+    const legacyNames = buildPartySuggestions(
+      receipts.map(r => r.partyName),
+      allChallans.map(c => c.partyName),
+      openChallans.map(c => c.partyName)
+    );
+    return [...new Set([...validParties.map(p => p.name), ...legacyNames])].sort();
+  }, [parties, receipts, allChallans, openChallans]);
 
   const startRecording = async () => {
     try {
@@ -889,8 +894,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const fetchData = async () => {
     try {
-      const data = (await ax.get(API)).data;
-      setReceipts([...data].sort((a, b) => b.lrNo - a.lrNo));
+      const [dataRes, partiesRes] = await Promise.all([
+        ax.get(API),
+        ax.get('/parties').catch(() => ({ data: [] }))
+      ]);
+      setReceipts([...dataRes.data].sort((a, b) => b.lrNo - a.lrNo));
+      setParties(partiesRes.data);
       try {
          const vRes = await ax.get(`/vouchers`);
          setAllVouchers(vRes.data || []);

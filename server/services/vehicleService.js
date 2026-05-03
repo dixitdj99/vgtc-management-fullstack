@@ -1,6 +1,7 @@
 const localStore = require('../utils/localStore');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
+const partyService = require('./partyService');
 
 const COLLECTION_VEHICLES = 'vehicles';
 const normalizeTruckNo = (value) => String(value || '').toUpperCase().replace(/\s/g, '');
@@ -9,6 +10,7 @@ const normalizeVehiclePayload = (data = {}) => ({
     ...data,
     truckNo: normalizeTruckNo(data.truckNo),
     ownerName: String(data.ownerName || '').trim(),
+    ownerId: data.ownerId || null,
     ownerContact: String(data.ownerContact || '').trim(),
     driverName: String(data.driverName || '').trim(),
     driverContact: String(data.driverContact || '').trim(),
@@ -21,6 +23,7 @@ const normalizeVehiclePatch = (data = {}) => {
     const patch = { ...data };
     if (data.truckNo !== undefined) patch.truckNo = normalizeTruckNo(data.truckNo);
     if (data.ownerName !== undefined) patch.ownerName = String(data.ownerName || '').trim();
+    if (data.ownerId !== undefined) patch.ownerId = data.ownerId || null;
     if (data.ownerContact !== undefined) patch.ownerContact = String(data.ownerContact || '').trim();
     if (data.driverName !== undefined) patch.driverName = String(data.driverName || '').trim();
     if (data.driverContact !== undefined) patch.driverContact = String(data.driverContact || '').trim();
@@ -87,15 +90,45 @@ const findVehicleByTruckNo = async (truckNo, col = COLLECTION_VEHICLES) => {
     return localStore.getAll(col).find(v => normalizeTruckNo(v.truckNo) === normalizedTruckNo) || null;
 };
 
+// ── Party Sync Helper ──────────────────────────────────────────────────────────
+const syncParty = async (ownerName, ownerContact, bankDetails) => {
+    if (!ownerName || ownerName.toLowerCase() === 'vikas transport (self)') return null;
+    try {
+        const parties = await partyService.getAllParties();
+        let party = parties.find(p => p.name === ownerName.toUpperCase());
+        if (!party) {
+            // Auto-create basic party record
+            party = await partyService.createParty({
+                name: ownerName,
+                type: 'transporter',
+                phone: ownerContact || '',
+                bankDetails: bankDetails || '',
+                isActive: true
+            });
+        } else if (bankDetails && !party.bankDetails) {
+            // Upgrade party bank details if missing
+            await partyService.updateParty(party.id, { bankDetails });
+        }
+        return party.id;
+    } catch (err) {
+        console.error('Failed to sync party for vehicle:', err);
+        return null;
+    }
+};
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 const createVehicle = async (data, col = COLLECTION_VEHICLES) => {
-    // Expected fields: truckNo, ownerName, ownerContact, driverName, driverContact, type, bankDetails, etc.
     const payload = normalizeVehiclePayload(data);
     if (!payload.truckNo) throw new Error('Truck number required');
 
     const existing = await findVehicleByTruckNo(payload.truckNo, col);
     if (existing) throw new Error(`Vehicle already exists for truck ${payload.truckNo}`);
+
+    // Auto-sync or resolve Party ID
+    if (!payload.ownerId && payload.ownerName) {
+        payload.ownerId = await syncParty(payload.ownerName, payload.ownerContact, payload.bankDetails);
+    }
 
     if (firebaseAvailable()) return await firestoreCreate(payload, col);
     return localCreate(payload, col);
@@ -116,6 +149,11 @@ const updateVehicle = async (id, data, col = COLLECTION_VEHICLES) => {
         if (existing && existing.id !== id) {
             throw new Error(`Vehicle already exists for truck ${allowed.truckNo}`);
         }
+    }
+
+    // Auto-sync or resolve Party ID
+    if (allowed.ownerName && !allowed.ownerId) {
+        allowed.ownerId = await syncParty(allowed.ownerName, allowed.ownerContact, allowed.bankDetails);
     }
 
     if (firebaseAvailable()) {

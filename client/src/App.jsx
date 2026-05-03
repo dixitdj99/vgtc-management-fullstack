@@ -16,13 +16,14 @@ import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
 import InvoiceModule from './modules/InvoiceModule';
-import { Truck, Fuel, ShoppingCart, Gauge, Banknote } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import AdminModule from './modules/AdminModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
+import PartyMaster from './modules/PartyMaster';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -252,6 +253,7 @@ function AppInner() {
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
     { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
+    { id: 'party_master_dump', label: 'Party Master', Icon: Users, color: '#8b5cf6', section: 'jksuper', permKey: 'admin' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
     { id: 'lr_jharli', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jharli', permKey: 'lr_jkl' },
@@ -295,6 +297,7 @@ function AppInner() {
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
     { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
+    { id: 'party_master_jharli', label: 'Party Master', Icon: Users, color: '#8b5cf6', section: 'jharli', permKey: 'admin' },
 
     ...(user?.role === 'admin' ? [
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant === 'jklakshmi' ? 'jharli' : (plant || 'jksuper') },
@@ -601,6 +604,7 @@ function AppInner() {
               {(active === 'invoice_dump' || active === 'invoice_jharli') && <InvoiceModule brand={active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
               {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl' || active === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
+              {(active === 'party_master_dump' || active === 'party_master_jharli') && <PartyMaster />}
               {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>
           </AnimatePresence>

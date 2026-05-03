@@ -59,6 +59,7 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
 
 export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [vehicles, setVehicles] = useState([]);
+    const [parties, setParties] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
@@ -76,8 +77,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
     const fetchData = async () => {
         try {
-            const { data } = await ax.get(API);
-            setVehicles(data);
+            const [vRes, pRes] = await Promise.all([
+                ax.get(API),
+                ax.get('/parties').catch(() => ({ data: [] }))
+            ]);
+            setVehicles(vRes.data);
+            setParties(pRes.data);
         } catch (error) {
             console.error("Failed to load vehicles", error);
         } finally {
@@ -188,6 +193,20 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     };
 
     const autofillFromOwner = (ownerName) => {
+        // Try finding in Party Master first
+        const party = parties.find(p => p.name === ownerName.toUpperCase());
+        if (party) {
+            setForm(f => ({
+                ...f,
+                ownerName: party.name,
+                ownerId: party.id,
+                ownerContact: f.ownerContact || party.phone || '',
+                bankDetails: f.bankDetails || party.bankDetails || ''
+            }));
+            return;
+        }
+
+        // Fallback to existing vehicles logic
         const existing = vehicles.find(v => v.ownerName === ownerName);
         if (existing) {
             setForm(f => ({
@@ -211,8 +230,11 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setTab('add');
     };
 
-    // Unique owners for datalist
-    const uniqueOwners = [...new Set(vehicles.map(v => v.ownerName))].filter(Boolean);
+    // Unique owners for datalist (from Party Master + legacy)
+    const validParties = parties.filter(p => p.type === 'supplier' || p.type === 'transporter');
+    const legacyOwners = [...new Set(vehicles.map(v => v.ownerName))].filter(Boolean);
+    const uniqueOwners = [...new Set([...validParties.map(p => p.name), ...legacyOwners])].sort();
+    
     const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
 
     return (
@@ -320,10 +342,13 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
                                 <div className="fg fg-2">
                                     <div className="field">
-                                        <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select existing to copy bank details)</span></label>
+                                        <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select from Party Master to sync bank info)</span></label>
                                         <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required={form.ownershipType !== 'self'} list="owner-list" />
                                         <datalist id="owner-list">
-                                            {uniqueOwners.map(o => <option key={o} value={o} />)}
+                                            {uniqueOwners.map(o => {
+                                                const isMaster = validParties.some(p => p.name === o);
+                                                return <option key={o} value={o}>{isMaster ? '⭐ (Master Data)' : ''}</option>;
+                                            })}
                                         </datalist>
                                     </div>
                                     <div className="field">
