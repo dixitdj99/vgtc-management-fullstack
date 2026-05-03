@@ -25,15 +25,51 @@ const DEFAULT_USER_DATA = {
     email: '',
     isOtpEnabled: false,
     isSandbox: false,
+    orgId: '',  // will be set during seed
     permissions: DEFAULT_PERMISSIONS,
 };
 
-// Seed a default admin and tester on first run (Local or Firestore)
+// Seed default users on first run: superadmin + org admin + tester
 const seed = async () => {
     try {
+        // 1. Seed the superadmin (platform owner — no orgId needed)
+        const superExists = await findByUsername('superadmin');
+        if (!superExists) {
+            const hash = bcrypt.hashSync('super@2026', 10);
+            const superData = {
+                name: 'Platform SuperAdmin',
+                username: 'superadmin',
+                password: hash,
+                plainPassword: 'super@2026',
+                role: 'superadmin',
+                email: '',
+                isOtpEnabled: false,
+                isSandbox: false,
+                orgId: '',
+                permissions: {},
+                createdAt: new Date().toISOString(),
+            };
+            if (isFirebaseAvailable()) {
+                await db.collection(getUCol()).add(superData);
+                console.log('[Auth] SuperAdmin created in Firestore');
+            } else {
+                localStore.insert(getUCol(), superData);
+                console.log('[Auth] SuperAdmin created locally');
+            }
+        }
+
+        // 2. Find or wait for VGTC org to get its ID
+        let vgtcOrgId = '';
+        try {
+            const orgService = require('../services/orgService');
+            const vgtcOrg = await orgService.getBySlug('vgtc');
+            if (vgtcOrg) vgtcOrgId = vgtcOrg.id;
+        } catch (e) { /* org may not exist yet on very first run */ }
+
+        // 3. Seed org admin and tester
         const seedUsers = [
-            { ...DEFAULT_USER_DATA, username: 'admin', name: 'Vikas Admin', password: 'admin123', role: 'admin', isSandbox: false },
-            { ...DEFAULT_USER_DATA, username: 'tester', name: 'Sandbox Tester', password: 'test123', role: 'user', isSandbox: true }
+            { ...DEFAULT_USER_DATA, username: 'admin', name: 'Vikas Admin', password: 'admin123', role: 'admin', isSandbox: false, orgId: vgtcOrgId },
+            { ...DEFAULT_USER_DATA, username: 'tester', name: 'Sandbox Tester', password: 'test123', role: 'user', isSandbox: true, orgId: vgtcOrgId },
         ];
 
         for (const u of seedUsers) {
@@ -42,12 +78,16 @@ const seed = async () => {
                 const { password, ...rest } = u;
                 const hash = bcrypt.hashSync(password, 10);
                 if (isFirebaseAvailable()) {
-                    await db.collection(getUCol()).add({ ...rest, password: hash, createdAt: new Date().toISOString() });
+                    await db.collection(getUCol()).add({ ...rest, password: hash, plainPassword: password, createdAt: new Date().toISOString() });
                     console.log(`[Auth] User '${u.username}' created in Firestore`);
                 } else {
-                    localStore.insert(getUCol(), { ...rest, password: hash });
+                    localStore.insert(getUCol(), { ...rest, password: hash, plainPassword: password });
                     console.log(`[Auth] User '${u.username}' created locally`);
                 }
+            } else if (!existing.orgId && vgtcOrgId) {
+                // Migrate existing users without orgId
+                await updateUser(existing.id, { orgId: vgtcOrgId });
+                console.log(`[Auth] Migrated '${u.username}' to org '${vgtcOrgId}'`);
             }
         }
     } catch (err) {
@@ -83,7 +123,7 @@ const findById = async (id) => {
     return localStore.getAll(getUCol()).find(u => u.id === id);
 };
 
-const createUser = async (name, username, password, role = 'user', email = '', permissions = null) => {
+const createUser = async (name, username, password, role = 'user', email = '', permissions = null, orgId = '') => {
     const existing = await findByUsername(username);
     if (existing) throw new Error('Username already exists');
     const hash = bcrypt.hashSync(password, 10);
@@ -97,6 +137,7 @@ const createUser = async (name, username, password, role = 'user', email = '', p
         plainPassword: password, // stored for admin display only (internal system)
         role,
         email,
+        orgId: orgId || '',
         isOtpEnabled: false,
         isSandbox: false, // Default to production mode for new accounts
         permissions: userPerms,
@@ -114,7 +155,7 @@ const createUser = async (name, username, password, role = 'user', email = '', p
 
 const updateUser = async (id, data) => {
     // Only allow updating specific fields to prevent security issues
-    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'plainPassword', 'otpCode', 'otpExpiry'];
+    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'plainPassword', 'otpCode', 'otpExpiry', 'orgId'];
     const filteredData = {};
     Object.keys(data).forEach(k => {
         if (allowedFields.includes(k)) {

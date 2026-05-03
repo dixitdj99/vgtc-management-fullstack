@@ -23,6 +23,18 @@ router.get('/status', (req, res) => {
     });
 });
 
+// Helper: build JWT payload and user response object
+const buildTokenPayload = (user, orgName = '') => ({
+    id: user.id, username: user.username, name: user.name, role: user.role,
+    permissions: user.permissions, isSandbox: !!user.isSandbox,
+    orgId: user.orgId || '', orgName: orgName || '',
+});
+const buildUserResponse = (user, orgName = '') => ({
+    id: user.id, name: user.name, username: user.username, role: user.role,
+    permissions: user.permissions, isSandbox: !!user.isSandbox,
+    orgId: user.orgId || '', orgName: orgName || '',
+});
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
     try {
@@ -33,34 +45,42 @@ router.post('/login', async (req, res) => {
         if (!user || !authService.verifyPassword(password, user.password))
             return res.status(401).json({ error: 'Invalid username or password' });
 
-        // Plant/Godown access enforcement for non-admin users
-        if (user.role !== 'admin') {
-            const perms = user.permissions || {};
-            const allowedPlants = perms.allowedPlants; // undefined = legacy user (no restrictions)
-            const allowedGodowns = perms.allowedGodowns; // undefined = no godown restriction set
-            const requestedPlant = req.body.plant;
-            const requestedGodown = req.body.godown;
+        // SuperAdmin bypasses all org/plant restrictions
+        let orgName = '';
+        if (user.role !== 'superadmin') {
+            // Validate org is active
+            if (user.orgId) {
+                const orgService = require('../services/orgService');
+                const org = await orgService.getById(user.orgId);
+                if (!org) return res.status(403).json({ error: 'Your organization was not found. Contact the platform administrator.' });
+                if (!org.isActive) return res.status(403).json({ error: 'Your organization has been deactivated. Contact the platform administrator.' });
+                orgName = org.name || '';
+            }
 
-            // Enforce only if allowedPlants is explicitly configured as an array
-            if (Array.isArray(allowedPlants)) {
-                // Plant must be in the allowed list
-                if (!requestedPlant || !allowedPlants.includes(requestedPlant)) {
-                    const plantName = requestedPlant || '(none selected)';
-                    return res.status(403).json({
-                        error: `Access Denied: Your account is not authorized for ${plantName}. Contact your administrator.`
-                    });
-                }
+            // Plant/Godown access enforcement for non-admin users
+            if (user.role !== 'admin') {
+                const perms = user.permissions || {};
+                const allowedPlants = perms.allowedPlants;
+                const allowedGodowns = perms.allowedGodowns;
+                const requestedPlant = req.body.plant;
+                const requestedGodown = req.body.godown;
 
-                // JK Super additionally requires a valid godown
-                if (requestedPlant === 'jksuper') {
-                    if (!requestedGodown) {
-                        return res.status(403).json({ error: 'Access Denied: Please select a Godown for JK Super.' });
-                    }
-                    // If specific godowns are configured, enforce strictly
-                    if (Array.isArray(allowedGodowns) && !allowedGodowns.includes(requestedGodown)) {
+                if (Array.isArray(allowedPlants)) {
+                    if (!requestedPlant || !allowedPlants.includes(requestedPlant)) {
+                        const plantName = requestedPlant || '(none selected)';
                         return res.status(403).json({
-                            error: `Access Denied: Your account is not authorized for the ${requestedGodown} godown. Contact your administrator.`
+                            error: `Access Denied: Your account is not authorized for ${plantName}. Contact your administrator.`
                         });
+                    }
+                    if (requestedPlant === 'jksuper') {
+                        if (!requestedGodown) {
+                            return res.status(403).json({ error: 'Access Denied: Please select a Godown for JK Super.' });
+                        }
+                        if (Array.isArray(allowedGodowns) && !allowedGodowns.includes(requestedGodown)) {
+                            return res.status(403).json({
+                                error: `Access Denied: Your account is not authorized for the ${requestedGodown} godown. Contact your administrator.`
+                            });
+                        }
                     }
                 }
             }
@@ -75,12 +95,8 @@ router.post('/login', async (req, res) => {
         }
 
         // Success path (no OTP)
-        const token = jwt.sign(
-            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
-            SECRET,
-            { expiresIn: '24h' }
-        );
-        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
+        const token = jwt.sign(buildTokenPayload(user, orgName), SECRET, { expiresIn: '24h' });
+        res.json({ token, user: buildUserResponse(user, orgName) });
 
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -126,12 +142,17 @@ router.post('/verify-otp', async (req, res) => {
                 }
             }
         }
-        const token = jwt.sign(
-            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
-            SECRET,
-            { expiresIn: '24h' }
-        );
-        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
+        // Resolve org name for JWT
+        let orgName = '';
+        if (user.orgId) {
+            try {
+                const orgService = require('../services/orgService');
+                const org = await orgService.getById(user.orgId);
+                if (org) orgName = org.name || '';
+            } catch (e) { /* ignore */ }
+        }
+        const token = jwt.sign(buildTokenPayload(user, orgName), SECRET, { expiresIn: '24h' });
+        res.json({ token, user: buildUserResponse(user, orgName) });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

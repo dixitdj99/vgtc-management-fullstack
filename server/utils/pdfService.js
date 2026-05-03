@@ -796,6 +796,297 @@ async function generateSalePDF(s, outputPath) {
     });
 }
 
+/**
+ * Generates a JK Super Dump Transportation Freight Bill PDF.
+ * Matches the format from samples/test.html — the official VIKAS GOODS TRANSPORT CO. invoice.
+ *
+ * Columns: S.No, Consignee Name, Destination, Truck No, LR No, Invoice No,
+ *          Invoice Date, Billed Qty (LD), Rec. Qty (UL), Rate PMT, Total Freight, Short Qty
+ */
+async function generateDumpFreightInvoicePDF(data, outputPath) {
+    const { entries, billNo, billDate, gstRate = 12 } = data;
+
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 20, size: 'A4', layout: 'landscape' });
+        const stream = fs.createWriteStream(outputPath);
+        doc.pipe(stream);
+
+        const PW = doc.page.width;   // 841.89
+        const PH = doc.page.height;  // 595.28
+        const M = 20;
+        const CW = PW - M * 2;
+        let y = M;
+
+        // ── Helpers ──────────────────────────────────────────────
+        const drawLine = (x1, y1, x2, y2, lw = 0.5) => {
+            doc.moveTo(x1, y1).lineTo(x2, y2).strokeColor('#000').lineWidth(lw).stroke();
+        };
+        const fmt = (n) => {
+            if (n === 0 || n === undefined || n === null) return '';
+            return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+        };
+
+        // ── HEADER ───────────────────────────────────────────────
+        doc.fontSize(18).font('Helvetica-Bold').fillColor('#000')
+            .text('VIKAS GOODS TRANSPORT CO.', M, y, { align: 'center', width: CW });
+        y += 22;
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor('#333')
+            .text('H.O. : Near Rao Gopal Dev Chowk, Narnaul Road Rewari, E-Mail : vikasgoodstransport1234@gmail.com, Contact : 9416319445', M, y, { align: 'center', width: CW });
+        y += 14;
+
+        // Yellow banner
+        doc.rect(M, y, CW, 16).fill('#ffff00');
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000')
+            .text('TRANSPORTATION FREIGHT BILL ( Primary/Grey)', M, y + 3, { align: 'center', width: CW });
+        y += 18;
+        doc.fontSize(9).font('Helvetica-BoldOblique').fillColor('#000')
+            .text('TAX INVOICE (Loose/Bag/STO) - Cement/Clinker', M, y, { align: 'center', width: CW });
+        y += 14;
+        drawLine(M, y, M + CW, y, 1);
+        y += 4;
+
+        // ── INFO GRID (2 columns) ───────────────────────────────
+        const midX = M + CW / 2;
+        const infoStartY = y;
+        const lineH = 14;
+
+        // Left column
+        const drawInfoRow = (label, value, ix, iy) => {
+            doc.fontSize(9).font('Helvetica-BoldOblique').fillColor('#000')
+                .text(label, ix, iy);
+            doc.font('Helvetica-Oblique')
+                .text(value, ix + 130, iy);
+        };
+
+        drawInfoRow('Sap Code :', '500000505', M + 5, y);
+        drawInfoRow('Consignor / Bill To', 'J.K. CEMENT WORKS, JHARLI', M + 5, y + lineH);
+        drawInfoRow('GSTI :', '06AABCJ0355R1ZB', M + 5, y + lineH * 2);
+        drawInfoRow('SAC Code :', '996511 GTA Services', M + 5, y + lineH * 3);
+        drawInfoRow('Plant Code :', '1022', M + 5, y + lineH * 4);
+
+        // Right column
+        drawInfoRow('Bill No. :', String(billNo), midX + 10, y);
+        drawInfoRow('Date :', billDate, midX + 10, y + lineH);
+        drawInfoRow('PAN No.:', 'ARIPK9021C', midX + 10, y + lineH * 2);
+        drawInfoRow('GSTIN No.:', '06ARIPK9021C2Z2', midX + 10, y + lineH * 3);
+        drawInfoRow('Status', 'Propriter', midX + 10, y + lineH * 4);
+        drawInfoRow('Transport Mode', 'Road', midX + 10, y + lineH * 5);
+        drawInfoRow('RST on forward Charge', 'Yes', midX + 10, y + lineH * 6);
+
+        y += lineH * 7 + 6;
+        drawLine(M, y, M + CW, y, 1);
+        y += 2;
+
+        // Place of Supply row
+        doc.fontSize(8).font('Helvetica-BoldOblique')
+            .text('Place of Supply', M + 5, y + 2)
+            .text('State Name', M + 130, y + 2)
+            .text('State Code', midX + 10, y + 2)
+            .text('06', midX + 100, y + 2);
+        y += 14;
+        drawLine(M, y, M + CW, y, 1);
+        y += 2;
+
+        // ── TABLE HEADER ────────────────────────────────────────
+        const cols = [
+            { label: 'S NO',             w: 30 },
+            { label: 'Consignee Name',   w: 118 },
+            { label: 'Destination',      w: 78 },
+            { label: 'Truck No',         w: 68 },
+            { label: 'LR No',            w: 78 },
+            { label: 'InvoiceNo',        w: 72 },
+            { label: 'Invoice\nDate',    w: 58 },
+            { label: 'Billed Qty\n(LD)', w: 54 },
+            { label: 'Rec. Qty\n(UL)',   w: 54 },
+            { label: 'Rate\nPMT',        w: 48 },
+            { label: 'Total Freight',    w: 78 },
+            { label: 'Short\nQty',       w: 44 },
+        ];
+
+        // Adjust widths proportionally to fit CW
+        const totalW = cols.reduce((s, c) => s + c.w, 0);
+        const scale = CW / totalW;
+        cols.forEach(c => { c.w = Math.floor(c.w * scale); });
+        // Fix rounding
+        const diff = CW - cols.reduce((s, c) => s + c.w, 0);
+        cols[1].w += diff; // give extra to Consignee column
+
+        const headerH = 22;
+        doc.rect(M, y, CW, headerH).fill('#eaedf2');
+        let hx = M;
+        cols.forEach(c => {
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000')
+                .text(c.label, hx + 2, y + 3, { width: c.w - 4, align: 'center' });
+            drawLine(hx, y, hx, y + headerH);
+            hx += c.w;
+        });
+        drawLine(M, y, M + CW, y, 0.5);
+        drawLine(M, y + headerH, M + CW, y + headerH, 0.5);
+        drawLine(M + CW, y, M + CW, y + headerH);
+        y += headerH;
+
+        // ── TABLE ROWS ──────────────────────────────────────────
+        const ROW_H = 14;
+        let grandBilledQty = 0;
+        let grandRecdQty = 0;
+        let grandTotalFreight = 0;
+        let grandShortQty = 0;
+
+        entries.forEach((entry, idx) => {
+            // Check if we need a new page
+            if (y + ROW_H > PH - 120) {
+                doc.addPage();
+                y = M;
+                // Redraw header on new page
+                doc.rect(M, y, CW, headerH).fill('#eaedf2');
+                let nhx = M;
+                cols.forEach(c => {
+                    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000')
+                        .text(c.label, nhx + 2, y + 3, { width: c.w - 4, align: 'center' });
+                    drawLine(nhx, y, nhx, y + headerH);
+                    nhx += c.w;
+                });
+                drawLine(M, y, M + CW, y, 0.5);
+                drawLine(M, y + headerH, M + CW, y + headerH, 0.5);
+                drawLine(M + CW, y, M + CW, y + headerH);
+                y += headerH;
+            }
+
+            const billedQty = entry.salesQty || 0;
+            const recdQty = entry.recdQty || billedQty;
+            const shortQty = entry.shortQty || 0;
+            const totalFreight = entry.totalFreight || 0;
+
+            // Calculate weight in MT: bags * 0.05
+            const weightMT = billedQty * 0.05;
+            // Rate PMT = total freight / weight in MT
+            const ratePMT = weightMT > 0 ? Math.round(totalFreight / weightMT) : 0;
+
+            grandBilledQty += billedQty;
+            grandRecdQty += recdQty;
+            grandTotalFreight += totalFreight;
+            grandShortQty += shortQty;
+
+            const rowCells = [
+                String(idx + 1),
+                entry.customerDescription || '',
+                (entry.cityName || entry.countyName || '').substring(0, 18),
+                entry.vehicleNo || '',
+                entry.lrNo || '',
+                String(entry.invoiceNo || ''),
+                entry.billingDate || '',
+                String(billedQty),
+                String(recdQty),
+                fmt(ratePMT),
+                fmt(totalFreight),
+                shortQty > 0 ? String(shortQty) : '',
+            ];
+
+            let rx = M;
+            rowCells.forEach((val, ci) => {
+                const align = ci <= 2 ? 'left' : 'center';
+                doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#000')
+                    .text(val, rx + 2, y + 3, { width: cols[ci].w - 4, align, ellipsis: true });
+                drawLine(rx, y, rx, y + ROW_H);
+                rx += cols[ci].w;
+            });
+            drawLine(M + CW, y, M + CW, y + ROW_H);
+            drawLine(M, y + ROW_H, M + CW, y + ROW_H, 0.3);
+            y += ROW_H;
+        });
+
+        // ── GRAND TOTAL ROW ─────────────────────────────────────
+        const totH = 16;
+        doc.rect(M, y, CW, totH).fill('#eaedf2');
+        // Merge first 7 cols for "Grand Total" label
+        let tx = M;
+        for (let i = 0; i < 7; i++) tx += cols[i].w;
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000')
+            .text('Grand Total', M + 4, y + 4, { width: tx - M - 4, align: 'center' });
+
+        const totCells = [
+            fmt(grandBilledQty) + '.000',
+            fmt(grandRecdQty) + '.000',
+            '',
+            fmt(grandTotalFreight) + '.000',
+            grandShortQty > 0 ? fmt(grandShortQty) + '.000' : '0.000',
+        ];
+        let totX = tx;
+        for (let i = 7; i < cols.length; i++) {
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#000')
+                .text(totCells[i - 7], totX + 2, y + 4, { width: cols[i].w - 4, align: 'center' });
+            drawLine(totX, y, totX, y + totH);
+            totX += cols[i].w;
+        }
+        drawLine(M, y, M, y + totH);
+        drawLine(M + CW, y, M + CW, y + totH);
+        drawLine(M, y, M + CW, y, 0.5);
+        drawLine(M, y + totH, M + CW, y + totH, 1);
+        y += totH + 4;
+
+        // ── GST SECTION ─────────────────────────────────────────
+        const halfRate = gstRate / 2;
+        const cgst = Math.round(grandTotalFreight * halfRate / 100);
+        const sgst = Math.round(grandTotalFreight * halfRate / 100);
+        const grandTotal = grandTotalFreight + cgst + sgst;
+
+        // GST table on the right side
+        const gstX = M + CW - 260;
+        const gstW = 260;
+        const gstRowH = 14;
+
+        const gstRows = [
+            ['Inter State', `IGST ${gstRate}%`, '0'],
+            ['Intra State', `CGST ${halfRate}%`, fmt(cgst)],
+            ['', `SGST ${halfRate}%`, fmt(sgst)],
+            ['Total', '', fmt(grandTotal)],
+        ];
+
+        gstRows.forEach((row, ri) => {
+            const gy = y + ri * gstRowH;
+            const isTot = ri === gstRows.length - 1;
+            if (isTot) doc.rect(gstX, gy, gstW, gstRowH).fill('#eaedf2');
+            doc.fontSize(8).font(isTot ? 'Helvetica-Bold' : 'Helvetica-BoldOblique').fillColor('#000');
+            doc.text(row[0], gstX + 4, gy + 3, { width: 80 });
+            doc.text(row[1], gstX + 84, gy + 3, { width: 90 });
+            doc.font('Helvetica-Bold').text(row[2], gstX + 174, gy + 3, { width: 80, align: 'center' });
+            drawLine(gstX, gy, gstX + gstW, gy, 0.3);
+        });
+        drawLine(gstX, y + gstRows.length * gstRowH, gstX + gstW, y + gstRows.length * gstRowH, 0.5);
+
+        y += gstRows.length * gstRowH + 10;
+
+        // ── Blue separator bar ──────────────────────────────────
+        doc.rect(M, y, CW, 8).fill('#dbe5f1');
+        y += 12;
+
+        // ── SIGNATURE ───────────────────────────────────────────
+        doc.fontSize(9).font('Helvetica-BoldOblique').fillColor('#000')
+            .text('For VIKAS GOODS TRANSPORT CO.', M + CW - 220, y, { width: 210, align: 'center' });
+        y += 40;
+        doc.text('Authorised Signatory', M + CW - 220, y, { width: 210, align: 'center' });
+        y += 18;
+
+        // ── DECLARATION ─────────────────────────────────────────
+        drawLine(M, y, M + CW, y, 0.5);
+        y += 4;
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#000')
+            .text(`${gstRate}%`, M + 4, y)
+            .text('(FCM)', M + 4, y + 8);
+        doc.fontSize(7).font('Helvetica-BoldOblique')
+            .text('Decelaration -', M + 40, y);
+        doc.fontSize(7).font('Helvetica-Oblique')
+            .text(
+                '"I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us during the Financial Year 2025-26 under forward charge.".',
+                M + 100, y, { width: CW - 110 }
+            );
+
+        doc.end();
+        stream.on('finish', () => resolve(outputPath));
+        stream.on('error', reject);
+    });
+}
+
 module.exports = {
     generateModuleReport,
     generateReceiptPDF,
@@ -804,4 +1095,5 @@ module.exports = {
     generateVoucherListPDF,
     generateInvoicePDF,
     generateSalePDF,
+    generateDumpFreightInvoicePDF,
 };

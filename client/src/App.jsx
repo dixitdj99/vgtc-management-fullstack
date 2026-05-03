@@ -24,6 +24,7 @@ import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
+import SuperAdminPage from './pages/SuperAdminPage';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -41,7 +42,7 @@ const ENV_BANNER = APP_ENV === 'production' ? null
 
 
 function AppInner() {
-  const { user, logout, ready, plant, godown } = useAuth();
+  const { user, logout, ready, plant, godown, org } = useAuth();
   // Default to first module of the selected plant/godown
   // Persistence for navigation
   const [active, setActive] = useState(() => localStorage.getItem('vgtc-active') || (plant === 'jklakshmi' ? 'lr_jharli' : (godown === 'jhajjar' ? 'lr_jhajjar' : 'lr_kosli')));
@@ -303,6 +304,10 @@ function AppInner() {
       { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant === 'jklakshmi' ? 'jharli' : (plant || 'jksuper') },
       { id: 'admin_backup', label: 'Backup Settings', Icon: Cloud, color: '#6366f1', section: plant === 'jklakshmi' ? 'jharli' : (plant || 'jksuper'), adminOnly: true },
     ] : []),
+    ...(user?.role === 'superadmin' ? [
+      { id: 'superadmin', label: '⚡ SuperAdmin', Icon: Shield, color: '#f43f5e', section: 'jksuper' },
+      { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: 'jksuper' },
+    ] : []),
   ];
 
   // Filter by plant AND permissions AND godown
@@ -394,8 +399,8 @@ function AppInner() {
         <div className="sidebar-brand">
           <div className="brand-icon"><LayoutDashboard size={22} color="white" /></div>
           {!col && <div className="brand-text">
-            <div className="brand-name">Vikas Goods</div>
-            <div className="brand-sub">Transport System</div>
+            <div className="brand-name">{org?.name?.split(' ').slice(0, 2).join(' ') || 'VGTC'}</div>
+            <div className="brand-sub">{org?.name ? 'Management System' : 'Transport System'}</div>
           </div>}
         </div>
         <nav className="sidebar-nav">
@@ -600,7 +605,8 @@ function AppInner() {
               {(active === 'mileage_dump' || active === 'mileage_jkl' || active === 'mileage_jharli') && <MileageModule />}
               {(active === 'pay_dump' || active === 'pay_jkl' || active === 'pay_jharli') && <PayModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'sell_dump' || active === 'sell_jkl' || active === 'sell_jharli') && <SellModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-              {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
+              {active === 'admin' && (user?.role === 'admin' || user?.role === 'superadmin') && <AdminPage />}
+              {active === 'superadmin' && user?.role === 'superadmin' && <SuperAdminPage />}
               {(active === 'invoice_dump' || active === 'invoice_jharli') && <InvoiceModule brand={active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
               {(active === 'staff_profiles_dump' || active === 'staff_profiles_jharli') && <StaffProfileModule role={user.role} />}

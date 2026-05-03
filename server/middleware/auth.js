@@ -15,7 +15,18 @@ const requireAuth = (req, res, next) => {
 
 const requireAdmin = (req, res, next) => {
     requireAuth(req, res, () => {
-        if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+        if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: 'Admin access required' });
+        next();
+    });
+};
+
+/**
+ * requireSuperAdmin — Only the platform super-admin can access.
+ * Used for org management, payment verification, etc.
+ */
+const requireSuperAdmin = (req, res, next) => {
+    requireAuth(req, res, () => {
+        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Super Admin access required' });
         next();
     });
 };
@@ -41,4 +52,5 @@ const preventProdWrite = (req, res, next) => {
     next();
 };
 
-module.exports = { requireAuth, requireAdmin, preventProdWrite, SECRET };
+module.exports = { requireAuth, requireAdmin, requireSuperAdmin, preventProdWrite, SECRET };
+

@@ -10,6 +10,7 @@ export function AuthProvider({ children }) {
   const [plant, setPlantState] = useState(() => localStorage.getItem('vgtc-plant') || '');
   const [godown, setGodownState] = useState(() => localStorage.getItem('vgtc-godown') || '');
   const [ready, setReady] = useState(false);
+  const [org, setOrg] = useState(null); // full org object from /api/orgs/my/info
 
   // Set axios default auth header and verify token on mount
   useEffect(() => {
@@ -24,6 +25,17 @@ export function AuthProvider({ children }) {
       setReady(true);
     }
   }, [token]);
+
+  // Fetch org info when user is available
+  useEffect(() => {
+    if (user && user.orgId) {
+      ax.get('/orgs/my/info')
+        .then(r => setOrg(r.data))
+        .catch(() => setOrg(null));
+    } else {
+      setOrg(null);
+    }
+  }, [user?.orgId]);
 
   const setPlant = (p, g = '') => {
     localStorage.setItem('vgtc-plant', p);
@@ -100,13 +112,14 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
     setCurrentUser(null);
+    setOrg(null);
     setPlantState('');
     setGodownState('');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, logout, ready }}>
+    <AuthContext.Provider value={{ user, token, plant, godown, org, setPlant, login, verifyOtp, resendOtp, logout, ready }}>
       {children}
     </AuthContext.Provider>
   );
-}
+}

@@ -11,12 +11,22 @@ export const getPartySimilarityKey = (value) =>
     .replace(/[^A-Z0-9]/g, '');
 
 export const resolvePartyName = (value, existingNames = []) => {
-  const normalized = normalizePartyName(value);
-  if (!normalized) return '';
+  const stringValue = String(value ?? '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trimStart();
+    
+  if (!stringValue) return '';
 
-  const targetKey = getPartySimilarityKey(normalized);
+  const targetKey = getPartySimilarityKey(stringValue);
   const match = existingNames.find((name) => getPartySimilarityKey(name) === targetKey);
-  return match ? normalizePartyName(match) : normalized;
+  
+  if (match) {
+    const trailingSpace = stringValue.endsWith(' ') ? ' ' : '';
+    return normalizePartyName(match) + trailingSpace;
+  }
+  
+  return stringValue;
 };
 
 export const buildPartySuggestions = (...groups) => {

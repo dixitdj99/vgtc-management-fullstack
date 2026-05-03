@@ -33,12 +33,18 @@ const stockTransferRoutes = require('./routes/stockTransferRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
+const invoiceUploadRoutes = require('./routes/invoiceUploadRoutes');
+const orgRoutes = require('./routes/orgRoutes');
 const { requireAuth } = require('./middleware/auth');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
     stockService.init();
 }
+
+// Seed default organization
+const orgService = require('./services/orgService');
+orgService.seedDefaultOrg();
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -81,6 +87,8 @@ app.use('/api/mileage', requireAuth, mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);
 app.use('/api/payments', requireAuth, paymentRoutes);
 app.use('/api/maintenance', requireAuth, maintenanceRoutes);
+app.use('/api/invoice-upload', requireAuth, invoiceUploadRoutes);
+app.use('/api/orgs', orgRoutes); // Auth handled per-route (some public, some superadmin)
 
 const PORT = process.env.PORT || 5000;
 
