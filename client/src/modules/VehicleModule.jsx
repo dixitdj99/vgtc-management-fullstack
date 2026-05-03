@@ -1,3 +1,4 @@
+// SAP Fiori UI Transformation - Force Re-compile
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
@@ -170,7 +171,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
-    const fetchData = useCallback(async () => {
+    const fetchVehicleData = useCallback(async () => {
         try {
             setLoading(true);
             const [vRes, pRes, prRes] = await Promise.all([
@@ -188,7 +189,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         }
     }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => { fetchVehicleData(); }, [fetchVehicleData]);
 
     // Form State
     const [form, setForm] = useState(getEmptyForm());
@@ -270,7 +271,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             } else {
                 await ax.post(API, form);
             }
-            await fetchData();
+            await fetchVehicleData();
             setForm(getEmptyForm());
             setEditId(null);
             setTab('list');
@@ -330,7 +331,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         d.paidEmis = [...new Set(paid)];
         try {
             await ax.patch(`${API}/${v.id}`, { emiDetails: JSON.stringify(d) });
-            fetchData();
+            fetchVehicleData();
         } catch { alert('Update failed'); }
     };
 
@@ -388,7 +389,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     return (
         <div>
             <AnimatePresence>
-                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchData(); }} />}
+                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchVehicleData(); }} />}
             </AnimatePresence>
 
             <AnimatePresence>
@@ -521,6 +522,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 </div>
                             </>
                         )}
+
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>
                             <div className="fg fg-3">
