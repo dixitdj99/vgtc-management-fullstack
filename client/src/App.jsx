@@ -187,12 +187,33 @@ function AppInner() {
     localStorage.setItem('vgtc-theme', theme);
   }, [theme]);
 
-  // Persist navigation state
-  useEffect(() => {
-    localStorage.setItem('vgtc-active', active);
-    localStorage.setItem('vgtc-subactive', subActive);
-    localStorage.setItem('vgtc-expanded', JSON.stringify(expanded));
-  }, [active, subActive, expanded]);
+    // Persist navigation state
+    useEffect(() => {
+        localStorage.setItem('vgtc-active', active);
+        localStorage.setItem('vgtc-subactive', subActive);
+        localStorage.setItem('vgtc-expanded', JSON.stringify(expanded));
+    }, [active, subActive, expanded]);
+
+    // Global navigation listener for deep-linking across modules
+    useEffect(() => {
+        const handleNav = (e) => {
+            const { active: newActive, subActive: newSubActive, search } = e.detail || {};
+            if (newActive) {
+                setActive(newActive);
+                if (newSubActive !== undefined) setSubActive(newSubActive);
+                if (search) {
+                    // Store search term in localStorage for the target module to pick up
+                    localStorage.setItem('vgtc-search-redirect', search);
+                }
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                // Force close mobile menu if open
+                setShowMobileMenu(false);
+            }
+        };
+        window.addEventListener('nav-module', handleNav);
+        return () => window.removeEventListener('nav-module', handleNav);
+    }, [plant]);
 
   const cycleTheme = () => {
     const idx = THEMES.findIndex(t => t.id === theme);

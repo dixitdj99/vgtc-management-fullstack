@@ -6,7 +6,8 @@ const voucherService = require('../services/voucherService');
 router.get('/receipt/:truckNo/:date', async (req, res) => {
     try {
         const { truckNo, date } = req.params;
-        const vouchers = await voucherService.getVouchersByTruckAndDate(truckNo, date);
+        const orgId = req.query.org || 'vgtc';
+        const vouchers = await voucherService.getVouchersByTruckAndDate(orgId, truckNo, date);
         
         // Sanitize the response to only return necessary summary data for public viewing
         const sanitized = vouchers.map(v => ({
@@ -31,6 +32,23 @@ router.get('/receipt/:truckNo/:date', async (req, res) => {
     } catch (error) {
         console.error('Public receipt error:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Check organization status for diagnostics
+router.get('/org/:id', async (req, res) => {
+    try {
+        const orgService = require('../services/orgService');
+        const org = await orgService.getById(req.params.id);
+        if (!org) return res.status(404).json({ error: 'Organization not found' });
+        res.json({
+            id: org.id,
+            name: org.name,
+            status: org.status,
+            config: org.config ? 'present' : 'missing'
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 

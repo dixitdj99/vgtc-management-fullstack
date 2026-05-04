@@ -25,6 +25,7 @@ const backupRoutes = require('../../server/routes/backupRoutes');
 const publicRoutes = require('../../server/routes/publicRoutes');
 const labourRoutes = require('../../server/routes/labourRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
+const orgRoutes = require('../../server/routes/orgRoutes');
 
 const app = express();
 app.use(cors());
@@ -47,6 +48,7 @@ apiRouter.use('/public', publicRoutes);
 apiRouter.use('/lr', requireAuth, lrRoutes); // Legacy JK Super route
 apiRouter.use('/labour', labourRoutes);
 apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
+apiRouter.use('/org', requireAuth, orgRoutes);
 
 // JKL Routes
 apiRouter.use('/jkl/lr', requireAuth, jklLrRoutes);

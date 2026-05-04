@@ -33,12 +33,13 @@ const getEmptyForm = () => ({
     targetMileage: 0
 });
 
-const parseJson = (str, fallback = {}) => {
+const parseJson = (val, fallback = {}) => {
+    if (typeof val === 'object' && val !== null) return val;
     try {
-        const parsed = JSON.parse(str);
+        const parsed = JSON.parse(val);
         if (typeof parsed === 'object' && parsed !== null) return parsed;
     } catch { }
-    return fallback;
+    return fallback || {};
 };
 
 /* ── Vehicle Visualizer ── */
@@ -172,8 +173,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
     const fetchVehicleData = useCallback(async () => {
+        setLoading(true);
         try {
-            setLoading(true);
             const [vRes, pRes, prRes] = await Promise.all([
                 ax.get(API),
                 ax.get('/parties').catch(() => ({ data: [] })),
@@ -182,8 +183,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             setVehicles(vRes.data || []);
             setParties(pRes.data || []);
             setProfiles(prRes.data || []);
-        } catch (error) {
-            console.error("Failed to load data", error);
+
+            // Check for search redirect from other modules
+            const redirectSearch = localStorage.getItem('vgtc-search-redirect');
+            if (redirectSearch) {
+                setFSearch(redirectSearch);
+                localStorage.removeItem('vgtc-search-redirect');
+                setOwnershipFilter('all');
+            }
+        } catch (e) {
+            console.error('Fetch error:', e);
         } finally {
             setLoading(false);
         }
@@ -287,7 +296,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     };
 
     const autofillFromOwner = (ownerName) => {
-        // Try finding in Party Master first
         const party = parties.find(p => p.name === ownerName.toUpperCase());
         if (party) {
             setForm(f => ({
@@ -300,7 +308,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             return;
         }
 
-        // Fallback to existing vehicles logic
         const existing = vehicles.find(v => v.ownerName === ownerName);
         if (existing) {
             setForm(f => ({
@@ -347,7 +354,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         const email = "VIKASKUMAR909040@GMAIL.COM";
         
         try {
-            // Trigger Backend Email Alert
             const res = await ax.get('/vehicles/alerts/report');
             if (res.data.success) {
                 alert(`Alerts Processed! Email report sent to ${email} (Check your Inbox/Spam).`);
@@ -366,14 +372,13 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setTab('add');
     };
 
-    // Owners grouping
     const owners = useMemo(() => {
-        const map = {};
-        const lowerSearch = fSearch.toLowerCase();
+        const map = Object.create(null);
+        const lowerSearch = (fSearch || '').toLowerCase();
         vehicles.forEach(v => {
             if (ownershipFilter !== 'all' && v.ownershipType !== ownershipFilter) return;
-            const match = `${v.truckNo} ${v.ownerName} ${v.ownerContact} ${v.driverName} ${v.fastag} ${v.make} ${v.model}`.toLowerCase().includes(lowerSearch);
-            if (fSearch && !match) return;
+            const searchStr = `${v.truckNo || ''} ${v.ownerName || ''} ${v.ownerContact || ''} ${v.driverName || ''} ${v.fastag || ''} ${v.make || ''} ${v.model || ''}`.toLowerCase();
+            if (fSearch && !searchStr.includes(lowerSearch)) return;
 
             const oName = v.ownerName || 'Unknown Owner';
             if (!map[oName]) map[oName] = { name: oName, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
@@ -526,32 +531,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>
                             <div className="fg fg-3">
-                                <div className="field">
-                                    <label>RC Number</label>
-                                    <input className="fi" type="text" value={parseJson(form.docNumbers).rcNo} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Insurance Policy No.</label>
-                                    <input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Permit Number</label>
-                                    <input className="fi" type="text" value={parseJson(form.docNumbers).permitNo} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
-                                </div>
-                            </div>
-                            <div className="fg fg-3">
-                                <div className="field">
-                                    <label>Engine No.</label>
-                                    <input className="fi" type="text" value={parseJson(form.rcDetails).engineNo} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Chassis No.</label>
-                                    <input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Fastag Serial</label>
-                                    <input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} />
-                                </div>
+                                <div className="field"><label>RC Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).rcNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Insurance Policy</label><input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Permit Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).permitNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Engine Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).engineNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Chassis Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Fastag Serial</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
                             </div>
                         </div>
 
@@ -562,18 +547,15 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '4px 10px', borderRadius: '20px' }}>AUTO CALCULATE ENABLED</div>
                                 </div>
                                 <div className="fg fg-3">
-                                    <div className="field"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                </div>
-                                <div className="fg fg-3">
-                                    <div className="field"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                </div>
-                                <div className="fg fg-2">
-                                    <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName || ''} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo || ''} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total || ''} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure || ''} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due || ''} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>EMI End Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).endDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.endDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending || ''} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                 </div>
                             </div>
                         )}
@@ -650,17 +632,18 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                 <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: isNearExpiry(v) ? 'rgba(239,68,68,0.02)' : 'var(--bg-card)' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                                                         <div>
-                                                            <div style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px' }}>
+                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px', cursor: 'pointer' }} title="Click to open full vehicle profile">
                                                                 <Truck size={18} style={{ color: '#3b82f6' }} /> {v.truckNo}
+                                                                <span style={{ fontSize: '9px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Open Profile</span>
                                                             </div>
                                                             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', marginBottom: '8px' }}>
                                                                 <span style={{ fontSize: '11px', fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}</span>
                                                                 {v.model && <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--bg-th)', color: 'var(--text)', padding: '2px 8px', borderRadius: '4px' }}>{v.model}</span>}
                                                             </div>
                                                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
-                                                                <span style={{ fontWeight: 700 }}>{v.ownershipType.toUpperCase()}</span>
+                                                                <span style={{ fontWeight: 700 }}>{(v.ownershipType || '').toUpperCase()}</span>
                                                                 <span>• Age: {calculateAge(v.regDate)}</span>
-                                                                {v.grossWeight > 0 && <span>• {v.grossWeight.toLocaleString()} KG</span>}
+                                                                {v.grossWeight > 0 && <span>• {(parseFloat(v.grossWeight) || 0).toLocaleString()} KG</span>}
                                                             </div>
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -699,7 +682,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px', padding: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '10px' }}>
                                                                     <div style={{ textAlign: 'center' }}>
                                                                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
-                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{parseFloat(emi.due).toLocaleString()}</div>
+                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</div>
                                                                         {emi.dueDate && <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>Due: {emi.dueDate}</div>}
                                                                     </div>
                                                                 </div>
@@ -710,7 +693,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 </div>
                                                                 {emi.pending && (
                                                                     <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '11px', color: 'var(--text-sub)', textAlign: 'center' }}>
-                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{parseFloat(emi.pending).toLocaleString()}</strong>
+                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{(parseFloat(emi.pending) || 0).toLocaleString()}</strong>
                                                                     </div>
                                                                 )}
                                                             </div>
