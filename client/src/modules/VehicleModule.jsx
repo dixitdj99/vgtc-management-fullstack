@@ -156,6 +156,73 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
     );
 }
 
+function OwnerDeleteConfirm({ owner, onClose, onConfirm }) {
+    const [confirmText, setConfirmText] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const ownerName = owner?.name || '';
+    const vehicleCount = owner?.vehicles?.length || 0;
+    const isMatch = (confirmText || '').trim().toUpperCase() === ownerName.trim().toUpperCase();
+
+    const handleDelete = async () => {
+        setDeleting(true);
+        try {
+            for (const vehicle of owner?.vehicles || []) {
+                await ax.delete(`${API}/${vehicle.id}`);
+            }
+            if (owner?.partyId) {
+                await ax.delete(`/parties/${owner.partyId}`);
+            }
+            onConfirm();
+        } catch (error) {
+            alert(error.response?.data?.error || 'Owner delete failed');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
+                style={{ width: '90%', maxWidth: '460px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}>
+                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                    <AlertTriangle size={26} color="#f43f5e" />
+                </div>
+
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#f43f5e', marginBottom: '8px' }}>Delete Full Owner?</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    This will permanently remove <strong style={{ color: 'var(--text)' }}>{ownerName}</strong>, their Party Master record, and all linked vehicles.
+                </div>
+                <div style={{ fontSize: '12px', color: '#f43f5e', marginBottom: '16px', fontWeight: 700 }}>
+                    {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} will be deleted.
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    Type <strong style={{ color: 'var(--text)', fontFamily: 'monospace', background: 'var(--bg-input)', padding: '2px 8px', borderRadius: '4px' }}>{ownerName}</strong> to confirm
+                </div>
+                <input
+                    className="fi"
+                    type="text"
+                    placeholder={`Type ${ownerName} here...`}
+                    value={confirmText}
+                    onChange={e => setConfirmText(e.target.value)}
+                    style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, marginBottom: '16px', border: isMatch ? '2px solid #f43f5e' : '1px solid var(--border)' }}
+                    autoFocus
+                />
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                    <button className="btn btn-g" onClick={onClose}>Cancel</button>
+                    <button
+                        className="btn btn-d"
+                        onClick={handleDelete}
+                        disabled={!isMatch || deleting}
+                        style={{ opacity: isMatch ? 1 : 0.4, cursor: isMatch ? 'pointer' : 'not-allowed' }}
+                    >
+                        {deleting ? 'Deleting...' : <><Trash2 size={13} /> Delete Owner & Vehicles</>}
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
+
 export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [vehicles, setVehicles] = useState([]);
     const [parties, setParties] = useState([]);
@@ -170,6 +237,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [profiles, setProfiles] = useState([]);
     const [loadingProfiles, setLoadingProfiles] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
+    const [ownerDeleteTarget, setOwnerDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
     const fetchVehicleData = useCallback(async () => {
@@ -376,15 +444,21 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         const map = Object.create(null);
         const lowerSearch = (fSearch || '').toLowerCase();
         vehicles.forEach(v => {
-
-
+            if (ownershipFilter !== 'all' && v.ownershipType !== ownershipFilter) return;
+            if (lowerSearch) {
+                const haystack = `${v.truckNo || ''} ${v.ownerName || ''} ${v.ownerContact || ''}`.toLowerCase();
+                if (!haystack.includes(lowerSearch)) return;
+            }
             const oName = v.ownerName || 'Unknown Owner';
-            if (!map[oName]) map[oName] = { name: oName, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
+            const party = parties.find(p => String(p.name || '').toUpperCase() === String(oName || '').toUpperCase());
+            if (!map[oName]) map[oName] = { name: oName, ownerId: v.ownerId || null, partyId: v.ownerId || party?.id || null, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
+            if (!map[oName].ownerId && v.ownerId) map[oName].ownerId = v.ownerId;
+            if (!map[oName].partyId && (v.ownerId || party?.id)) map[oName].partyId = v.ownerId || party.id;
             if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
             map[oName].vehicles.push(v);
         });
         return Object.values(map).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    }, [vehicles, fSearch, ownershipFilter]);
+    }, [vehicles, parties, fSearch, ownershipFilter]);
 
     const uniqueOwners = [...new Set([...parties.filter(p => p.type === 'supplier' || p.type === 'transporter').map(p => p.name), ...vehicles.map(v => v.ownerName)])].filter(Boolean).sort();
     const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
@@ -393,6 +467,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         <div>
             <AnimatePresence>
                 {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchVehicleData(); }} />}
+                {ownerDeleteTarget && <OwnerDeleteConfirm owner={ownerDeleteTarget} onClose={() => setOwnerDeleteTarget(null)} onConfirm={() => { setOwnerDeleteTarget(null); fetchVehicleData(); }} />}
             </AnimatePresence>
 
             <AnimatePresence>
@@ -621,7 +696,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{owner.vehicles.length} Vehicles • {owner.contact || 'No Contact'}</div>
                                     </div>
                                 </div>
-                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}><CreditCard size={12} /> Bank Details Linked</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}><CreditCard size={12} /> Bank Details Linked</div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setOwnerDeleteTarget(owner); }}
+                                        title="Delete owner with all vehicles"
+                                        style={{ color: '#f43f5e', border: 'none', background: 'rgba(244,63,94,0.08)', cursor: 'pointer', padding: '7px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             </div>
                             
                             <AnimatePresence>
