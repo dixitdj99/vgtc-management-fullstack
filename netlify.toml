@@ -26,14 +26,3 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
   external_node_modules = ["firebase-admin", "firebase-admin/app", "firebase-admin/firestore", "@google-cloud/firestore", "grpc", "@grpc/grpc-js"]
-
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
