@@ -5,6 +5,7 @@ const partyService = require('./partyService');
 
 const COLLECTION_VEHICLES = 'vehicles';
 const normalizeTruckNo = (value) => String(value || '').toUpperCase().replace(/\s/g, '');
+const normalizeOwnerName = (value) => String(value || '').trim().toUpperCase();
 
 const normalizeVehiclePayload = (data = {}) => ({
     ...data,
@@ -193,6 +194,45 @@ const deleteVehicle = async (id, col = COLLECTION_VEHICLES) => {
     }
 };
 
+const deleteOwnerWithVehicles = async (orgId, owner = {}, col = COLLECTION_VEHICLES) => {
+    const ownerId = owner.ownerId || null;
+    const ownerName = normalizeOwnerName(owner.ownerName);
+
+    if (!ownerId && !ownerName) {
+        throw new Error('Owner name or owner id is required');
+    }
+
+    const allVehicles = await getAllVehicles(orgId, col);
+    const vehiclesToDelete = allVehicles.filter(v => {
+        const idMatches = ownerId && v.ownerId === ownerId;
+        const nameMatches = ownerName && normalizeOwnerName(v.ownerName) === ownerName;
+        return idMatches || nameMatches;
+    });
+
+    for (const vehicle of vehiclesToDelete) {
+        await deleteVehicle(vehicle.id, col);
+    }
+
+    let partiesDeleted = 0;
+    const parties = await partyService.getAllParties(orgId);
+    const partiesToDelete = parties.filter(p => {
+        const idMatches = ownerId && p.id === ownerId;
+        const nameMatches = ownerName && normalizeOwnerName(p.name) === ownerName;
+        return idMatches || nameMatches;
+    });
+
+    for (const party of partiesToDelete) {
+        await partyService.deleteParty(party.id);
+        partiesDeleted++;
+    }
+
+    return {
+        ownerName: owner.ownerName || '',
+        vehiclesDeleted: vehiclesToDelete.length,
+        partiesDeleted
+    };
+};
+
 const ensureVehicleByTruckNo = async (orgId, truckNo, col = COLLECTION_VEHICLES) => {
     const normalizedTruckNo = normalizeTruckNo(truckNo);
     if (!normalizedTruckNo) return null;
@@ -220,5 +260,6 @@ module.exports = {
     getAllVehicles,
     updateVehicle,
     deleteVehicle,
+    deleteOwnerWithVehicles,
     ensureVehicleByTruckNo
 };
