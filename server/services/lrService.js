@@ -8,13 +8,13 @@ const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
 
 // ── Party Sync Helper ──────────────────────────────────────────────────────────
-const syncParty = async (partyName) => {
+const syncParty = async (orgId, partyName) => {
     if (!partyName) return null;
     try {
-        const parties = await partyService.getAllParties();
+        const parties = await partyService.getAllParties(orgId);
         let party = parties.find(p => p.name === partyName.toUpperCase());
         if (!party) {
-            party = await partyService.createParty({
+            party = await partyService.createParty(orgId, {
                 name: partyName,
                 type: 'customer',
                 isActive: true
@@ -54,7 +54,7 @@ const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METAD
 const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(normalizedPartyName);
+    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName);
 
     const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection);
     const batch = db.batch();
@@ -63,7 +63,7 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(matPartyName));
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName));
 
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
@@ -109,14 +109,14 @@ const localGetNextLrNo = (orgId, collectionName = 'lr_no') => {
 const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(normalizedPartyName);
+    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName);
     
     const lrNo = localGetNextLrNo(orgId, counterCollection);
     const createdIds = [];
     
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(matPartyName));
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName));
 
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
