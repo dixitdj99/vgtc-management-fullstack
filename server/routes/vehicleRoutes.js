@@ -69,6 +69,19 @@ router.get('/alerts/report', async (req, res) => {
     }
 });
 
+// Delete full owner with all their vehicles
+router.delete('/owners', async (req, res) => {
+    try {
+        const result = await vehicleService.deleteOwnerWithVehicles(req.orgId, req.body, getCol(BASE_COL, req));
+        res.json({
+            message: `Deleted ${result.vehiclesDeleted} vehicles for owner`,
+            ...result
+        });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
 // Update
 router.patch('/:id', async (req, res) => {
     try {
