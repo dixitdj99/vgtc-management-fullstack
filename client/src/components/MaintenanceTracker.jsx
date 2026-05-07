@@ -109,9 +109,9 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
 
   const totalCost = records.reduce((s, r) => s + (r.cost || 0) + (r.labourCost || 0), 0);
   const warrantyClaims = records.filter(r => r.warrantyClaimed).length;
-  const overdueCount = Object.values(summary).filter(s => s.status === 'overdue').length;
-  const dueCount = Object.values(summary).filter(s => s.status === 'due_soon').length;
-  const recurringCount = Object.values(summary).filter(s => s.recurring).length;
+  const overdueCount = Object.values(summary || {}).filter(s => s?.status === 'overdue').length;
+  const dueCount = Object.values(summary || {}).filter(s => s?.status === 'due_soon').length;
+  const recurringCount = Object.values(summary || {}).filter(s => s?.recurring).length;
 
   if (loading) return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(2, 6, 23, 0.95)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '20px', backdropFilter: 'blur(10px)' }}>
@@ -153,7 +153,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
             {[
               { label: 'Total Spent', value: `₹${totalCost.toLocaleString()}`, color: '#10b981', icon: '💰' },
-              { label: 'Parts Tracked', value: Object.keys(summary).length, color: '#3b82f6', icon: '🔧' },
+              { label: 'Parts Tracked', value: Object.keys(summary || {}).length, color: '#3b82f6', icon: '🔧' },
               { label: 'Records', value: records.length, color: '#8b5cf6', icon: '📋' },
               { label: 'Warranty Claims', value: warrantyClaims, color: '#06b6d4', icon: '🛡️' },
               { label: 'Alerts', value: overdueCount + dueCount, color: overdueCount > 0 ? '#ef4444' : '#10b981', icon: overdueCount > 0 ? '🚨' : '✅' },

@@ -8,10 +8,11 @@ const COLLECTION_JOURNAL = 'journal_entries';
 // A Ledger represents an account balance (e.g., Party X's account, Cash Account, Bank Account)
 // A Journal Entry represents a transaction hitting one or more ledgers.
 
-const firestoreCreateJournal = async (entry) => {
+const firestoreCreateJournal = async (orgId, entry) => {
     const ref = db.collection(COLLECTION_JOURNAL).doc();
     const payload = {
         ...entry,
+        orgId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     await ref.set(payload);
@@ -30,7 +31,7 @@ const localCreateJournal = (entry) => {
  * Creates a double-entry journal record.
  * @param {Object} data - { date, narration, referenceId, referenceType, lines: [{ accountId, accountType, debit, credit }] }
  */
-const postJournalEntry = async (data) => {
+const postJournalEntry = async (orgId, data) => {
     if (!data.lines || data.lines.length < 2) {
         throw new Error('A journal entry must have at least two lines for double-entry accounting.');
     }
@@ -45,26 +46,30 @@ const postJournalEntry = async (data) => {
     }
 
     if (firebaseAvailable()) {
-        return await firestoreCreateJournal(data);
+        return await firestoreCreateJournal(orgId, data);
     }
-    return localCreateJournal(data);
+    return localStore.insert(COLLECTION_JOURNAL, { ...data, orgId, createdAt: new Date().toISOString() });
 };
 
-const getJournalEntries = async (accountId) => {
+const getJournalEntries = async (orgId, accountId) => {
     if (firebaseAvailable()) {
-        // This requires a Firestore index on lines.accountId which might be tricky with arrays of objects.
-        // For phase 1, we might just fetch all and filter, or redesign schema if scale is huge.
-        // A better approach for scale: A separate collection for "Ledger Entries" tied to Journal IDs.
         const snapshot = await db.collection(COLLECTION_JOURNAL)
-            .orderBy('createdAt', 'desc')
+            .where('orgId', '==', orgId)
             .limit(1000)
             .get();
-        const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const all = docs.sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return dateB - dateA;
+        });
         if (!accountId) return all;
         return all.filter(entry => entry.lines.some(l => l.accountId === accountId));
     }
 
-    const all = localStore.getAll(COLLECTION_JOURNAL).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const all = localStore.getAll(COLLECTION_JOURNAL)
+        .filter(e => e.orgId === orgId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     if (!accountId) return all;
     return all.filter(entry => entry.lines.some(l => l.accountId === accountId));
 };
