@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { Shield, Lock, User as UserIcon, KeyRound, ArrowLeft, ArrowRight } from 'lucide-react';
 
 export default function AdminLoginPage() {
-  const { user, login, verifyOtp, resendOtp } = useAuth();
+  const { user, ready, login, verifyOtp, resendOtp } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -11,10 +11,10 @@ export default function AdminLoginPage() {
 
   // Auto-redirect if already logged in as admin
   useEffect(() => {
-    if (user && user.role === 'admin') {
+    if (ready && user && user.role === 'admin') {
       window.location.href = '/admin';
     }
-  }, [user]);
+  }, [ready, user]);
 
   // OTP States
   const [otpMode, setOtpMode] = useState(false);

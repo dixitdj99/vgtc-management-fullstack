@@ -382,6 +382,8 @@ function AppInner() {
     }
   }
 
+  if (path === '/admin/login') return <AdminLoginPage />;
+
   if (!ready) return (
     <div style={{
       height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
@@ -395,8 +397,7 @@ function AppInner() {
     </div>
   );
 
-  // Admin routes should be handled AFTER ready check, so we have the correct user state
-  if (path === '/admin/login') return <AdminLoginPage />;
+  // Admin portal should be handled AFTER ready check, so we have the correct user state.
   if (path.startsWith('/admin')) return <AdminLayout />;
 
   if (!user) return <LoginPage />;
