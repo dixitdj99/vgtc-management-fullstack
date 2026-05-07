@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
-import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause } from 'lucide-react';
+import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause, Shield, Users, Package } from 'lucide-react';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -74,6 +74,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
   const [now, setNow] = useState(Date.now());
   const [showQR, setShowQR] = useState(false);
   const [lastSync, setLastSync] = useState(null);
+  const [fleetStats, setFleetStats] = useState({ self: 0, market: 0, other: 0, total: 0 });
 
   // Sync brand when props change
   useEffect(() => {
@@ -110,10 +111,32 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
     }
   };
 
+  const fetchFleetStats = async () => {
+    try {
+      const res = await api.get('/vehicles');
+      const vehicles = Array.isArray(res.data) ? res.data : [];
+      const stats = vehicles.reduce((acc, v) => {
+        const type = (v.ownershipType || 'market').toLowerCase();
+        if (type === 'self') acc.self++;
+        else if (type === 'market') acc.market++;
+        else acc.other++;
+        acc.total++;
+        return acc;
+      }, { self: 0, market: 0, other: 0, total: 0 });
+      setFleetStats(stats);
+    } catch (error) {
+      console.error('Fleet stats fetch failed:', error);
+    }
+  };
+
   useEffect(() => { 
     fetchReceipts(); 
+    fetchFleetStats();
     const tickInt = setInterval(() => setNow(Date.now()), 1000); // Live second tick
-    const fetchInt = setInterval(() => fetchReceipts(true), 10000); // 10s data sync
+    const fetchInt = setInterval(() => {
+      fetchReceipts(true);
+      fetchFleetStats();
+    }, 10000); // 10s data sync
     return () => { clearInterval(tickInt); clearInterval(fetchInt); };
   }, [brand]);
 
@@ -210,6 +233,24 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
             <RefreshCw size={16} /> Refresh
           </button>
         </div>
+      </div>
+
+      {/* Fleet Quick Summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+        {[
+          { label: 'Total Fleet', value: fleetStats.total, color: '#6366f1', icon: <Truck size={14} />, bg: 'rgba(99,102,241,0.1)' },
+          { label: 'Self Vehicles', value: fleetStats.self, color: '#10b981', icon: <Shield size={14} />, bg: 'rgba(16,185,129,0.1)' },
+          { label: 'Market Vehicles', value: fleetStats.market, color: '#f59e0b', icon: <Users size={14} />, bg: 'rgba(245,158,11,0.1)' },
+          { label: 'Other/Assets', value: fleetStats.other, color: '#8b5cf6', icon: <Package size={14} />, bg: 'rgba(139,92,246,0.1)' },
+        ].map((s, i) => (
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ background: s.bg, color: s.color, padding: '10px', borderRadius: '10px', display: 'flex' }}>{s.icon}</div>
+            <div>
+              <div style={{ fontSize: '20px', fontWeight: 900, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {loading ? (

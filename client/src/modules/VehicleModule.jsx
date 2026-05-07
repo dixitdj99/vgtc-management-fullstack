@@ -33,8 +33,7 @@ const getEmptyForm = () => ({
     targetMileage: 0
 });
 
-const parseJson = (val, fallback = {}) => {
-    if (typeof val === 'object' && val !== null) return val;
+
     try {
         const parsed = JSON.parse(val);
         if (typeof parsed === 'object' && parsed !== null) return parsed;
@@ -376,9 +375,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         const map = Object.create(null);
         const lowerSearch = (fSearch || '').toLowerCase();
         vehicles.forEach(v => {
-            if (ownershipFilter !== 'all' && v.ownershipType !== ownershipFilter) return;
-            const searchStr = `${v.truckNo || ''} ${v.ownerName || ''} ${v.ownerContact || ''} ${v.driverName || ''} ${v.fastag || ''} ${v.make || ''} ${v.model || ''}`.toLowerCase();
-            if (fSearch && !searchStr.includes(lowerSearch)) return;
+
 
             const oName = v.ownerName || 'Unknown Owner';
             if (!map[oName]) map[oName] = { name: oName, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
@@ -426,6 +423,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         <button className={`tab-btn${ownershipFilter === 'all' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('all')}>All</button>
                         <button className={`tab-btn${ownershipFilter === 'self' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('self')}>Self</button>
                         <button className={`tab-btn${ownershipFilter === 'market' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('market')}>Market</button>
+                        <button className={`tab-btn${ownershipFilter === 'other' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('other')}>Other</button>
                     </div>
                 )}
             </div>
@@ -467,6 +465,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 <select className="fi" value={form.ownershipType} onChange={e => setForm({ ...form, ownershipType: e.target.value })}>
                                     <option value="market">Market Vehicle</option>
                                     <option value="self">Self Vehicle</option>
+                                    <option value="other">Other Vehicle</option>
                                 </select>
                             </div>
                         </div>
@@ -641,7 +640,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 {v.model && <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--bg-th)', color: 'var(--text)', padding: '2px 8px', borderRadius: '4px' }}>{v.model}</span>}
                                                             </div>
                                                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
-                                                                <span style={{ fontWeight: 700 }}>{(v.ownershipType || '').toUpperCase()}</span>
+
                                                                 <span>• Age: {calculateAge(v.regDate)}</span>
                                                                 {v.grossWeight > 0 && <span>• {(parseFloat(v.grossWeight) || 0).toLocaleString()} KG</span>}
                                                             </div>

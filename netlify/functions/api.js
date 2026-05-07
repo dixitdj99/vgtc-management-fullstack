@@ -24,6 +24,12 @@ const mileageRoutes = require('../../server/routes/mileageRoutes');
 const backupRoutes = require('../../server/routes/backupRoutes');
 const publicRoutes = require('../../server/routes/publicRoutes');
 const labourRoutes = require('../../server/routes/labourRoutes');
+const partyRoutes = require('../../server/routes/partyRoutes');
+const vehicleAdvanceRoutes = require('../../server/routes/vehicleAdvanceRoutes');
+const stockTransferRoutes = require('../../server/routes/stockTransferRoutes');
+const profileRoutes = require('../../server/routes/profileRoutes');
+const paymentRoutes = require('../../server/routes/paymentRoutes');
+const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
 const orgRoutes = require('../../server/routes/orgRoutes');
 
@@ -47,6 +53,7 @@ apiRouter.use('/backup', backupRoutes);
 apiRouter.use('/public', publicRoutes);
 apiRouter.use('/lr', requireAuth, lrRoutes); // Legacy JK Super route
 apiRouter.use('/labour', labourRoutes);
+apiRouter.use('/parties', requireAuth, partyRoutes);
 apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
 apiRouter.use('/org', requireAuth, orgRoutes);
 
@@ -55,7 +62,12 @@ apiRouter.use('/jkl/lr', requireAuth, jklLrRoutes);
 apiRouter.use('/jkl/stock', requireAuth, jklStockRoutes);
 apiRouter.use('/jkl/cashbook', requireAuth, jklCashbookRoutes);
 apiRouter.use('/vehicles', requireAuth, vehicleRoutes);
+apiRouter.use('/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
+apiRouter.use('/stock-transfers', requireAuth, stockTransferRoutes);
 apiRouter.use('/mileage', requireAuth, mileageRoutes);
+apiRouter.use('/profiles', requireAuth, profileRoutes);
+apiRouter.use('/payments', requireAuth, paymentRoutes);
+apiRouter.use('/maintenance', requireAuth, maintenanceRoutes);
 
 // Root route for base URL pings
 apiRouter.all('/', (req, res) => {
