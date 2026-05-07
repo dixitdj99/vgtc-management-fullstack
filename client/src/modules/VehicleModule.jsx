@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Banknote, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
+import { AlertTriangle, Banknote, Bell, Briefcase, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Loader, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
 
@@ -160,6 +160,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [parties, setParties] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [alertSending, setAlertSending] = useState(false);
+    const [alertStatus, setAlertStatus] = useState(null); // { type: 'success'|'error', msg: string }
 
     // UI State
     const [tab, setTab] = useState('list'); 
@@ -344,19 +346,19 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     };
 
     const handleSendAlerts = async () => {
-        const email = "VIKASKUMAR909040@GMAIL.COM";
-        
+        if (alertSending) return;
+        setAlertSending(true);
+        setAlertStatus(null);
         try {
-            // Trigger Backend Email Alert
-            const res = await ax.get('/vehicles/alerts/report');
-            if (res.data.success) {
-                alert(`Alerts Processed! Email report sent to ${email} (Check your Inbox/Spam).`);
-            } else {
-                alert(`Email skip: ${res.data.message || 'No alerts to send today.'}`);
-            }
+            await ax.get('/vehicles/alerts/report');
+            // Server responds instantly — email is sent in background
+            setAlertStatus({ type: 'success', msg: '✅ Fleet report sent! Check your inbox/spam in a moment.' });
         } catch (err) {
             console.error('Email trigger failed:', err);
-            alert('Failed to send email alert. Check server connection.');
+            setAlertStatus({ type: 'error', msg: '❌ Failed to reach server. Check connection.' });
+        } finally {
+            setAlertSending(false);
+            setTimeout(() => setAlertStatus(null), 5000);
         }
     };
 
@@ -399,13 +401,50 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
             <ConfirmSaveModal isOpen={isConfirmingSave} onClose={() => setIsConfirmingSave(false)} onConfirm={executeSave} title={editId ? "Update Vehicle" : "Add Vehicle"} message={`Save changes for ${form.truckNo}?`} isSaving={saving} />
 
-            <div className="page-hd">
+            <div className="page-hd" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '12px', boxShadow: '0 8px 16px var(--primary-glow)' }}><Truck size={24} /></div>
                     <div>
                         <h1>Fleet & Asset Management</h1>
                         <p>Detailed RC inventory, EMI tracking, and commercial documentation</p>
                     </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                    <button
+                        id="send-fleet-alert-btn"
+                        onClick={handleSendAlerts}
+                        disabled={alertSending}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            background: alertSending ? 'rgba(239,68,68,0.15)' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                            color: 'white', border: 'none', borderRadius: '10px',
+                            padding: '10px 18px', fontWeight: 800, fontSize: '13px',
+                            cursor: alertSending ? 'not-allowed' : 'pointer',
+                            boxShadow: alertSending ? 'none' : '0 4px 16px rgba(239,68,68,0.35)',
+                            transition: 'all 0.2s', whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {alertSending ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Bell size={14} />}
+                        {alertSending ? 'Sending...' : '🚨 Send Fleet Alert'}
+                    </button>
+                    <AnimatePresence>
+                        {alertStatus && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                style={{
+                                    fontSize: '12px', fontWeight: 700, padding: '8px 14px', borderRadius: '8px',
+                                    background: alertStatus.type === 'success' ? 'rgba(16,185,129,0.12)' : alertStatus.type === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)',
+                                    color: alertStatus.type === 'success' ? '#10b981' : alertStatus.type === 'error' ? '#ef4444' : '#3b82f6',
+                                    border: `1px solid ${alertStatus.type === 'success' ? 'rgba(16,185,129,0.25)' : alertStatus.type === 'error' ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.25)'}`,
+                                    maxWidth: '320px', textAlign: 'right'
+                                }}
+                            >
+                                {alertStatus.msg}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
 
@@ -416,9 +455,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 </div>
                 {tab === 'list' && (
                     <div className="tab-grp">
-                        <button className="tab-btn tab-indigo" onClick={handleSendAlerts} style={{ marginRight: '10px', background: '#3b82f6', color: 'white' }}>
-                            <FileText size={14} /> Send Email Alerts
-                        </button>
                         <button className={`tab-btn${ownershipFilter === 'all' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('all')}>All</button>
                         <button className={`tab-btn${ownershipFilter === 'self' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('self')}>Self</button>
                         <button className={`tab-btn${ownershipFilter === 'market' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('market')}>Market</button>

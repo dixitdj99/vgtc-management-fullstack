@@ -1457,3 +1457,8 @@ select.fi option {
   .invoice-preview, .invoice-preview * { visibility: visible; }
   .invoice-preview { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; padding: 0 !important; }
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

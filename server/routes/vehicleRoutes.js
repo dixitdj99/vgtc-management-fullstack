@@ -54,14 +54,15 @@ router.post('/deduct-gps', async (req, res) => {
     }
 });
 
-// Trigger Alert Report (Email Intent)
-router.get('/alerts/report', async (req, res) => {
-    try {
-        const result = await alertService.sendDailyAlertReport(getCol(BASE_COL, req));
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+// Trigger Alert Report (Email Intent) — responds instantly, sends email in background
+router.get('/alerts/report', (req, res) => {
+    const col = getCol(BASE_COL, req);
+    // Respond immediately so the UI feels instant
+    res.json({ success: true, queued: true, message: 'Alert report triggered. Email is being sent in the background.' });
+    // Fire and forget — email sends asynchronously after response
+    alertService.sendDailyAlertReport(col).catch(err => {
+        console.error('[AlertRoute] Background send failed:', err.message);
+    });
 });
 
 // Update

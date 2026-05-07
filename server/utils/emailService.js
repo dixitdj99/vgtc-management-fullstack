@@ -6,19 +6,22 @@ const transporter = nodemailer.createTransport({
     port: process.env.SMTP_PORT || 587,
     secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
     auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.SMTP_USER || "vikaskumar909040@gmail.com",
+        pass: process.env.SMTP_PASS || "inbxylzvycovjzpt",
     },
 });
 
 const sendOTP = async (email, otp) => {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    const user = process.env.SMTP_USER || "vikaskumar909040@gmail.com";
+    const pass = process.env.SMTP_PASS || "inbxylzvycovjzpt";
+
+    if (!user || !pass) {
         console.warn('[Email] SMTP credentials missing. OTP email not sent. OTP is:', otp);
         return;
     }
 
     const mailOptions = {
-        from: `"VGTC Transport" <${process.env.SMTP_USER}>`,
+        from: `"VGTC Transport" <${user}>`,
         to: email,
         subject: 'Your Login OTP - VGTC Management',
         html: `
