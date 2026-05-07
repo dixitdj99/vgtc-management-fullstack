@@ -37,6 +37,8 @@ const { requireAuth } = require('./middleware/auth');
 const orgRoutes = require('./routes/orgRoutes');
 const { seedDefaultOrg } = require('./services/orgService');
 
+const { getEnvCol } = require('./utils/collectionUtils');
+
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
     stockService.init();
@@ -139,7 +141,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
         // Schedule daily fleet alerts: every day at 09:00 AM
         cron.schedule('0 9 * * *', () => {
             console.log('[Cron] Running daily fleet alert checks...');
-            alertService.sendDailyAlertReport('vgtc', 'vehicles'); 
+
         });
     });
 }
