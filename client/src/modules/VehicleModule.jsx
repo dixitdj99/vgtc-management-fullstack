@@ -33,7 +33,8 @@ const getEmptyForm = () => ({
     targetMileage: 0
 });
 
-
+const parseJson = (val, fallback = {}) => {
+    if (typeof val === 'object' && val !== null) return val;
     try {
         const parsed = JSON.parse(val);
         if (typeof parsed === 'object' && parsed !== null) return parsed;
