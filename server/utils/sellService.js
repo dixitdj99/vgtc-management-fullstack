@@ -4,15 +4,20 @@ const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const DEFAULT_COLLECTION = 'sales';
 
-const getAll = async (collection = DEFAULT_COLLECTION) => {
+const getAll = async (orgId, collection = DEFAULT_COLLECTION) => {
     if (firebaseAvailable()) {
-        const snapshot = await db.collection(collection).orderBy('date', 'desc').get();
+        const snapshot = await db.collection(collection)
+            .where('orgId', '==', orgId)
+            .orderBy('date', 'desc')
+            .get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
-    return localStore.getAll(collection).sort((a, b) => new Date(b.date) - new Date(a.date));
+    return localStore.getAll(collection)
+        .filter(e => e.orgId === orgId)
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 
-const addSale = async (data, collection = DEFAULT_COLLECTION) => {
+const addSale = async (orgId, data, collection = DEFAULT_COLLECTION) => {
     const { material, quantity, rate, date, remark, customerName, brand, paymentType, paymentStatus } = data;
     
     if (!material || !quantity || !rate) throw new Error("Missing required fields");
@@ -24,6 +29,7 @@ const addSale = async (data, collection = DEFAULT_COLLECTION) => {
         quantity: parseInt(quantity),
         rate: parseFloat(rate),
         totalAmount,
+        orgId,
         date: date || new Date().toISOString().slice(0, 10),
         remark: remark || '',
         customerName: customerName || 'Walk-in',
@@ -45,7 +51,6 @@ const addSale = async (data, collection = DEFAULT_COLLECTION) => {
     } else {
         savedSale = localStore.insert(collection, saleData);
     }
-    // Sales now act as their own independent ledger.
 
     return savedSale;
 };

@@ -314,7 +314,21 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   </div>
                   {(r.truckNo || r.lrNo) && (
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                      {r.truckNo && `Truck: ${r.truckNo}`} {r.lrNo && `| LR #${r.lrNo}`}
+                      {r.truckNo && (
+                        <>
+                          Truck: <span 
+                            onClick={() => {
+                                const event = new CustomEvent('nav-module', { 
+                                    detail: { active: 'vehicles_dump', search: r.truckNo } 
+                                });
+                                window.dispatchEvent(event);
+                            }}
+                            style={{ color: 'var(--primary)', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            {r.truckNo}
+                          </span>
+                        </>
+                      )} {r.lrNo && `| LR #${r.lrNo}`}
                     </div>
                   )}
                 </td>

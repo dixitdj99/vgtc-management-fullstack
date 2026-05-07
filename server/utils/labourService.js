@@ -9,12 +9,12 @@ const getLabCol = () => getEnvCol('labourers');
 
 const isFirebase = () => isAvailable();
 
-const getAll = async () => {
+const getAll = async (orgId) => {
     if (isFirebase()) {
-        const snap = await db.collection(getLabCol()).get();
+        const snap = await db.collection(getLabCol()).where('orgId', '==', orgId).get();
         return snap.docs.map(d => ({ id: d.id, ...d.data(), password: undefined }));
     }
-    return localStore.getAll(getLabCol()).map(u => ({ ...u, password: undefined }));
+    return localStore.getAll(getLabCol()).filter(u => u.orgId === orgId).map(u => ({ ...u, password: undefined }));
 };
 
 const findByUsername = async (username) => {
@@ -36,7 +36,7 @@ const findById = async (id) => {
     return localStore.getAll(getLabCol()).find(u => u.id === id) || null;
 };
 
-const create = async ({ name, username, password, godown }) => {
+const create = async (orgId, { name, username, password, godown }) => {
     if (!name || !username || !password || !godown)
         throw new Error('name, username, password, and godown are required');
     const existing = await findByUsername(username);
@@ -48,6 +48,7 @@ const create = async ({ name, username, password, godown }) => {
         username,
         password: hash,
         godown, // 'kosli' | 'jhajjar' | 'jkl'
+        orgId,
         role: 'labourer',
         createdAt: new Date().toISOString(),
     };

@@ -6,23 +6,28 @@ const COLLECTION = 'vehicle_advances';
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreCreate = async (data, col) => {
+const firestoreCreate = async (orgId, data, col) => {
     const ref = db.collection(col).doc();
     const payload = {
         ...data,
+        orgId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     await ref.set(payload);
     return { id: ref.id, ...data };
 };
 
-const firestoreGetAll = async (col) => {
-    const snapshot = await db.collection(col).orderBy('createdAt', 'desc').get();
+const firestoreGetAll = async (orgId, col) => {
+    const snapshot = await db.collection(col)
+        .where('orgId', '==', orgId)
+        .orderBy('createdAt', 'desc')
+        .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-const firestoreGetByTruck = async (truckNo, col) => {
+const firestoreGetByTruck = async (orgId, truckNo, col) => {
     const snapshot = await db.collection(col)
+        .where('orgId', '==', orgId)
         .where('truckNo', '==', truckNo)
         .get();
         
@@ -41,7 +46,7 @@ const firestoreDelete = async (id, col) => {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-const createAdvance = async (data, col = COLLECTION) => {
+const createAdvance = async (orgId, data, col = COLLECTION) => {
     const { truckNo, type, amount, date, remark } = data;
     if (!truckNo) throw new Error('Truck number required');
     if (!type || !['credit', 'debit'].includes(type)) throw new Error('Type must be credit or debit');
@@ -51,25 +56,28 @@ const createAdvance = async (data, col = COLLECTION) => {
     const payload = {
         truckNo: String(truckNo).toUpperCase().replace(/\s/g, ''),
         type,
+        orgId,
         amount: amt,
         date: date || new Date().toISOString().slice(0, 10),
         remark: remark || ''
     };
 
-    if (firebaseAvailable()) return await firestoreCreate(payload, col);
+    if (firebaseAvailable()) return await firestoreCreate(orgId, payload, col);
     return localStore.insert(col, payload);
 };
 
-const getAllAdvances = async (col = COLLECTION) => {
-    if (firebaseAvailable()) return await firestoreGetAll(col);
-    return localStore.getAll(col).sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+const getAllAdvances = async (orgId, col = COLLECTION) => {
+    if (firebaseAvailable()) return await firestoreGetAll(orgId, col);
+    return localStore.getAll(col)
+        .filter(a => a.orgId === orgId)
+        .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
 };
 
-const getAdvancesByTruck = async (truckNo, col = COLLECTION) => {
+const getAdvancesByTruck = async (orgId, truckNo, col = COLLECTION) => {
     const normalizedTruck = String(truckNo).toUpperCase().replace(/\s/g, '');
-    if (firebaseAvailable()) return await firestoreGetByTruck(normalizedTruck, col);
+    if (firebaseAvailable()) return await firestoreGetByTruck(orgId, normalizedTruck, col);
     return localStore.getAll(col)
-        .filter(a => a.truckNo === normalizedTruck)
+        .filter(a => a.orgId === orgId && a.truckNo === normalizedTruck)
         .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
 };
 

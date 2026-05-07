@@ -85,18 +85,20 @@ export default function PartyMaster() {
   });
 
   return (
-    <div style={{ padding: '24px', fontFamily: '"Plus Jakarta Sans", sans-serif', background: 'var(--bg)', minHeight: '100vh' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
       
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+      {/* Header with quick action */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Building2 size={24} color="var(--accent)" /> Party Master Data
-          </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>Centralized directory for Customers, Suppliers, and Brokers.</p>
+          <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>Master Data</h1>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Manage your global directory of customers, suppliers, and brokers.</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="btn btn-p" style={{ padding: '10px 16px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700 }}>
-          <Plus size={16} /> New Party
+        <button onClick={() => handleOpenModal()} style={{ 
+          background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
+          borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
+          fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
+        }}>
+          <Plus size={18} /> Add New Party
         </button>
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import api from '../api';
 import { Truck, LogIn, LogOut, Volume2, CheckCircle, Clock, RefreshCw, Bell, BellOff, Mic, MicOff, Play, Pause, MessageSquare, User, Lock, Eye, EyeOff, AlertCircle, Download, X, Share, MoreVertical } from 'lucide-react';
 
@@ -258,7 +259,7 @@ function ProgressBar({ status, startedAt, now }) {
 }
 
 // ── Login Screen ──────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, orgName }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -292,7 +293,7 @@ function LoginScreen({ onLogin }) {
             <Truck size={32} color="white" />
           </div>
           <div style={{ fontSize: '22px', fontWeight: 900, color: 'white' }}>{t('portal_title')}</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>Vikas Goods Transport Co.</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>{orgName}</div>
         </div>
 
         {/* Card */}
@@ -337,6 +338,8 @@ function LoginScreen({ onLogin }) {
 
 // ── Main Labour Portal ────────────────────────────────────────
 export default function LabourLoadingStatus() {
+  const { user } = useAuth();
+  const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   const [worker, setWorker] = useState(() => {
     try { return JSON.parse(localStorage.getItem('vgtc-labour-worker')); } catch { return null; }
   });
@@ -435,11 +438,9 @@ export default function LabourLoadingStatus() {
     setWorker(null);
   };
 
-  const handleLogin = (w) => setWorker(w);
-
   const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi' };
 
-  if (!worker) return <LoginScreen onLogin={handleLogin} />;
+  if (!worker) return <LoginScreen onLogin={setWorker} orgName={orgName} />;
 
   return (
     <div style={{ backgroundColor: '#f1f5f9', height: '100dvh', overflowY: 'auto', fontFamily: 'system-ui, sans-serif', WebkitOverflowScrolling: 'touch' }}>

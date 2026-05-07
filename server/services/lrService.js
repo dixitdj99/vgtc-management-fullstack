@@ -8,13 +8,13 @@ const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
 
 // ── Party Sync Helper ──────────────────────────────────────────────────────────
-const syncParty = async (partyName) => {
+const syncParty = async (orgId, partyName) => {
     if (!partyName) return null;
     try {
-        const parties = await partyService.getAllParties();
+        const parties = await partyService.getAllParties(orgId);
         let party = parties.find(p => p.name === partyName.toUpperCase());
         if (!party) {
-            party = await partyService.createParty({
+            party = await partyService.createParty(orgId, {
                 name: partyName,
                 type: 'customer',
                 isActive: true
@@ -29,8 +29,8 @@ const syncParty = async (partyName) => {
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) => {
-    const metadataRef = db.collection(metadataCollection).doc('lr_counter');
+const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METADATA) => {
+    const metadataRef = db.collection(metadataCollection).doc(`${orgId}_lr_counter`);
     return await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(metadataRef);
         if (!doc.exists) {
@@ -51,19 +51,19 @@ const firestoreGetNextLrNo = async (metadataCollection = COLLECTION_METADATA) =>
     });
 };
 
-const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
+const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(normalizedPartyName);
+    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName);
 
-    const lrNo = await firestoreGetNextLrNo(metadataCollection);
+    const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection);
     const batch = db.batch();
     const createdIds = [];
     
     // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(matPartyName));
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName));
 
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
@@ -79,6 +79,7 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
             status: 'Created',
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || '',
+            orgId,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         createdIds.push(ref.id);
@@ -87,28 +88,35 @@ const firestoreCreate = async (data, lrCollection = COLLECTION_LR, metadataColle
     return { lrNo, ids: createdIds };
 };
 
-const firestoreGetAll = async (lrCollection = COLLECTION_LR) => {
-    const snapshot = await db.collection(lrCollection).orderBy('createdAt', 'desc').get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+const firestoreGetAll = async (orgId, lrCollection = COLLECTION_LR) => {
+    const snapshot = await db.collection(lrCollection)
+        .where('orgId', '==', orgId)
+        .get();
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+        return dateB - dateA;
+    });
 };
 
 // ── Local store helpers ────────────────────────────────────────────────────────
 
-const localGetNextLrNo = (collectionName = 'lr_no') => {
-    return localStore.getCounter(collectionName);
+const localGetNextLrNo = (orgId, collectionName = 'lr_no') => {
+    return localStore.getCounter(`${orgId}_${collectionName}`);
 };
 
-const localCreate = async (data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
+const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(normalizedPartyName);
+    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName);
     
-    const lrNo = localGetNextLrNo(counterCollection);
+    const lrNo = localGetNextLrNo(orgId, counterCollection);
     const createdIds = [];
     
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(matPartyName));
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName));
 
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
@@ -122,30 +130,32 @@ const localCreate = async (data, lrCollection = COLLECTION_LR, counterCollection
             partyId: matPartyId || null,
             status: 'Created',
             note: note || '',
-            voiceMessageBase64: voiceMessageBase64 || ''
+            voiceMessageBase64: voiceMessageBase64 || '',
+            orgId
         });
         createdIds.push(doc.id);
     }
     return { lrNo, ids: createdIds };
 };
 
-const localGetAll = (lrCollection = COLLECTION_LR) => {
+const localGetAll = (orgId, lrCollection = COLLECTION_LR) => {
     return localStore.getAll(lrCollection)
+        .filter(r => r.orgId === orgId)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
 // ── Public API — auto-selects Firebase or local ────────────────────────────────
 
-const createLoadingReceipt = async (data, lrCollection = COLLECTION_LR, counterCollection = COLLECTION_METADATA) => {
-    if (firebaseAvailable()) return await firestoreCreate(data, lrCollection, counterCollection);
+const createLoadingReceipt = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = COLLECTION_METADATA) => {
+    if (firebaseAvailable()) return await firestoreCreate(orgId, data, lrCollection, counterCollection);
     // for local store, if the collection is jkl_loading_receipts, use jkl_lr_no for counter
     const localCounter = lrCollection === COLLECTION_LR ? 'lr_no' : lrCollection + '_counter';
-    return await localCreate(data, lrCollection, localCounter);
+    return await localCreate(orgId, data, lrCollection, localCounter);
 };
 
-const getAllLoadingReceipts = async (lrCollection = COLLECTION_LR) => {
-    if (firebaseAvailable()) return await firestoreGetAll(lrCollection);
-    return localGetAll(lrCollection);
+const getAllLoadingReceipts = async (orgId, lrCollection = COLLECTION_LR) => {
+    if (firebaseAvailable()) return await firestoreGetAll(orgId, lrCollection);
+    return localGetAll(orgId, lrCollection);
 };
 
 const updateBillingStatus = async (id, billing, lrCollection = COLLECTION_LR) => {
@@ -250,6 +260,7 @@ const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR, metadataCo
                             transaction.update(metadataRef, { available });
                         }
                     } else {
+                        // orgId_lr_counter should match naming in GetNextLrNo
                         transaction.set(metadataRef, { count: 1, available: [lrNo] });
                     }
                 });

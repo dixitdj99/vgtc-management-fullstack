@@ -4,12 +4,17 @@ const vehicleService = require('../services/vehicleService');
 const advanceService = require('../services/vehicleAdvanceService');
 const alertService = require('../services/alertService');
 const { getCol } = require('../utils/collectionUtils');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 const BASE_COL = 'vehicles';
 
 // Create
 router.post('/', async (req, res) => {
     try {
-        const result = await vehicleService.createVehicle(req.body, getCol(BASE_COL, req));
+        const result = await vehicleService.createVehicle(req.orgId, req.body, getCol(BASE_COL, req));
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -19,7 +24,7 @@ router.post('/', async (req, res) => {
 // Get all
 router.get('/', async (req, res) => {
     try {
-        const vehicles = await vehicleService.getAllVehicles(getCol(BASE_COL, req));
+        const vehicles = await vehicleService.getAllVehicles(req.orgId, getCol(BASE_COL, req));
         res.json(vehicles);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -29,7 +34,7 @@ router.get('/', async (req, res) => {
 // Deduct GPS Fees Monthly
 router.post('/deduct-gps', async (req, res) => {
     try {
-        const vehicles = await vehicleService.getAllVehicles(getCol(BASE_COL, req));
+        const vehicles = await vehicleService.getAllVehicles(req.orgId, getCol(BASE_COL, req));
         const gpsVehicles = vehicles.filter(v => v.gpsType && v.gpsType !== 'none');
         
         let count = 0;
@@ -39,7 +44,7 @@ router.post('/deduct-gps', async (req, res) => {
         for (const v of gpsVehicles) {
             const amount = v.gpsType === 'both' ? 500 : 250;
             const gpsName = v.gpsType === 'both' ? 'JK Lakshmi & JK Super' : (v.gpsType === 'jkl' ? 'JK Lakshmi' : 'JK Super');
-            await advanceService.createAdvance({
+            await advanceService.createAdvance(req.orgId, {
                 truckNo: v.truckNo,
                 type: 'debit',
                 amount: amount,
@@ -54,21 +59,13 @@ router.post('/deduct-gps', async (req, res) => {
     }
 });
 
-// Trigger Alert Report (Email Intent) — responds instantly, sends email in background
-router.get('/alerts/report', (req, res) => {
-    const col = getCol(BASE_COL, req);
-    // Respond immediately so the UI feels instant
-    res.json({ success: true, queued: true, message: 'Alert report triggered. Email is being sent in the background.' });
-    // Fire and forget — email sends asynchronously after response
-    alertService.sendDailyAlertReport(col).catch(err => {
-        console.error('[AlertRoute] Background send failed:', err.message);
-    });
+
 });
 
 // Update
 router.patch('/:id', async (req, res) => {
     try {
-        await vehicleService.updateVehicle(req.params.id, req.body, getCol(BASE_COL, req));
+        await vehicleService.updateVehicle(req.orgId, req.params.id, req.body, getCol(BASE_COL, req));
         res.json({ message: 'Vehicle updated' });
     } catch (error) {
         res.status(500).json({ error: error.message });

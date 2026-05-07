@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
@@ -47,7 +48,8 @@ const getNet = (v) => {
 };
 
 /* ── Print ── */
-function printVoucher(v) {
+function printVoucher(v, org = {}) {
+    const orgName = org.name || 'VIKAS GOODS TRANSPORT CO.';
     const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
 
     const n = getNet(v);
@@ -76,7 +78,7 @@ function printVoucher(v) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vikas Goods Transport Bill</title>
+    <title>${orgName} Bill</title>
     <style>
         body { background-color: #fff; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; font-family: Arial, sans-serif; padding: 5mm; }
         .receipt-container { width: 210mm; height: 148.5mm; background-color: #fdfdfb; border: 1px solid #000; padding: 5px; box-sizing: border-box; display: flex; flex-direction: column; color: #000; overflow: hidden; margin: 0 auto; }
@@ -127,7 +129,7 @@ function printVoucher(v) {
                <img src="/krishna-logo.jpg" alt="Krishna Logo" style="max-width: 100%; max-height: 50px;">
             </div>
             <div class="header-center">
-                <div class="company-name">M/S. VIKAS GOODS TRANSPORT CO.</div>
+                <div class="company-name">${orgName}</div>
                 <div class="auth-badge">Authorised Transport for : J.K. Super Cement Ltd.</div>
                 <div class="address-text">Near Gaushala, Rewari Road, Jhajjar (Hr.)</div>
                 <div class="address-text">Mob. : 9728284849, 9416319445</div>
@@ -214,7 +216,7 @@ function printVoucher(v) {
             <div class="signatures">
                 <div style="width: 30%;"></div>
                 <div style="width: 30%; text-align: center;">Sign. of Driver</div>
-                <div style="width: 40%; text-align: right;">Sign. of Clerk <b>for</b><br>VIKAS GOODS TRANSPORT</div>
+                <div style="width: 40%; text-align: right; text-transform: uppercase;">Sign. of Clerk <b>for</b><br>${orgName}</div>
             </div>
         </div>
     </div>
@@ -249,7 +251,7 @@ h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
 .sl{border-top:1px solid #000;padding-top:4px;min-width:100px;text-align:center}
 @media print{body{padding:0}}</style></head>
 <body><div class="slip">
-<h1>VIKAS GOODS TRANSPORT</h1>
+<h1>${orgName}</h1>
 <div class="sub">${v.type ? v.type.replace('_', ' ') : ''} Voucher</div>
 <div class="div"></div>
 <div class="row"><span><span class="lbl">LR No.:</span> #${v.lrNo}</span><span><span class="lbl">Date:</span> ${v.date}</span></div>
@@ -451,6 +453,8 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
+    const { user } = useAuth();
+    const org = user?.org || {};
     // canEdit: checks brand-specific voucher key and generic fallback
     const voucherKey = brand === 'jklakshmi' ? 'voucher_jkl' : 'voucher_jksuper';
     const canEdit = role === 'admin'
@@ -1092,7 +1096,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         {role === 'admin' && <td style={{ ...TD }}>{v.updatedBy || '—'}</td>}
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v)}><Printer size={13} /></button>
+                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org)}><Printer size={13} /></button>
                                                 {canEdit && (
                                                     <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
                                                 )}

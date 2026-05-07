@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -32,12 +33,13 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
             </div>
             <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text)' }}>{value}</div>
             {sub && <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>{sub}</div>}
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>{orgName}</div>
         </div>
     );
 }
 
 /* ── Per-Vehicle Detail View ── */
-function VehicleDetail({ truckNo, vehicleType, onBack }) {
+function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -198,8 +200,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
             {stats.mileageTripCount > 0 ? (
                 <>
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                        <StatCard icon={Navigation} label="Total Distance" value={`${Number(stats.totalKm).toLocaleString()} km`} sub={`Across ${stats.mileageTripCount} tracked trips`} color="#6366f1" />
+                        <StatCard orgName={orgName} icon={Navigation} label="Total Distance" value={`${Number(stats.totalKm).toLocaleString()} km`} sub={`Across ${stats.mileageTripCount} tracked trips`} color="#6366f1" />
                         <StatCard 
+                            orgName={orgName}
                             icon={Droplets} 
                             label="Fuel Tank Balance" 
                             value={`${stats.fuelBalance} L`} 
@@ -207,6 +210,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
                             color={parseFloat(stats.fuelBalance) < 0 ? '#f43f5e' : '#10b981'} 
                         />
                         <StatCard
+                            orgName={orgName}
                             icon={Gauge}
                             label="Avg Mileage"
                             value={`${stats.avgKmPerL} km/L`}
@@ -359,7 +363,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack }) {
 
 /* ── Vehicle Selector Grid ── */
 export default function MileageModule() {
-    const [vehicles, setVehicles] = useState([]);
+  const { user } = useAuth();
+  const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
+  const [vehicles, setVehicles] = useState([]);
     const [summaries, setSummaries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState(null);
@@ -411,7 +417,7 @@ export default function MileageModule() {
             <div className="page-hd">
                 <div>
                     <h1><Gauge size={20} color="#f59e0b" /> Diesel Mileage Tracker</h1>
-                    <p>Per-vehicle km/litre analytics — Vikas Goods Transport (VGTC)</p>
+                    <p>Per-vehicle km/litre analytics — {orgName}</p>
                 </div>
             </div>
 

@@ -387,7 +387,18 @@ const StaffProfileModule = ({ role }) => {
                                 {p.type === 'Driver' && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', background: 'var(--bg)', padding: '8px', borderRadius: '8px' }}>
                                         <Truck size={16} color="#f59e0b" />
-                                        <span style={{ fontWeight: 700, color: '#f59e0b' }}>{p.vehicleNo || 'No Vehicle'}</span>
+                                        <span 
+                                            onClick={() => {
+                                                const event = new CustomEvent('nav-module', { 
+                                                    detail: { active: 'vehicles_dump', search: p.vehicleNo } 
+                                                });
+                                                window.dispatchEvent(event);
+                                            }}
+                                            style={{ fontWeight: 700, color: '#f59e0b', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+                                            title="Click to view vehicle details"
+                                        >
+                                            {p.vehicleNo || 'No Vehicle'}
+                                        </span>
                                         {p.vehicleType && <span style={{ color: 'var(--text-muted)' }}>({p.vehicleType})</span>}
                                     </div>
                                 )}

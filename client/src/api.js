@@ -29,6 +29,11 @@ let pendingRequests = 0;
 let slowRequestTimer = null;
 
 ax.interceptors.request.use(config => {
+    // Inject Organization ID for multi-tenancy
+    if (currentUser && currentUser.orgId) {
+        config.headers['x-org-id'] = currentUser.orgId;
+    }
+
     if (currentUser && (config.method === 'post' || config.method === 'patch' || config.method === 'put')) {
         if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
             const userName = currentUser.name || currentUser.username || 'System';

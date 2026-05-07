@@ -32,7 +32,7 @@ const formatDate = (dateStr) => {
     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const sendDailyAlertReport = async (col) => {
+
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
@@ -43,10 +43,7 @@ const sendDailyAlertReport = async (col) => {
     });
 
     try {
-        const vehicles = await vehicleService.getAllVehicles(col);
 
-        // docAlerts[docKey] = { expired: [{truckNo, date, daysAgo}], near: [{truckNo, date, daysLeft}] }
-        const docAlerts = {};
 
         for (const v of vehicles) {
             // Standard docs from v.docs JSON

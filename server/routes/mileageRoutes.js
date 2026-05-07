@@ -3,6 +3,11 @@ const router = express.Router();
 const { db, isAvailable } = require('../firebase');
 const { getCol } = require('../utils/collectionUtils');
 const localStore = require('../utils/localStore');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const BASE_COL = 'vouchers';
 
@@ -17,10 +22,10 @@ router.get('/last-km/:truckNo', async (req, res) => {
         const cleanTruckNo = truckNo.replace(/\s/g, '').toUpperCase();
         
         if (!isAvailable()) {
-            docs = localStore.getAll(BASE_COL).filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
+            docs = localStore.getAll(BASE_COL).filter(d => d.orgId === req.orgId && (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
             docs = docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         } else {
-            const snapshot = await db.collection(getCol(BASE_COL, req)).get();
+            const snapshot = await db.collection(getCol(BASE_COL, req)).where('orgId', '==', req.orgId).get();
             docs = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
                 .filter(d => (d.truckNo || '').replace(/\s/g, '').toUpperCase() === cleanTruckNo);
@@ -51,16 +56,16 @@ router.get('/vehicle/:truckNo', async (req, res) => {
         let allDocs = [];
 
         if (!isAvailable()) {
-            const vouchers = localStore.getAll(BASE_COL);
-            const fuelLogs = localStore.getAll('fuel_logs');
+            const vouchers = localStore.getAll(BASE_COL).filter(v => v.orgId === req.orgId);
+            const fuelLogs = localStore.getAll('fuel_logs').filter(f => f.orgId === req.orgId);
             allDocs = [
                 ...vouchers.map(d => ({ ...d, _type: 'voucher' })),
                 ...fuelLogs.map(d => ({ ...d, _type: 'fuel_log' }))
             ];
         } else {
             const [vouchersSnap, fuelSnap] = await Promise.all([
-                db.collection(getCol(BASE_COL, req)).get(),
-                db.collection(getCol('fuel_logs', req)).get()
+                db.collection(getCol(BASE_COL, req)).where('orgId', '==', req.orgId).get(),
+                db.collection(getCol('fuel_logs', req)).where('orgId', '==', req.orgId).get()
             ]);
             allDocs = [
                 ...vouchersSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), _type: 'voucher' })),
@@ -93,7 +98,7 @@ const mileageService = require('../services/mileageService');
  */
 router.get('/all-vehicles', async (req, res) => {
     try {
-        const result = await mileageService.calculateMileageSummary(req);
+        const result = await mileageService.calculateMileageSummary(req.orgId, req);
         const arrayResult = Object.entries(result).map(([truckNo, stats]) => ({
             truckNo,
             ...stats
@@ -112,13 +117,13 @@ router.get('/fuel', async (req, res) => {
     try {
         let docs = [];
         if (!isAvailable()) {
-            let query = localStore.getAll('fuel_logs');
+            let query = localStore.getAll('fuel_logs').filter(f => f.orgId === req.orgId);
             if (req.query.truckNo) {
                 query = query.filter(d => d.truckNo === req.query.truckNo);
             }
             docs = query.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         } else {
-            let query = db.collection(getCol('fuel_logs', req));
+            let query = db.collection(getCol('fuel_logs', req)).where('orgId', '==', req.orgId);
             if (req.query.truckNo) {
                 query = query.where('truckNo', '==', req.query.truckNo);
             }
@@ -144,10 +149,11 @@ router.get('/fuel/:truckNo', async (req, res) => {
         let docs = [];
         if (!isAvailable()) {
             docs = localStore.getAll('fuel_logs')
-                .filter(d => d.truckNo === truckNo)
+                .filter(d => d.orgId === req.orgId && d.truckNo === truckNo)
                 .sort((a, b) => new Date(b.date) - new Date(a.date));
         } else {
             const snapshot = await db.collection(getCol('fuel_logs', req))
+                .where('orgId', '==', req.orgId)
                 .where('truckNo', '==', truckNo)
                 .get();
 
@@ -174,6 +180,7 @@ router.post('/fuel', async (req, res) => {
         
         const payload = {
             ...req.body,
+            orgId: req.orgId,
             createdAt: new Date().toISOString()
         };
         

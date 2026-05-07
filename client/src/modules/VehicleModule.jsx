@@ -1,3 +1,4 @@
+// SAP Fiori UI Transformation - Force Re-compile
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
@@ -32,13 +33,12 @@ const getEmptyForm = () => ({
     targetMileage: 0
 });
 
-const parseJson = (str, fallback = {}) => {
-    if (typeof str === 'object' && str !== null) return str;
+
     try {
-        const parsed = JSON.parse(str);
+        const parsed = JSON.parse(val);
         if (typeof parsed === 'object' && parsed !== null) return parsed;
     } catch { }
-    return fallback;
+    return fallback || {};
 };
 
 /* ── Vehicle Visualizer ── */
@@ -84,7 +84,7 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
     const [confirmText, setConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
     const truckNo = vehicle.truckNo || '';
-    const isMatch = confirmText.toUpperCase().replace(/\s/g, '') === truckNo.toUpperCase().replace(/\s/g, '');
+    const isMatch = (confirmText || '').toUpperCase().replace(/\s/g, '') === (truckNo || '').toUpperCase().replace(/\s/g, '');
 
     const handleDelete = async () => {
         setDeleting(true);
@@ -173,9 +173,9 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
-    const fetchData = useCallback(async () => {
+    const fetchVehicleData = useCallback(async () => {
+        setLoading(true);
         try {
-            setLoading(true);
             const [vRes, pRes, prRes] = await Promise.all([
                 ax.get(API),
                 ax.get('/parties').catch(() => ({ data: [] })),
@@ -184,14 +184,22 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             setVehicles(vRes.data || []);
             setParties(pRes.data || []);
             setProfiles(prRes.data || []);
-        } catch (error) {
-            console.error("Failed to load data", error);
+
+            // Check for search redirect from other modules
+            const redirectSearch = localStorage.getItem('vgtc-search-redirect');
+            if (redirectSearch) {
+                setFSearch(redirectSearch);
+                localStorage.removeItem('vgtc-search-redirect');
+                setOwnershipFilter('all');
+            }
+        } catch (e) {
+            console.error('Fetch error:', e);
         } finally {
             setLoading(false);
         }
     }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => { fetchVehicleData(); }, [fetchVehicleData]);
 
     // Form State
     const [form, setForm] = useState(getEmptyForm());
@@ -222,7 +230,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         return (
             <div key={type} style={{ fontSize: '10px', color, display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${status === 'ok' ? 'var(--border)' : color}` }}>
                 {status !== 'ok' && <AlertTriangle size={10} />}
-                <span style={{ fontWeight: 800 }}>{type.toUpperCase()}:</span> {new Date(date).toLocaleDateString('en-IN')}
+                <span style={{ fontWeight: 800 }}>{(type || '').toUpperCase()}:</span> {new Date(date).toLocaleDateString('en-IN')}
             </div>
         );
     };
@@ -273,7 +281,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             } else {
                 await ax.post(API, form);
             }
-            await fetchData();
+            await fetchVehicleData();
             setForm(getEmptyForm());
             setEditId(null);
             setTab('list');
@@ -289,8 +297,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     };
 
     const autofillFromOwner = (ownerName) => {
-        // Try finding in Party Master first
-        const party = parties.find(p => p.name === ownerName.toUpperCase());
+        const party = parties.find(p => String(p.name || '').toUpperCase() === String(ownerName || '').toUpperCase());
         if (party) {
             setForm(f => ({
                 ...f,
@@ -302,7 +309,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             return;
         }
 
-        // Fallback to existing vehicles logic
         const existing = vehicles.find(v => v.ownerName === ownerName);
         if (existing) {
             setForm(f => ({
@@ -333,7 +339,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         d.paidEmis = [...new Set(paid)];
         try {
             await ax.patch(`${API}/${v.id}`, { emiDetails: JSON.stringify(d) });
-            fetchData();
+            fetchVehicleData();
         } catch { alert('Update failed'); }
     };
 
@@ -350,9 +356,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setAlertSending(true);
         setAlertStatus(null);
         try {
-            await ax.get('/vehicles/alerts/report');
-            // Server responds instantly — email is sent in background
-            setAlertStatus({ type: 'success', msg: '✅ Fleet report sent! Check your inbox/spam in a moment.' });
+
         } catch (err) {
             console.error('Email trigger failed:', err);
             setAlertStatus({ type: 'error', msg: '❌ Failed to reach server. Check connection.' });
@@ -368,22 +372,18 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setTab('add');
     };
 
-    // Owners grouping
     const owners = useMemo(() => {
-        const map = {};
-        const lowerSearch = fSearch.toLowerCase();
+        const map = Object.create(null);
+        const lowerSearch = (fSearch || '').toLowerCase();
         vehicles.forEach(v => {
-            const vType = (v.ownershipType || 'market').toLowerCase();
-            if (ownershipFilter !== 'all' && vType !== ownershipFilter) return;
-            const match = `${v.truckNo} ${v.ownerName} ${v.ownerContact} ${v.driverName} ${v.fastag} ${v.make} ${v.model}`.toLowerCase().includes(lowerSearch);
-            if (fSearch && !match) return;
+
 
             const oName = v.ownerName || 'Unknown Owner';
             if (!map[oName]) map[oName] = { name: oName, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
             if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
             map[oName].vehicles.push(v);
         });
-        return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+        return Object.values(map).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
     }, [vehicles, fSearch, ownershipFilter]);
 
     const uniqueOwners = [...new Set([...parties.filter(p => p.type === 'supplier' || p.type === 'transporter').map(p => p.name), ...vehicles.map(v => v.ownerName)])].filter(Boolean).sort();
@@ -392,7 +392,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     return (
         <div>
             <AnimatePresence>
-                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchData(); }} />}
+                {deleteTarget && <DeleteConfirm vehicle={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { setDeleteTarget(null); fetchVehicleData(); }} />}
             </AnimatePresence>
 
             <AnimatePresence>
@@ -561,35 +561,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 </div>
                             </>
                         )}
+
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>
                             <div className="fg fg-3">
-                                <div className="field">
-                                    <label>RC Number</label>
-                                    <input className="fi" type="text" value={parseJson(form.docNumbers).rcNo} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Insurance Policy No.</label>
-                                    <input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Permit Number</label>
-                                    <input className="fi" type="text" value={parseJson(form.docNumbers).permitNo} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} />
-                                </div>
-                            </div>
-                            <div className="fg fg-3">
-                                <div className="field">
-                                    <label>Engine No.</label>
-                                    <input className="fi" type="text" value={parseJson(form.rcDetails).engineNo} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Chassis No.</label>
-                                    <input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} />
-                                </div>
-                                <div className="field">
-                                    <label>Fastag Serial</label>
-                                    <input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} />
-                                </div>
+                                <div className="field"><label>RC Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).rcNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Insurance Policy</label><input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Permit Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).permitNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Engine Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).engineNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Chassis Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
+                                <div className="field"><label>Fastag Serial</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
                             </div>
                         </div>
 
@@ -600,18 +581,15 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '4px 10px', borderRadius: '20px' }}>AUTO CALCULATE ENABLED</div>
                                 </div>
                                 <div className="fg fg-3">
-                                    <div className="field"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                </div>
-                                <div className="fg fg-3">
-                                    <div className="field"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                </div>
-                                <div className="fg fg-2">
-                                    <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName || ''} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo || ''} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total || ''} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure || ''} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due || ''} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>EMI End Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).endDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.endDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending || ''} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                 </div>
                             </div>
                         )}
@@ -688,17 +666,18 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                 <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: isNearExpiry(v) ? 'rgba(239,68,68,0.02)' : 'var(--bg-card)' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                                                         <div>
-                                                            <div style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px' }}>
+                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px', cursor: 'pointer' }} title="Click to open full vehicle profile">
                                                                 <Truck size={18} style={{ color: '#3b82f6' }} /> {v.truckNo}
+                                                                <span style={{ fontSize: '9px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Open Profile</span>
                                                             </div>
                                                             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', marginBottom: '8px' }}>
                                                                 <span style={{ fontSize: '11px', fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}</span>
                                                                 {v.model && <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--bg-th)', color: 'var(--text)', padding: '2px 8px', borderRadius: '4px' }}>{v.model}</span>}
                                                             </div>
                                                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
-                                                            <span style={{ fontWeight: 700 }}>{(v.ownershipType || 'market').toUpperCase()}</span>
+
                                                                 <span>• Age: {calculateAge(v.regDate)}</span>
-                                                                {v.grossWeight > 0 && <span>• {v.grossWeight.toLocaleString()} KG</span>}
+                                                                {v.grossWeight > 0 && <span>• {(parseFloat(v.grossWeight) || 0).toLocaleString()} KG</span>}
                                                             </div>
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -737,7 +716,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px', padding: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '10px' }}>
                                                                     <div style={{ textAlign: 'center' }}>
                                                                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
-                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{parseFloat(emi.due).toLocaleString()}</div>
+                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</div>
                                                                         {emi.dueDate && <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>Due: {emi.dueDate}</div>}
                                                                     </div>
                                                                 </div>
@@ -748,7 +727,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 </div>
                                                                 {emi.pending && (
                                                                     <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '11px', color: 'var(--text-sub)', textAlign: 'center' }}>
-                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{parseFloat(emi.pending).toLocaleString()}</strong>
+                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{(parseFloat(emi.pending) || 0).toLocaleString()}</strong>
                                                                     </div>
                                                                 )}
                                                             </div>

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const authService = require('../utils/authService');
+const orgService = require('../services/orgService');
 const emailService = require('../utils/emailService');
 const { SECRET } = require('../middleware/auth');
 const { ENV, getEnvPrefix } = require('../utils/envConfig');
@@ -74,13 +75,15 @@ router.post('/login', async (req, res) => {
             return res.json({ requireOtp: true, userId: user.id, email: user.email });
         }
 
+        const org = await orgService.getById(user.orgId || 'vgtc');
+
         // Success path (no OTP)
         const token = jwt.sign(
-            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
+            { id: user.id, username: user.username, name: user.name, role: user.role, orgId: user.orgId, permissions: user.permissions, isSandbox: !!user.isSandbox },
             SECRET,
             { expiresIn: '24h' }
         );
-        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
+        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox, org } });
 
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -126,12 +129,13 @@ router.post('/verify-otp', async (req, res) => {
                 }
             }
         }
+        const org = await orgService.getById(user.orgId || 'vgtc');
         const token = jwt.sign(
-            { id: user.id, username: user.username, name: user.name, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox },
+            { id: user.id, username: user.username, name: user.name, role: user.role, orgId: user.orgId, permissions: user.permissions, isSandbox: !!user.isSandbox },
             SECRET,
             { expiresIn: '24h' }
         );
-        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
+        res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox, org } });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -157,7 +161,9 @@ router.post('/resend-otp', async (req, res) => {
 
 // GET /api/auth/me
 router.get('/me', require('../middleware/auth').requireAuth, async (req, res) => {
-    res.json(req.user);
+    const user = req.user;
+    const org = await orgService.getById(user.orgId || 'vgtc');
+    res.json({ ...user, org });
 });
 
 module.exports = router;

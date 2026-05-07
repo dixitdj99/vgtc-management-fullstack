@@ -4,12 +4,13 @@ const partyService = require('../services/partyService');
 
 // Require authentication middleware (assuming it exists and is used globally or here)
 const { requireAuth } = require('../middleware/auth');
-router.use(requireAuth);
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+router.use(requireAuth, tenancyMiddleware);
 
 // GET /api/parties
 router.get('/', async (req, res) => {
     try {
-        const parties = await partyService.getAllParties();
+        const parties = await partyService.getAllParties(req.orgId);
         res.json(parties);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -19,7 +20,7 @@ router.get('/', async (req, res) => {
 // POST /api/parties
 router.post('/', async (req, res) => {
     try {
-        const party = await partyService.createParty(req.body);
+        const party = await partyService.createParty(req.orgId, req.body);
         res.status(201).json(party);
     } catch (e) {
         res.status(400).json({ error: e.message });

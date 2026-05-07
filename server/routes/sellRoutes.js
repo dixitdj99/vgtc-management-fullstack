@@ -7,13 +7,18 @@ const driveService = require('../utils/driveService');
 const sheetsService = require('../utils/sheetsService');
 const pdfService = require('../utils/pdfService');
 const { getCol } = require('../utils/collectionUtils');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 const BASE_COL = 'sales';
 
 // GET /api/sell?brand=dump
 router.get('/', async (req, res) => {
     try {
         const brand = req.query.brand || 'dump';
-        const data = await svc.getAll(getCol(BASE_COL, req));
+        const data = await svc.getAll(req.orgId, getCol(BASE_COL, req));
         // Filter by brand if needed, or return all and let frontend decide
         const filtered = data.filter(d => d.brand === brand);
         res.json(filtered);
@@ -24,7 +29,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const brand = req.body.brand || 'dump';
-        const doc = await svc.addSale(req.body, getCol(BASE_COL, req));
+        const doc = await svc.addSale(req.orgId, req.body, getCol(BASE_COL, req));
         
         // Backup Hook
         if (await driveService.isAuthorized()) {
