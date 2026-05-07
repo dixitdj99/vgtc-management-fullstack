@@ -3,6 +3,11 @@ const router = express.Router();
 const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const BASE_COL = 'loading_receipts';
 const META_COL = 'metadata';
@@ -11,6 +16,7 @@ const META_COL = 'metadata';
 router.post('/', async (req, res) => {
     try {
         const result = await lrService.createLoadingReceipt(
+            req.orgId,
             req.body, 
             getCol(BASE_COL, req), 
             getCol(META_COL, req)
@@ -68,7 +74,7 @@ router.post('/', async (req, res) => {
 // Get all
 router.get('/', async (req, res) => {
     try {
-        const receipts = await lrService.getAllLoadingReceipts(getCol(BASE_COL, req));
+        const receipts = await lrService.getAllLoadingReceipts(req.orgId, getCol(BASE_COL, req));
         res.json(receipts);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -81,7 +87,7 @@ router.patch('/:id/billing', async (req, res) => {
         await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(BASE_COL, req));
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
-            const all = await lrService.getAllLoadingReceipts(getCol(BASE_COL, req));
+            const all = await lrService.getAllLoadingReceipts(req.orgId, getCol(BASE_COL, req));
             const doc = all.find(r => r.id === req.params.id);
             if (doc) await sheetsService.upsertLrRow(doc, req.body.brand === 'jklakshmi' ? 'jklakshmi' : 'jksuper').catch(()=>{});
         }

@@ -16,7 +16,11 @@ export function AuthProvider({ children }) {
     if (token) {
       setAuthToken(token);
       ax.get(`/auth/me`)
-        .then(r => { setUser(r.data); setCurrentUser(r.data); })
+        .then(r => { 
+          const userData = r.data;
+          setUser(userData); 
+          setCurrentUser(userData); 
+        })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
     } else {

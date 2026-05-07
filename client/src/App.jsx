@@ -16,15 +16,16 @@ import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
 import InvoiceModule from './modules/InvoiceModule';
-import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
-import AdminModule from './modules/AdminModule';
 import StaffProfileModule from './modules/StaffProfileModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
 import PartyMaster from './modules/PartyMaster';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminLoginPage from './pages/admin/AdminLoginPage';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -219,28 +220,27 @@ function AppInner() {
     const idx = THEMES.findIndex(t => t.id === theme);
     setTheme(THEMES[(idx + 1) % THEMES.length].id);
   };
-
   // Build nav items based on role
   const NAV = [
     // ── JK Super ──
-    { id: 'lr_kosli', label: 'Kosli LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_kosli' },
-    { id: 'lr_jhajjar', label: 'Jhajjar LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_jhajjar' },
+    { id: 'lr_kosli', label: user?.org?.moduleLabels?.lr_kosli || 'Kosli LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_kosli' },
+    { id: 'lr_jhajjar', label: user?.org?.moduleLabels?.lr_jhajjar || 'Jhajjar LR', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_jhajjar' },
     {
-      id: 'voucher_dump', label: 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', sub: [
-        { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'bill_kosli' },
-        { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'bill_jhajjar' },
-        { id: 'JK_Super', label: 'JK Super Voucher', permKey: 'voucher_jksuper' },
+      id: 'voucher_dump', label: user?.org?.moduleLabels?.voucher_dump || 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', sub: [
+        { id: 'Kosli_Bill', label: user?.org?.moduleLabels?.Kosli_Bill || 'Kosli Bill', permKey: 'bill_kosli' },
+        { id: 'Jajjhar_Bill', label: user?.org?.moduleLabels?.Jajjhar_Bill || 'Jhajjar Bill', permKey: 'bill_jhajjar' },
+        { id: 'JK_Super', label: user?.org?.moduleLabels?.JK_Super || 'JK Super Voucher', permKey: 'voucher_jksuper' },
       ]
     },
     {
-      id: 'balance_dump', label: 'Balance Sheet', Icon: BarChart3, color: '#6366f1', section: 'jksuper', sub: [
-        { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'balance_kosli' },
-        { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'balance_jhajjar' },
-        { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
+      id: 'balance_dump', label: user?.org?.moduleLabels?.balance_dump || 'Balance Sheet', Icon: BarChart3, color: '#6366f1', section: 'jksuper', sub: [
+        { id: 'Kosli_Bill', label: user?.org?.moduleLabels?.Kosli_Bill_Sheet || 'Kosli Bill', permKey: 'balance_kosli' },
+        { id: 'Jajjhar_Bill', label: user?.org?.moduleLabels?.Jajjhar_Bill_Sheet || 'Jhajjar Bill', permKey: 'balance_jhajjar' },
+        { id: 'JK_Super', label: user?.org?.moduleLabels?.JK_Super_Sheet || 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
     {
-      id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli', sub: [
+      id: 'stock_kosli', label: user?.org?.moduleLabels?.stock_kosli || 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -250,7 +250,7 @@ function AppInner() {
       ]
     },
     {
-      id: 'stock_jhajjar', label: 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar', sub: [
+      id: 'stock_jhajjar', label: user?.org?.moduleLabels?.stock_jhajjar || 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -260,7 +260,7 @@ function AppInner() {
       ]
     },
     {
-      id: 'cashbook_dump', label: 'Cashbook', Icon: BookOpen, color: '#10b981', section: 'jksuper', permKey: 'cashbook', sub: [
+      id: 'cashbook_dump', label: user?.org?.moduleLabels?.cashbook_dump || 'Cashbook', Icon: BookOpen, color: '#10b981', section: 'jksuper', permKey: 'cashbook', sub: [
         { id: 'ledger', label: 'Full Ledger' },
         { id: 'deposits', label: 'Deposits' },
         { id: 'voucher_cash', label: 'Voucher Cash Adv' },
@@ -268,34 +268,34 @@ function AppInner() {
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
-    { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
-    { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
-    { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
-    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay' },
-    { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice' },
-    { id: 'staff_profiles_dump', label: 'Profiles', Icon: Users, color: '#ec4899', section: 'jksuper', permKey: 'staff_profiles' },
-    { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
-    { id: 'party_master_dump', label: 'Party Master', Icon: Users, color: '#8b5cf6', section: 'jksuper', permKey: 'admin' },
+    { id: 'vehicles_dump', label: user?.org?.moduleLabels?.vehicles_dump || 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
+    { id: 'diesel_dump', label: user?.org?.moduleLabels?.diesel_dump || 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
+    { id: 'mileage_dump', label: user?.org?.moduleLabels?.mileage_dump || 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
+    { id: 'pay_dump', label: user?.org?.moduleLabels?.pay_dump || 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay' },
+    { id: 'sell_dump', label: user?.org?.moduleLabels?.sell_dump || 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
+    { id: 'invoice_dump', label: user?.org?.moduleLabels?.invoice_dump || 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice' },
+    { id: 'staff_profiles_dump', label: user?.org?.moduleLabels?.staff_profiles_dump || 'Profiles', Icon: Users, color: '#ec4899', section: 'jksuper', permKey: 'staff_profiles' },
+    { id: 'admin_loading_status_dump', label: user?.org?.moduleLabels?.admin_loading_status_dump || 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
+    // Removed Party Master from here - moved to /admin
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
-    { id: 'lr_jharli', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jharli', permKey: 'lr_jkl' },
+    { id: 'lr_jharli', label: user?.org?.moduleLabels?.lr_jharli || 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jharli', permKey: 'lr_jkl' },
     {
-      id: 'voucher_jharli', label: 'Voucher', Icon: FileText, color: '#f59e0b', section: 'jharli', sub: [
-        { id: 'Dump', label: 'JKL Dump Voucher', permKey: 'voucher_jkl_dump' },
-        { id: 'JK_Lakshmi', label: 'JK Lakshmi Voucher', permKey: 'voucher_jkl' },
-        { id: 'JK_Super', label: 'JK Super Voucher', permKey: 'voucher_jksuper' },
+      id: 'voucher_jharli', label: user?.org?.moduleLabels?.voucher_jharli || 'Voucher', Icon: FileText, color: '#f59e0b', section: 'jharli', sub: [
+        { id: 'Dump', label: user?.org?.moduleLabels?.Dump_Voucher || 'JKL Dump Voucher', permKey: 'voucher_jkl_dump' },
+        { id: 'JK_Lakshmi', label: user?.org?.moduleLabels?.JK_Lakshmi_Voucher || 'JK Lakshmi Voucher', permKey: 'voucher_jkl' },
+        { id: 'JK_Super', label: user?.org?.moduleLabels?.JK_Super_Voucher || 'JK Super Voucher', permKey: 'voucher_jksuper' },
       ]
     },
     {
-      id: 'balance_jharli', label: 'Balance Sheet', Icon: BarChart3, color: '#f59e0b', section: 'jharli', sub: [
-        { id: 'Dump', label: 'JKL Dump Sheet', permKey: 'balance_jkl_dump' },
-        { id: 'JK_Lakshmi', label: 'JK Lakshmi Sheet', permKey: 'balance_jkl' },
-        { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
+      id: 'balance_jharli', label: user?.org?.moduleLabels?.balance_jharli || 'Balance Sheet', Icon: BarChart3, color: '#f59e0b', section: 'jharli', sub: [
+        { id: 'Dump', label: user?.org?.moduleLabels?.Dump_Sheet || 'JKL Dump Sheet', permKey: 'balance_jkl_dump' },
+        { id: 'JK_Lakshmi', label: user?.org?.moduleLabels?.JK_Lakshmi_Sheet || 'JK Lakshmi Sheet', permKey: 'balance_jkl' },
+        { id: 'JK_Super', label: user?.org?.moduleLabels?.JK_Super_Sheet_Jharli || 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
     {
-      id: 'stock_jharli', label: 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jharli', permKey: 'stock_jkl', sub: [
+      id: 'stock_jharli', label: user?.org?.moduleLabels?.stock_jharli || 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jharli', permKey: 'stock_jkl', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -305,7 +305,7 @@ function AppInner() {
       ]
     },
     {
-      id: 'cashbook_jharli', label: 'Cashbook', Icon: BookOpen, color: '#10b981', section: 'jharli', permKey: 'cashbook', sub: [
+      id: 'cashbook_jharli', label: user?.org?.moduleLabels?.cashbook_jharli || 'Cashbook', Icon: BookOpen, color: '#10b981', section: 'jharli', permKey: 'cashbook', sub: [
         { id: 'ledger', label: 'Full Ledger' },
         { id: 'deposits', label: 'Deposits' },
         { id: 'voucher_cash', label: 'Voucher Cash Adv' },
@@ -313,21 +313,17 @@ function AppInner() {
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
-    { id: 'vehicles_jharli', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
-    { id: 'diesel_jharli', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jharli', permKey: 'diesel' },
-    { id: 'mileage_jharli', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jharli', permKey: 'mileage' },
-    { id: 'pay_jharli', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay' },
-    { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
-    { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice' },
-    { id: 'staff_profiles_jharli', label: 'Profiles', Icon: Users, color: '#ec4899', section: 'jharli', permKey: 'staff_profiles' },
-    { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
-    { id: 'party_master_jharli', label: 'Party Master', Icon: Users, color: '#8b5cf6', section: 'jharli', permKey: 'admin' },
-
-    ...(user?.role === 'admin' ? [
-      { id: 'admin', label: 'Admin', Icon: Shield, color: '#a855f7', section: plant === 'jklakshmi' ? 'jharli' : (plant || 'jksuper') },
-      { id: 'admin_backup', label: 'Backup Settings', Icon: Cloud, color: '#6366f1', section: plant === 'jklakshmi' ? 'jharli' : (plant || 'jksuper'), adminOnly: true },
-    ] : []),
+    { id: 'vehicles_jharli', label: user?.org?.moduleLabels?.vehicles_jharli || 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
+    { id: 'diesel_jharli', label: user?.org?.moduleLabels?.diesel_jharli || 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jharli', permKey: 'diesel' },
+    { id: 'mileage_jharli', label: user?.org?.moduleLabels?.mileage_jharli || 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jharli', permKey: 'mileage' },
+    { id: 'pay_jharli', label: user?.org?.moduleLabels?.pay_jharli || 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay' },
+    { id: 'sell_jharli', label: user?.org?.moduleLabels?.sell_jharli || 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
+    { id: 'invoice_jharli', label: user?.org?.moduleLabels?.invoice_jharli || 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice' },
+    { id: 'staff_profiles_jharli', label: user?.org?.moduleLabels?.staff_profiles_jharli || 'Profiles', Icon: Users, color: '#ec4899', section: 'jharli', permKey: 'staff_profiles' },
+    { id: 'admin_loading_status_jharli', label: user?.org?.moduleLabels?.admin_loading_status_jharli || 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
+    // Removed Party Master from here - moved to /admin
   ];
+
 
   // Filter by plant AND permissions AND godown
   const FILTERED_NAV = NAV.map(n => {
@@ -359,9 +355,6 @@ function AppInner() {
       if (n.id.toLowerCase().includes('kosli') && godown !== 'kosli') return false;
       if (n.id.toLowerCase().includes('jhajjar') && godown !== 'jhajjar') return false;
     }
-
-    if (n.id === 'admin') return true;
-    if (n.adminOnly && user?.role !== 'admin') return false;
     
     if (n.sub && n.sub.length === 0) return false;
 
@@ -376,12 +369,8 @@ function AppInner() {
   });
 
 
-  // Redirect away from admin if not admin
-  React.useEffect(() => {
-    if (active === 'admin' && user?.role !== 'admin') setActive(plant === 'jklakshmi' ? 'lr_jharli' : 'lr_kosli');
-  }, [user]);
-
   const path = window.location.pathname;
+  // Move public/auth-independent routes here
   if (path === '/loading-status') return <PublicLoadingStatus />;
   if (path === '/labour') return <LabourLoadingStatus />;
 
@@ -406,6 +395,10 @@ function AppInner() {
     </div>
   );
 
+  // Admin routes should be handled AFTER ready check, so we have the correct user state
+  if (path === '/admin/login') return <AdminLoginPage />;
+  if (path.startsWith('/admin')) return <AdminLayout />;
+
   if (!user) return <LoginPage />;
 
   const currentTheme = THEMES.find(t => t.id === theme) || THEMES[0];
@@ -418,8 +411,8 @@ function AppInner() {
         <div className="sidebar-brand">
           <div className="brand-icon"><LayoutDashboard size={22} color="white" /></div>
           {!col && <div className="brand-text">
-            <div className="brand-name">Vikas Goods</div>
-            <div className="brand-sub">Transport System</div>
+            <div className="brand-name">{user?.org?.name?.split(' ')[0] || 'Vikas'} {user?.org?.name?.split(' ')[1] || 'Goods'}</div>
+            <div className="brand-sub">{user?.org?.name?.split(' ').slice(2).join(' ') || 'Transport System'}</div>
           </div>}
         </div>
         <nav className="sidebar-nav">
@@ -508,6 +501,19 @@ function AppInner() {
               <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
               <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '1px' }}>{user.role}</div>
             </div>
+          )}
+          {user?.role === 'admin' && (
+            <button onClick={() => window.location.href = '/admin'}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px',
+                borderRadius: '10px', border: '1px solid var(--border)', background: 'rgba(139, 92, 246, 0.1)',
+                color: '#a78bfa', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                transition: 'all 0.18s', justifyContent: col ? 'center' : 'flex-start',
+                fontFamily: 'inherit', marginBottom: '8px'
+              }}>
+              <Shield size={15} />
+              {!col && 'Admin Portal'}
+            </button>
           )}
           <button onClick={logout}
             style={{
@@ -624,13 +630,11 @@ function AppInner() {
               {(active === 'mileage_dump' || active === 'mileage_jkl' || active === 'mileage_jharli') && <MileageModule />}
               {(active === 'pay_dump' || active === 'pay_jkl' || active === 'pay_jharli') && <PayModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'sell_dump' || active === 'sell_jkl' || active === 'sell_jharli') && <SellModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-              {active === 'admin' && (user?.role === 'admin') && <AdminPage />}
               {(active === 'invoice_dump' || active === 'invoice_jharli') && <InvoiceModule brand={active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
               {(active === 'staff_profiles_dump' || active === 'staff_profiles_jharli') && <StaffProfileModule role={user.role} />}
               {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl' || active === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
               {(active === 'party_master_dump' || active === 'party_master_jharli') && <PartyMaster />}
-              {active === 'admin_backup' && (user?.role === 'admin') && <AdminModule />}
             </motion.div>
           </AnimatePresence>
         </div>

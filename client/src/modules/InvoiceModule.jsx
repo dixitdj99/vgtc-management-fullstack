@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -15,6 +16,9 @@ const TH = { padding: '10px 12px', fontSize: '11px', fontWeight: 700, color: 'va
 const TD = { padding: '10px 12px', fontSize: '13px', color: 'var(--text-sub)', borderBottom: '1px solid var(--border-row)', verticalAlign: 'middle' };
 
 export default function InvoiceModule({ brand = 'dump', role = 'user', permissions = {} }) {
+  const { user } = useAuth();
+  const org = user?.org || {};
+  const orgName = org.name || 'VIKAS GOODS TRANSPORT CO.';
   const [lrs, setLrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -151,7 +155,7 @@ export default function InvoiceModule({ brand = 'dump', role = 'user', permissio
         <body>
           <div class="header">
             <div class="company-info">
-              <h1>VIKAS GOODS TRANSPORT</h1>
+              <h1>${orgName}</h1>
               <p style="margin:4px 0; font-size: 12px; color: #64748b;">Premium Logistics & Transport Services</p>
               <p style="margin:0; font-size: 11px;">Jharli, Jhajjar, Haryana | +91 9999999999</p>
             </div>
@@ -394,7 +398,7 @@ export default function InvoiceModule({ brand = 'dump', role = 'user', permissio
               <div style={{ padding: '40px', background: 'white', color: '#1e293b' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #e2e8f0', paddingBottom: '20px', marginBottom: '30px' }}>
                   <div>
-                    <h2 style={{ margin: 0, fontSize: '24px' }}>VIKAS GOODS TRANSPORT</h2>
+                    <h2 style={{ margin: 0, fontSize: '24px' }}>{orgName}</h2>
                     <p style={{ margin: '5px 0', color: '#64748b' }}>Tax Invoice Consignment</p>
                   </div>
                   <div style={{ textAlign: 'right' }}>

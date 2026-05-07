@@ -17,7 +17,7 @@ const checkExpiry = (dateStr) => {
     return 'ok';
 };
 
-const sendDailyAlertReport = async (col) => {
+const sendDailyAlertReport = async (orgId, col) => {
     // Initialize transporter inside the function to ensure env vars are loaded
     const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -29,8 +29,8 @@ const sendDailyAlertReport = async (col) => {
     });
 
     try {
-        const vehicles = await vehicleService.getAllVehicles(col);
-        const mileageStats = await mileageService.calculateMileageSummary({ query: { col } });
+        const vehicles = await vehicleService.getAllVehicles(orgId, col);
+        const mileageStats = await mileageService.calculateMileageSummary(orgId, { query: { col } });
         
         let criticalAlerts = [];
 
