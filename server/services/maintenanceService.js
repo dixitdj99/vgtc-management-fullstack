@@ -125,13 +125,14 @@ const PARTS_CATALOG = {
 };
 
 // ── CRUD Functions ──
-const createRecord = async (data) => {
+const createRecord = async (orgId, data) => {
   const partName = data.partId === 'custom' ? data.customPartName : (PARTS_CATALOG[data.partId]?.name || 'Unknown Part');
 
   const payload = {
     truckNo: String(data.truckNo || '').toUpperCase().replace(/\s/g, ''),
     partId: data.partId || '',
     partName,
+    orgId,
     category: PARTS_CATALOG[data.partId]?.category || 'other',
     date: data.date || new Date().toISOString().slice(0, 10),
     kmAtChange: parseInt(data.kmAtChange) || 0,
@@ -158,21 +159,32 @@ const createRecord = async (data) => {
   return localStore.insert(COLLECTION, payload);
 };
 
-const getByTruckNo = async (truckNo) => {
+const getByTruckNo = async (orgId, truckNo) => {
   const n = String(truckNo).toUpperCase().replace(/\s/g, '');
   if (firebaseAvailable()) {
-    const s = await db.collection(COLLECTION).where('truckNo', '==', n).orderBy('date', 'desc').get();
-    return s.docs.map(d => ({ id: d.id, ...d.data() }));
+    const s = await db.collection(COLLECTION)
+      .where('orgId', '==', orgId)
+      .where('truckNo', '==', n)
+      .get();
+    const docs = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    return docs.sort((a, b) => new Date(b.date) - new Date(a.date));
   }
-  return localStore.getAll(COLLECTION).filter(r => r.truckNo === n).sort((a, b) => new Date(b.date) - new Date(a.date));
+  return localStore.getAll(COLLECTION)
+    .filter(r => r.orgId === orgId && r.truckNo === n)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 
-const getAll = async () => {
+const getAll = async (orgId) => {
   if (firebaseAvailable()) {
-    const s = await db.collection(COLLECTION).orderBy('date', 'desc').get();
-    return s.docs.map(d => ({ id: d.id, ...d.data() }));
+    const s = await db.collection(COLLECTION)
+      .where('orgId', '==', orgId)
+      .get();
+    const docs = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    return docs.sort((a, b) => new Date(b.date) - new Date(a.date));
   }
-  return localStore.getAll(COLLECTION).sort((a, b) => new Date(b.date) - new Date(a.date));
+  return localStore.getAll(COLLECTION)
+    .filter(r => r.orgId === orgId)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 
 const updateRecord = async (id, data) => {
@@ -187,8 +199,8 @@ const deleteRecord = async (id) => {
   else { localStore.delete(COLLECTION, id); }
 };
 
-const getMaintenanceSummary = async (truckNo) => {
-  const records = await getByTruckNo(truckNo);
+const getMaintenanceSummary = async (orgId, truckNo) => {
+  const records = await getByTruckNo(orgId, truckNo);
   const summary = {};
   // Track recurring damages
   const damageCount = {};
@@ -224,8 +236,8 @@ const getMaintenanceSummary = async (truckNo) => {
   return summary;
 };
 
-const getMaintenanceAlerts = async () => {
-  const allRecords = await getAll();
+const getMaintenanceAlerts = async (orgId) => {
+  const allRecords = await getAll(orgId);
   const alerts = {};
   for (const r of allRecords) {
     const key = `${r.truckNo}_${r.partId}`;

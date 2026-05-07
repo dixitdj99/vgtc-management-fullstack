@@ -47,19 +47,27 @@ const normalizeVehiclePatch = (data = {}) => {
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreCreate = async (data, col = COLLECTION_VEHICLES) => {
+const firestoreCreate = async (orgId, data, col = COLLECTION_VEHICLES) => {
     const ref = db.collection(col).doc();
     const payload = {
         ...data,
+        orgId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     await ref.set(payload);
     return { id: ref.id, ...data };
 };
 
-const firestoreGetAll = async (col = COLLECTION_VEHICLES) => {
-    const snapshot = await db.collection(col).orderBy('createdAt', 'desc').get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+const firestoreGetAll = async (orgId, col = COLLECTION_VEHICLES) => {
+    const snapshot = await db.collection(col)
+        .where('orgId', '==', orgId)
+        .get();
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+        return dateB - dateA;
+    });
 };
 
 const firestoreUpdate = async (id, data, col = COLLECTION_VEHICLES) => {
@@ -80,17 +88,19 @@ const localCreate = (data, col = COLLECTION_VEHICLES) => {
     return doc;
 };
 
-const localGetAll = (col = COLLECTION_VEHICLES) => {
+const localGetAll = (orgId, col = COLLECTION_VEHICLES) => {
     return localStore.getAll(col)
+        .filter(v => v.orgId === orgId)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
-const findVehicleByTruckNo = async (truckNo, col = COLLECTION_VEHICLES) => {
+const findVehicleByTruckNo = async (orgId, truckNo, col = COLLECTION_VEHICLES) => {
     const normalizedTruckNo = normalizeTruckNo(truckNo);
     if (!normalizedTruckNo) return null;
 
     if (firebaseAvailable()) {
         const snapshot = await db.collection(col)
+            .where('orgId', '==', orgId)
             .where('truckNo', '==', normalizedTruckNo)
             .limit(1)
             .get();
@@ -99,18 +109,18 @@ const findVehicleByTruckNo = async (truckNo, col = COLLECTION_VEHICLES) => {
         return { id: doc.id, ...doc.data() };
     }
 
-    return localStore.getAll(col).find(v => normalizeTruckNo(v.truckNo) === normalizedTruckNo) || null;
+    return localStore.getAll(col).find(v => v.orgId === orgId && normalizeTruckNo(v.truckNo) === normalizedTruckNo) || null;
 };
 
 // ── Party Sync Helper ──────────────────────────────────────────────────────────
-const syncParty = async (ownerName, ownerContact, bankDetails) => {
+const syncParty = async (orgId, ownerName, ownerContact, bankDetails) => {
     if (!ownerName || ownerName.toLowerCase() === 'vikas transport (self)') return null;
     try {
-        const parties = await partyService.getAllParties();
+        const parties = await partyService.getAllParties(orgId);
         let party = parties.find(p => p.name === ownerName.toUpperCase());
         if (!party) {
             // Auto-create basic party record
-            party = await partyService.createParty({
+            party = await partyService.createParty(orgId, {
                 name: ownerName,
                 type: 'transporter',
                 phone: ownerContact || '',
@@ -130,34 +140,34 @@ const syncParty = async (ownerName, ownerContact, bankDetails) => {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-const createVehicle = async (data, col = COLLECTION_VEHICLES) => {
+const createVehicle = async (orgId, data, col = COLLECTION_VEHICLES) => {
     const payload = normalizeVehiclePayload(data);
     if (!payload.truckNo) throw new Error('Truck number required');
 
-    const existing = await findVehicleByTruckNo(payload.truckNo, col);
+    const existing = await findVehicleByTruckNo(orgId, payload.truckNo, col);
     if (existing) throw new Error(`Vehicle already exists for truck ${payload.truckNo}`);
 
     // Auto-sync or resolve Party ID
     if (!payload.ownerId && payload.ownerName) {
-        payload.ownerId = await syncParty(payload.ownerName, payload.ownerContact, payload.bankDetails);
+        payload.ownerId = await syncParty(orgId, payload.ownerName, payload.ownerContact, payload.bankDetails);
     }
 
-    if (firebaseAvailable()) return await firestoreCreate(payload, col);
-    return localCreate(payload, col);
+    if (firebaseAvailable()) return await firestoreCreate(orgId, payload, col);
+    return localCreate({ ...payload, orgId }, col);
 };
 
-const getAllVehicles = async (col = COLLECTION_VEHICLES) => {
-    if (firebaseAvailable()) return await firestoreGetAll(col);
-    return localGetAll(col);
+const getAllVehicles = async (orgId, col = COLLECTION_VEHICLES) => {
+    if (firebaseAvailable()) return await firestoreGetAll(orgId, col);
+    return localGetAll(orgId, col);
 };
 
-const updateVehicle = async (id, data, col = COLLECTION_VEHICLES) => {
+const updateVehicle = async (orgId, id, data, col = COLLECTION_VEHICLES) => {
     const allowed = normalizeVehiclePatch(data);
     delete allowed.id;
     delete allowed.createdAt;
 
     if (allowed.truckNo) {
-        const existing = await findVehicleByTruckNo(allowed.truckNo, col);
+        const existing = await findVehicleByTruckNo(orgId, allowed.truckNo, col);
         if (existing && existing.id !== id) {
             throw new Error(`Vehicle already exists for truck ${allowed.truckNo}`);
         }
@@ -165,7 +175,7 @@ const updateVehicle = async (id, data, col = COLLECTION_VEHICLES) => {
 
     // Auto-sync or resolve Party ID
     if (allowed.ownerName && !allowed.ownerId) {
-        allowed.ownerId = await syncParty(allowed.ownerName, allowed.ownerContact, allowed.bankDetails);
+        allowed.ownerId = await syncParty(orgId, allowed.ownerName, allowed.ownerContact, allowed.bankDetails);
     }
 
     if (firebaseAvailable()) {
@@ -183,11 +193,11 @@ const deleteVehicle = async (id, col = COLLECTION_VEHICLES) => {
     }
 };
 
-const ensureVehicleByTruckNo = async (truckNo, col = COLLECTION_VEHICLES) => {
+const ensureVehicleByTruckNo = async (orgId, truckNo, col = COLLECTION_VEHICLES) => {
     const normalizedTruckNo = normalizeTruckNo(truckNo);
     if (!normalizedTruckNo) return null;
 
-    const existing = await findVehicleByTruckNo(normalizedTruckNo, col);
+    const existing = await findVehicleByTruckNo(orgId, normalizedTruckNo, col);
     if (existing) return existing;
 
     const payload = normalizeVehiclePayload({
@@ -201,8 +211,8 @@ const ensureVehicleByTruckNo = async (truckNo, col = COLLECTION_VEHICLES) => {
         source: 'voucher_auto'
     });
 
-    if (firebaseAvailable()) return await firestoreCreate(payload, col);
-    return localCreate(payload, col);
+    if (firebaseAvailable()) return await firestoreCreate(orgId, payload, col);
+    return localCreate({ ...payload, orgId }, col);
 };
 
 module.exports = {

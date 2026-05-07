@@ -22,19 +22,23 @@ const normalizePayload = (data = {}) => ({
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreCreate = async (data) => {
+const firestoreCreate = async (orgId, data) => {
     const ref = db.collection(COLLECTION_PARTIES).doc();
     const payload = {
         ...data,
+        orgId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     await ref.set(payload);
     return { id: ref.id, ...data };
 };
 
-const firestoreGetAll = async () => {
-    const snapshot = await db.collection(COLLECTION_PARTIES).orderBy('name', 'asc').get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+const firestoreGetAll = async (orgId) => {
+    const snapshot = await db.collection(COLLECTION_PARTIES)
+        .where('orgId', '==', orgId)
+        .get();
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 };
 
 const firestoreUpdate = async (id, data) => {
@@ -55,30 +59,31 @@ const localCreate = (data) => {
     return doc;
 };
 
-const localGetAll = () => {
+const localGetAll = (orgId) => {
     return localStore.getAll(COLLECTION_PARTIES)
+        .filter(p => p.orgId === orgId)
         .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-const createParty = async (data) => {
+const createParty = async (orgId, data) => {
     const payload = normalizePayload(data);
     if (!payload.name) throw new Error('Party name is required');
 
     // Check for duplicates
-    const all = await getAllParties();
+    const all = await getAllParties(orgId);
     if (all.some(p => p.name === payload.name)) {
         throw new Error(`Party with name "${payload.name}" already exists`);
     }
 
-    if (firebaseAvailable()) return await firestoreCreate(payload);
-    return localCreate(payload);
+    if (firebaseAvailable()) return await firestoreCreate(orgId, payload);
+    return localCreate({ ...payload, orgId });
 };
 
-const getAllParties = async () => {
-    if (firebaseAvailable()) return await firestoreGetAll();
-    return localGetAll();
+const getAllParties = async (orgId) => {
+    if (firebaseAvailable()) return await firestoreGetAll(orgId);
+    return localGetAll(orgId);
 };
 
 const updateParty = async (id, data) => {
