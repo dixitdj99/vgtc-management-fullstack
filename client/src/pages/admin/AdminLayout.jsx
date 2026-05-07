@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, CheckCircle2, AlertTriangle, Menu, X } from 'lucide-react';
+import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, CheckCircle2, AlertTriangle, Menu, X } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import AdminUserManagement from './AdminUserManagement';
@@ -101,8 +101,8 @@ export default function AdminLayout() {
           <button onClick={() => setCol(!col)} style={{
             position: 'absolute', right: '-14px', top: '50px', width: '28px', height: '28px',
             borderRadius: '50%', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8',
-            cursor: 'pointer', zIndex: 10, display: window.innerWidth <= 768 ? 'none' : 'flex'
+            display: window.innerWidth <= 768 ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8',
+            cursor: 'pointer', zIndex: 10
           }}>
             <ChevronRight size={14} style={{ transform: col ? 'none' : 'rotate(180deg)', transition: 'transform 0.3s' }} />
           </button>
