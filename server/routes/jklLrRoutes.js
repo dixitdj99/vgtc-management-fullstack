@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const JKL_LR_COL = 'jkl_loading_receipts';
 const JKL_META_COL = 'jkl_metadata';
@@ -9,7 +14,7 @@ const JKL_META_COL = 'jkl_metadata';
 // Create
 router.post('/', async (req, res) => {
     try {
-        const result = await lrService.createLoadingReceipt(req.body, getCol(JKL_LR_COL, req), getCol(JKL_META_COL, req));
+        const result = await lrService.createLoadingReceipt(req.orgId, req.body, getCol(JKL_LR_COL, req), getCol(JKL_META_COL, req));
 
         // Real-time backup — runs whenever Google Drive is authorized
         const driveService = require('../utils/driveService');
@@ -60,7 +65,7 @@ router.post('/', async (req, res) => {
 // Get all
 router.get('/', async (req, res) => {
     try {
-        const receipts = await lrService.getAllLoadingReceipts(getCol(JKL_LR_COL, req));
+        const receipts = await lrService.getAllLoadingReceipts(req.orgId, getCol(JKL_LR_COL, req));
         res.json(receipts);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -70,11 +75,11 @@ router.get('/', async (req, res) => {
 // Update billing only
 router.patch('/:id/billing', async (req, res) => {
     try {
-        await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
+        await lrService.updateBillingStatus(req.orgId, req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
-            const all = await lrService.getAllLoadingReceipts(getCol(JKL_LR_COL, req));
+            const all = await lrService.getAllLoadingReceipts(req.orgId, getCol(JKL_LR_COL, req));
             const doc = all.find(r => r.id === req.params.id);
             if (doc) await sheetsService.upsertLrRow(doc, 'jklakshmi').catch(()=>{});
         }
@@ -87,7 +92,7 @@ router.patch('/:id/billing', async (req, res) => {
 // Update full LR (Support both PUT and PATCH)
 router.put('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
+        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -102,7 +107,7 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
+        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -118,7 +123,7 @@ router.patch('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.params.id, getCol(JKL_LR_COL, req));
+        await lrService.deleteLoadingReceipt(req.orgId, req.params.id, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');

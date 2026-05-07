@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -37,7 +38,7 @@ const TD = { padding: '7px 9px', fontSize: '12px', color: 'var(--text-sub)', ver
 const TDF = { ...TD, fontWeight: 800, color: 'var(--text)', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' };
 
 /* ── Print Driver (used from both selection bar and month header) ── */
-function doPrint(rows, truckNo, label, tabName) {
+function doPrint(rows, truckNo, label, tabName, orgName) {
   if (!rows.length) { alert('No rows to print'); return; }
   const net = rows.reduce((s, v) => s + calcNet(v), 0);
   const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
@@ -74,7 +75,7 @@ function doPrint(rows, truckNo, label, tabName) {
   .tot{background:#eee;font-weight:bold}.sig{display:flex;justify-content:space-between;margin-top:28px}
   .sl{min-width:120px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:10px}
   @media print{body{padding:0}}</style></head><body>
-  <h1>Vikas Goods Transport</h1>
+  <h1>${orgName}</h1>
   <div class="sub">Balance Statement — ${tabName}</div>
   <div class="meta">
     <span><b>Truck:</b> ${truckNo}</span>
@@ -254,7 +255,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName }) {
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const [open, setOpen] = useState(true);
 
@@ -334,12 +335,12 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             </button>
           )}
           {/* Print month */}
-          <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName)}>
+          <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName, orgName)}>
             <Printer size={12} /> Print Month
           </button>
           {/* Print selected in month */}
           {monthChecked.length > 0 && (
-            <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName)}>
+            <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName, orgName)}>
               <Printer size={12} /> Print {monthChecked.length} Selected
             </button>
           )}
@@ -435,6 +436,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
 
 /* ══════ MAIN ══════ */
 export default function BalanceSheet({ initialTab, lockedType, role = 'user', permissions = {} }) {
+  const { user } = useAuth();
+  const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   const [tab, setTab] = useState(lockedType || initialTab || 'Kosli_Bill');
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
@@ -816,7 +819,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll} onDelete={setDelVoucher}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
-              role={role} permissions={permissions} />
+              role={role} permissions={permissions} orgName={orgName} />
           ))}
 
           <AnimatePresence>

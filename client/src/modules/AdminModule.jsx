@@ -121,15 +121,8 @@ const AdminModule = () => {
     const paginatedLogs = (logs || []).slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
     return (
-        <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
-            <div style={{ marginBottom: '32px' }}>
-                <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Shield size={28} color="var(--accent)" /> System Administration
-                </h1>
-                <p style={{ color: 'var(--text-muted)' }}>Manage system backups and Google Drive connectivity.</p>
-            </div>
-
-            <div className="card" style={{ padding: '24px', border: '1px solid var(--border)' }}>
+        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+            <div className="card" style={{ padding: '32px', border: '1px solid var(--border)', borderRadius: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                     <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Cloud size={24} color="#6366f1" />

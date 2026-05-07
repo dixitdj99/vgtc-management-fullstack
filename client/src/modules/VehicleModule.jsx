@@ -84,7 +84,7 @@ function DeleteConfirm({ vehicle, onClose, onConfirm }) {
     const [confirmText, setConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
     const truckNo = vehicle.truckNo || '';
-    const isMatch = confirmText.toUpperCase().replace(/\s/g, '') === truckNo.toUpperCase().replace(/\s/g, '');
+    const isMatch = (confirmText || '').toUpperCase().replace(/\s/g, '') === (truckNo || '').toUpperCase().replace(/\s/g, '');
 
     const handleDelete = async () => {
         setDeleting(true);
@@ -228,7 +228,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         return (
             <div key={type} style={{ fontSize: '10px', color, display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${status === 'ok' ? 'var(--border)' : color}` }}>
                 {status !== 'ok' && <AlertTriangle size={10} />}
-                <span style={{ fontWeight: 800 }}>{type.toUpperCase()}:</span> {new Date(date).toLocaleDateString('en-IN')}
+                <span style={{ fontWeight: 800 }}>{(type || '').toUpperCase()}:</span> {new Date(date).toLocaleDateString('en-IN')}
             </div>
         );
     };
@@ -295,7 +295,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     };
 
     const autofillFromOwner = (ownerName) => {
-        const party = parties.find(p => p.name === ownerName.toUpperCase());
+        const party = parties.find(p => String(p.name || '').toUpperCase() === String(ownerName || '').toUpperCase());
         if (party) {
             setForm(f => ({
                 ...f,
@@ -382,7 +382,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
             map[oName].vehicles.push(v);
         });
-        return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+        return Object.values(map).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
     }, [vehicles, fSearch, ownershipFilter]);
 
     const uniqueOwners = [...new Set([...parties.filter(p => p.type === 'supplier' || p.type === 'transporter').map(p => p.name), ...vehicles.map(v => v.ownerName)])].filter(Boolean).sort();

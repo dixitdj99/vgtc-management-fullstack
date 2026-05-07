@@ -11,24 +11,29 @@ const MCOL = 'materials';
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreAddStock = async (data, sCol) => {
+const firestoreAddStock = async (orgId, data, sCol) => {
     const ref = db.collection(sCol).doc();
     await ref.set({
         ...data,
+        orgId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
     return { id: ref.id, ...data };
 };
 
-const firestoreGetChallans = async (cCol) => {
-    const snapshot = await db.collection(cCol).orderBy('createdAt', 'desc').get();
+const firestoreGetChallans = async (orgId, cCol) => {
+    const snapshot = await db.collection(cCol)
+        .where('orgId', '==', orgId)
+        .orderBy('createdAt', 'desc')
+        .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-const firestoreCreateChallan = async (data, cCol) => {
+const firestoreCreateChallan = async (orgId, data, cCol) => {
     const ref = db.collection(cCol).doc();
     await ref.set({
         ...data,
+        orgId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
     return { id: ref.id, ...data };
@@ -39,16 +44,19 @@ const firestoreCreateChallan = async (data, cCol) => {
 module.exports = {
     MATERIALS,
     
-    getMaterialsList: async (col = MCOL) => {
+    getMaterialsList: async (orgId, col = MCOL) => {
         if (firebaseAvailable()) {
-            const snap = await db.collection(col).orderBy('createdAt').get();
+            const snap = await db.collection(col)
+                .where('orgId', '==', orgId)
+                .orderBy('createdAt')
+                .get();
             if (snap.empty) {
                 const defs = col === 'jkl_materials' ? ['PPC', 'OPC43', 'Pro+'] : MATERIALS;
                 const batch = db.batch();
                 const res = [];
                 for (const name of defs) {
                     const ref = db.collection(col).doc();
-                    batch.set(ref, { name, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                    batch.set(ref, { name, orgId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
                     res.push({ id: ref.id, name });
                 }
                 await batch.commit();
@@ -56,12 +64,12 @@ module.exports = {
             }
             return snap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
-        const locals = localStore.getAll(col);
+        const locals = localStore.getAll(col).filter(m => m.orgId === orgId);
         if (locals.length === 0) {
             const defs = col === 'jkl_materials' ? ['PPC', 'OPC43', 'Pro+'] : MATERIALS;
             const res = [];
             for (const name of defs) {
-                const inserted = localStore.insert(col, { name });
+                const inserted = localStore.insert(col, { name, orgId });
                 res.push(inserted);
             }
             return res;
@@ -69,15 +77,15 @@ module.exports = {
         return locals;
     },
 
-    addMaterial: async (name, col = MCOL) => {
+    addMaterial: async (orgId, name, col = MCOL) => {
         if (!name || !name.trim()) throw new Error('Material name required');
         const cleanName = name.trim();
         if (firebaseAvailable()) {
             const ref = db.collection(col).doc();
-            await ref.set({ name: cleanName, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            await ref.set({ name: cleanName, orgId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
             return { id: ref.id, name: cleanName };
         }
-        return localStore.insert(col, { name: cleanName });
+        return localStore.insert(col, { name: cleanName, orgId });
     },
 
     deleteMaterial: async (id, col = MCOL) => {
@@ -113,12 +121,15 @@ module.exports = {
         } catch (e) { console.error('Migration failed:', e.message); }
     },
 
-    getAllAdditions: async (sCol = SCOL) => {
+    getAllAdditions: async (orgId, sCol = SCOL) => {
         if (firebaseAvailable()) {
-            const snap = await db.collection(sCol).orderBy('createdAt', 'desc').get();
+            const snap = await db.collection(sCol)
+                .where('orgId', '==', orgId)
+                .orderBy('createdAt', 'desc')
+                .get();
             return snap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
-        return localStore.getAll(sCol);
+        return localStore.getAll(sCol).filter(a => a.orgId === orgId);
     },
 
     getHistory: async (sCol = SCOL) => {
@@ -129,14 +140,14 @@ module.exports = {
         return localStore.getAll(sCol).sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
     },
 
-    addStock: async (data, sCol = SCOL, allowedMaterialsCol = MCOL) => {
+    addStock: async (orgId, data, sCol = SCOL, allowedMaterialsCol = MCOL) => {
         const { material, quantity, date, remark, truckNo } = data;
         
         let validMatNames = [];
         if (Array.isArray(allowedMaterialsCol)) {
             validMatNames = allowedMaterialsCol; 
         } else {
-            const dynamicMats = await module.exports.getMaterialsList(allowedMaterialsCol);
+            const dynamicMats = await module.exports.getMaterialsList(orgId, allowedMaterialsCol);
             validMatNames = dynamicMats.map(m => m.name);
         }
 
@@ -152,8 +163,8 @@ module.exports = {
             truckNo: truckNo || '',
         };
 
-        if (firebaseAvailable()) return await firestoreAddStock(payload, sCol);
-        return localStore.insert(sCol, payload);
+        if (firebaseAvailable()) return await firestoreAddStock(orgId, payload, sCol);
+        return localStore.insert(sCol, { ...payload, orgId });
     },
 
     getOverview: async (sCol = SCOL, cCol = CCOL) => {
@@ -178,12 +189,12 @@ module.exports = {
         localStore.delete(sCol, id);
     },
 
-    getAllChallans: async (cCol = CCOL) => {
-        if (firebaseAvailable()) return await firestoreGetChallans(cCol);
-        return localStore.getAll(cCol);
+    getAllChallans: async (orgId, cCol = CCOL) => {
+        if (firebaseAvailable()) return await firestoreGetChallans(orgId, cCol);
+        return localStore.getAll(cCol).filter(c => c.orgId === orgId);
     },
 
-    createChallan: async (data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
+    createChallan: async (orgId, data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
         let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity } = data;
         const normalizedPartyName = normalizePartyName(partyName || '');
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
@@ -193,7 +204,7 @@ module.exports = {
         if (Array.isArray(allowedMaterialsCol)) {
             validMatNames = allowedMaterialsCol; 
         } else {
-            const dynamicMats = await module.exports.getMaterialsList(allowedMaterialsCol);
+            const dynamicMats = await module.exports.getMaterialsList(orgId, allowedMaterialsCol);
             validMatNames = dynamicMats.map(m => m.name);
         }
 
@@ -209,10 +220,10 @@ module.exports = {
         if (firebaseAvailable()) {
             let finalChallanNo = challanNo;
             if (!finalChallanNo) {
-                const snap = await db.collection(cCol).get();
+                const snap = await db.collection(cCol).where('orgId', '==', orgId).get();
                 finalChallanNo = 'CH-' + String(snap.size + 1).padStart(4, '0');
             }
-            return await firestoreCreateChallan({
+            return await firestoreCreateChallan(orgId, {
                 challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
                 partyName: normalizedPartyName,
                 partyCode: partyCode || '',
@@ -223,12 +234,13 @@ module.exports = {
             }, cCol);
         }
 
-        const existing = localStore.getAll(cCol);
+        const existing = localStore.getAll(cCol).filter(c => c.orgId === orgId);
         let finalChallanNo = challanNo;
         if (!finalChallanNo) {
             finalChallanNo = 'CH-' + String(existing.length + 1).padStart(4, '0');
         }
         return localStore.insert(cCol, {
+            orgId,
             challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
             partyName: normalizedPartyName,
             partyCode: partyCode || '',
@@ -247,12 +259,15 @@ module.exports = {
         return localStore.update(cCol, id, { status });
     },
 
-    getOpenChallans: async (cCol = CCOL) => {
+    getOpenChallans: async (orgId, cCol = CCOL) => {
         if (firebaseAvailable()) {
-            const snap = await db.collection(cCol).where('status', 'in', ['open', 'partially_loaded']).get();
+            const snap = await db.collection(cCol)
+                .where('orgId', '==', orgId)
+                .where('status', 'in', ['open', 'partially_loaded'])
+                .get();
             return snap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
-        return localStore.getAll(cCol).filter(c => c.status === 'open' || c.status === 'partially_loaded');
+        return localStore.getAll(cCol).filter(c => c.orgId === orgId && (c.status === 'open' || c.status === 'partially_loaded'));
     },
 
     deductChallanQuantities: async (id, deductions, cCol = CCOL) => {
@@ -289,12 +304,16 @@ module.exports = {
         return localStore.update(cCol, id, { status: 'updated' }); // Placeholder for complex local logic improvement
     },
 
-    syncLRWithChallans: async (oldChallanNos, newChallanNos, material, quantity, cCol = CCOL) => {
+    syncLRWithChallans: async (orgId, oldChallanNos, newChallanNos, material, quantity, cCol = CCOL) => {
         const qty = parseInt(quantity);
         if (isNaN(qty) || qty <= 0) return;
 
         const updateChallanBags = async (cNo, amount) => {
-            const snap = await db.collection(cCol).where('challanNo', '==', cNo.trim()).limit(1).get();
+            const snap = await db.collection(cCol)
+                .where('orgId', '==', orgId)
+                .where('challanNo', '==', cNo.trim())
+                .limit(1)
+                .get();
             if (snap.empty) return 0;
             const doc = snap.docs[0];
             const data = doc.data();
@@ -314,7 +333,7 @@ module.exports = {
         };
 
         const updateLocalChallanBags = (cNo, amount) => {
-            const all = localStore.getAll(cCol);
+            const all = localStore.getAll(cCol).filter(c => c.orgId === orgId);
             const challan = all.find(c => c.challanNo === cNo.trim());
             if (!challan) return;
             challan.materials = challan.materials.map(m => {
@@ -344,7 +363,11 @@ module.exports = {
                 if (remaining <= 0) break;
                 
                 if (firebaseAvailable()) {
-                    const snap = await db.collection(cCol).where('challanNo', '==', cNo.trim()).limit(1).get();
+                    const snap = await db.collection(cCol)
+                        .where('orgId', '==', orgId)
+                        .where('challanNo', '==', cNo.trim())
+                        .limit(1)
+                        .get();
                     if (snap.empty) continue;
                     const doc = snap.docs[0];
                     const data = doc.data();
@@ -358,7 +381,7 @@ module.exports = {
                         remaining -= toTake;
                     }
                 } else {
-                    const all = localStore.getAll(cCol);
+                    const all = localStore.getAll(cCol).filter(c => c.orgId === orgId);
                     const challan = all.find(c => c.challanNo === cNo.trim());
                     if (!challan) continue;
                     const mat = challan.materials.find(m => m.type === material);

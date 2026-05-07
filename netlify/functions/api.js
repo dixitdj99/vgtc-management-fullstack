@@ -32,6 +32,11 @@ const paymentRoutes = require('../../server/routes/paymentRoutes');
 const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
 const orgRoutes = require('../../server/routes/orgRoutes');
+const partyRoutes = require('../../server/routes/partyRoutes');
+const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
+const profileRoutes = require('../../server/routes/profileRoutes');
+const paymentRoutes = require('../../server/routes/paymentRoutes');
+const vehicleAdvanceRoutes = require('../../server/routes/vehicleAdvanceRoutes');
 
 const app = express();
 app.use(cors());
@@ -56,6 +61,11 @@ apiRouter.use('/labour', labourRoutes);
 apiRouter.use('/parties', requireAuth, partyRoutes);
 apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
 apiRouter.use('/org', requireAuth, orgRoutes);
+apiRouter.use('/parties', requireAuth, partyRoutes);
+apiRouter.use('/maintenance', requireAuth, maintenanceRoutes);
+apiRouter.use('/profiles', requireAuth, profileRoutes);
+apiRouter.use('/payments', requireAuth, paymentRoutes);
+apiRouter.use('/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
 
 // JKL Routes
 apiRouter.use('/jkl/lr', requireAuth, jklLrRoutes);

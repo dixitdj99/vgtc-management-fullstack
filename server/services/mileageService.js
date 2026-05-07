@@ -6,21 +6,21 @@ const vehicleService = require('./vehicleService');
 const VOUCHERS_COL = 'vouchers';
 const FUEL_LOGS_COL = 'fuel_logs';
 
-const calculateMileageSummary = async (req = {}) => {
+const calculateMileageSummary = async (orgId, req = {}) => {
     let allDocs = [];
-    const vehicles = await vehicleService.getAllVehicles(getCol('vehicles', req));
+    const vehicles = await vehicleService.getAllVehicles(orgId, getCol('vehicles', req));
 
     if (!isAvailable()) {
-        const vouchers = localStore.getAll(VOUCHERS_COL);
-        const fuelLogs = localStore.getAll('fuel_logs');
+        const vouchers = localStore.getAll(VOUCHERS_COL).filter(v => v.orgId === orgId);
+        const fuelLogs = localStore.getAll('fuel_logs').filter(f => f.orgId === orgId);
         allDocs = [
             ...vouchers.map(d => ({ ...d, _type: 'voucher' })),
             ...fuelLogs.map(d => ({ ...d, _type: 'fuel_log' }))
         ];
     } else {
         const [vouchersSnap, fuelSnap] = await Promise.all([
-            db.collection(getCol(VOUCHERS_COL, req)).get(),
-            db.collection(getCol('fuel_logs', req)).get()
+            db.collection(getCol(VOUCHERS_COL, req)).where('orgId', '==', orgId).get(),
+            db.collection(getCol('fuel_logs', req)).where('orgId', '==', orgId).get()
         ]);
         
         allDocs = [

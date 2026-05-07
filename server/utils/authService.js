@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const localStore = require('./localStore');
 const { db, isAvailable } = require('../firebase');
+const orgService = require('../services/orgService');
 const { isProduction } = require('./envConfig');
 const { getEnvCol } = require('./collectionUtils');
 
@@ -22,6 +23,7 @@ const DEFAULT_USER_DATA = {
     name: 'Vikas Admin',
     username: 'admin',
     role: 'admin',
+    orgId: 'vgtc',
     email: '',
     isOtpEnabled: false,
     isSandbox: false,
@@ -31,6 +33,7 @@ const DEFAULT_USER_DATA = {
 // Seed a default admin and tester on first run (Local or Firestore)
 const seed = async () => {
     try {
+        await orgService.seedDefaultOrg();
         const seedUsers = [
             { ...DEFAULT_USER_DATA, username: 'admin', name: 'Vikas Admin', password: 'admin123', role: 'admin', isSandbox: false },
             { ...DEFAULT_USER_DATA, username: 'tester', name: 'Sandbox Tester', password: 'test123', role: 'user', isSandbox: true }
@@ -55,13 +58,12 @@ const seed = async () => {
     }
 };
 
-const getAll = async () => {
+const getAll = async (orgId) => {
     if (isFirebaseAvailable()) {
-        const snapshot = await db.collection(getUCol()).get();
+        const snapshot = await db.collection(getUCol()).where('orgId', '==', orgId).get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), password: undefined, otpCode: undefined }));
     }
-    return localStore.getAll(getUCol()).map(u => ({ ...u, password: undefined, otpCode: undefined }));
-    // NOTE: plainPassword is intentionally included (not stripped) for admin display
+    return localStore.getAll(getUCol()).filter(u => u.orgId === orgId).map(u => ({ ...u, password: undefined, otpCode: undefined }));
 };
 
 const findByUsername = async (username) => {
@@ -83,7 +85,7 @@ const findById = async (id) => {
     return localStore.getAll(getUCol()).find(u => u.id === id);
 };
 
-const createUser = async (name, username, password, role = 'user', email = '', permissions = null) => {
+const createUser = async (name, username, password, role = 'user', email = '', permissions = null, orgId = 'vgtc') => {
     const existing = await findByUsername(username);
     if (existing) throw new Error('Username already exists');
     const hash = bcrypt.hashSync(password, 10);
@@ -96,6 +98,7 @@ const createUser = async (name, username, password, role = 'user', email = '', p
         password: hash,
         plainPassword: password, // stored for admin display only (internal system)
         role,
+        orgId,
         email,
         isOtpEnabled: false,
         isSandbox: false, // Default to production mode for new accounts
@@ -140,18 +143,22 @@ const deleteUser = async (id) => {
         const userDoc = await usersRef.doc(id).get();
         if (!userDoc.exists) throw new Error('User not found');
         const userData = userDoc.data();
+        
+        // Ensure we are not deleting across orgs if we have an admin context (optional but safe)
+        
         if (userData.role === 'admin') {
-            const adminSnapshot = await usersRef.where('role', '==', 'admin').get();
-            if (adminSnapshot.size <= 1) throw new Error('Cannot delete the last admin');
+            const adminSnapshot = await usersRef.where('role', '==', 'admin').where('orgId', '==', userData.orgId).get();
+            if (adminSnapshot.size <= 1) throw new Error('Cannot delete the last admin of this organization');
         }
         await usersRef.doc(id).delete();
         return;
     }
 
-    const user = localStore.getAll(getUCol()).find(u => u.id === id);
+    const all = localStore.getAll(getUCol());
+    const user = all.find(u => u.id === id);
     if (!user) throw new Error('User not found');
-    if (user.role === 'admin' && localStore.getAll(getUCol()).filter(u => u.role === 'admin').length === 1)
-        throw new Error('Cannot delete the last admin');
+    if (user.role === 'admin' && all.filter(u => u.role === 'admin' && u.orgId === user.orgId).length === 1)
+        throw new Error('Cannot delete the last admin of this organization');
     localStore.delete(getUCol(), id);
 };
 

@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const svc = require('../utils/cashbookService');
 const { getCol } = require('../utils/collectionUtils');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 const BASE_COL = 'cashbook';
 
 const sheetsService = require('../utils/sheetsService');
@@ -9,7 +14,7 @@ const sheetsService = require('../utils/sheetsService');
 // GET  /api/cashbook
 router.get('/', async (req, res) => {
     try {
-        const data = await svc.getAll(getCol(BASE_COL, req));
+        const data = await svc.getAll(req.orgId, getCol(BASE_COL, req));
         res.json(data);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -18,7 +23,7 @@ router.get('/', async (req, res) => {
 router.post('/deposit', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
-        const doc = await svc.addEntry('deposit', amount, remark, date, getCol(BASE_COL, req));
+        const doc = await svc.addEntry(req.orgId, 'deposit', amount, remark, date, getCol(BASE_COL, req));
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -28,7 +33,7 @@ router.post('/deposit', async (req, res) => {
 router.post('/cash-out', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
-        const doc = await svc.addEntry('cash_out', amount, remark, date, getCol(BASE_COL, req));
+        const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, getCol(BASE_COL, req));
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -37,7 +42,7 @@ router.post('/cash-out', async (req, res) => {
 // DELETE /api/cashbook/:id
 router.delete('/:id', async (req, res) => {
     try {
-        const all = await svc.getAll(getCol(BASE_COL, req));
+        const all = await svc.getAll(req.orgId, getCol(BASE_COL, req));
         const entry = all.find(e => e.id === req.params.id);
         
         await svc.deleteEntry(req.params.id, getCol(BASE_COL, req));

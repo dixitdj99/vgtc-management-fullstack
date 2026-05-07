@@ -2,13 +2,18 @@ const express = require('express');
 const router = express.Router();
 const advanceService = require('../services/vehicleAdvanceService');
 const { getCol } = require('../utils/collectionUtils');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const BASE_COL = 'vehicle_advances';
 
 // Create advance transaction
 router.post('/', async (req, res) => {
     try {
-        const result = await advanceService.createAdvance(req.body, getCol(BASE_COL, req));
+        const result = await advanceService.createAdvance(req.orgId, req.body, getCol(BASE_COL, req));
         res.status(201).json(result);
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -18,7 +23,7 @@ router.post('/', async (req, res) => {
 // Get all advances (for summary/overview)
 router.get('/', async (req, res) => {
     try {
-        const advances = await advanceService.getAllAdvances(getCol(BASE_COL, req));
+        const advances = await advanceService.getAllAdvances(req.orgId, getCol(BASE_COL, req));
         res.json(advances);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -28,7 +33,7 @@ router.get('/', async (req, res) => {
 // Get advances for specific truck
 router.get('/:truckNo', async (req, res) => {
     try {
-        const advances = await advanceService.getAdvancesByTruck(req.params.truckNo, getCol(BASE_COL, req));
+        const advances = await advanceService.getAdvancesByTruck(req.orgId, req.params.truckNo, getCol(BASE_COL, req));
         res.json(advances);
     } catch (error) {
         res.status(500).json({ error: error.message });

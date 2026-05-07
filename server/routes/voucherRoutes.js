@@ -4,6 +4,11 @@ const voucherService = require('../services/voucherService');
 const vehicleService = require('../services/vehicleService');
 const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const BASE_COL = 'vouchers';
 const VEHICLE_COL = 'vehicles';
@@ -11,7 +16,7 @@ const VEHICLE_COL = 'vehicles';
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
-        const result = await voucherService.createVoucher(req.body, getCol(BASE_COL, req));
+        const result = await voucherService.createVoucher(req.orgId, req.body, getCol(BASE_COL, req));
         await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
@@ -71,7 +76,7 @@ router.post('/', async (req, res) => {
 // ─── Get all by type ──────────────────────────────────────────────────────────
 router.get('/:type', async (req, res) => {
     try {
-        const vouchers = await voucherService.getVouchersByType(req.params.type, getCol(BASE_COL, req));
+        const vouchers = await voucherService.getVouchersByType(req.orgId, req.params.type, getCol(BASE_COL, req));
         res.json(vouchers);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -81,7 +86,7 @@ router.get('/:type', async (req, res) => {
 // ─── Get all ──────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
     try {
-        const vouchers = await voucherService.getAllVouchers(getCol(BASE_COL, req));
+        const vouchers = await voucherService.getAllVouchers(req.orgId, getCol(BASE_COL, req));
         res.json(vouchers);
     } catch (error) {
         res.status(500).json({ error: error.message });

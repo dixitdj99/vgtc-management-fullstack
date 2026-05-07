@@ -4,6 +4,11 @@ const { db, admin, isAvailable } = require('../firebase');
 const localStore = require('../utils/localStore');
 const { getCol } = require('../utils/collectionUtils');
 const stockService = require('../utils/stockService');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const firebaseAvailable = () => isAvailable();
 const BASE_COL = 'stock_transfers';
@@ -33,6 +38,7 @@ router.post('/', async (req, res) => {
             quantity: qty,
             partyName: partyName || '',
             challanNo: challanNo || '',
+            orgId: req.orgId,
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '',
         };
@@ -58,7 +64,7 @@ router.post('/', async (req, res) => {
             remark: `Transfer from ${sourceMaterial} | Party: ${partyName || '—'} | Challan: ${challanNo || '—'}`,
             truckNo: '',
         };
-        await stockService.addStock(addPayload, getCol(addColName, req), getCol(matColName, req));
+        await stockService.addStock(req.orgId, addPayload, getCol(addColName, req), getCol(matColName, req));
 
         // Deduct from source material — create negative addition
         const deductPayload = {
@@ -72,9 +78,9 @@ router.post('/', async (req, res) => {
         const addColRef = getCol(addColName, req);
         if (firebaseAvailable()) {
             const ref = db.collection(addColRef).doc();
-            await ref.set({ ...deductPayload, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            await ref.set({ ...deductPayload, orgId: req.orgId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
         } else {
-            localStore.insert(addColRef, deductPayload);
+            localStore.insert(addColRef, { ...deductPayload, orgId: req.orgId });
         }
 
         res.status(201).json(result);
@@ -89,10 +95,13 @@ router.get('/', async (req, res) => {
         const col = getCol(BASE_COL, req);
         let transfers;
         if (firebaseAvailable()) {
-            const snap = await db.collection(col).orderBy('createdAt', 'desc').get();
+            const snap = await db.collection(col)
+                .where('orgId', '==', req.orgId)
+                .orderBy('createdAt', 'desc')
+                .get();
             transfers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } else {
-            transfers = localStore.getAll(col).sort((a, b) => new Date(b.date) - new Date(a.date));
+            transfers = localStore.getAll(col).filter(d => d.orgId === req.orgId).sort((a, b) => new Date(b.date) - new Date(a.date));
         }
         res.json(transfers);
     } catch (error) {

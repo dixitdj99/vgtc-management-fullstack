@@ -3,6 +3,11 @@ const router = express.Router();
 const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply tenancy to all routes in this router
+router.use(requireAuth, tenancyMiddleware);
 
 const BASE_COL = 'jhajjar_loading_receipts';
 const META_COL = 'jhajjar_metadata';
@@ -11,6 +16,7 @@ const META_COL = 'jhajjar_metadata';
 router.post('/', async (req, res) => {
     try {
         const result = await lrService.createLoadingReceipt(
+            req.orgId,
             req.body, 
             getCol(BASE_COL, req), 
             getCol(META_COL, req)
@@ -68,7 +74,7 @@ router.post('/', async (req, res) => {
 // Get all
 router.get('/', async (req, res) => {
     try {
-        const receipts = await lrService.getAllLoadingReceipts(getCol(BASE_COL, req));
+        const receipts = await lrService.getAllLoadingReceipts(req.orgId, getCol(BASE_COL, req));
         res.json(receipts);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -78,10 +84,10 @@ router.get('/', async (req, res) => {
 // Update billing only
 router.patch('/:id/billing', async (req, res) => {
     try {
-        await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(BASE_COL, req));
+        await lrService.updateBillingStatus(req.orgId, req.params.id, req.body.billing, getCol(BASE_COL, req));
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
-            const all = await lrService.getAllLoadingReceipts(getCol(BASE_COL, req));
+            const all = await lrService.getAllLoadingReceipts(req.orgId, getCol(BASE_COL, req));
             const doc = all.find(r => r.id === req.params.id);
             if (doc) await sheetsService.upsertLrRow(doc, req.body.brand === 'jklakshmi' ? 'jklakshmi' : 'jksuper').catch(()=>{});
         }
@@ -94,7 +100,7 @@ router.patch('/:id/billing', async (req, res) => {
 // Full update of a single receipt row (Support both PATCH and PUT)
 router.patch('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(BASE_COL, req));
+        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(BASE_COL, req));
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
             const updated = { id: req.params.id, ...req.body };
@@ -108,7 +114,7 @@ router.patch('/:id', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(BASE_COL, req));
+        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(BASE_COL, req));
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
             const updated = { id: req.params.id, ...req.body };
@@ -123,7 +129,7 @@ router.put('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.params.id, getCol(BASE_COL, req), getCol(META_COL, req));
+        await lrService.deleteLoadingReceipt(req.orgId, req.params.id, getCol(BASE_COL, req), getCol(META_COL, req));
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
             await sheetsService.deleteLrRow(req.params.id, req.query.brand === 'jklakshmi' ? 'jklakshmi' : 'jksuper').catch(()=>{});
@@ -138,7 +144,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/invoice/generate', async (req, res) => {
     try {
         const { ids, invoiceNumber, invoiceDate, partyName, items, brand } = req.body;
-        await lrService.generateBulkInvoice(ids, invoiceNumber, invoiceDate, getCol(BASE_COL, req));
+        await lrService.generateBulkInvoice(req.orgId, ids, invoiceNumber, invoiceDate, getCol(BASE_COL, req));
         
         // Background backup to Google Drive
         if (await driveService.isAuthorized()) {

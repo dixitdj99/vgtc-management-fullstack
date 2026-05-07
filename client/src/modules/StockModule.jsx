@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
@@ -86,7 +87,7 @@ const fi = (label, node) => (
 /* ─────────────────────────────────────────────
    MATERIAL CARD
 ───────────────────────────────────────────── */
-function printChallan(c) {
+function printChallan(c, orgName) {
   const materialsHtml = (c.materials || [{ type: c.material, totalBags: c.quantity }]).map((m, i) => `
     <tr style="background:${i % 2 === 0 ? '#f9f9f9' : '#fff'}">
       <td>${m.type || '—'}</td>
@@ -105,7 +106,7 @@ function printChallan(c) {
   .sig{display:flex;justify-content:space-between;margin-top:40px}
   .sl{min-width:120px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:10px}
   @media print{body{padding:0}}</style></head><body>
-  <h1>Vikas Goods Transport</h1>
+  <h1>${orgName}</h1>
   <div class="sub">Challan Print</div>
   <div class="meta">
     <span><b>Challan No:</b> ${c.challanNo || '—'}</span>
@@ -169,6 +170,8 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
    MAIN
 ═════════════════════════════════════════════════ */
 export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
+  const { user } = useAuth();
+  const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   // canEdit: checks brand-specific key first, then generic 'stock' key
   const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : 'stock_jkl';
   const canEdit = role === 'admin' || permissions?.[stockKey] === 'edit' || permissions?.stock === 'edit';
@@ -1116,7 +1119,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                         {role === 'admin' && <td style={{ ...TD, fontSize: '12px' }}>{c.updatedBy || '—'}</td>}
                         <td style={{ ...TD }}>
                           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-sm btn-icon" title="Print Challan" onClick={() => printChallan(c)}><Printer size={13} /></button>
+                            <button className="btn btn-g btn-sm btn-icon" title="Print Challan" onClick={() => printChallan(c, orgName)}><Printer size={13} /></button>
                             {c.status !== 'loaded' && c.status !== 'cancelled' && (<>
                               <button className="btn btn-a btn-sm btn-icon" title="Mark as fully Loaded"
                                 onClick={() => updateStatus(c.id, 'loaded')}><CheckCircle2 size={13} /></button>

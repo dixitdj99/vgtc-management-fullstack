@@ -16,6 +16,7 @@ const requireLabourAuth = (req, res, next) => {
         const decoded = jwt.verify(auth.slice(7), SECRET);
         if (decoded.role !== 'labourer') return res.status(403).json({ error: 'Labour access only' });
         req.labourer = decoded;
+        req.orgId = decoded.orgId; // Inject orgId for downstream filters
         next();
     } catch {
         res.status(401).json({ error: 'Invalid or expired token' });
@@ -33,11 +34,11 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid username or password' });
 
         const token = jwt.sign(
-            { id: worker.id, name: worker.name, username: worker.username, godown: worker.godown, role: 'labourer' },
+            { id: worker.id, name: worker.name, username: worker.username, godown: worker.godown, orgId: worker.orgId, role: 'labourer' },
             SECRET,
             { expiresIn: '30d' }
         );
-        res.json({ token, worker: { id: worker.id, name: worker.name, godown: worker.godown } });
+        res.json({ token, worker: { id: worker.id, name: worker.name, godown: worker.godown, orgId: worker.orgId } });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -45,9 +46,10 @@ router.post('/login', async (req, res) => {
 
 // ── ADMIN: Manage Labour Workers ───────────────────────────
 // GET /api/labour/workers   (admin only)
-router.get('/workers', requireAdmin, async (req, res) => {
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+router.get('/workers', requireAdmin, tenancyMiddleware, async (req, res) => {
     try {
-        const workers = await labourService.getAll();
+        const workers = await labourService.getAll(req.orgId);
         res.json(workers);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -55,9 +57,9 @@ router.get('/workers', requireAdmin, async (req, res) => {
 });
 
 // POST /api/labour/workers  (admin only)
-router.post('/workers', requireAdmin, async (req, res) => {
+router.post('/workers', requireAdmin, tenancyMiddleware, async (req, res) => {
     try {
-        const worker = await labourService.create(req.body);
+        const worker = await labourService.create(req.orgId, req.body);
         res.status(201).json(worker);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -65,7 +67,7 @@ router.post('/workers', requireAdmin, async (req, res) => {
 });
 
 // PATCH /api/labour/workers/:id  (admin only)
-router.patch('/workers/:id', requireAdmin, async (req, res) => {
+router.patch('/workers/:id', requireAdmin, tenancyMiddleware, async (req, res) => {
     try {
         await labourService.update(req.params.id, req.body);
         res.json({ message: 'Worker updated' });
@@ -74,8 +76,7 @@ router.patch('/workers/:id', requireAdmin, async (req, res) => {
     }
 });
 
-// DELETE /api/labour/workers/:id  (admin only)
-router.delete('/workers/:id', requireAdmin, async (req, res) => {
+router.delete('/workers/:id', requireAdmin, tenancyMiddleware, async (req, res) => {
     try {
         await labourService.remove(req.params.id);
         res.json({ message: 'Worker deleted' });
@@ -110,6 +111,7 @@ router.get('/today', requireLabourAuth, async (req, res) => {
         let records = [];
         if (isAvailable()) {
             const snap = await db.collection(fullCol)
+                .where('orgId', '==', req.orgId)
                 .where('date', '>=', targetDate)
                 .where('date', '<=', targetDate + '\uf8ff')
                 .get();
@@ -147,7 +149,7 @@ router.get('/today', requireLabourAuth, async (req, res) => {
             });
             records = Array.from(map.values());
         } else {
-            const all = localStore.getAll(fullCol);
+            const all = localStore.getAll(fullCol).filter(r => r.orgId === req.orgId);
             const todayData = all.filter(r => (r.date || '').startsWith(targetDate));
             const map = new Map();
             todayData.forEach(d => {

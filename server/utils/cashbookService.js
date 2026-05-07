@@ -5,15 +5,20 @@ const firebaseAvailable = () => isAvailable();
 
 const DEFAULT_COLLECTION = 'cashbook';
 
-const getAll = async (collection = DEFAULT_COLLECTION) => {
+const getAll = async (orgId, collection = DEFAULT_COLLECTION) => {
     if (firebaseAvailable()) {
-        const snapshot = await db.collection(collection).orderBy('createdAt', 'desc').get();
+        const snapshot = await db.collection(collection)
+            .where('orgId', '==', orgId)
+            .orderBy('createdAt', 'desc')
+            .get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
-    return localStore.getAll(collection).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return localStore.getAll(collection)
+        .filter(e => e.orgId === orgId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
-const addEntry = async (type, amount, remark = '', date = '', collection = DEFAULT_COLLECTION) => {
+const addEntry = async (orgId, type, amount, remark = '', date = '', collection = DEFAULT_COLLECTION) => {
     if (!amount || isNaN(amount) || parseFloat(amount) <= 0)
         throw new Error('Amount must be a positive number');
 
@@ -21,6 +26,7 @@ const addEntry = async (type, amount, remark = '', date = '', collection = DEFAU
         type,                                    // 'deposit' | 'cash_out'
         amount: parseFloat(amount),
         remark: remark || '',
+        orgId,
         date: date || new Date().toISOString().slice(0, 10),
     };
 
@@ -30,7 +36,7 @@ const addEntry = async (type, amount, remark = '', date = '', collection = DEFAU
         return { id: ref.id, ...entryData };
     }
 
-    return localStore.insert(collection, { ...entryData, createdAt: new Date().toISOString() });
+    return localStore.insert(collection, { ...entryData, orgId, createdAt: new Date().toISOString() });
 };
 
 const deleteEntry = async (id, collection = DEFAULT_COLLECTION) => {
