@@ -121,6 +121,7 @@ app.use((req, res) => {
 
 const handler = serverless(app);
 
+// Force rebuild - 2026-05-07 15:53
 module.exports.handler = async (event, context) => {
     console.log('[Netlify] Incoming:', event.httpMethod, event.path);
     return handler(event, context);
