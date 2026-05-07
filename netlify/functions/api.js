@@ -31,6 +31,7 @@ const profileRoutes = require('../../server/routes/profileRoutes');
 const paymentRoutes = require('../../server/routes/paymentRoutes');
 const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
+const orgRoutes = require('../../server/routes/orgRoutes');
 
 const app = express();
 app.use(cors());
@@ -54,6 +55,7 @@ apiRouter.use('/lr', requireAuth, lrRoutes); // Legacy JK Super route
 apiRouter.use('/labour', labourRoutes);
 apiRouter.use('/parties', requireAuth, partyRoutes);
 apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
+apiRouter.use('/org', requireAuth, orgRoutes);
 
 // JKL Routes
 apiRouter.use('/jkl/lr', requireAuth, jklLrRoutes);

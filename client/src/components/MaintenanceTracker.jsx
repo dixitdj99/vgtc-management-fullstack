@@ -52,9 +52,11 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   const [expandedCat, setExpandedCat] = useState('');
   const [viewIdx, setViewIdx] = useState(0);
   const [form, setForm] = useState({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '', manualPart: false, customPartName: '' });
+  const [err, setErr] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setErr('');
     try {
       const [sumRes, recRes, catRes, vehRes] = await Promise.all([
         ax.get(`/maintenance/summary/${truckNo}`),
@@ -67,8 +69,12 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
       setCatalog(catRes.data || {});
       const v = Array.isArray(vehRes.data) ? vehRes.data.find(v => v.truckNo === truckNo) : null;
       if (v) setVehicle(v);
-    } catch (e) { console.error('Maintenance fetch:', e); }
-    setLoading(false);
+    } catch (e) {
+      console.error('Maintenance fetch error:', e);
+      setErr(e.response?.data?.error || 'Failed to connect to diagnostics server.');
+    } finally {
+      setLoading(false);
+    }
   }, [truckNo]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -112,6 +118,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
       <div className="pulse-blue" style={{ width: '40px', height: '40px', background: '#3b82f6', borderRadius: '50%', boxShadow: '0 0 30px #3b82f6' }}></div>
       <div style={{ color: 'white', fontWeight: 900, fontSize: '18px', letterSpacing: '1px' }}>INITIALIZING DIAGNOSTICS...</div>
       <div style={{ color: '#64748b', fontSize: '12px' }}>Establishing secure connection to Fleet Cloud</div>
+      {err && <div style={{ color: '#ef4444', fontSize: '13px', marginTop: '10px', background: 'rgba(239,68,68,0.1)', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>⚠️ ERROR: {err}</div>}
       <button onClick={fetchData} style={{ marginTop: '20px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid #3b82f6', padding: '12px 24px', borderRadius: '30px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}>
         RECONNECT SERVER
       </button>
