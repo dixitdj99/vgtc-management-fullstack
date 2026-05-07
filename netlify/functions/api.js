@@ -3,7 +3,9 @@ const express = require('express');
 const cors = require('cors');
 
 // Load env vars
-require('dotenv').config({ path: require('path').join(__dirname, '..', '..', 'server', '.env') });
+require('dotenv').config();
+
+// Force rebuild - 2026-05-07 17:10
 
 const lrRoutes = require('../../server/routes/lrRoutes');
 const voucherRoutes = require('../../server/routes/voucherRoutes');
