@@ -462,7 +462,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         || permissions?.voucher === 'edit'
         || permissions?.bill_kosli === 'edit'
         || permissions?.bill_jhajjar === 'edit';
-    const [vType, setVType] = useState(lockedType || initialTab || 'Kosli_Bill');
+    // For non-VGTC orgs (brand='main'), always use 'main' type — no sub-tabs
+    const isGeneric = brand === 'main';
+    const [vType, setVType] = useState(isGeneric ? 'main' : (lockedType || initialTab || 'Kosli_Bill'));
 
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -756,11 +758,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 {/* ── Page Header ── */}
                 <div className="page-hd">
                     <div>
-                        <h1><FileText size={20} color={lockedType === 'JK_Lakshmi' ? '#f59e0b' : '#10b981'} /> {lockedType === 'JK_Lakshmi' ? 'JK Lakshmi Voucher' : 'Voucher Management'}</h1>
-                        <p>{lockedType === 'JK_Lakshmi' ? 'Manage JK Lakshmi vouchers' : 'Dump Bills · J.K Lakshmi · J.K Super'}</p>
+                        <h1><FileText size={20} color={lockedType === 'JK_Lakshmi' ? '#f59e0b' : '#10b981'} /> {isGeneric ? 'Voucher' : (lockedType === 'JK_Lakshmi' ? 'JK Lakshmi Voucher' : 'Voucher Management')}</h1>
+                        <p>{isGeneric ? 'Manage voucher entries' : (lockedType === 'JK_Lakshmi' ? 'Manage JK Lakshmi vouchers' : 'Dump Bills · J.K Lakshmi · J.K Super')}</p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {!lockedType && (
+                        {!lockedType && !isGeneric && (
                             <div className="tab-grp">
                                 {TYPES.map(t => <button key={t} className={`tab-btn${vType === t ? ' tab-indigo' : ''}`} onClick={() => setVType(t)}>{t.replace('_', ' ')}</button>)}
                             </div>
@@ -773,7 +775,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setFormOpen(o => !o)}>
                         <div className="card-title-block">
                             <div className="card-icon ci-green"><Plus size={17} /></div>
-                            <div className="card-title-text"><h3>New {vType.replace('_', ' ')} Voucher</h3><p>{form.date}</p></div>
+                            <div className="card-title-text"><h3>New {isGeneric ? 'Voucher' : vType.replace('_', ' ') + ' Voucher'}</h3><p>{form.date}</p></div>
                         </div>
                         <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700 }}>
                             {formOpen ? <><ChevronUp size={15} /> Collapse</> : <><ChevronDown size={15} /> Expand</>}

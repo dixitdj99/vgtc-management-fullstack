@@ -12,7 +12,6 @@ const LOCATIONS = [
     bg: 'rgba(245,158,11,0.1)',
     border: 'rgba(245,158,11,0.35)',
     icon: Factory,
-    // Maps to internal values:
     plant: 'jklakshmi',
     godown: '',
   },
@@ -66,10 +65,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const loc = selectedLocation;
+      const plant = loc?.plant || '';
+      const godown = loc?.godown || '';
       if (otpMode) {
-        await verifyOtp(userId, otp, loc.plant, loc.godown);
+        await verifyOtp(userId, otp, plant, godown);
       } else {
-        const result = await login(username, password, loc.plant, loc.godown);
+        const result = await login(username, password, plant, godown);
         if (result && result.requireOtp) {
           setOtpMode(true);
           setUserId(result.userId);
@@ -101,6 +102,7 @@ export default function LoginPage() {
   const accentColor = selectedLocation?.color || '#6366f1';
   const accentGlow = selectedLocation?.glow || 'rgba(99,102,241,0.35)';
 
+
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -110,7 +112,7 @@ export default function LoginPage() {
       <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
         <div style={{
           position: 'absolute', top: '-20%', left: '30%', width: '600px', height: '600px',
-          background: `radial-gradient(circle, ${accentGlow.replace('0.35', '0.12')} 0%, transparent 65%)`,
+          background: `radial-gradient(circle, ${accentGlow.replace('0.35', '0.12').replace('59', '1e')} 0%, transparent 65%)`,
           filter: 'blur(40px)', transition: 'background 0.4s'
         }} />
         <div style={{
@@ -141,7 +143,8 @@ export default function LoginPage() {
         {/* Card */}
         <div style={{
           background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px',
-          padding: '28px 28px 32px', boxShadow: '0 24px 60px rgba(0,0,0,0.4)'
+          padding: '28px 28px 32px', boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+          overflow: 'hidden'
         }}>
 
           {!otpMode && (
@@ -155,16 +158,17 @@ export default function LoginPage() {
                 }}>
                   <MapPin size={12} /> Select Location
                 </label>
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
                   <select
                     id="location-select"
                     value={locationId}
                     onChange={(e) => { setLocationId(e.target.value); setError(''); }}
                     style={{
-                      width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      borderRadius: '10px', padding: '12px 14px', color: locationId ? 'var(--text)' : 'var(--text-muted)',
-                      fontSize: '14px', fontWeight: 700, outline: 'none', transition: 'all 0.18s',
-                      appearance: 'none', cursor: 'pointer', fontFamily: 'inherit', boxSizing: 'border-box'
+                      display: 'block', width: '100%', minWidth: 0, background: 'var(--bg-input)', border: '1px solid var(--border)',
+                      borderRadius: '10px', padding: '12px 36px 12px 14px', color: locationId ? 'var(--text)' : 'var(--text-muted)',
+                      fontSize: '13px', fontWeight: 700, outline: 'none', transition: 'all 0.18s',
+                      WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none',
+                      cursor: 'pointer', fontFamily: 'inherit', boxSizing: 'border-box'
                     }}
                     onFocus={e => e.target.style.borderColor = accentColor + '80'}
                     onBlur={e => e.target.style.borderColor = 'var(--border)'}
@@ -172,7 +176,7 @@ export default function LoginPage() {
                     <option value="" disabled>Choose your location...</option>
                     {LOCATIONS.map(loc => (
                       <option key={loc.id} value={loc.id}>
-                        {loc.label} — {loc.desc}
+                        {loc.label}{loc.desc ? ` — ${loc.desc}` : ''}
                       </option>
                     ))}
                   </select>

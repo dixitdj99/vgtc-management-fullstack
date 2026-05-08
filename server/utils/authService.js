@@ -76,6 +76,16 @@ const findByUsername = async (username) => {
     return localStore.getAll(getUCol()).find(u => u.username === username);
 };
 
+const findByUsernameAndOrg = async (username, orgId) => {
+    if (isFirebaseAvailable()) {
+        const snapshot = await db.collection(getUCol()).where('username', '==', username).where('orgId', '==', orgId).limit(1).get();
+        if (snapshot.empty) return null;
+        const doc = snapshot.docs[0];
+        return { id: doc.id, ...doc.data() };
+    }
+    return localStore.getAll(getUCol()).find(u => u.username === username && u.orgId === orgId) || null;
+};
+
 const findById = async (id) => {
     if (isFirebaseAvailable()) {
         const doc = await db.collection(getUCol()).doc(id).get();
@@ -185,9 +195,9 @@ const verifyOTP = async (id, code) => {
 
 const verifyPassword = (plain, hash) => bcrypt.compareSync(plain, hash);
 
-module.exports = { 
-    getAll, findByUsername, findById, createUser, updateUser, deleteUser, 
-    verifyPassword, generateOTP, saveUserOTP, verifyOTP 
+module.exports = {
+    getAll, findByUsername, findByUsernameAndOrg, findById, createUser, updateUser, deleteUser,
+    verifyPassword, generateOTP, saveUserOTP, verifyOTP
 };
 
 // Seed default users ONLY in non-production environments.

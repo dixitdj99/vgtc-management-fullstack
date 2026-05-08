@@ -10,7 +10,12 @@ import PartyMaster from '../../modules/PartyMaster';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
-  const [active, setActive] = useState(() => localStorage.getItem('vgtc-admin-active') || 'dashboard');
+  const isSuperCheck = user.orgId === 'vgtc' || !user.orgId;
+  const [active, setActive] = useState(() => {
+    const saved = localStorage.getItem('vgtc-admin-active');
+    if (saved && (isSuperCheck || saved === 'users' || saved === 'org')) return saved;
+    return isSuperCheck ? 'dashboard' : 'users';
+  });
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [col, setCol] = useState(false);
 
@@ -23,12 +28,18 @@ export default function AdminLayout() {
     return null;
   }
 
-  const NAV = [
+  const isSuperAdmin = user.orgId === 'vgtc' || !user.orgId;
+  const orgName = user.org?.name || user.orgId || 'Organization';
+
+  const NAV = isSuperAdmin ? [
     { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
     { id: 'users', label: 'User Management', Icon: Users },
     { id: 'parties', label: 'Party Master', Icon: Building2 },
     { id: 'org', label: 'Organization Settings', Icon: Settings },
     { id: 'backup', label: 'System & Backup', Icon: Cloud },
+  ] : [
+    { id: 'users', label: 'User Management', Icon: Users },
+    { id: 'org', label: 'Organization Settings', Icon: Settings },
   ];
 
   return (
@@ -60,8 +71,8 @@ export default function AdminLayout() {
           </div>
           {!col && (
             <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              <div style={{ fontSize: '16px', fontWeight: 900, letterSpacing: '-0.02em', color: 'white' }}>System Admin</div>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Control Panel</div>
+              <div style={{ fontSize: '16px', fontWeight: 900, letterSpacing: '-0.02em', color: 'white' }}>{isSuperAdmin ? 'System Admin' : orgName}</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{isSuperAdmin ? 'Control Panel' : 'Admin Panel'}</div>
             </div>
           )}
         </div>
@@ -136,7 +147,7 @@ export default function AdminLayout() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '13px', fontWeight: 800 }}>{user.name}</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8' }}>Superadmin</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{isSuperAdmin ? 'Superadmin' : 'Org Admin'}</div>
               </div>
               <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
                 {user.name.charAt(0).toUpperCase()}
@@ -171,7 +182,7 @@ export default function AdminLayout() {
                 {active === 'dashboard' && <AdminDashboard />}
                 {active === 'users' && <AdminUserManagement />}
                 {active === 'parties' && <PartyMaster />}
-                {active === 'org' && <OrganizationSettings />}
+                {active === 'org' && <OrganizationSettings orgOnly={!isSuperAdmin} />}
                 {active === 'backup' && <AdminModule />}
               </motion.div>
             </AnimatePresence>

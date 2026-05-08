@@ -435,10 +435,12 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
 }
 
 /* ══════ MAIN ══════ */
-export default function BalanceSheet({ initialTab, lockedType, role = 'user', permissions = {} }) {
+export default function BalanceSheet({ initialTab, lockedType, role = 'user', permissions = {}, brand }) {
   const { user } = useAuth();
   const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
-  const [tab, setTab] = useState(lockedType || initialTab || 'Kosli_Bill');
+  // For non-VGTC orgs (brand='main'), always use 'main' type — no sub-tabs
+  const isGeneric = brand === 'main';
+  const [tab, setTab] = useState(isGeneric ? 'main' : (lockedType || initialTab || 'Kosli_Bill'));
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
   const [truckSearch, setTruckSearch] = useState('');
@@ -613,7 +615,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {selTruck && <button className="btn btn-g btn-sm" onClick={() => setSelTruck(null)}><ChevronLeft size={14} /> All Trucks</button>}
-          {!lockedType && (
+          {!lockedType && !isGeneric && (
             <div className="tab-grp">
               {TYPES.map(t => <button key={t} className={`tab-btn${tab === t ? ' tab-amber' : ''}`} onClick={() => setTab(t)}>{t.replace('_', ' ')}</button>)}
             </div>

@@ -34,8 +34,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const { requireAuth } = require('./middleware/auth');
-const orgRoutes = require('./routes/orgRoutes');
-const { seedDefaultOrg } = require('./services/orgService');
+const auditRoutes = require('./routes/auditRoutes');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
@@ -61,10 +60,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/lr', requireAuth, lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
-app.use('/api/org', requireAuth, orgRoutes);
-
-// Seed default org
-seedDefaultOrg().catch(console.error);
+app.use('/api/audit', auditRoutes);
 
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {
