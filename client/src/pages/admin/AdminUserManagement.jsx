@@ -158,24 +158,8 @@ function PasswordCell({ plainPassword }) {
 
 // ── Main Component ──────────────────────────────────────────
 
-const GENERIC_MODULES = [
-  { key: 'lr', label: 'LR' },
-  { key: 'voucher', label: 'Voucher' },
-  { key: 'balance', label: 'Balance Sheet' },
-  { key: 'stock', label: 'Stock' },
-  { key: 'cashbook', label: 'Cashbook' },
-  { key: 'pay', label: 'Pay Vehicles' },
-  { key: 'invoice', label: 'Invoice' },
-  { key: 'vehicle', label: 'Vehicle Management' },
-  { key: 'diesel', label: 'Diesel' },
-  { key: 'mileage', label: 'Mileage' },
-  { key: 'sell', label: 'Sell' },
-  { key: 'loading_status', label: 'Loading Status' },
-];
-
 export default function AdminUserManagement() {
   const { user: me } = useAuth();
-  const isVgtcAdmin = me?.orgId === 'vgtc' || !me?.orgId;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -194,13 +178,7 @@ export default function AdminUserManagement() {
   const [editWorker, setEditWorker] = useState(null);
   const [delWorker, setDelWorker] = useState(null);
 
-  // Org roles
-  const orgRoles = useMemo(() => {
-    const templates = me?.org?.config?.roleTemplates || {};
-    const roles = [...DEFAULT_ROLES];
-    Object.keys(templates).forEach(r => { if (!roles.includes(r)) roles.push(r); });
-    return roles;
-  }, [me]);
+  const orgRoles = DEFAULT_ROLES;
 
   // Permissions UI
   const [showPerms, setShowPerms] = useState(false);
@@ -342,13 +320,8 @@ export default function AdminUserManagement() {
     }
   };
 
-  // Apply role template when role changes
   const handleRoleChange = (newRole) => {
-    const templates = me?.org?.config?.roleTemplates || {};
     S('role', newRole);
-    if (newRole !== 'admin' && templates[newRole] && !editTarget) {
-      setForm(f => ({ ...f, role: newRole, permissions: { ...templates[newRole] } }));
-    }
   };
 
   // ── Filtered users ──────────────────────────────────────
@@ -444,37 +417,27 @@ export default function AdminUserManagement() {
                 </button>
                 {showPerms && (
                   <div style={{ padding: '16px', maxHeight: '400px', overflowY: 'auto' }}>
-                    {isVgtcAdmin ? (
-                      // VGTC: hierarchical location-based permissions
-                      HIERARCHY.map(loc => {
-                        const allowed = isLocAllowed(loc.id);
-                        return (
-                          <div key={loc.id} style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: '10px' }}>
-                              <input type="checkbox" checked={allowed} onChange={e => toggleLocation(loc, e.target.checked)} style={{ width: '15px', height: '15px' }} />
-                              <span style={{ fontSize: '13px', fontWeight: 800, color: allowed ? loc.color : 'var(--text-muted)' }}>{loc.label}</span>
-                            </label>
-                            {allowed && (
-                              <div style={{ paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {loc.groups.map(grp => (
-                                  <div key={grp.id}>
-                                    <div style={{ fontSize: '10px', fontWeight: 800, color: loc.color, opacity: 0.6, marginBottom: '6px', textTransform: 'uppercase' }}>{grp.label}</div>
-                                    {grp.modules.map(mKey => <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />)}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      // Other orgs: flat generic module list
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {GENERIC_MODULES.map(m => (
-                          <PermissionToggle key={m.key} moduleKey={m.key} current={form.permissions[m.key]} onChange={SPerm} />
-                        ))}
-                      </div>
-                    )}
+                    {HIERARCHY.map(loc => {
+                      const allowed = isLocAllowed(loc.id);
+                      return (
+                        <div key={loc.id} style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: '10px' }}>
+                            <input type="checkbox" checked={allowed} onChange={e => toggleLocation(loc, e.target.checked)} style={{ width: '15px', height: '15px' }} />
+                            <span style={{ fontSize: '13px', fontWeight: 800, color: allowed ? loc.color : 'var(--text-muted)' }}>{loc.label}</span>
+                          </label>
+                          {allowed && (
+                            <div style={{ paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {loc.groups.map(grp => (
+                                <div key={grp.id}>
+                                  <div style={{ fontSize: '10px', fontWeight: 800, color: loc.color, opacity: 0.6, marginBottom: '6px', textTransform: 'uppercase' }}>{grp.label}</div>
+                                  {grp.modules.map(mKey => <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -493,8 +456,8 @@ export default function AdminUserManagement() {
             </form>
           </div>
 
-          {/* Labour Workers Card — VGTC only */}
-          {isVgtcAdmin && <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '28px' }}>
+          {/* Labour Workers Card */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '28px' }}>
             <CardHeader
               icon={Truck}
               title="Labour Workers"
