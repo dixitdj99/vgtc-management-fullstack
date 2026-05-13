@@ -17,8 +17,8 @@
 export const validateTruckNo = (no) => {
   if (!no) return false;
   const clean = no.replace(/\s/g, '').toUpperCase();
-  const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{2,4}$/;
-  return regex.test(clean);
+  // Accept any alphanumeric string 4-14 chars (covers Indian + international formats)
+  return /^[A-Z0-9]{4,14}$/.test(clean);
 };
 
 /**

@@ -329,11 +329,13 @@ function AppInner() {
     if (n.sub) {
       const allowedSubs = n.sub.filter(s => {
         const pKey = s.permKey || n.permKey;
-        // Godown filtering for subs (skip for admins)
-        if (user?.role !== 'admin' && plant === 'jksuper' && godown) {
-          if (s.id.toLowerCase().includes('kosli') && godown !== 'kosli') return false;
-          if (s.id.toLowerCase().includes('jhajjar') && godown !== 'jhajjar') return false;
-          if (s.id.toLowerCase().includes('jajjhar') && godown !== 'jhajjar') return false;
+        // Godown filtering for subs — applies to ALL users including admin
+        if (plant === 'jksuper' && godown) {
+          const sid = s.id.toLowerCase();
+          const slabel = (s.label || '').toLowerCase();
+          if ((sid.includes('kosli') || slabel.includes('kosli')) && godown !== 'kosli') return false;
+          if ((sid.includes('jhajjar') || sid.includes('jajjhar') || slabel.includes('jhajjar') || slabel.includes('jajjhar')) && godown !== 'jhajjar') return false;
+          if ((sid === 'jk_super' || slabel.includes('jk super')) && (godown === 'kosli' || godown === 'jhajjar')) return false;
         }
 
         if (!pKey || user?.role === 'admin') return true;
@@ -348,10 +350,11 @@ function AppInner() {
     const activeSection = plant === 'jklakshmi' ? 'jharli' : (plant || 'jksuper');
     if (n.section !== activeSection) return false;
 
-    // Godown filtering for top-level (skip for admins)
-    if (user?.role !== 'admin' && plant === 'jksuper' && godown) {
-      if (n.id.toLowerCase().includes('kosli') && godown !== 'kosli') return false;
-      if (n.id.toLowerCase().includes('jhajjar') && godown !== 'jhajjar') return false;
+    // Godown filtering for top-level — applies to ALL users including admin
+    if (plant === 'jksuper' && godown) {
+      const nid = n.id.toLowerCase();
+      if (nid.includes('kosli') && godown !== 'kosli') return false;
+      if (nid.includes('jhajjar') && godown !== 'jhajjar') return false;
     }
     
     if (n.sub && n.sub.length === 0) return false;

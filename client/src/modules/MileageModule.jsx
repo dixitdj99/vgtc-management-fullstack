@@ -19,7 +19,7 @@ function getMileageColor(kmPerL) {
     return '#f43f5e'; // red — poor
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }) {
+function StatCard({ icon: Icon, label, value, sub, color, orgName }) {
     return (
         <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',

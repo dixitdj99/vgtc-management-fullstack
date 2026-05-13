@@ -66,7 +66,7 @@ function printVoucher(v, org = {}) {
         const valDisplay = isDieselPending
             ? `FULL`
             : `- Rs.${d.val.toLocaleString()}`;
-        return `<tr><td style="padding:3px 0;color:#444;font-size:12px">${d.lbl}</td><td style="padding:3px 0;text-align:right;font-size:12px;color:#c0392b">${valDisplay}</td></tr>`;
+        return `<tr><td style="padding:5px 0;color:#000;font-size:13px;font-weight:600">${d.lbl}</td><td style="padding:5px 0;text-align:right;font-size:13px;font-weight:700;color:#000">${valDisplay}</td></tr>`;
     }).join('');
 
     let html = '';
@@ -227,58 +227,91 @@ function printVoucher(v, org = {}) {
         // Generic Slip Format for JK_Super, JK_Lakshmi, etc.
         html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;padding:10mm}
-.slip{width:165mm;margin:0 auto;border:2px solid #000;padding:10mm}
-h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:2px}
-.sub{text-align:center;font-size:10px;color:#555;margin:2px 0 8px}
-.div{border-top:1px dashed #000;margin:7px 0}
-.row{display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px}
-.lbl{font-weight:bold}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
-.cell{padding:5px 8px;border:1px solid #ccc;border-radius:4px}
-.cell-lbl{font-size:9px;font-weight:bold;color:#666;text-transform:uppercase;margin-bottom:2px}
-.cell-val{font-size:13px;font-weight:bold}
-.calc-box{border:1px solid #ccc;border-radius:6px;padding:8px 10px;margin-top:8px;background:#fafafa}
-.calc-title{font-size:9px;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
-.calc-table{width:100%}
-.gross-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #ddd;font-size:13px;font-weight:bold}
-.gross-formula{font-size:9px;color:#666;margin-top:1px}
-.total-box{display:flex;justify-content:space-between;padding:10px 12px;background:#000;color:#fff;border-radius:5px;margin-top:8px;font-size:15px;font-weight:900}
-.total-pending{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#92400e;color:#fff;border-radius:5px;margin-top:8px;font-size:13px;font-weight:900}
-.pending-badge{font-size:9px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:3px;font-weight:800;letter-spacing:0.04em}
-.pending-note{font-size:9.5px;color:#92400e;font-weight:700;margin-top:5px;padding:5px 8px;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;line-height:1.4}
-.sig{display:flex;justify-content:space-between;margin-top:18px;font-size:11px}
-.sl{border-top:1px solid #000;padding-top:4px;min-width:100px;text-align:center}
-@media print{body{padding:0}}</style></head>
-<body><div class="slip">
-<h1>${orgName}</h1>
-<div class="sub">${v.type ? v.type.replace('_', ' ') : ''} Voucher</div>
-<div class="div"></div>
-<div class="row"><span><span class="lbl">LR No.:</span> #${v.lrNo}</span><span><span class="lbl">Date:</span> ${v.date}</span></div>
-<div class="row"><span><span class="lbl">Truck:</span> ${v.truckNo}</span><span><span class="lbl">Destination:</span> ${v.destination || '—'}</span></div>
-<div class="div"></div>
-<div class="grid">
-<div class="cell"><div class="cell-lbl">Weight</div><div class="cell-val">${v.weight} MT</div></div>
-<div class="cell"><div class="cell-lbl">Bags</div><div class="cell-val">${v.bags}</div></div>
-<div class="cell"><div class="cell-lbl">Rate</div><div class="cell-val">Rs.${v.rate}/MT</div></div>
-<div class="cell"><div class="cell-lbl">Pump</div><div class="cell-val">${getPumpDisplay(v.pump)}</div></div>
+<style>
+@page{margin:8mm}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;font-size:14px;padding:10px;width:100%;color:#000;line-height:1.4}
+
+.header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}
+.header .h1{font-size:22px;font-weight:900;letter-spacing:0.5px;color:#000}
+.header .h2{font-size:15px;font-weight:800;margin-top:4px;color:#000}
+.header .addr{font-size:12px;font-weight:400;color:#000;margin-top:4px}
+
+.voucher-badge-wrap{text-align:center;margin-bottom:16px}
+.voucher-badge{font-size:18px;font-weight:900;border:2px solid #000;display:inline-block;padding:4px 20px;letter-spacing:1px;color:#000}
+.voucher-type{font-size:13px;font-weight:700;color:#000;margin-top:4px}
+
+.info-section{margin-bottom:14px;border:1px solid #000;border-radius:4px;overflow:hidden}
+.info-row{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #000;font-size:14px}
+.info-row:last-child{border-bottom:none}
+.info-row .lbl{font-weight:800;font-size:13px;color:#000;text-transform:uppercase;letter-spacing:0.5px}
+.info-row .val{font-weight:600;font-size:15px;text-align:right;color:#000}
+
+.data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.data-cell{padding:10px 14px;border:1px solid #000;border-radius:4px}
+.data-cell .clbl{font-size:11px;font-weight:800;color:#000;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px}
+.data-cell .cval{font-size:17px;font-weight:900;color:#000}
+
+.calc-box{border:1px solid #000;border-radius:4px;padding:12px 14px;margin-bottom:14px}
+.calc-title{font-size:12px;font-weight:800;color:#000;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;border-bottom:1px solid #000;padding-bottom:6px}
+.calc-row{display:flex;justify-content:space-between;padding:5px 0;font-size:14px;font-weight:700;color:#000;border-bottom:1px solid #999}
+.calc-row:last-child{border-bottom:none}
+.calc-formula{font-size:11px;color:#000;margin-top:2px;font-weight:400}
+.calc-table{width:100%;margin-top:8px}
+.calc-table td{padding:5px 0;font-size:13px;color:#000}
+
+.total-box{display:flex;justify-content:space-between;padding:12px 16px;background:#000;color:#fff;border-radius:4px;margin-bottom:14px;font-size:18px;font-weight:900}
+.total-pending{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#92400e;color:#fff;border-radius:4px;margin-bottom:14px;font-size:15px;font-weight:900}
+.pending-badge{font-size:10px;background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:3px;font-weight:800}
+.pending-note{font-size:11px;color:#92400e;font-weight:700;padding:8px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;margin-bottom:14px}
+
+.sig{display:flex;justify-content:space-between;margin-top:40px}
+.sig-box{text-align:center;font-size:12px;font-weight:800;min-width:100px;border-top:1.5px solid #000;padding-top:6px;text-transform:uppercase;letter-spacing:0.5px}
+
+@media print{.no-print{display:none}}
+</style></head>
+<body>
+<div class="header">
+  <div class="h1">Vikas Goods Transport Company</div>
+  <div class="h2">Voucher</div>
+  <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar</div>
 </div>
+
+<div class="voucher-badge-wrap">
+  <div class="voucher-badge">LR # ${v.lrNo}</div>
+  <div class="voucher-type">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
+</div>
+
+<div class="info-section">
+  <div class="info-row"><span class="lbl">Date</span><span class="val">${v.date}</span></div>
+  <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${v.truckNo}</span></div>
+  <div class="info-row"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
+</div>
+
+<div class="data-grid">
+  <div class="data-cell"><div class="clbl">Weight</div><div class="cval">${v.weight} MT</div></div>
+  <div class="data-cell"><div class="clbl">Bags</div><div class="cval">${v.bags}</div></div>
+  <div class="data-cell"><div class="clbl">Rate</div><div class="cval">Rs.${v.rate}/MT</div></div>
+  <div class="data-cell"><div class="clbl">Pump</div><div class="cval">${getPumpDisplay(v.pump)}</div></div>
+</div>
+
 <div class="calc-box">
-<div class="calc-title">Payment Calculation</div>
-<div class="gross-row">
-  <span>Gross Total</span>
-  <span>Rs.${Math.round(n.gross).toLocaleString()}</span>
+  <div class="calc-title">Payment Calculation</div>
+  <div class="calc-row"><span>Gross Total</span><span>Rs.${Math.round(n.gross).toLocaleString()}</span></div>
+  <div class="calc-formula">${v.weight} MT × Rs.${v.rate}/MT</div>
+  ${deductionRows.length > 0 ? `<table class="calc-table">${deductionHTML}${!n.dieselPending ? `<tr style="border-top:1.5px solid #999"><td style="padding:6px 0;font-weight:900;font-size:14px">Total Deductions</td><td style="text-align:right;font-weight:900;font-size:14px;color:#c0392b">- Rs.${Math.round(n.totalDeductions).toLocaleString()}</td></tr>` : ''}</table>` : ''}
 </div>
-<div class="gross-formula">${v.weight} MT × Rs.${v.rate}/MT</div>
-${deductionRows.length > 0 ? `<table class="calc-table" style="margin-top:6px">${deductionHTML}${!n.dieselPending ? `<tr style="border-top:1px solid #bbb"><td style="padding:4px 0;font-weight:bold;font-size:12px">Total Deductions</td><td style="text-align:right;font-weight:bold;font-size:12px;color:#c0392b">- Rs.${Math.round(n.totalDeductions).toLocaleString()}</td></tr>` : ''}</table>` : ''}
-</div>
+
 ${n.dieselPending
     ? `<div class="total-pending"><span>NET PAYABLE</span><span class="pending-badge">&#8987; DIESEL PENDING</span></div>
-       <div class="pending-note">&#9888; Diesel advance is <strong>FULL TANK</strong> &mdash; the actual amount has not been entered yet. Net payable will be finalised once the diesel amount is updated in the system.</div>`
+       <div class="pending-note">&#9888; Diesel advance is <strong>FULL TANK</strong> — the actual amount has not been entered yet. Net payable will be finalised once the diesel amount is updated.</div>`
     : `<div class="total-box"><span>NET PAYABLE</span><span>Rs.${Math.round(n.net).toLocaleString()}</span></div>`
 }
-<div class="div"></div>
-<div class="sig"><div class="sl">Driver</div><div class="sl">Accountant</div><div class="sl">Authorised</div></div>
+
+<div class="sig">
+  <div class="sig-box">Driver Sign</div>
+  <div class="sig-box">Accountant</div>
+  <div class="sig-box">Authorised Sign</div>
 </div>
 <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
 </body></html>`;

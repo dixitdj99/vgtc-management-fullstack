@@ -20,9 +20,9 @@ const firestoreCreate = async (orgId, data, col) => {
 const firestoreGetAll = async (orgId, col) => {
     const snapshot = await db.collection(col)
         .where('orgId', '==', orgId)
-        .orderBy('createdAt', 'desc')
         .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 };
 
 const firestoreGetByTruck = async (orgId, truckNo, col) => {

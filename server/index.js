@@ -35,6 +35,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const { requireAuth } = require('./middleware/auth');
 const auditRoutes = require('./routes/auditRoutes');
+const { getEnvCol } = require('./utils/collectionUtils');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
@@ -89,14 +90,17 @@ app.use('/api/maintenance', requireAuth, maintenanceRoutes);
 
 const PORT = process.env.PORT || 5000;
 
+const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+
 app.get('/', async (req, res) => {
     const code = req.query.code;
     const error = req.query.error;
 
     if (error) {
+        const safeError = escapeHtml(error);
         return res.send(`<html><body><script>
-            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: '${error}' }, '*'); window.close(); }
-        </script><p>Authorization failed: ${error}</p></body></html>`);
+            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Authorization failed' }, '*'); window.close(); }
+        </script><p>Authorization failed: ${safeError}</p></body></html>`);
     }
 
     if (code) {
@@ -115,7 +119,7 @@ app.get('/', async (req, res) => {
         } catch (e) {
             return res.send(`<html><body><script>
                 if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Token exchange failed' }, '*'); window.close(); }
-            </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#f43f5e">&#x274c; Authorization failed: ${e.message}</p></body></html>`);
+            </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#f43f5e">&#x274c; Authorization failed.</p></body></html>`);
         }
     }
 
@@ -135,7 +139,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
         // Schedule daily fleet alerts: every day at 09:00 AM
         cron.schedule('0 9 * * *', () => {
             console.log('[Cron] Running daily fleet alert checks...');
-            alertService.sendDailyAlertReport('vgtc', 'vehicles'); 
+            alertService.sendDailyAlertReport('vgtc', getEnvCol('vehicles'));
         });
     });
 }

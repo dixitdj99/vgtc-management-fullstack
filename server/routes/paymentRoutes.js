@@ -21,9 +21,9 @@ router.get('/', async (req, res) => {
         } else {
             const snapshot = await db.collection(getCol(PAYMENTS_COL, req))
                 .where('orgId', '==', req.orgId)
-                .orderBy('date', 'desc')
                 .get();
             docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         }
         res.json(docs);
     } catch (err) {

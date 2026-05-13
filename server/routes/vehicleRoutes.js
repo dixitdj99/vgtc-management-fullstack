@@ -59,10 +59,20 @@ router.post('/deduct-gps', async (req, res) => {
     }
 });
 
-// Trigger Alert Report (Email Intent)
+// Trigger fleet-wide alert report
 router.get('/alerts/report', async (req, res) => {
     try {
         const result = await alertService.sendDailyAlertReport(req.orgId, getCol(BASE_COL, req));
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Trigger alert for a single vehicle
+router.get('/alerts/vehicle/:id', async (req, res) => {
+    try {
+        const result = await alertService.sendVehicleAlert(req.orgId, req.params.id, getCol(BASE_COL, req));
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });

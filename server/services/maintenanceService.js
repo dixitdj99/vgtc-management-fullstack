@@ -243,7 +243,7 @@ const getMaintenanceAlerts = async (orgId) => {
     const key = `${r.truckNo}_${r.partId}`;
     if (!alerts[key]) {
       const partInfo = PARTS_CATALOG[r.partId];
-      if (!partInfo) return;
+      if (!partInfo) continue;
 
       // Check for custom intervals in the latest record
       const kmInterval = r.customIntervalKm !== undefined && r.customIntervalKm !== null 

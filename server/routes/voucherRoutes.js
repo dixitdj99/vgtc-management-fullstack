@@ -45,10 +45,11 @@ router.post('/', async (req, res) => {
                     await generateVoucherPDF(voucherData, localPath);
 
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    // Route to exact Plant folders instead of global 'Dump'
                     const plantLabel = (req.body.brand === 'jklakshmi' || voucherData.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
                     const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
-                    const finalFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
+                    const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
+                    const monthStr = new Date(voucherData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                    const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 

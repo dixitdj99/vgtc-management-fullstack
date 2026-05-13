@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Banknote, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
+import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
 
@@ -420,17 +420,37 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
     const handleSendAlerts = async () => {
         const email = "VIKASKUMAR909040@GMAIL.COM";
-        
         try {
             const res = await ax.get('/vehicles/alerts/report');
             if (res.data.success) {
-                alert(`Alerts Processed! Email report sent to ${email} (Check your Inbox/Spam).`);
+                const { count = 0, total = 0 } = res.data;
+                const summary = count > 0
+                    ? `${count} of ${total} vehicle(s) have issues.`
+                    : `All ${total} vehicles OK.`;
+                alert(`Fleet status report sent to ${email}.\n${summary}\nCheck your Inbox/Spam.`);
             } else {
-                alert(`Email skip: ${res.data.message || 'No alerts to send today.'}`);
+                alert(`Failed: ${res.data.message || res.data.error || 'No data found.'}`);
             }
         } catch (err) {
             console.error('Email trigger failed:', err);
             alert('Failed to send email alert. Check server connection.');
+        }
+    };
+
+    const handleSendVehicleAlert = async (vehicleId, truckNo) => {
+        const email = "VIKASKUMAR909040@GMAIL.COM";
+        try {
+            const res = await ax.get(`/vehicles/alerts/vehicle/${vehicleId}`);
+            if (res.data.success) {
+                const { count = 0 } = res.data;
+                const summary = count > 0 ? `${count} issue(s) found.` : 'No issues — all OK.';
+                alert(`Alert report for ${truckNo} sent to ${email}.\n${summary}`);
+            } else {
+                alert(`Failed: ${res.data.message || res.data.error || 'Unknown error.'}`);
+            }
+        } catch (err) {
+            console.error('Vehicle alert failed:', err);
+            alert(`Failed to send alert for ${truckNo}.`);
         }
     };
 
@@ -734,6 +754,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                             {v.ownershipType === 'self' && (
                                                                 <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'rgba(245,158,11,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Wrench size={14} /></button>
                                                             )}
+                                                            <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert email for this vehicle" style={{ color: '#8b5cf6', border: 'none', background: 'rgba(139,92,246,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Bell size={14} /></button>
                                                             <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'rgba(59,130,246,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Edit3 size={14} /></button>
                                                             <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'rgba(244,63,94,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Trash2 size={14} /></button>
                                                         </div>

@@ -185,6 +185,7 @@ const verifyOTP = async (id, code) => {
     const user = await findById(id);
     if (!user || !user.otpCode || user.otpCode !== code) return false;
     
+    if (!user.otpExpiry) return false;
     const expiry = new Date(user.otpExpiry);
     if (expiry < new Date()) return false;
 

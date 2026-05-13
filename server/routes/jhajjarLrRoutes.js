@@ -42,12 +42,11 @@ router.post('/', async (req, res) => {
                     await generateLoadingReceiptPDF(fullData, localPath);
 
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    
                     const brand = req.body.brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
                     const plantFolder = await driveService.getOrCreateFolder(brand, rootId);
-                    
-                    // Match requested architecture
-                    const finalFolder = await driveService.getOrCreateFolder('Loading Receipt Individual', plantFolder);
+                    const lrFolder = await driveService.getOrCreateFolder('Loading Receipts', plantFolder);
+                    const monthStr = new Date(fullData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                    const finalFolder = await driveService.getOrCreateFolder(monthStr, lrFolder);
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 
@@ -129,7 +128,7 @@ router.put('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.orgId, req.params.id, getCol(BASE_COL, req), getCol(META_COL, req));
+        await lrService.deleteLoadingReceipt(req.params.id, getCol(BASE_COL, req), getCol(META_COL, req));
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
             await sheetsService.deleteLrRow(req.params.id, req.query.brand === 'jklakshmi' ? 'jklakshmi' : 'jksuper').catch(()=>{});

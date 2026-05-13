@@ -42,12 +42,11 @@ router.post('/', async (req, res) => {
                     await generateLoadingReceiptPDF(fullData, localPath);
 
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    
                     const brand = req.body.brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
                     const plantFolder = await driveService.getOrCreateFolder(brand, rootId);
-                    
-                    // Match requested architecture
-                    const finalFolder = await driveService.getOrCreateFolder('Loading Receipt Individual', plantFolder);
+                    const lrFolder = await driveService.getOrCreateFolder('Loading Receipts', plantFolder);
+                    const monthStr = new Date(fullData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                    const finalFolder = await driveService.getOrCreateFolder(monthStr, lrFolder);
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 

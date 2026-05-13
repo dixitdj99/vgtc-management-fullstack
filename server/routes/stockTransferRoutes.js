@@ -97,9 +97,9 @@ router.get('/', async (req, res) => {
         if (firebaseAvailable()) {
             const snap = await db.collection(col)
                 .where('orgId', '==', req.orgId)
-                .orderBy('createdAt', 'desc')
                 .get();
             transfers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            transfers.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         } else {
             transfers = localStore.getAll(col).filter(d => d.orgId === req.orgId).sort((a, b) => new Date(b.date) - new Date(a.date));
         }

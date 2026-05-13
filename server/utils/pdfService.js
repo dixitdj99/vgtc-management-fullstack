@@ -278,138 +278,103 @@ async function generateVoucherPDF(v, outputPath) {
             return;
         }
 
-        // PW=467 (approx 165mm), PH depends on content, we will use a tall fixed height
-        const PW = 467, PH = 550, M = 28, CW = PW - M * 2;
-        const doc = new PDFDocument({ margin: 0, size: [PW, PH] });
+        const doc = new PDFDocument({ margin: 30, size: 'A6' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
-
-        // Draw outer thick black border (like the physical slip)
-        doc.rect(M - 10, M - 10, CW + 20, PH - (M * 2) + 20).strokeColor('#000').lineWidth(2).stroke();
-
+        const PW = doc.page.width, M = 30, CW = PW - M * 2;
         let y = M;
 
-        function dashedLine(dy) {
-            doc.moveTo(M, dy).lineTo(PW - M, dy).strokeColor('#000').dash(4, { space: 4 }).lineWidth(0.5).stroke();
-            doc.undash();
-        }
-
-        doc.fontSize(16).font('Helvetica-Bold').fillColor('#000').text('VIKAS GOODS TRANSPORT', { align: 'center', characterSpacing: 1.5 });
-        doc.fontSize(10).font('Helvetica').fillColor('#555')
-            .text(`${v.type ? v.type.replace('_', ' ') : 'Dump'} Voucher`, { align: 'center' });
-        y += 24;
-
-        dashedLine(y); y += 8;
-
-        // LR + Date
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('LR No.:', M, y);
-        doc.font('Helvetica').text(`#${v.lrNo}`, M + 45, y);
-        doc.font('Helvetica-Bold').text('Date:', PW / 2, y);
-        doc.font('Helvetica').text(v.date || '—', PW / 2 + 35, y);
-        y += 18;
-
-        // Truck + Destination
-        doc.font('Helvetica-Bold').text('Truck:', M, y);
-        doc.font('Helvetica').text(v.truckNo || '—', M + 42, y);
-        doc.font('Helvetica-Bold').text('Destination:', PW / 2, y);
-        doc.font('Helvetica').text(v.destination || '—', PW / 2 + 70, y);
+        // Header — matches browser print
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
         y += 16;
-        
-        doc.font('Helvetica-Bold').text('Party:', M, y);
-        const pText = v.partyName ? `${v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '')} ${v.partyCode ? `(${v.partyCode})` : ''}` : '—';
-        doc.font('Helvetica').text(pText, M + 42, y, { width: CW - 42 });
+        doc.fontSize(10).font('Helvetica-Bold').text('Voucher', M, y, { align: 'center', width: CW });
+        y += 12;
+        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
+        y += 12;
+        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
+        y += 10;
+
+        // LR badge
+        const badge = `LR # ${v.lrNo}`;
+        const bw = doc.widthOfString(badge) + 20;
+        doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
+        doc.fontSize(12).font('Helvetica-Bold').text(badge, M, y + 4, { align: 'center', width: CW });
+        y += 22;
+        doc.fontSize(8).font('Helvetica').fillColor('#000').text(v.type ? v.type.replace(/_/g, ' ') : '', M, y, { align: 'center', width: CW });
         y += 14;
 
-        dashedLine(y); y += 10;
+        // Info rows
+        const drawInfoRow = (label, value) => {
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), M, y);
+            doc.font('Helvetica').text(String(value || '—'), M + CW * 0.4, y, { width: CW * 0.6, align: 'right' });
+            y += 14;
+            doc.moveTo(M, y - 2).lineTo(PW - M, y - 2).strokeColor('#000').lineWidth(0.3).stroke();
+        };
+        drawInfoRow('Date', v.date);
+        drawInfoRow('Truck No.', v.truckNo);
+        drawInfoRow('Destination', v.destination || '—');
+        y += 4;
 
-        // 2x2 grid: Weight, Bags, Rate, Pump
-        const CELLW = (CW - 6) / 2, CELLH = 34;
+        // Data grid 2x2
+        const CELLW = (CW - 4) / 2, CELLH = 28;
         const drawCell = (label, value, cx, cy) => {
-            doc.rect(cx, cy, CELLW, CELLH).strokeColor('#ccc').lineWidth(0.5).stroke();
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text(label.toUpperCase(), cx + 8, cy + 6, { width: CELLW - 10 });
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text(String(value || '—'), cx + 8, cy + 18, { width: CELLW - 10 });
+            doc.rect(cx, cy, CELLW, CELLH).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), cx + 6, cy + 4);
+            doc.fontSize(11).font('Helvetica-Bold').text(String(value || '—'), cx + 6, cy + 14);
         };
         drawCell('Weight', `${v.weight} MT`, M, y);
-        drawCell('Bags', v.bags || '—', M + CELLW + 6, y);
-        y += CELLH + 6;
+        drawCell('Bags', v.bags || '—', M + CELLW + 4, y);
+        y += CELLH + 4;
         drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
-        drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 6, y);
-        y += CELLH + 12;
-
-        if (v.materials && v.materials.length > 0) {
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('MATERIALS', M, y);
-            y += 12;
-            doc.moveTo(M, y-2).lineTo(PW - M, y-2).strokeColor('#eee').stroke();
-            v.materials.forEach(m => {
-                doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(m.type || m.material || 'Cement', M, y);
-                doc.font('Helvetica').text(m.bags + ' Bags', M + 140, y);
-                doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, PW - M - 80, y, { align: 'right', width: 80 });
-                y += 16;
-            });
-            y += 8;
-        } else if (v.materialName) {
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('MATERIAL', M, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(v.materialName, M + 60, y);
-            y += 18;
-        }
+        drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 4, y);
+        y += CELLH + 8;
 
         // Calc box
-        const calcH = 46 + deductions.length * 16 + (deductions.length > 0 && !dieselPending ? 20 : 0);
-        doc.rect(M, y, CW, calcH).fill('#fafafa').strokeColor('#ccc').lineWidth(0.5).stroke();
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('PAYMENT CALCULATION', M + 10, y + 8, { characterSpacing: 0.5 });
+        doc.rect(M, y, CW, 16).fill('#e8e8e8');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text('PAYMENT CALCULATION', M + 6, y + 4);
+        y += 18;
 
-        const calcY = y + 22;
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('Gross Total', M + 10, calcY);
-        doc.text(`Rs.${Math.round(gross).toLocaleString()}`, M + 10, calcY, { width: CW - 20, align: 'right' });
-        doc.moveTo(M + 10, calcY + 16).lineTo(PW - M - 10, calcY + 16).strokeColor('#ddd').lineWidth(1).stroke();
-        doc.fontSize(8).font('Helvetica').fillColor('#666').text(`${v.weight} MT × Rs.${v.rate}/MT`, M + 10, calcY + 18);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Gross Total', M + 6, y);
+        doc.text(`Rs.${Math.round(gross).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
+        y += 14;
+        doc.fontSize(7).font('Helvetica').text(`${v.weight} MT x Rs.${v.rate}/MT`, M + 6, y);
+        y += 12;
 
-        let dy = calcY + 34;
         deductions.forEach(d => {
-            doc.fontSize(11).font('Helvetica').fillColor('#444').text(d.label, M + 10, dy);
-            if (d.isPending) {
-                doc.fillColor('#92400e').text('FULL (Pending)', M + 10, dy, { width: CW - 20, align: 'right' });
-            } else {
-                doc.fillColor('#c0392b').text(`- Rs.${d.value.toLocaleString()}`, M + 10, dy, { width: CW - 20, align: 'right' });
-            }
-            dy += 16;
+            doc.fontSize(9).font('Helvetica').fillColor('#000').text(d.label, M + 6, y);
+            doc.font('Helvetica-Bold').text(d.isPending ? 'FULL (Pending)' : `- Rs.${d.value.toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
+            y += 13;
         });
 
         if (deductions.length > 0 && !dieselPending) {
-            doc.moveTo(M + 10, dy - 2).lineTo(PW - M - 10, dy - 2).strokeColor('#bbb').lineWidth(0.5).stroke();
-            doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text('Total Deductions', M + 10, dy + 2);
-            doc.fillColor('#c0392b').text(`- Rs.${Math.round(totalDeductions).toLocaleString()}`, M + 10, dy + 2, { width: CW - 20, align: 'right' });
+            doc.moveTo(M + 6, y).lineTo(PW - M - 6, y).strokeColor('#000').lineWidth(0.5).stroke();
+            y += 4;
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text('Total Deductions', M + 6, y);
+            doc.text(`- Rs.${Math.round(totalDeductions).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
+            y += 14;
         }
-        y += calcH + 10;
 
-        // NET PAYABLE box
+        // NET PAYABLE
+        y += 4;
         if (dieselPending) {
-            doc.rect(M, y, CW, 36).fill('#92400e');
-            doc.fontSize(13).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 12, y + 12);
-            doc.fontSize(10).text('⏳ DIESEL PENDING', M + 12, y + 13, { width: CW - 24, align: 'right' });
-            y += 44;
-            
-            doc.rect(M, y, CW, 30).fill('#fffbeb').strokeColor('#fcd34d').lineWidth(1).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#92400e')
-                .text('⚠ Diesel advance is FULL TANK — actual amount not entered yet.', M + 8, y + 8, { width: CW - 16 });
-            y += 40;
+            doc.rect(M, y, CW, 24).fill('#000');
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 8, y + 6);
+            doc.fontSize(9).text('DIESEL PENDING', M + 8, y + 7, { width: CW - 16, align: 'right' });
+            y += 30;
         } else {
-            doc.rect(M, y, CW, 36).fill('#000');
-            doc.fontSize(14).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 12, y + 11);
-            doc.text(`Rs.${Math.round(net).toLocaleString()}`, M + 12, y + 11, { width: CW - 24, align: 'right' });
-            y += 44;
+            doc.rect(M, y, CW, 24).fill('#000');
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 8, y + 6);
+            doc.text(`Rs.${Math.round(net).toLocaleString()}`, M + 8, y + 6, { width: CW - 16, align: 'right' });
+            y += 30;
         }
-
-        y += 8;
-        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(0.5).stroke();
-        y += 18;
 
         // Signatures
+        y = Math.max(y + 10, doc.page.height - 50);
         const sigW = CW / 3;
-        ['Driver', 'Accountant', 'Authorised'].forEach((lbl, i) => {
+        ['Driver Sign', 'Accountant', 'Authorised Sign'].forEach((lbl, i) => {
             const sx = M + i * sigW;
-            doc.moveTo(sx + 10, y).lineTo(sx + sigW - 15, y).strokeColor('#000').lineWidth(0.5).stroke();
-            doc.fontSize(10).font('Helvetica').fillColor('#000').text(lbl, sx, y + 6, { width: sigW, align: 'center' });
+            doc.moveTo(sx + 5, y).lineTo(sx + sigW - 5, y).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(lbl, sx, y + 4, { width: sigW, align: 'center' });
         });
 
         doc.end();
@@ -430,88 +395,77 @@ async function generateLoadingReceiptPDF(data, outputPath) {
     const totalWeight = materials.reduce((s, m) => s + (parseFloat(m.weight) || 0), 0);
 
     return new Promise((resolve, reject) => {
-        const PW = 595, PH = 500, M = 30, CW = PW - M * 2;
-        const doc = new PDFDocument({ margin: 0, size: [PW, PH] });
+        const doc = new PDFDocument({ margin: 30, size: 'A6' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
+        const PW = doc.page.width, M = 30, CW = PW - M * 2;
         let y = M;
 
-        doc.moveTo(M, y + 30).lineTo(PW - M, y + 30).strokeColor('#6366f1').lineWidth(3).stroke();
-        doc.fontSize(20).font('Helvetica-Bold').fillColor('#6366f1').text('Loading Receipt', M, y);
-        doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
-            .text(`LR #${data.lrNo}`, PW - M - 120, y, { width: 120, align: 'right' });
-        y += 42;
+        // Header — matches browser print
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('JK Lakshmi Depo Loading Receipt', M, y, { align: 'center', width: CW });
+        y += 16;
+        doc.fontSize(12).font('Helvetica-Bold').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
+        y += 14;
+        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
+        y += 12;
+        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
+        y += 10;
 
-        const infoW = (CW - 15) / 2;
-        const drawInfo = (label, value, ix, iy) => {
-            doc.rect(ix, iy, infoW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(label.toUpperCase(), ix + 10, iy + 7);
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(String(value || '—'), ix + 10, iy + 20);
-        };
-        drawInfo('Date', data.date, M, y);
-        drawInfo('Truck No.', data.truckNo, M + infoW + 15, y);
-        y += 42;
-
-        doc.rect(M, y, CW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('PARTY NAME', M + 10, y + 7);
-        const partyText = data.partyName ? `${data.partyName} ${data.partyCode ? `(${data.partyCode})` : ''}` : '—';
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(partyText, M + 10, y + 20);
-        y += 44;
-
-        if (data.destination) {
-            doc.rect(M, y, CW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('DESTINATION', M + 10, y + 7);
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(data.destination, M + 10, y + 20);
-            y += 44;
-        }
-
-        if (data.billing && data.billing !== 'No') {
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('ATTACHED CHALLANS', M, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(data.billing, M + 130, y);
-            y += 16;
-        }
-
-        const C1 = M, C2 = M + CW * 0.4, C3 = M + CW * 0.65, C4 = M + CW * 0.85;
-        doc.rect(M, y, CW, 22).fill('#f1f5f9');
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text('MATERIAL', C1 + 8, y + 7);
-        doc.text('LOADING TYPE', C2 + 8, y + 7);
-        doc.text('BAGS', C3 + 8, y + 7);
-        doc.text('WEIGHT (MT)', C4 + 8, y + 7);
-        y += 22;
-
-        materials.forEach((m, i) => {
-            const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-            doc.rect(M, y, CW, 24).fill(rowBg).strokeColor('#cbd5e1').lineWidth(0.3).stroke();
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(m.type || m.material || '—', C1 + 8, y + 8);
-            
-            // Simulating the colored tag background for loadingType
-            const lType = m.loadingType || data.loadingType || 'From Godown';
-            doc.fontSize(9).font('Helvetica-Bold').fillColor(lType === 'Crossing' ? '#92400e' : '#166534').text(lType, C2 + 8, y + 8);
-
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(String(m.bags || m.totalBags || 0), C3 + 8, y + 8);
-            doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, C4 + 8, y + 8);
-            y += 24;
-        });
-
-        doc.rect(M, y, CW, 22).fill('#f8fafc').strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('TOTAL', C1 + 8, y + 7, { width: C3 - C1 - 10, align: 'right' });
-        doc.text(String(totalBags), C3 + 8, y + 7);
-        doc.text(`${totalWeight.toFixed(2)} MT`, C4 + 8, y + 7);
+        // LR badge
+        const badge = `LR # ${data.lrNo}`;
+        const bw = doc.widthOfString(badge) + 20;
+        doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
+        doc.fontSize(12).font('Helvetica-Bold').text(badge, M, y + 4, { align: 'center', width: CW });
         y += 26;
 
-        if (data.note) {
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('NOTES / REMARKS', M, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(data.note, M, y + 15, { width: CW });
-            y += 35;
-        }
+        // Info rows
+        const drawInfoRow = (label, value) => {
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), M, y);
+            doc.font('Helvetica').text(String(value || '—'), M + CW * 0.4, y, { width: CW * 0.6, align: 'right' });
+            y += 14;
+            doc.moveTo(M, y - 2).lineTo(PW - M, y - 2).strokeColor('#ccc').lineWidth(0.5).stroke();
+        };
+        drawInfoRow('Date', data.date);
+        drawInfoRow('Truck No.', data.truckNo);
+        drawInfoRow('Party Name', data.partyName);
+        if (data.billing && data.billing !== 'No') drawInfoRow('Challans', data.billing);
+        y += 6;
 
-        if (data.voiceMessageBase64) {
-            doc.fontSize(10).font('Helvetica-Oblique').fillColor('#6366f1').text('🎙 Voice message attached to this receipt (available in app).', M, y);
-            y += 20;
-        }
+        // Table
+        const cols = [M, M + CW * 0.35, M + CW * 0.6, M + CW * 0.8];
+        doc.rect(M, y, CW, 16).fill('#e8e8e8');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000');
+        doc.text('MATERIAL', cols[0] + 4, y + 4);
+        doc.text('TYPE', cols[1] + 4, y + 4);
+        doc.text('BAGS', cols[2] + 4, y + 4);
+        doc.text('WT (MT)', cols[3] + 4, y + 4);
+        y += 16;
 
-        doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-            .text(`System Backup | LR #${data.lrNo} | Generated: ${new Date().toLocaleString('en-IN')}`, M, y + 10, { width: CW, align: 'center' });
+        materials.forEach(m => {
+            doc.rect(M, y, CW, 16).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(9).font('Helvetica').fillColor('#000');
+            doc.text(m.type || m.material || '—', cols[0] + 4, y + 4);
+            doc.font('Helvetica-Bold').text(m.loadingType || data.loadingType || 'Godown', cols[1] + 4, y + 4);
+            doc.font('Helvetica').text(String(m.bags || m.totalBags || 0), cols[2] + 4, y + 4);
+            doc.text(`${parseFloat(m.weight || 0).toFixed(2)}`, cols[3] + 4, y + 4);
+            y += 16;
+        });
+
+        doc.rect(M, y, CW, 16).fill('#e8e8e8').strokeColor('#000').lineWidth(1).stroke();
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
+        doc.text('TOTAL', cols[0] + 4, y + 4, { width: cols[2] - cols[0] - 8, align: 'right' });
+        doc.text(String(totalBags), cols[2] + 4, y + 4);
+        doc.text(`${totalWeight.toFixed(2)} MT`, cols[3] + 4, y + 4);
+        y += 24;
+
+        // Signatures
+        y = Math.max(y, doc.page.height - 50);
+        const sigW = CW / 3;
+        ['Driver Sign', 'Receiver Sign', 'Authorised Sign'].forEach((lbl, i) => {
+            const sx = M + i * sigW;
+            doc.moveTo(sx + 5, y).lineTo(sx + sigW - 5, y).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(lbl, sx, y + 4, { width: sigW, align: 'center' });
+        });
 
         doc.end();
         stream.on('finish', () => resolve(outputPath));

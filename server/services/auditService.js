@@ -64,11 +64,9 @@ const getLog = async (orgId, { limit = 30, offset = 0 } = {}) => {
     let entries = [];
 
     if (isAvailable()) {
-        let query = db.collection(col).where('orgId', '==', orgId).orderBy('timestamp', 'desc');
-        // Firestore doesn't support offset natively — use limit and skip via cursor
-        // For simplicity, fetch limit + offset and slice
-        const snapshot = await query.limit(limit + offset).get();
+        const snapshot = await db.collection(col).where('orgId', '==', orgId).get();
         entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        entries.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
         entries = entries.slice(offset, offset + limit);
     } else {
         entries = localStore.getAll(col)

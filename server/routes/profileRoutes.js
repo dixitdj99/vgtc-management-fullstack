@@ -16,9 +16,13 @@ router.get('/', async (req, res) => {
             docs = docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         } else {
             const snapshot = await db.collection(getCol(PROFILE_COL, req))
-                .orderBy('createdAt', 'desc')
                 .get();
             docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            docs.sort((a, b) => {
+                const aT = a.createdAt?.seconds || new Date(a.createdAt || 0).getTime() / 1000;
+                const bT = b.createdAt?.seconds || new Date(b.createdAt || 0).getTime() / 1000;
+                return bT - aT;
+            });
         }
         res.json(docs);
     } catch (err) {

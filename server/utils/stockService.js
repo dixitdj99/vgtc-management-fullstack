@@ -24,9 +24,9 @@ const firestoreAddStock = async (orgId, data, sCol) => {
 const firestoreGetChallans = async (orgId, cCol) => {
     const snapshot = await db.collection(cCol)
         .where('orgId', '==', orgId)
-        .orderBy('createdAt', 'desc')
         .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 };
 
 const firestoreCreateChallan = async (orgId, data, cCol) => {
@@ -48,10 +48,9 @@ module.exports = {
         if (firebaseAvailable()) {
             const snap = await db.collection(col)
                 .where('orgId', '==', orgId)
-                .orderBy('createdAt')
                 .get();
             if (snap.empty) {
-                const defs = col === 'jkl_materials' ? ['PPC', 'OPC43', 'Pro+'] : MATERIALS;
+                const defs = col.includes('jkl_materials') ? ['PPC', 'OPC43', 'Pro+'] : MATERIALS;
                 const batch = db.batch();
                 const res = [];
                 for (const name of defs) {
@@ -125,17 +124,22 @@ module.exports = {
         if (firebaseAvailable()) {
             const snap = await db.collection(sCol)
                 .where('orgId', '==', orgId)
-                .orderBy('createdAt', 'desc')
                 .get();
-            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return docs.sort((a, b) => {
+                const aT = a.createdAt?.seconds || 0;
+                const bT = b.createdAt?.seconds || 0;
+                return bT - aT;
+            });
         }
         return localStore.getAll(sCol).filter(a => a.orgId === orgId);
     },
 
     getHistory: async (sCol = SCOL) => {
         if (firebaseAvailable()) {
-            const snap = await db.collection(sCol).orderBy('createdAt', 'desc').get();
-            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const snap = await db.collection(sCol).get();
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         }
         return localStore.getAll(sCol).sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
     },

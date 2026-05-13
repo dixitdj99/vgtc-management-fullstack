@@ -175,7 +175,6 @@ router.get('/fuel/:truckNo', async (req, res) => {
  */
 router.post('/fuel', async (req, res) => {
     try {
-        if (!isAvailable()) return res.status(400).json({ error: 'Database unavailable' });
         if (!req.body.truckNo) return res.status(400).json({ error: 'truckNo is required' });
         
         const payload = {
