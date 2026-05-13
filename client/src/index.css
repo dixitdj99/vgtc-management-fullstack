@@ -57,32 +57,32 @@
   --sidebar-bg: #29313A;
 }
 
-/* ── Fallback Sepia to Light ── */
+/* ── Sepia / Warm Parchment Theme ── */
 [data-theme="sepia"] {
-  --bg: #F4F4F6;
-  --bg-card: #FFFFFF;
-  --bg-input: #FFFFFF;
-  --bg-th: #F2F2F2;
-  --bg-tf: #E6E6E6;
-  --bg-filter: #FFFFFF;
-  --bg-row-even: #FFFFFF;
-  --bg-row-odd: #F9F9F9;
-  --bg-row-hover: #E5F0FA;
-  --border: #D9D9D9;
-  --border-row: #E5E5E5;
-  --primary: #0A6ED1;
-  --primary-glow: rgba(10, 110, 209, 0.2);
-  --accent: #107E3E;
-  --warn: #E9730C;
-  --danger: #BB0000;
-  --text: #1D2D3E;
-  --text-muted: #556B82;
-  --text-sub: #32363A;
+  --bg: #F5F0E8;
+  --bg-card: #FBF7F0;
+  --bg-input: #FBF7F0;
+  --bg-th: #EDE7DB;
+  --bg-tf: #E2DACE;
+  --bg-filter: #FBF7F0;
+  --bg-row-even: #FBF7F0;
+  --bg-row-odd: #F5F0E8;
+  --bg-row-hover: #EDE4D4;
+  --border: #D4C9B5;
+  --border-row: #E0D6C6;
+  --primary: #8B6914;
+  --primary-glow: rgba(139, 105, 20, 0.2);
+  --accent: #5E7A3A;
+  --warn: #C4760C;
+  --danger: #A03030;
+  --text: #3B2F20;
+  --text-muted: #7A6B55;
+  --text-sub: #5A4D3A;
   --radius: 6px;
   --radius-sm: 4px;
-  --shadow: 0 0.125rem 0.25rem 0 rgba(0, 0, 0, 0.08), 0 0.25rem 0.5rem 0 rgba(0, 0, 0, 0.04);
-  --topbar-bg: #354A5F;
-  --sidebar-bg: #FFFFFF;
+  --shadow: 0 0.125rem 0.25rem 0 rgba(60, 45, 20, 0.08), 0 0.25rem 0.5rem 0 rgba(60, 45, 20, 0.04);
+  --topbar-bg: #4A3C2A;
+  --sidebar-bg: #FBF7F0;
 }
 
 *,
@@ -1318,15 +1318,15 @@ select.fi option {
   --mx: 0.5; --my: 0.5;
 }
 
-/* Force white text in topbar on any weather background */
-.topbar:has(.weather-bg) .app-title,
-.topbar:has(.weather-bg) .user-name,
-.topbar:has(.weather-bg) .user-role,
-.topbar:has(.weather-bg) .notif-btn,
-.topbar:has(.weather-bg) .theme-toggle-btn { color: #ffffff !important; }
-.topbar:has(.weather-bg) .notif-btn,
-.topbar:has(.weather-bg) .theme-toggle-btn { border-color: rgba(255,255,255,0.25) !important; }
-.topbar:has(.weather-bg) .sep-v { background: rgba(255,255,255,0.2) !important; }
+/* Force white text in topbar — always visible on weather backgrounds */
+.topbar .app-title,
+.topbar .user-name,
+.topbar .notif-btn,
+.topbar .theme-toggle-btn { color: #ffffff !important; text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+.topbar .user-role { color: rgba(255,255,255,0.85) !important; }
+.topbar .notif-btn,
+.topbar .theme-toggle-btn { border-color: rgba(255,255,255,0.25) !important; }
+.topbar .sep-v { background: rgba(255,255,255,0.25) !important; }
 
 /* Parallax for children - reactive to --mx/--my from App.jsx */
 .weather-bg > div, .weather-bg::before, .weather-bg::after {

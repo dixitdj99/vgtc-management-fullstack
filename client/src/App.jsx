@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X } from 'lucide-react';
+import TruckLoader from './components/TruckLoader';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ax from './api';
 import LoginPage from './pages/LoginPage';
@@ -395,11 +396,11 @@ function AppInner() {
       height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
       color: 'var(--text-muted)'
     }}>
-      <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
-      <div style={{ fontSize: '13px', fontWeight: 800, letterSpacing: '0.05em', color: isWakingUp ? '#f59e0b' : 'var(--text)' }}>
-        {isWakingUp ? 'Waking up database server... (this can take ~50 seconds)' : 'AUTHENTICATING...'}
-      </div>
-      {isWakingUp && <div style={{ fontSize: '11px', marginTop: '8px', opacity: 0.7 }}>Render free tiers spin down after 15 minutes of inactivity. Please wait.</div>}
+      <TruckLoader
+        size={160}
+        text={isWakingUp ? 'Waking up server...' : 'Loading VGTC...'}
+        subText={isWakingUp ? 'Server spins down after inactivity. Please wait ~50 seconds.' : 'Authenticating your session'}
+      />
     </div>
   );
 
@@ -416,7 +417,7 @@ function AppInner() {
       <div className={`sidebar-overlay${showMobileMenu ? ' show-mobile' : ''}`} onClick={() => setShowMobileMenu(false)} />
       <aside className={`sidebar${col ? ' collapsed' : ''}${showMobileMenu ? ' show-mobile' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand-icon"><LayoutDashboard size={22} color="white" /></div>
+          <div className="brand-icon"><img src="/vgtc-logo.svg" alt="VGTC" width={26} height={26} style={{ borderRadius: 4 }} /></div>
           {!col && <div className="brand-text">
             <div className="brand-name">Vikas Goods</div>
             <div className="brand-sub">Transport System</div>
@@ -552,7 +553,7 @@ function AppInner() {
             <button className="mobile-menu-toggle" onClick={() => setShowMobileMenu(!showMobileMenu)}>
               {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="app-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div className="app-title" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
               {FILTERED_NAV.find(n => n.id === active)?.label}
               {/* Environment banner — visible in local/beta only */}
               {ENV_BANNER && (
@@ -604,11 +605,11 @@ function AppInner() {
                 {currentTheme.label}
               </span>
             </button>
-            <div className="sep-v" />
+            <div className="sep-v" style={{ background: 'rgba(255,255,255,0.3)' }} />
             <div className="user-chip">
               <div className="user-info">
-                <div className="user-name">{user.name}</div>
-                <div className="user-role">{user.role}</div>
+                <div className="user-name" style={{ color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>{user.name}</div>
+                <div className="user-role" style={{ color: 'rgba(255,255,255,0.8)' }}>{user.role}</div>
               </div>
               <div className="user-avatar" style={{ fontSize: '14px', fontWeight: 900, color: 'white' }}>
                 {user.name.charAt(0).toUpperCase()}

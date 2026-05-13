@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  ShoppingCart, Plus, History, Trash2, RefreshCw, 
-  Check, X, Search, Download, Printer, Filter, 
+import {
+  ShoppingCart, Plus, History, Trash2, RefreshCw,
+  Check, X, Search, Download, Printer, Filter,
   IndianRupee, Package, User, FileText, Calendar, Weight,
-  CreditCard, Banknote, ReceiptText
+  CreditCard, Banknote, ReceiptText, ArrowRightLeft
 } from 'lucide-react';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
@@ -41,6 +41,40 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
 
   const [form, setForm] = useState(getEmptyForm());
   const [filters, setFilters] = useState({});
+
+  // ── Cashbook Transfer ──
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferForm, setTransferForm] = useState({ amount: '', remark: '', date: new Date().toISOString().slice(0, 10), direction: 'to_cashbook' });
+  const [transferBusy, setTransferBusy] = useState(false);
+
+  const handleTransfer = async (e) => {
+    e.preventDefault();
+    const amt = parseFloat(transferForm.amount);
+    if (!amt || amt <= 0) { alert('Enter valid amount'); return; }
+    setTransferBusy(true);
+    try {
+      const cbApi = brand === 'jkl' ? '/jkl/cashbook' : '/cashbook';
+      if (transferForm.direction === 'to_cashbook') {
+        await ax.post(`${cbApi}/deposit`, {
+          amount: amt,
+          remark: `Sell Collection Transfer — ${transferForm.remark || 'Dump Sale Cash'}`,
+          date: transferForm.date
+        });
+        alert(`₹${amt.toLocaleString()} deposited to Cashbook successfully!`);
+      } else {
+        await ax.post(`${cbApi}/cash-out`, {
+          amount: amt,
+          remark: `Return to Sell — ${transferForm.remark || 'Cash Return'}`,
+          date: transferForm.date
+        });
+        alert(`₹${amt.toLocaleString()} returned from Cashbook successfully!`);
+      }
+      setTransferForm({ amount: '', remark: '', date: new Date().toISOString().slice(0, 10), direction: 'to_cashbook' });
+      setShowTransfer(false);
+    } catch (err) {
+      alert('Transfer failed: ' + (err.response?.data?.error || err.message));
+    } finally { setTransferBusy(false); }
+  };
 
   useEffect(() => {
     fetchSales();
@@ -185,14 +219,74 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     pwin.document.close();
   };
 
+  // Transfer Modal
+  const TransferModal = showTransfer && (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
+      <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }}
+        style={{ width: '90%', maxWidth: '420px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>Cashbook Transfer</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Move money between Sell & Cashbook</div>
+          </div>
+          <button onClick={() => setShowTransfer(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+        </div>
+
+        <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {[{ val: 'to_cashbook', label: 'Deposit to Cashbook', color: '#10b981' }, { val: 'from_cashbook', label: 'Return from Cashbook', color: '#f59e0b' }].map(d => (
+              <button key={d.val} type="button" onClick={() => setTransferForm(f => ({ ...f, direction: d.val }))}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid',
+                  borderColor: transferForm.direction === d.val ? d.color : 'var(--border)',
+                  background: transferForm.direction === d.val ? `${d.color}18` : 'var(--bg-input)',
+                  color: transferForm.direction === d.val ? d.color : 'var(--text-muted)',
+                  fontWeight: 700, fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s'
+                }}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="field">
+            <label>Amount (Rs.)</label>
+            <input className="fi" type="number" min="1" step="1" required placeholder="e.g. 5000"
+              value={transferForm.amount} onChange={e => setTransferForm(f => ({ ...f, amount: e.target.value }))} />
+          </div>
+          <div className="field">
+            <label>Date</label>
+            <input className="fi" type="date" value={transferForm.date}
+              onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} />
+          </div>
+          <div className="field">
+            <label>Remark</label>
+            <input className="fi" type="text" placeholder="e.g. Today's dump sale collection"
+              value={transferForm.remark} onChange={e => setTransferForm(f => ({ ...f, remark: e.target.value }))} />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+            <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => setShowTransfer(false)}>Cancel</button>
+            <button type="submit" className="btn btn-p" style={{ flex: 2 }} disabled={transferBusy}>
+              {transferBusy ? '...' : <><ArrowRightLeft size={14} /> {transferForm.direction === 'to_cashbook' ? 'Deposit to Cashbook' : 'Return from Cashbook'}</>}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+
   return (
     <div style={{ padding: '0 20px 40px' }}>
+      <AnimatePresence>{TransferModal}</AnimatePresence>
       <div className="page-hd">
         <div>
           <h1><ShoppingCart size={20} color="var(--accent)" /> {brand === 'jkl' ? 'JK Lakshmi' : 'Dump'} Sell</h1>
           <p>Tracking internal sales and bag deductions</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn btn-p btn-sm" onClick={() => setShowTransfer(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ArrowRightLeft size={14} /> Transfer to Cashbook
+          </button>
           <button className="btn btn-g btn-sm" onClick={fetchSales} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'ani-spin' : ''} /> Refresh
           </button>

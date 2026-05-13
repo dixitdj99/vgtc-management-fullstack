@@ -1,17 +1,17 @@
 {
-  "short_name": "Loading App",
-  "name": "VGTC Loading Status",
-  "description": "App for laborers to manage VGTC Loading Status",
+  "short_name": "VGTC",
+  "name": "Vikas Goods Transport Company",
+  "description": "VGTC Fleet & Transport Management System",
   "icons": [
     {
-      "src": "/user_truck.svg",
+      "src": "/vgtc-logo.svg",
       "type": "image/svg+xml",
       "sizes": "512x512",
       "purpose": "any maskable"
     }
   ],
-  "start_url": "/labour",
-  "background_color": "#1e293b",
-  "theme_color": "#1e293b",
+  "start_url": "/",
+  "background_color": "#0A6ED1",
+  "theme_color": "#0A6ED1",
   "display": "standalone"
 }

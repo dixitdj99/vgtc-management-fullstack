@@ -948,15 +948,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const fetchAdditions = async () => {
     try {
       const data = (await ax.get(`${API_STOCK}/additions`)).data;
-      setAdditions(data);
-    } catch { }
+      setAdditions(Array.isArray(data) ? data : []);
+    } catch (e) { console.error('fetchAdditions failed:', e.message); setAdditions([]); }
   };
 
   const fetchMaterials = async () => {
     try {
        const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
        if (data && data.length > 0) setMaterialObjs(data);
-    } catch { }
+    } catch (e) { console.error('fetchMaterials failed:', e.message); }
   };
 
   useEffect(() => {
@@ -1438,23 +1438,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         </select>
                       </div>
                       <div className="field">
-                        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>Bags</span>
-                          {m.type && (
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>
-                                 STOCK: {stockMap[m.type]?.physical || 0} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
-                               </span>
-                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>
-                                 CHALLAN PENDING: {stockMap[m.type]?.pendingChallan || 0} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
-                               </span>
-                            </div>
-                          )}
-                        </label>
+                        <label>Bags</label>
                         <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
                       </div>
                       <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
                     </div>
+                    {m.type && (
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981', padding: '3px 8px', background: 'rgba(16,185,129,0.08)', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                          Stock: {(stockMap[m.type]?.physical || 0).toLocaleString()} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#f59e0b', padding: '3px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                          Challan Pending: {(stockMap[m.type]?.pendingChallan || 0).toLocaleString()} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
+                        </span>
+                      </div>
+                    )}
                   </motion.div>
                 ))}
                 <hr className="sep" style={{ margin: '8px 0' }} />
