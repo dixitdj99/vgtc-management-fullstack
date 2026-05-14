@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu } from 'lucide-react';
+import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import AdminUserManagement from './AdminUserManagement';
 import AdminModule from '../../modules/AdminModule';
 import PartyMaster from '../../modules/PartyMaster';
+import FuelStationManager from './FuelStationManager';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -30,6 +31,7 @@ export default function AdminLayout() {
     { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
     { id: 'users', label: 'User Management', Icon: Users },
     { id: 'parties', label: 'Party Master', Icon: Building2 },
+    { id: 'fuel', label: 'Fuel Stations', Icon: Fuel },
     { id: 'backup', label: 'System & Backup', Icon: Cloud },
   ];
 
@@ -173,6 +175,7 @@ export default function AdminLayout() {
                 {active === 'dashboard' && <AdminDashboard />}
                 {active === 'users' && <AdminUserManagement />}
                 {active === 'parties' && <PartyMaster />}
+                {active === 'fuel' && <FuelStationManager />}
                 {active === 'backup' && <AdminModule />}
               </motion.div>
             </AnimatePresence>

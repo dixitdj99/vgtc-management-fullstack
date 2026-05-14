@@ -464,12 +464,17 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
 
+  useEffect(() => {
+    if (lockedType) setTab(lockedType);
+  }, [lockedType]);
+
   useEffect(() => { fetchVouchers(); setSelTruck(null); setTruckSearch(''); setSelected(new Set()); }, [tab]);
   useEffect(() => { setSelected(new Set()); }, [selTruck, filters]);
   useEffect(() => { if (selTruck) fetchAdvances(selTruck); }, [selTruck]);
 
   const fetchVouchers = async () => {
-    try { setVouchers((await ax.get(API_V + '/' + tab)).data); } catch { }
+    try { setVouchers((await ax.get(API_V + '/' + tab)).data); }
+    catch (err) { console.error('BalanceSheet fetch failed:', tab, err); setVouchers([]); }
   };
 
   const fetchAdvances = async (truck) => {

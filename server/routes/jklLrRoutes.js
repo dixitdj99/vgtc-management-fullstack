@@ -77,7 +77,7 @@ router.get('/', async (req, res) => {
 // Update billing only
 router.patch('/:id/billing', async (req, res) => {
     try {
-        await lrService.updateBillingStatus(req.orgId, req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
+        await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -94,7 +94,7 @@ router.patch('/:id/billing', async (req, res) => {
 // Update full LR (Support both PUT and PATCH)
 router.put('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(JKL_LR_COL, req));
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -109,7 +109,7 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(JKL_LR_COL, req));
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');

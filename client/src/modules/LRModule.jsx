@@ -112,6 +112,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
         <div class="info-row"><span class="lbl">Date</span><span class="val">${new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
         <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${base.truckNo}</span></div>
         <div class="info-row"><span class="lbl">Party Name</span><span class="val">${base.partyName}</span></div>
+        ${base.fuelStation ? `<div class="info-row"><span class="lbl">Fuel Station</span><span class="val">${base.fuelStation}</span></div>` : ''}
       </div>
 
       ${base.billing ? `<div class="challan-sec"><b>Challans:</b> ${base.billing}</div>` : ''}
@@ -908,6 +909,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     setForm(f => ({ ...f, voiceMessageBase64: '' }));
   };
 
+  /* Fuel Stations */
+  const [fuelStations, setFuelStations] = useState([]);
+  const fetchFuelStations = async () => {
+    try {
+      const all = (await ax.get('/profiles')).data;
+      setFuelStations(all.filter(p => p.type === 'pump').map(p => p.name));
+    } catch { }
+  };
+
   /* Excel-style filters */
   const [filters, setFilters] = useState({});
   const handleFilterChange = (key, val) => {
@@ -961,7 +971,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchLRData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials()]).finally(() => setLoading(false));
+    Promise.all([fetchLRData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials(), fetchFuelStations()]).finally(() => setLoading(false));
     setCurrentPage(1);
   }, [brand]);
 
@@ -1153,7 +1163,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       alert('Receipt #' + res.data.lrNo + ' created!');
       fetchLRData(); fetchChallans();
       clearVoice();
-      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -1369,6 +1379,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </datalist>
                   </div>
                   <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
+                  {fuelStations.length > 0 && (
+                    <div className="field">
+                      <label>Fuel Station</label>
+                      <select className="fi" value={form.fuelStation || ''} onChange={e => setForm({ ...form, fuelStation: e.target.value })}>
+                        <option value="">— No Fuel —</option>
+                        {fuelStations.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="field">
                     <label><Tag size={11} /> Challan Selection</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1549,7 +1568,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td><span className="t-lr">#{lr.lrNo}</span></td>
                         <td>
                           <div className="t-main">{lr.truckNo}</div>
-                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
+                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}{lr.fuelStation ? ` · ⛽ ${lr.fuelStation}` : ''}</div>
                         </td>
                         <td>
                           <span className="badge badge-tag">{lr.material}</span>

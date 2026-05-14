@@ -241,7 +241,6 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const activeRows = tab === 'ledger' ? filteredLedger :
     tab === 'deposits' ? filteredDeposits :
       tab === 'voucher_cash' ? filteredVoucherCash :
-        tab === 'online' ? filteredOnline :
           filteredCashOuts;
 
   const paginatedRows = useMemo(() => {
@@ -493,12 +492,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   };
 
   const handleExportPDF = () => {
-    let cols = [];
-    if (tab === 'online') {
-      cols = ['date', 'truckNo', 'lrNo', 'vType', 'amount', 'isOnlinePaid'];
-    } else {
-      cols = ['date', 'label', 'badge', 'credit', 'debit', 'balance'];
-    }
+    const cols = ['date', 'label', 'badge', 'credit', 'debit', 'balance'];
     const safeData = activeRows.map(r => ({ ...r, label: r.label || r.remark }));
     exportToPDF(safeData, `Cashbook - ${tab}`, cols);
   };
@@ -541,16 +535,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         <div className="field" style={{ marginBottom: 0 }}>
           <input className="fi" type="date" value={fTo} onChange={e => onFilterChange(setFTo, e.target.value)} title="To Date" />
         </div>
-        {tab === 'online' && (
-          <div className="field" style={{ marginBottom: 0 }}>
-            <select className="fi" value={fPaid} onChange={e => onFilterChange(setFPaid, e.target.value)}>
-              <option value="all">All Status</option>
-              <option value="paid">Paid</option>
-              <option value="unpaid">Unpaid</option>
-            </select>
-          </div>
-        )}
-        {(fSearch || fFrom || fTo || (tab === 'online' && fPaid !== 'all')) && (
+        {(fSearch || fFrom || fTo) && (
           <button className="btn btn-g" onClick={() => { onFilterChange(setFSearch, ''); onFilterChange(setFFrom, ''); onFilterChange(setFTo, ''); onFilterChange(setFPaid, 'all'); }}>Clear Filters</button>
         )}
       </div>
@@ -588,7 +573,6 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         {[
           { label: 'Current Balance', val: currentBalance, Icon: Wallet, color: '#6366f1', big: true },
           { label: 'Total Deposited', val: totalDeposited, Icon: ArrowDownCircle, color: '#10b981' },
-          { label: 'Online Advances', val: totalOnline, Icon: Smartphone, color: '#0ea5e9', note: 'not deducted' },
         ].map(({ label, val, Icon, color, big, note }) => (
           <div key={label} style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px',
@@ -612,7 +596,6 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           { id: 'ledger', label: 'Full Ledger', count: ledgerWithBalance.length },
           { id: 'deposits', label: 'Deposits', count: deposits.length },
           { id: 'voucher_cash', label: 'Voucher Cash Adv', count: voucherCashAdv.length },
-          { id: 'online', label: 'Online Advances', count: onlineAdvList.length },
           { id: 'cash_out', label: 'Cash Outs', count: cashOuts.length },
         ].map(({ id, label, count }) => (
           <button key={id} onClick={() => onTabChange(id)}
@@ -641,14 +624,12 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 {tab === 'ledger' ? 'Full Ledger (with running balance)' :
                   tab === 'deposits' ? 'Deposits' :
                     tab === 'voucher_cash' ? 'Voucher Cash Advances (auto-deducted)' :
-                      tab === 'online' ? 'Online Advances (reference only — not deducted)' :
                         'Cash Outs & Other Expenses'}
               </h3>
               <p>
                 {tab === 'ledger' ? ledgerWithBalance.length + ' transactions' :
                   tab === 'deposits' ? deposits.length + ' deposits' :
                     tab === 'voucher_cash' ? voucherCashAdv.length + ' advances from vouchers' :
-                      tab === 'online' ? onlineAdvList.length + ' online advances' :
                         cashOuts.length + ' cash out entries'}
               </p>
             </div>
@@ -661,12 +642,10 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         {loading
           ? <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading…</div>
           : <>
-              {tab === 'online'
-                ? <OnlineTable rows={paginatedRows} />
-                : <LedgerTable
+              <LedgerTable
                   rows={paginatedRows}
                   showBalance={tab === 'ledger'}
-                  showBadge={tab === 'ledger'} />}
+                  showBadge={tab === 'ledger'} />
               
               <Pagination 
                 currentPage={currentPage}

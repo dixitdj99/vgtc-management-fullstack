@@ -9,7 +9,7 @@ import { useWindowSize } from 'react-use';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = '/vouchers';
-const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super'];
+const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill'];
 
 function calcNet(v) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -38,11 +38,13 @@ function hasUnverifiedDiesel(v) {
   return hasDiesel && !v.isDieselVerified;
 }
 
-export default function PayModule({ brand, role, permissions }) {
+export default function PayModule({ brand, role, permissions, initialView }) {
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
   const [selectedLrs, setSelectedLrs] = useState(new Set());
-  const [view, setView] = useState('freight'); // 'freight' or 'firm'
+  const [view, setView] = useState(initialView || 'freight');
+
+  useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
   const [profiles, setProfiles] = useState([]);
   const [firmPayments, setFirmPayments] = useState([]);
   const [showLedger, setShowLedger] = useState(null);
@@ -62,6 +64,7 @@ export default function PayModule({ brand, role, permissions }) {
   const [customEnd, setCustomEnd] = useState('');
 
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [processing, setProcessing] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const { width, height } = useWindowSize();
@@ -84,8 +87,7 @@ export default function PayModule({ brand, role, permissions }) {
   [advances]);
 
   const getTypesForBrand = () => {
-    if (brand === 'jkl') return ['Dump', 'JK_Lakshmi'];
-    if (brand === 'dump') return ['Dump', 'JK_Super'];
+    // All locations share same trucks — fetch ALL voucher types
     return [...TYPES];
   };
 
@@ -192,13 +194,9 @@ export default function PayModule({ brand, role, permissions }) {
   const fetchVouchers = async () => {
     try {
       const typesToFetch = getTypesForBrand();
-      const promises = typesToFetch.map(t => ax.get(API_V + '/' + t));
+      const promises = typesToFetch.map(t => ax.get(API_V + '/' + t).then(r => r.data).catch(() => []));
       const results = await Promise.all(promises);
-      let allVouchers = [];
-      results.forEach(res => {
-        allVouchers = allVouchers.concat(res.data);
-      });
-      setVouchers(allVouchers);
+      setVouchers(results.flat());
     } catch (err) {
       console.error('Failed to fetch vouchers for payment module', err);
     }
@@ -325,10 +323,11 @@ export default function PayModule({ brand, role, permissions }) {
     if (!canPay) return;
     setProcessing(true);
     try {
-      await Promise.all(selRows.map(v => 
+      await Promise.all(selRows.map(v =>
         ax.patch(API_V + '/' + v.id, {
           paidBalance: String(calcNet(v).toFixed(2)),
-          paymentClearedDate: paymentDate
+          paymentClearedDate: paymentDate,
+          paymentMethod
         })
       ));
       
@@ -432,13 +431,161 @@ export default function PayModule({ brand, role, permissions }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
             <button className={`btn btn-sm ${view === 'freight' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('freight')}>Freight Pay</button>
+            <button className={`btn btn-sm ${view === 'online' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('online')}>Online Advances</button>
             <button className={`btn btn-sm ${view === 'firm' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('firm')}>Firm Pay</button>
           </div>
           {selTruck && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelectedLrs(new Set());}}><ChevronLeft size={14} /> All Trucks</button>}
         </div>
       </div>
 
-      {view === 'firm' ? (
+      {view === 'online' ? (() => {
+        const onlineList = vouchers
+          .filter(v => parseFloat(v.advanceOnline) > 0)
+          .map(v => ({ ...v, onlineAmt: parseFloat(v.advanceOnline) || 0 }))
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        const unpaid = onlineList.filter(v => !v.isOnlinePaid);
+        const paid = onlineList.filter(v => v.isOnlinePaid);
+        const totalOnline = onlineList.reduce((s, v) => s + v.onlineAmt, 0);
+        const totalUnpaid = unpaid.reduce((s, v) => s + v.onlineAmt, 0);
+
+        const markPaidWithDate = async (id, paidDate) => {
+          try {
+            await ax.patch(API_V + '/' + id, { isOnlinePaid: true, onlinePaidDate: paidDate });
+            fetchVouchers();
+          } catch { alert('Update failed'); }
+        };
+
+        const markUnpaid = async (id) => {
+          try {
+            await ax.patch(API_V + '/' + id, { isOnlinePaid: false, onlinePaidDate: null });
+            fetchVouchers();
+          } catch { alert('Update failed'); }
+        };
+
+        // Group unpaid by date
+        const unpaidByDate = {};
+        unpaid.forEach(v => {
+          const d = v.date || 'Unknown';
+          if (!unpaidByDate[d]) unpaidByDate[d] = [];
+          unpaidByDate[d].push(v);
+        });
+        const sortedDates = Object.keys(unpaidByDate).sort((a, b) => b.localeCompare(a));
+
+        return (
+          <div>
+            {/* Summary */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+              {[
+                { label: 'Total Online Advances', val: fmtRs(totalOnline), color: '#0ea5e9', count: onlineList.length },
+                { label: 'Unpaid', val: fmtRs(totalUnpaid), color: '#f59e0b', count: unpaid.length },
+                { label: 'Paid', val: fmtRs(totalOnline - totalUnpaid), color: '#10b981', count: paid.length },
+              ].map(s => (
+                <div key={s.label} className="stat-card" style={{ borderTop: `3px solid ${s.color}` }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.label}</div>
+                  <div style={{ fontSize: '22px', fontWeight: 900, color: s.color, marginTop: '4px' }}>{s.val}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{s.count} entries</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Unpaid — grouped by date */}
+            <div className="card" style={{ marginBottom: '20px' }}>
+              <div className="card-header">
+                <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}><AlertCircle size={17} /></div>
+                  <div className="card-title-text"><h3>Unpaid Online Advances</h3><p>{unpaid.length} pending</p></div>
+                </div>
+              </div>
+              {sortedDates.length === 0 && (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>All online advances are paid!</div>
+              )}
+              {sortedDates.map(date => {
+                const rows = unpaidByDate[date];
+                const dayTotal = rows.reduce((s, v) => s + v.onlineAmt, 0);
+                const daysSince = Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
+                const isLate = daysSince > 3;
+                return (
+                  <div key={date}>
+                    <div style={{ padding: '8px 16px', background: isLate ? 'rgba(239,68,68,0.06)' : 'var(--bg-tf)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>{fmtDate(date)}</span>
+                        {isLate && <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>{daysSince} DAYS OVERDUE</span>}
+                      </div>
+                      <span style={{ fontWeight: 800, fontSize: '13px', color: '#0ea5e9' }}>Day Total: {fmtRs(dayTotal)}</span>
+                    </div>
+                    <div className="tbl-wrap">
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                        <thead><tr>
+                          <th style={TH}>#</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
+                          <th style={TH}>Type</th><th style={{ ...TH, textAlign: 'right' }}>Amount</th>
+                          <th style={{ ...TH, textAlign: 'center' }}>Pay Date</th><th style={{ ...TH, textAlign: 'center' }}>Action</th>
+                        </tr></thead>
+                        <tbody>
+                          {rows.map((v, i) => (
+                            <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                              <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                              <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
+                              <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>#{v.lrNo}</td>
+                              <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{v.type?.replace('_', ' ')}</span></td>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
+                              <td style={{ ...TD, textAlign: 'center' }}>
+                                <input type="date" className="fi" defaultValue={new Date().toISOString().slice(0, 10)} id={`opd-${v.id}`}
+                                  style={{ height: '28px', fontSize: '11px', padding: '2px 6px', width: '130px' }} />
+                              </td>
+                              <td style={{ ...TD, textAlign: 'center' }}>
+                                <button className="btn btn-a btn-sm" style={{ fontSize: '11px', padding: '4px 10px' }}
+                                  onClick={() => markPaidWithDate(v.id, document.getElementById(`opd-${v.id}`).value)}>
+                                  <Check size={12} /> Pay
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Paid Table */}
+            {paid.length > 0 && (
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title-block">
+                    <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}><CheckCircle2 size={17} /></div>
+                    <div className="card-title-text"><h3>Paid Online Advances</h3><p>{paid.length} cleared</p></div>
+                  </div>
+                </div>
+                <div className="tbl-wrap">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                    <thead><tr>
+                      <th style={TH}>#</th><th style={TH}>Date</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
+                      <th style={TH}>Type</th><th style={{ ...TH, textAlign: 'right' }}>Amount</th><th style={TH}>Paid On</th><th style={{ ...TH, textAlign: 'center' }}>Action</th>
+                    </tr></thead>
+                    <tbody>
+                      {paid.map((v, i) => (
+                        <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                          <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                          <td style={TD}>{fmtDate(v.date)}</td>
+                          <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
+                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>#{v.lrNo}</td>
+                          <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{v.type?.replace('_', ' ')}</span></td>
+                          <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
+                          <td style={{ ...TD, fontWeight: 700, color: 'var(--accent)' }}>{fmtDate(v.onlinePaidDate)}</td>
+                          <td style={{ ...TD, textAlign: 'center' }}>
+                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }} onClick={() => togglePaid(v.id, true)}>Undo</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })() : view === 'firm' ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '20px' }}>
           {/* Firm Payment Form */}
           <div className="card" style={{ padding: '24px' }}>
@@ -657,10 +804,6 @@ export default function PayModule({ brand, role, permissions }) {
                 <button className={`btn btn-sm ${detailTab === 'history' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('history')}>
                   History ({paidLrs.length})
                 </button>
-                <button className={`btn btn-sm ${detailTab === 'advance' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none', position: 'relative' }} onClick={() => setDetailTab('advance')}>
-                  Advance Pay
-                  {advances.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: advanceBalance >= 0 ? '#10b981' : '#f43f5e', color: 'white', borderRadius: '50%', width: '14px', height: '14px', fontSize: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>{advances.length}</span>}
-                </button>
               </div>
             </div>
 
@@ -742,89 +885,6 @@ export default function PayModule({ brand, role, permissions }) {
               </table>
                   </div>
               </React.Fragment>
-            ) : detailTab === 'advance' ? (
-              // ADVANCE PAY TAB
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '16px' }}>
-                {/* Form */}
-                <div className="card" style={{ padding: '20px' }}>
-                  <h3 style={{ fontSize: '15px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Banknote size={16} color="var(--primary)" /> Record Advance
-                  </h3>
-                  <form onSubmit={handleAdvSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div className="field">
-                      <label>Transaction Type</label>
-                      <select className="fi" value={advForm.type} onChange={e => setAdvForm(f => ({ ...f, type: e.target.value }))}>
-                        <option value="debit">We Give Advance to Owner (Debit −)</option>
-                        <option value="credit">Owner Returns / We Receive (Credit +)</option>
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label>Amount (₹)</label>
-                      <input className="fi" type="number" step="any" min="1" placeholder="Amount" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} required />
-                    </div>
-                    <div className="field">
-                      <label>Date</label>
-                      <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
-                    </div>
-                    <div className="field">
-                      <label>Remark</label>
-                      <input className="fi" type="text" placeholder="e.g. Advance for fuel / Return of advance" value={advForm.remark} onChange={e => setAdvForm(f => ({ ...f, remark: e.target.value }))} />
-                    </div>
-                    <div style={{ padding: '12px', borderRadius: '8px', background: advanceBalance >= 0 ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)', border: `1px solid ${advanceBalance >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`, textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Current Advance Balance</div>
-                      <div style={{ fontSize: '20px', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(advanceBalance)}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{advanceBalance >= 0 ? 'Owner has given advance' : 'We have given advance'}</div>
-                    </div>
-                    <button type="submit" className="btn btn-p" style={{ width: '100%', padding: '12px', fontWeight: 700 }} disabled={advSaving}>
-                      {advSaving ? 'Saving...' : <><Check size={14} /> Save Entry</>}
-                    </button>
-                  </form>
-                </div>
-
-                {/* Advance Ledger */}
-                <div className="card tbl-wrap">
-                  <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', fontWeight: 800, fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Advance Ledger — {selTruck}</span>
-                    <span style={{ fontSize: '13px', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' }}>Balance: {fmtRs(advanceBalance)}</span>
-                  </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                    <thead>
-                      <tr>
-                        <th style={TH}>#</th>
-                        <th style={TH}>Date</th>
-                        <th style={TH}>Type</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Credit (+)</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Debit (−)</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Balance</th>
-                        <th style={TH}>Remark</th>
-                        {role === 'admin' && <th style={TH}>Del</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {advances.length === 0 && <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No advance entries yet</td></tr>}
-                      {[...advances].reverse().map((a, i, arr) => {
-                        const runBal = arr.slice(0, i + 1).reduce((s, x) => s + (x.type === 'credit' ? x.amount : -x.amount), 0);
-                        return (
-                          <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                            <td style={TD}>{fmtDate(a.date)}</td>
-                            <td style={TD}>
-                              {a.type === 'credit'
-                                ? <span style={{ padding: '2px 7px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: '10px', fontWeight: 800 }}>↓ Received</span>
-                                : <span style={{ padding: '2px 7px', borderRadius: '5px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', fontSize: '10px', fontWeight: 800 }}>↑ Given</span>}
-                            </td>
-                            <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#10b981' }}>{a.type === 'credit' ? fmtRs(a.amount) : '—'}</td>
-                            <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f43f5e' }}>{a.type === 'debit' ? fmtRs(a.amount) : '—'}</td>
-                            <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: runBal >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(runBal)}</td>
-                            <td style={{ ...TD, color: 'var(--text-sub)' }}>{a.remark || '—'}</td>
-                            {role === 'admin' && <td style={{ ...TD, textAlign: 'center' }}><button className="btn btn-d btn-icon btn-sm" onClick={() => handleAdvDelete(a.id)} title="Delete"><X size={12} /></button></td>}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             ) : (
               // HISTORY TABLE
               <div className="card tbl-wrap">
@@ -839,11 +899,13 @@ export default function PayModule({ brand, role, permissions }) {
                       <th style={TH}>Destination</th>
                       <th style={TH}>Total Bill</th>
                       <th style={TH}>Amount Paid</th>
+                      <th style={TH}>Method</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paidLrs.map((v, i) => {
                       const net = calcNet(v);
+                      const method = v.paymentMethod || 'Cash';
                       return (
                         <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
                           <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
@@ -858,11 +920,16 @@ export default function PayModule({ brand, role, permissions }) {
                           <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRs(net)}</td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: 'var(--text)' }}>{fmtRs(v.paidBalance)}</td>
+                          <td style={{ ...TD, textAlign: 'center' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 800, background: method === 'Online' ? 'rgba(10,110,209,0.1)' : 'rgba(16,185,129,0.1)', color: method === 'Online' ? '#0A6ED1' : '#10b981' }}>
+                              {method === 'Online' ? '🏦' : '💵'} {method}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
                     {paidLrs.length === 0 && (
-                      <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No payment history found for this vehicle.</td></tr>
+                      <tr><td colSpan={9} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No payment history found for this vehicle.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -876,14 +943,6 @@ export default function PayModule({ brand, role, permissions }) {
               <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Banknote size={16} /> Settlement Panel
               </h3>
-
-              {/* Advance Balance Quick View */}
-              {advances.length > 0 && (
-                <div style={{ padding: '10px 14px', borderRadius: '8px', marginBottom: '12px', background: advanceBalance >= 0 ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)', border: `1px solid ${advanceBalance >= 0 ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Advance Balance:</span>
-                  <span style={{ fontSize: '14px', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(advanceBalance)}</span>
-                </div>
-              )}
 
               <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -907,14 +966,35 @@ export default function PayModule({ brand, role, permissions }) {
                 </div>
               )}
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
-                  Payment Date
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <div style={{ position: 'absolute', top: '8px', left: '10px' }}><Calendar size={14} color="var(--primary)" /></div>
-                  <input type="date" className="fi" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} 
-                    style={{ width: '100%', paddingLeft: '32px' }} disabled={selectedLrs.size === 0 || hasSelectedUnverified} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Payment Date
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: '8px', left: '10px' }}><Calendar size={14} color="var(--primary)" /></div>
+                    <input type="date" className="fi" value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+                      style={{ width: '100%', paddingLeft: '32px' }} disabled={selectedLrs.size === 0 || hasSelectedUnverified} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Payment Method
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {['Cash', 'Online'].map(m => (
+                      <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                        style={{
+                          flex: 1, padding: '8px', borderRadius: '8px', fontWeight: 700, fontSize: '13px',
+                          border: `2px solid ${paymentMethod === m ? (m === 'Cash' ? '#10b981' : '#0A6ED1') : 'var(--border)'}`,
+                          background: paymentMethod === m ? (m === 'Cash' ? 'rgba(16,185,129,0.1)' : 'rgba(10,110,209,0.1)') : 'var(--bg-input)',
+                          color: paymentMethod === m ? (m === 'Cash' ? '#10b981' : '#0A6ED1') : 'var(--text-muted)',
+                          cursor: 'pointer', transition: 'all 0.15s'
+                        }}>
+                        {m === 'Cash' ? '💵' : '🏦'} {m}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

@@ -499,6 +499,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const isGeneric = brand === 'main';
     const [vType, setVType] = useState(isGeneric ? 'main' : (lockedType || initialTab || 'Kosli_Bill'));
 
+    useEffect(() => { if (lockedType) setVType(lockedType); }, [lockedType]);
+
     const [vouchers, setVouchers] = useState([]);
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
@@ -585,25 +587,26 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         lrMaterials.map(m => m.partyName)
     ), [vouchers, lrMaterials]);
 
-    // For JK types: compute next LR number from existing voucher list
+    // Factory types: compute next LR number from existing voucher list
+    // Dump & Bill types: user enters LR from loading receipt (no auto-number)
+    const isFactory = vType === 'JK_Super' || vType === 'JK_Lakshmi';
     const nextLrNo = useMemo(() => {
-        if (vType === 'Dump') return '';
+        if (!isFactory) return '';
         if (vouchers.length === 0) return '1';
         const max = Math.max(...vouchers.map(v => parseInt(v.lrNo) || 0));
         return String(max + 1);
-    }, [vType, vouchers]);
+    }, [isFactory, vouchers]);
 
-    // Auto-fill LR No when switching to JK tabs (after vouchers load)
+    // Auto-fill LR No for factory types, clear for dump/bill types
     useEffect(() => {
-        if (vType === 'JK_Super' || vType === 'JK_Lakshmi') {
+        if (isFactory) {
             setForm(f => ({ ...f, lrNo: nextLrNo }));
             setLrAlreadyUsed(false);
         } else {
-            // Dump bills — clear LR field on tab switch
             setForm(f => ({ ...f, lrNo: '' }));
             setLrAlreadyUsed(false);
         }
-    }, [nextLrNo]);
+    }, [nextLrNo, isFactory]);
 
     /* Auto-fetch last km when truckNo changes — for VGTC trucks across all voucher types */
     const fetchLastKm = useCallback(async (truck) => {
@@ -618,13 +621,23 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         finally { setFetchingKm(false); }
     }, [vgtcTrucks]);
 
-    /* LR search — only Dump Bills auto-fetch from /lr receipts */
-    /* JK_Super and JK_Lakshmi have custom LR numbers — no auto-fetch, but still prevent duplicates */
+    /* LR search — Dump & Bill types auto-fetch from loading receipts */
+    /* JK_Super and JK_Lakshmi are factory vouchers — no LR fetch, independent numbering */
     const handleLrSearch = async val => {
         setForm(f => ({ ...f, lrNo: val }));
         setLrAlreadyUsed(false);
         setLrMaterials([]);
         if (!val) return;
+
+        // Factory vouchers — only check for duplicates, no LR fetch
+        if (vType === 'JK_Super' || vType === 'JK_Lakshmi') {
+            const alreadyUsed = vouchers.some(v => {
+                if (!v.lrNo) return false;
+                return String(v.lrNo).split(',').map(s => s.trim()).includes(val.trim());
+            });
+            if (alreadyUsed) setLrAlreadyUsed(true);
+            return;
+        }
 
         const lrNumbers = val.split(',').map(s => s.trim()).filter(Boolean);
         if (lrNumbers.length === 0) return;
@@ -635,20 +648,18 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             const vLrs = String(v.lrNo).split(',').map(s => s.trim());
             return lrNumbers.some(lr => vLrs.includes(lr));
         });
-        
+
         if (alreadyUsed) {
             setLrAlreadyUsed(true);
             return;
         }
 
-        // Determine which LR endpoint to call based on bill type AND brand
-        let lrEndpoint = '/lr'; // default for Dump
-        if (brand === 'jklakshmi' || brand === 'jkl') {
-            lrEndpoint = '/jkl/lr';
-        } else {
-            if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
-            else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
-        }
+        // Determine LR endpoint based on voucher type (dump/bill)
+        let lrEndpoint;
+        if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
+        else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
+        else if (brand === 'jklakshmi' || brand === 'jkl') lrEndpoint = '/jkl/lr';
+        else lrEndpoint = '/lr';
 
         // Fetch LR details from the correct receipts collection
         try {
@@ -935,7 +946,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             </div>
                                             <div className="field"><label><Wallet size={11} /> Cash Advance</label><input className="fi" type="number" placeholder="0" value={form.advanceCash} onChange={e => set('advanceCash', e.target.value)} /></div>
-                                            <div className="field"><label><CreditCard size={11} /> Online Advance</label><input className="fi" type="number" placeholder="0" value={form.advanceOnline} onChange={e => set('advanceOnline', e.target.value)} /></div>
+                                            <div className="field">
+                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span><CreditCard size={11} /> Online Advance</span>
+                                                    <span onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { active: active.includes('jharli') ? 'pay_jharli' : 'pay_dump' } }))} style={{ fontSize: '9px', color: 'var(--primary)', cursor: 'pointer', fontWeight: 700 }}>View All →</span>
+                                                </label>
+                                                <input className="fi" type="number" placeholder="0" value={form.advanceOnline} onChange={e => set('advanceOnline', e.target.value)} />
+                                            </div>
                                             <div className="field" style={{ justifyContent: 'flex-end' }}>
                                                 <div className="chk-row" style={{ marginTop: 'auto' }}>
                                                     <input type="checkbox" id="comm" checked={form.hasCommission} onChange={e => set('hasCommission', e.target.checked)} />

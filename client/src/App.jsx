@@ -267,14 +267,18 @@ function AppInner() {
         { id: 'ledger', label: 'Full Ledger' },
         { id: 'deposits', label: 'Deposits' },
         { id: 'voucher_cash', label: 'Voucher Cash Adv' },
-        { id: 'online', label: 'Online Advances' },
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
-    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay' },
+    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay', sub: [
+        { id: 'freight', label: 'Freight Pay' },
+        { id: 'online', label: 'Online Advances' },
+        { id: 'firm', label: 'Firm Pay' },
+      ]
+    },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
     { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice' },
     { id: 'staff_profiles_dump', label: 'Profiles', Icon: Users, color: '#ec4899', section: 'jksuper', permKey: 'staff_profiles' },
@@ -311,14 +315,18 @@ function AppInner() {
         { id: 'ledger', label: 'Full Ledger' },
         { id: 'deposits', label: 'Deposits' },
         { id: 'voucher_cash', label: 'Voucher Cash Adv' },
-        { id: 'online', label: 'Online Advances' },
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
     { id: 'vehicles_jharli', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
     { id: 'diesel_jharli', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jharli', permKey: 'diesel' },
     { id: 'mileage_jharli', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jharli', permKey: 'mileage' },
-    { id: 'pay_jharli', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay' },
+    { id: 'pay_jharli', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay', sub: [
+        { id: 'freight', label: 'Freight Pay' },
+        { id: 'online', label: 'Online Advances' },
+        { id: 'firm', label: 'Firm Pay' },
+      ]
+    },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
     { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice' },
     { id: 'staff_profiles_jharli', label: 'Profiles', Icon: Users, color: '#ec4899', section: 'jharli', permKey: 'staff_profiles' },
@@ -636,7 +644,7 @@ function AppInner() {
               {(active === 'vehicles_dump' || active === 'vehicles_jkl' || active === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl' || active === 'diesel_jharli') && <DieselModule permissions={user.permissions} />}
               {(active === 'mileage_dump' || active === 'mileage_jkl' || active === 'mileage_jharli') && <MileageModule />}
-              {(active === 'pay_dump' || active === 'pay_jkl' || active === 'pay_jharli') && <PayModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
+              {(active === 'pay_dump' || active === 'pay_jkl' || active === 'pay_jharli') && <PayModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={subActive || 'freight'} />}
               {(active === 'sell_dump' || active === 'sell_jkl' || active === 'sell_jharli') && <SellModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_dump' || active === 'invoice_jharli') && <InvoiceModule brand={active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}

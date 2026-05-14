@@ -45,10 +45,11 @@ ax.interceptors.request.use(config => {
     }
 
     pendingRequests++;
+    window.dispatchEvent(new CustomEvent('api-loading', { detail: { loading: true, count: pendingRequests } }));
     if (pendingRequests === 1) {
         slowRequestTimer = setTimeout(() => {
             window.dispatchEvent(new CustomEvent('api-slow'));
-        }, 3000); // 3 seconds threshold for cold start Warning
+        }, 3000);
     }
 
     return config;
@@ -63,6 +64,7 @@ ax.interceptors.request.use(config => {
 
 ax.interceptors.response.use(res => {
     pendingRequests = Math.max(0, pendingRequests - 1);
+    window.dispatchEvent(new CustomEvent('api-loading', { detail: { loading: pendingRequests > 0, count: pendingRequests } }));
     if (pendingRequests === 0) {
         clearTimeout(slowRequestTimer);
         window.dispatchEvent(new CustomEvent('api-fast'));
@@ -70,6 +72,7 @@ ax.interceptors.response.use(res => {
     return res;
 }, error => {
     pendingRequests = Math.max(0, pendingRequests - 1);
+    window.dispatchEvent(new CustomEvent('api-loading', { detail: { loading: pendingRequests > 0, count: pendingRequests } }));
     if (pendingRequests === 0) {
         clearTimeout(slowRequestTimer);
         window.dispatchEvent(new CustomEvent('api-fast'));
