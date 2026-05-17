@@ -112,4 +112,60 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// ── Vehicle Firm Registry ─────────────────────────────────────────────────────
+const REG_COL = 'vehicle_registry';
+
+router.get('/registry', async (req, res) => {
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        if (isAvailable()) {
+            const snap = await db.collection(getCol(REG_COL, req)).where('orgId', '==', req.orgId).get();
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return res.json(docs);
+        }
+        return res.json(localStore.getAll(getCol(REG_COL, req)).filter(x => x.orgId === req.orgId));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/registry', async (req, res) => {
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        const payload = { ...req.body, orgId: req.orgId, createdAt: new Date().toISOString() };
+        if (isAvailable()) {
+            const ref = db.collection(getCol(REG_COL, req)).doc();
+            await ref.set({ ...payload, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            return res.status(201).json({ id: ref.id, ...payload });
+        }
+        return res.status(201).json(localStore.insert(getCol(REG_COL, req), payload));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/registry/:id', async (req, res) => {
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        if (isAvailable()) {
+            await db.collection(getCol(REG_COL, req)).doc(req.params.id).update({ ...req.body, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        } else {
+            localStore.update(getCol(REG_COL, req), req.params.id, req.body);
+        }
+        res.json({ message: 'Updated' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/registry/:id', async (req, res) => {
+    try {
+        const { db, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        if (isAvailable()) {
+            await db.collection(getCol(REG_COL, req)).doc(req.params.id).delete();
+        } else {
+            localStore.delete(getCol(REG_COL, req), req.params.id);
+        }
+        res.json({ message: 'Deleted' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -12,7 +12,7 @@ import ColumnFilter from '../components/ColumnFilter';
 const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
-function calcNet(v) {
+function calcNet(v, vehicle) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
   // If v.advanceDiesel is 'FULL', use the 4000 fallback, otherwise use the actual value
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
@@ -20,7 +20,13 @@ function calcNet(v) {
   const online = parseFloat(v.advanceOnline) || 0;
   const munshi = parseFloat(v.munshi) || 0;
   const shortage = parseFloat(v.shortage) || 0;
-  return gross - diesel - cash - online - munshi - shortage;
+  let net = gross - diesel - cash - online - munshi - shortage;
+
+  // Market vehicle + No GPS + JK Lakshmi = ₹50 deduction
+  if (vehicle && vehicle.ownershipType === 'market' && (!vehicle.gpsType || vehicle.gpsType === 'none') && v.type === 'JK_Lakshmi') {
+    net -= 50;
+  }
+  return net;
 }
 function monthLabel(ym) {
   const [y, m] = ym.split('-');
@@ -38,15 +44,15 @@ const TD = { padding: '7px 9px', fontSize: '12px', color: 'var(--text-sub)', ver
 const TDF = { ...TD, fontWeight: 800, color: 'var(--text)', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' };
 
 /* ── Print Driver (used from both selection bar and month header) ── */
-function doPrint(rows, truckNo, label, tabName, orgName) {
+function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
   if (!rows.length) { alert('No rows to print'); return; }
-  const net = rows.reduce((s, v) => s + calcNet(v), 0);
+  const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
   const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
   const out = Math.max(0, net - paid);
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const cols = ['#', 'Date', 'LR No.', ...(isBillType ? ['Bill No.', 'Party Code'] : []), 'Destination', 'Weight', 'Rate', 'Gross', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status'];
   const tbody = rows.map((v, i) => {
-    const n = calcNet(v), p = parseFloat(v.paidBalance) || 0, o = Math.max(0, n - p);
+    const n = calcNet(v, vehicle), p = parseFloat(v.paidBalance) || 0, o = Math.max(0, n - p);
     return `<tr style="background:${i % 2 === 0 ? '#f9f9f9' : '#fff'}">
       <td>${i + 1}</td><td>${v.date || ''}</td><td>#${v.lrNo || ''}</td>
       ${isBillType ? `<td>${v.billNo || '—'}</td><td>${v.partyCode || '—'}</td>` : ''}
@@ -103,7 +109,7 @@ function doPrint(rows, truckNo, label, tabName, orgName) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -132,7 +138,7 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
         style={{ width: w, background: 'var(--bg-input)', border: '1px solid var(--primary)', borderRadius: '5px', padding: '3px 6px', color: 'var(--text)', fontSize: '11.5px', fontFamily: 'inherit' }} />;
 
   const cv = editing ? { ...v, ...form } : v;
-  const net = calcNet(cv);
+  const net = calcNet(cv, vehicle);
   const paid = parseFloat(cv.paidBalance) || 0;
   const outstanding = Math.max(0, net - paid);
   const cleared = outstanding <= 0;
@@ -255,7 +261,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle }) {
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const [open, setOpen] = useState(true);
 
@@ -266,10 +272,10 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
   const totals = useMemo(() => ({
     weight: rows.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0).toFixed(2),
     gross: rows.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
-    net: rows.reduce((s, v) => s + calcNet(v), 0),
+    net: rows.reduce((s, v) => s + calcNet(v, vehicle), 0),
     paid: rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0),
-    out: rows.reduce((s, v) => Math.max(0, calcNet(v) - (parseFloat(v.paidBalance) || 0)) + s, 0),
-  }), [rows]);
+    out: rows.reduce((s, v) => Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)) + s, 0),
+  }), [rows, vehicle]);
 
   const [marking, setMarking] = useState(false);
   const [confirmMarkRows, setConfirmMarkRows] = useState(null);
@@ -288,7 +294,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
     setConfirmMarkRows(null);
     try {
       await Promise.all(unpaid.map(v => ax.patch(API_V + '/' + v.id, {
-        paidBalance: String(calcNet(v).toFixed(2)),
+        paidBalance: String(calcNet(v, vehicle).toFixed(2)),
         paymentClearedDate: date
       })));
       onSave();
@@ -335,16 +341,16 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             </button>
           )}
           {/* Print month */}
-          <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName, orgName)}>
+          <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName, orgName, vehicle)}>
             <Printer size={12} /> Print Month
           </button>
           {/* Print selected in month */}
           {monthChecked.length > 0 && (
-            <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName, orgName)}>
+            <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName, orgName, vehicle)}>
               <Printer size={12} /> Print {monthChecked.length} Selected
             </button>
           )}
-          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(rows.map(v => ({ Date: v.date, LR: v.lrNo, Dest: v.destination || v.partyName, Weight: v.weight, Rate: v.rate, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0), Diesel: v.advanceDiesel, Cash: v.advanceCash, Online: v.advanceOnline, Munshi: v.munshi, Shortage: v.shortage, Net: calcNet(v), Paid: v.paidBalance, Status: Math.max(0, calcNet(v) - (parseFloat(v.paidBalance) || 0)) <= 0 ? 'Paid' : 'Pending', 'Payment Date': v.paymentClearedDate || '—' })), `Balance_${selTruck}_${ym}`)}><Download size={12} /> Excel</button>
+          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(rows.map(v => ({ Date: v.date, LR: v.lrNo, Dest: v.destination || v.partyName, Weight: v.weight, Rate: v.rate, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0), Diesel: v.advanceDiesel, Cash: v.advanceCash, Online: v.advanceOnline, Munshi: v.munshi, Shortage: v.shortage, Net: calcNet(v, vehicle), Paid: v.paidBalance, Status: Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)) <= 0 ? 'Paid' : 'Pending', 'Payment Date': v.paymentClearedDate || '—' })), `Balance_${selTruck}_${ym}`)}><Download size={12} /> Excel</button>
           <button className="btn btn-g btn-sm" onClick={() => exportToPDF(rows, `Balance Sheet: ${selTruck} (${monthLabel(ym)})`, ['date', 'lrNo', 'destination', 'weight', 'rate', 'total', 'advanceDiesel', 'advanceCash', 'advanceOnline', 'munshi', 'shortage', 'Net', 'paidBalance', 'paymentClearedDate'])}><Printer size={12} /> PDF</button>
         </div>
       </div>
@@ -384,7 +390,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} />
               ))}
             </tbody>
             <tfoot>
@@ -443,11 +449,14 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [tab, setTab] = useState(isGeneric ? 'main' : (lockedType || initialTab || 'Kosli_Bill'));
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
+  const [vehicles, setVehicles] = useState([]);
+  const selVehicle = useMemo(() => (vehicles || []).find(v => v.truckNo === selTruck), [vehicles, selTruck]);
   const [truckSearch, setTruckSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [delVoucher, setDelVoucher] = useState(null);
   const [marking, setMarking] = useState(false);
   const [paymentClearedDate, setPaymentClearedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [truckAllVouchers, setTruckAllVouchers] = useState([]);
 
   // Vehicle Advance states
   const [advances, setAdvances] = useState([]);
@@ -468,13 +477,32 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     if (lockedType) setTab(lockedType);
   }, [lockedType]);
 
+  const fetchVehicles = useCallback(async () => {
+    try { setVehicles((await ax.get('/vehicles')).data); }
+    catch { setVehicles([]); }
+  }, []);
+
+  useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
   useEffect(() => { fetchVouchers(); setSelTruck(null); setTruckSearch(''); setSelected(new Set()); }, [tab]);
   useEffect(() => { setSelected(new Set()); }, [selTruck, filters]);
-  useEffect(() => { if (selTruck) fetchAdvances(selTruck); }, [selTruck]);
+  useEffect(() => {
+    if (selTruck) {
+        fetchAdvances(selTruck);
+        fetchTruckAllVouchers(selTruck);
+    }
+  }, [selTruck]);
 
   const fetchVouchers = async () => {
     try { setVouchers((await ax.get(API_V + '/' + tab)).data); }
     catch (err) { console.error('BalanceSheet fetch failed:', tab, err); setVouchers([]); }
+  };
+
+  const fetchTruckAllVouchers = async (truck) => {
+    try { 
+        const res = await ax.get(API_V); // This gets all vouchers
+        const filtered = res.data.filter(v => v.truckNo === truck);
+        setTruckAllVouchers(filtered);
+    } catch { setTruckAllVouchers([]); }
   };
 
   const fetchAdvances = async (truck) => {
@@ -547,7 +575,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
 
   /* Selection-based derived values */
   const selRows = allVisibleRows.filter(v => selected.has(v.id));
-  const selNet = selRows.reduce((s, v) => s + calcNet(v), 0);
+  const selNet = selRows.reduce((s, v) => s + calcNet(v, selVehicle), 0);
   const selPaid = selRows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
   const selOut = Math.max(0, selNet - selPaid);
   const allVis = allVisibleRows.length > 0 && selected.size === allVisibleRows.length;
@@ -555,7 +583,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [confirmMarkPaid, setConfirmMarkPaid] = useState(null);
 
   const triggerMarkSelectedPaid = () => {
-    const unpaid = selRows.filter(v => calcNet(v) > (parseFloat(v.paidBalance) || 0));
+    const unpaid = selRows.filter(v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0));
     if (!unpaid.length) { alert('All selected already paid!'); return; }
     setConfirmMarkPaid(unpaid);
   };
@@ -567,7 +595,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     setConfirmMarkPaid(null);
     try {
       await Promise.all(unpaid.map(v => ax.patch(API_V + '/' + v.id, {
-        paidBalance: String(calcNet(v).toFixed(2)),
+        paidBalance: String(calcNet(v, selVehicle).toFixed(2)),
         paymentClearedDate: date
       })));
       fetchVouchers();
@@ -575,19 +603,63 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     catch { alert('Error'); } finally { setMarking(false); }
   };
 
+  /* GPS Rent Accrual Calculation (Global for Truck) */
+  const gpsAccrual = useMemo(() => {
+    if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
+    
+    const hasJklGps = selVehicle.gpsType === 'jkl' || selVehicle.gpsType === 'both';
+    const hasJksGps = selVehicle.gpsType === 'jksuper' || selVehicle.gpsType === 'both';
+    
+    const calculateForType = (type) => {
+        const typeVouchers = (truckAllVouchers || []).filter(v => v.type === type);
+        if (!typeVouchers.length) return null;
+
+        const paid = typeVouchers.filter(v => v.paymentClearedDate);
+        const lastPayDateStr = paid.reduce((max, v) => (v.paymentClearedDate > max ? v.paymentClearedDate : max), null);
+        
+        let startDate = lastPayDateStr ? new Date(lastPayDateStr) : null;
+        if (!startDate) {
+            const firstVoucher = [...typeVouchers].sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+            startDate = firstVoucher ? new Date(firstVoucher.date) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        }
+        
+        const today = new Date();
+        const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
+        
+        // Only apply if there were loads in this period
+        const hasLoads = typeVouchers.some(v => !v.paymentClearedDate || new Date(v.date) >= startDate);
+        if (!hasLoads || days === 0) return null;
+
+        return { days, amount: Math.round((days / 30) * 250) };
+    };
+
+    const jklRent = hasJklGps ? calculateForType('JK_Lakshmi') : null;
+    const jksRent = hasJksGps ? calculateForType('JK_Super') : null;
+
+    if (!jklRent && !jksRent) return null;
+
+    return {
+        totalAmount: (jklRent?.amount || 0) + (jksRent?.amount || 0),
+        jkl: jklRent,
+        jks: jksRent,
+        label: jklRent && jksRent ? `GPS Rent (${jklRent.days}d + ${jksRent.days}d)` : `GPS Rent (${(jklRent || jksRent).days}d)`
+    };
+  }, [selTruck, selVehicle, truckAllVouchers]);
+
   /* Truck quick totals */
   const truckTotals = useMemo(() => {
     if (!selTruck) return null;
     const rows = truckGroups[selTruck] || [];
-    const net = rows.reduce((s, v) => s + calcNet(v), 0);
+    const net = rows.reduce((s, v) => s + calcNet(v, selVehicle), 0);
     const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
     return { trips: rows.length, net, paid, outstanding: Math.max(0, net - paid) };
-  }, [selTruck, truckGroups]);
+  }, [selTruck, truckGroups, selVehicle]);
 
   const truckSummaries = useMemo(() => {
-    let list = allTrucks.map(truck => {
+    const list = allTrucks.map(truck => {
       const rows = truckGroups[truck] || [];
-      const net = rows.reduce((s, v) => s + calcNet(v), 0);
+      const vehicle = (vehicles || []).find(vh => vh.truckNo === truck);
+      const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
       const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
       return { 
         truck, 
@@ -596,27 +668,40 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
         net, 
         paid, 
         outstanding: Math.max(0, net - paid),
-        status: (Math.max(0, net - paid) <= 0 ? 'Cleared' : 'Pending')
+        status: (Math.max(0, net - paid) <= 0 ? 'Cleared' : 'Pending'),
+        gpsType: vehicle?.gpsType || 'none',
       };
     });
 
     // Apply overview filters
+    let filtered = list;
     Object.keys(filters).forEach(key => {
       const selectedValues = filters[key];
       if (selectedValues && selectedValues.length > 0) {
-        list = list.filter(t => selectedValues.includes(String(t[key] ?? '')));
+        filtered = filtered.filter(t => selectedValues.includes(String(t[key] ?? '')));
       }
     });
 
-    return list;
-  }, [allTrucks, truckGroups, filters]);
+    return filtered;
+  }, [allTrucks, truckGroups, filters, vehicles]);
 
   return (
     <div>
       <div className="page-hd">
         <div>
           <h1><BarChart3 size={20} color="#f59e0b" /> Balance Sheet</h1>
-          <p>{selTruck ? selTruck + ' — monthly details' : 'Per-vehicle payment tracking'}</p>
+          <p style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {selTruck ? selTruck + ' — monthly details' : 'Per-vehicle payment tracking'}
+            {selTruck && selVehicle && (
+              selVehicle.gpsType === 'both'
+                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 9px', borderRadius: '6px', background: 'rgba(99,102,241,0.14)', color: '#818cf8', fontSize: '10px', fontWeight: 800, border: '1px solid rgba(99,102,241,0.25)' }}>📡 Both GPS Fitted</span>
+                : selVehicle.gpsType === 'jkl'
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 9px', borderRadius: '6px', background: 'rgba(245,158,11,0.14)', color: '#f59e0b', fontSize: '10px', fontWeight: 800, border: '1px solid rgba(245,158,11,0.25)' }}>📡 JK Lakshmi GPS</span>
+                  : selVehicle.gpsType === 'jksuper'
+                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 9px', borderRadius: '6px', background: 'rgba(16,185,129,0.14)', color: '#10b981', fontSize: '10px', fontWeight: 800, border: '1px solid rgba(16,185,129,0.25)' }}>📡 JK Super GPS</span>
+                    : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 9px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: 'var(--text-muted)', fontSize: '10px', fontWeight: 700 }}>No GPS</span>
+            )}
+          </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {selTruck && <button className="btn btn-g btn-sm" onClick={() => setSelTruck(null)}><ChevronLeft size={14} /> All Trucks</button>}
@@ -638,6 +723,10 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               { label: 'Total Paid', val: fmtRs(truckTotals.paid), color: 'var(--accent)' },
               { label: 'Outstanding', val: fmtRs(truckTotals.outstanding), color: truckTotals.outstanding > 0 ? 'var(--warn)' : 'var(--accent)' },
               { label: 'Advance Balance', val: fmtRs(advanceBalance), color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' },
+              ...(gpsAccrual ? [
+                { label: gpsAccrual.label, val: fmtRs(gpsAccrual.totalAmount), color: 'var(--warn)' },
+                { label: 'Net Payable', val: fmtRs(truckTotals.outstanding + advanceBalance - gpsAccrual.totalAmount), color: 'var(--primary)' }
+              ] : []),
             ].map(({ label, val, color }) => (
               <div key={label} style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
@@ -810,7 +899,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                     {marking ? <Loader2 size={13} className="spin" /> : <><CheckCircle2 size={13} /> Mark {selected.size} as Paid</>}
                   </button>
                 )}
-                  <button className="btn btn-g btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab)}>
+                  <button className="btn btn-g btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab, orgName, selVehicle)}>
                     <Printer size={13} /> Print {selected.size} Selected
                   </button>
                   <button className="btn btn-g btn-sm" onClick={() => setSelected(new Set())}>
@@ -826,7 +915,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll} onDelete={setDelVoucher}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
-              role={role} permissions={permissions} orgName={orgName} />
+              role={role} permissions={permissions} orgName={orgName} vehicle={selVehicle} />
           ))}
 
           <AnimatePresence>
@@ -888,6 +977,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 <tr>
                   <th style={TH}>#</th>
                   <th style={TH}><ColumnFilter label="Truck No." colKey="truck" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}><ColumnFilter label="GPS" colKey="gpsType" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}><ColumnFilter label="Trips" colKey="trips" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Gross</th>
                   <th style={TH}>Net Balance</th>
@@ -897,8 +987,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 </tr>
               </thead>
               <tbody>
-                {truckSummaries.length === 0 && <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No records</td></tr>}
-                {truckSummaries.map(({ truck, trips, gross, net, paid, outstanding }, i) => (
+                {truckSummaries.length === 0 && <tr><td colSpan={9} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No records</td></tr>}
+                {truckSummaries.map(({ truck, trips, gross, net, paid, outstanding, gpsType }, i) => (
                   <tr key={truck}
                     style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', cursor: 'pointer', transition: 'background 0.12s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
@@ -910,6 +1000,16 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                         <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Truck size={14} color="#f59e0b" /></div>
                         <span style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13px' }}>{truck}</span>
                       </div>
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      {(!gpsType || gpsType === 'none')
+                        ? <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>—</span>
+                        : gpsType === 'both'
+                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontSize: '10px', fontWeight: 800 }}>📡 Both GPS</span>
+                          : gpsType === 'jkl'
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontSize: '10px', fontWeight: 800 }}>📡 JKL</span>
+                            : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(16,185,129,0.12)', color: '#10b981', fontSize: '10px', fontWeight: 800 }}>📡 JKS</span>
+                      }
                     </td>
                     <td style={{ ...TD, textAlign: 'center', fontWeight: 700 }}>{trips}</td>
                     <td style={{ ...TD, textAlign: 'right' }}>{fmtRs(gross)}</td>

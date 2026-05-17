@@ -11,9 +11,9 @@ const BRAND_LOGOS = {
     'Bharat': 'https://upload.wikimedia.org/wikipedia/en/thumb/c/c5/Bharat_Petroleum_Logo.svg/1200px-Bharat_Petroleum_Logo.svg.png'
 };
 
-const PROFILE_TYPES = ['Driver', 'Office Staff', 'Pump', 'Tyre', 'Manual'];
+const PROFILE_TYPES = ['Driver', 'Office Staff', 'Tyre', 'Manual'];
 // Vendor-type profiles: no salary formula, no leaves
-const VENDOR_TYPES = ['Pump', 'Tyre', 'Manual'];
+const VENDOR_TYPES = ['Tyre', 'Manual'];
 const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver'];
 
 const calculateMonthsAndDays = (joined, exit) => {
@@ -340,19 +340,13 @@ const StaffProfileModule = ({ role }) => {
                         <div style={{ padding: '20px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                                 <div>
-                                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px 0' }}>{p.type === 'Pump' ? p.name : p.name}</h3>
+                                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px 0' }}>{p.name}</h3>
                                     <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        {p.type === 'Driver' ? <Truck size={14} /> : p.type === 'Pump' ? <Building2 size={14} /> : <User size={14} />}
-                                        {p.type} {p.type !== 'Pump' && `• ${p.department}`}
-                                        {p.type === 'Pump' && p.pumpBrand && (
-                                            <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--bg)', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>{p.pumpBrand}</span>
-                                        )}
+                                        {p.type === 'Driver' ? <Truck size={14} /> : <User size={14} />}
+                                        {p.type} {p.department ? `• ${p.department}` : ''}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    {p.type === 'Pump' && BRAND_LOGOS[p.pumpBrand] && (
-                                        <img src={BRAND_LOGOS[p.pumpBrand]} alt={p.pumpBrand} style={{ height: '24px', objectFit: 'contain' }} />
-                                    )}
                                     {role === 'admin' && (
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button onClick={() => setShowLedger(p)} style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="View Ledger"><Banknote size={16} /></button>
@@ -364,21 +358,13 @@ const StaffProfileModule = ({ role }) => {
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {p.type !== 'Pump' && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-                                        <Shield size={16} color="var(--text-muted)" />
-                                        <span><span style={{ color: 'var(--text-muted)' }}>Father:</span> {p.fatherName || 'N/A'}</span>
-                                    </div>
-                                )}
-                                {p.type === 'Pump' && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-                                        <User size={16} color="var(--text-muted)" />
-                                        <span><span style={{ color: 'var(--text-muted)' }}>Owner:</span> {p.pumpOwnerName || 'N/A'}</span>
-                                    </div>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                                    <Shield size={16} color="var(--text-muted)" />
+                                    <span><span style={{ color: 'var(--text-muted)' }}>Father:</span> {p.fatherName || 'N/A'}</span>
+                                </div>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px' }}>
                                     <MapPin size={16} color="var(--text-muted)" style={{ marginTop: '2px' }} />
-                                    <span style={{ flex: 1 }}>{p.type === 'Pump' ? p.pumpLocation : p.address || 'N/A'}</span>
+                                    <span style={{ flex: 1 }}>{p.address || 'N/A'}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
                                     <Phone size={16} color="var(--text-muted)" />
@@ -516,7 +502,7 @@ const StaffProfileModule = ({ role }) => {
                                 )}
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>{form.type === 'Pump' ? 'Pump Name' : 'Full Name'}</label>
+                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Full Name</label>
                                     <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
                                 </div>
 
@@ -534,27 +520,8 @@ const StaffProfileModule = ({ role }) => {
                                     </div>
                                 )}
 
-                                {form.type === 'Pump' && (
-                                    <>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Pump Owner Name</label>
-                                            <input value={form.pumpOwnerName} onChange={e => setForm({...form, pumpOwnerName: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Pump Brand</label>
-                                            <select value={form.pumpBrand} onChange={e => setForm({...form, pumpBrand: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}>
-                                                {PUMP_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-                                            </select>
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Pump Location</label>
-                                            <input value={form.pumpLocation} onChange={e => setForm({...form, pumpLocation: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
-                                        </div>
-                                    </>
-                                )}
-
                                 <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>{form.type === 'Pump' ? 'Pump Address' : 'Address'}</label>
+                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Address</label>
                                     <textarea value={form.address} onChange={e => setForm({...form, address: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minHeight: '60px', resize: 'vertical' }} />
                                 </div>
 

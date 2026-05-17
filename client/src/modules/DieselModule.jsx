@@ -11,8 +11,7 @@ const API_V = `/vouchers`;
 export default function DieselModule({ role = 'user', permissions = {} }) {
     const { plant } = useAuth();
     const [vouchers, setVouchers] = useState([]);
-    // Default filter to Pending status as requested previously
-    const [filters, setFilters] = useState({ status: ['Pending'] });
+    const [filters, setFilters] = useState({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [dieselTab, setDieselTab] = useState('records'); // records|pump_ledger

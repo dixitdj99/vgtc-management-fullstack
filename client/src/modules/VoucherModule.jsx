@@ -228,9 +228,9 @@ function printVoucher(v, org = {}) {
         html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo}</title>
 <style>
-@page{margin:8mm}
+@page{size:105mm 148mm;margin:6mm}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;font-size:14px;padding:10px;width:100%;color:#000;line-height:1.4}
+body{font-family:Arial,Helvetica,sans-serif;font-size:13px;padding:8px;width:100%;max-width:93mm;margin:0 auto;color:#000;line-height:1.4}
 
 .header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}
 .header .h1{font-size:22px;font-weight:900;letter-spacing:0.5px;color:#000}
@@ -833,9 +833,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                     <form onSubmit={handleFormRequest}>
                                         <div className="fg fg-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                             <div className="field">
-                                                <label><Search size={11} /> LR Number</label>
+                                                <label><Search size={11} /> LR Number <span style={{color:'var(--danger)'}}>*</span></label>
                                                 <input
-                                                    className="fi" type="text" placeholder="e.g. 42"
+                                                    className="fi" type="text" placeholder="Enter LR number"
                                                     value={form.lrNo}
                                                     onChange={e => handleLrSearch(e.target.value)}
                                                     style={lrAlreadyUsed ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.18)' } : {}}
@@ -843,8 +843,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 />
                                             </div>
                                             <div className="field">
-                                                <label>Truck No.</label>
-                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled' : 'Enter truck no.'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
+                                                <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
+                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
                                                 <datalist id="voucher-truck-list">
                                                     {vehicleNumbers.map(no => <option key={no} value={no} />)}
                                                 </datalist>
@@ -867,8 +867,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
                                                     </div>
                                                     <div className="field">
-                                                        <label>Bill No</label>
-                                                        <input className="fi" type="text" placeholder="Required" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
+                                                        <label>Bill No <span style={{color:'var(--danger)'}}>*</span></label>
+                                                        <input className="fi" type="text" placeholder="Enter bill number" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
                                                     </div>
                                                     <div className="field">
                                                         <label>Material Name</label>

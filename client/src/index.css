@@ -682,6 +682,18 @@ textarea {
 
 .fi::placeholder {
   color: var(--text-muted);
+  opacity: 0.45;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.fi:required {
+  border-left: 3px solid var(--primary);
+}
+
+.field label .req, .field label::after {
+  color: var(--danger);
+  font-weight: 900;
 }
 
 select.fi option {

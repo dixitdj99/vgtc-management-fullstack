@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel } from 'lucide-react';
+import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel, UserCircle } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import AdminUserManagement from './AdminUserManagement';
 import AdminModule from '../../modules/AdminModule';
 import PartyMaster from '../../modules/PartyMaster';
 import FuelStationManager from './FuelStationManager';
+import StaffProfileModule from '../../modules/StaffProfileModule';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -31,6 +32,7 @@ export default function AdminLayout() {
     { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
     { id: 'users', label: 'User Management', Icon: Users },
     { id: 'parties', label: 'Party Master', Icon: Building2 },
+    { id: 'profiles', label: 'Staff Profiles', Icon: UserCircle },
     { id: 'fuel', label: 'Fuel Stations', Icon: Fuel },
     { id: 'backup', label: 'System & Backup', Icon: Cloud },
   ];
@@ -152,29 +154,77 @@ export default function AdminLayout() {
         {/* Content Viewport */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px' }}>
           {/* Inject dark theme variables into this specific scope since the components are designed for a light/variable theme */}
-          <div style={{
-            '--bg': 'transparent',
-            '--bg-card': 'rgba(30, 41, 59, 0.6)',
-            '--bg-card-muted': 'rgba(15, 23, 42, 0.4)',
-            '--bg-input': 'rgba(15, 23, 42, 0.8)',
-            '--bg-th': 'rgba(15, 23, 42, 0.8)',
-            '--bg-row-even': 'transparent',
-            '--bg-row-odd': 'rgba(255,255,255,0.02)',
-            '--border': 'rgba(255,255,255,0.1)',
-            '--border-row': 'rgba(255,255,255,0.05)',
-            '--text': '#f8fafc',
+          <div className="admin-theme-scope" style={{
+            '--bg': '#1e293b',
+            '--bg-card': 'rgba(30, 41, 59, 0.9)',
+            '--bg-card-muted': 'rgba(15, 23, 42, 0.6)',
+            '--bg-input': '#0f172a',
+            '--bg-th': 'rgba(15, 23, 42, 0.9)',
+            '--bg-row-even': 'rgba(30, 41, 59, 0.3)',
+            '--bg-row-odd': 'rgba(15, 23, 42, 0.3)',
+            '--border': 'rgba(255,255,255,0.12)',
+            '--border-row': 'rgba(255,255,255,0.06)',
+            '--text': '#f1f5f9',
             '--text-sub': '#cbd5e1',
             '--text-muted': '#94a3b8',
             '--primary': '#8b5cf6',
             '--primary-hover': '#7c3aed',
+            '--primary-glow': 'rgba(139,92,246,0.3)',
             '--danger': '#fb7185',
+            '--success': '#34d399',
             '--accent': '#6366f1'
           }}>
+            {/* Dark theme overrides for form elements */}
+            <style>{`
+              .admin-theme-scope select,
+              .admin-theme-scope input,
+              .admin-theme-scope textarea {
+                background: #0f172a !important;
+                color: #f1f5f9 !important;
+                border-color: rgba(255,255,255,0.15) !important;
+              }
+              .admin-theme-scope select option {
+                background: #1e293b;
+                color: #f1f5f9;
+              }
+              .admin-theme-scope .fi {
+                background: #0f172a !important;
+                color: #f1f5f9 !important;
+                border-color: rgba(255,255,255,0.15) !important;
+              }
+              .admin-theme-scope .fi::placeholder {
+                color: #64748b !important;
+              }
+              .admin-theme-scope .btn-g {
+                background: rgba(255,255,255,0.08) !important;
+                color: #cbd5e1 !important;
+                border-color: rgba(255,255,255,0.12) !important;
+              }
+              .admin-theme-scope .btn-g:hover {
+                background: rgba(255,255,255,0.14) !important;
+              }
+              .admin-theme-scope .btn-p, .admin-theme-scope .btn-a {
+                background: #8b5cf6 !important;
+                color: white !important;
+              }
+              .admin-theme-scope .btn-d {
+                background: rgba(244,63,94,0.15) !important;
+                color: #fb7185 !important;
+              }
+              .admin-theme-scope .search-bar {
+                background: #0f172a !important;
+              }
+              .admin-theme-scope .card {
+                background: rgba(30,41,59,0.9) !important;
+                border-color: rgba(255,255,255,0.1) !important;
+              }
+            `}</style>
             <AnimatePresence mode="wait">
               <motion.div key={active} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
                 {active === 'dashboard' && <AdminDashboard />}
                 {active === 'users' && <AdminUserManagement />}
                 {active === 'parties' && <PartyMaster />}
+                {active === 'profiles' && <StaffProfileModule role="admin" />}
                 {active === 'fuel' && <FuelStationManager />}
                 {active === 'backup' && <AdminModule />}
               </motion.div>

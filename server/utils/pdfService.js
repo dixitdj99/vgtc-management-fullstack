@@ -604,90 +604,306 @@ async function generateVoucherListPDF(plantName, vouchers, outputPath) {
 }
 
 /**
- * Generates a formal Tax Invoice PDF for multiple Loading Receipts.
- * Includes Header, Invoice Details, Party Info, and a detailed table of LRs.
+ * Generates a formal Transportation Freight Bill / Tax Invoice PDF.
+ * Dynamically fits rows — no fixed per-page limit. Adds pages as needed.
+ * Includes amount in words, GST, signature, declaration.
  */
 async function generateInvoicePDF(invoiceData, outputPath) {
-    const { 
-        invoiceNumber, 
-        invoiceDate, 
-        partyName, 
-        items, // Array of LRs
-        billingEntity = 'VIKAS GOODS TRANSPORT',
-        address = 'Jharli, Jhajjar, Haryana',
-        contact = '+91 9999999999'
+    const { VGTC_INFO, PLANT_CONFIGS } = require('../config/plantConfig');
+    const {
+        plantKey = 'jksuper_jharli',
+        billNo = '',
+        billDate = '',
+        items = [],
+        gstRate: gstRateOverride,
     } = invoiceData;
 
-    const totalWeight = items.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0);
-    const totalBags = items.reduce((s, v) => s + (parseInt(v.totalBags || v.bags) || 0), 0);
-    const totalAmount = items.reduce((s, v) => s + (parseFloat(v.totalAmount || v.amount || 0)), 0);
+    const plant = PLANT_CONFIGS[plantKey] || PLANT_CONFIGS.jksuper_jharli;
+    const co = VGTC_INFO;
+
+    // GST rate: override > plant config > default 6
+    const gstRate = gstRateOverride || plant.gstRate || 6;
+    const igstRate = gstRate * 2;
+
+    // Auto-derive financial year from billDate
+    const getFY = (dateStr) => {
+        let d;
+        if (dateStr && dateStr.includes('-')) d = new Date(dateStr);
+        else if (dateStr && dateStr.includes('.')) {
+            const [dd, mm, yy] = dateStr.split('.');
+            d = new Date(`${yy}-${mm}-${dd}`);
+        } else d = new Date();
+        if (isNaN(d.getTime())) d = new Date();
+        const yr = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+        return `${yr}-${String(yr + 1).slice(2)}`;
+    };
+    const financialYear = getFY(billDate);
+
+    // Auto-calculate totals per item
+    const enriched = items.map(it => {
+        const billed = parseFloat(it.billedQty) || 0;
+        const rec = parseFloat(it.recQty) || 0;
+        const rate = parseFloat(it.ratePMT) || 0;
+        const short = parseFloat(it.shortQty) || 0;
+        const freight = billed * rate;
+        return { ...it, billed, rec, rate, short, freight };
+    });
+
+    const grandBilled = enriched.reduce((s, v) => s + v.billed, 0);
+    const grandRec = enriched.reduce((s, v) => s + v.rec, 0);
+    const grandFreight = enriched.reduce((s, v) => s + v.freight, 0);
+    const grandShort = enriched.reduce((s, v) => s + v.short, 0);
+    const cgst = parseFloat((grandFreight * gstRate / 100).toFixed(2));
+    const sgst = parseFloat((grandFreight * gstRate / 100).toFixed(2));
+    const grandTotal = parseFloat((grandFreight + cgst + sgst).toFixed(2));
+
+    // Indian number format
+    const fmtNum = (n) => {
+        if (n === 0) return '0';
+        return Math.abs(n).toLocaleString('en-IN') * (n < 0 ? -1 : 1) || n.toLocaleString('en-IN');
+    };
+    const fmtD2 = (n) => {
+        const fixed = Math.abs(n).toFixed(2);
+        const [int, dec] = fixed.split('.');
+        return (n < 0 ? '-' : '') + parseInt(int).toLocaleString('en-IN') + '.' + dec;
+    };
+    const fmtD3 = (n) => {
+        const fixed = Math.abs(n).toFixed(3);
+        const [int, dec] = fixed.split('.');
+        return (n < 0 ? '-' : '') + parseInt(int).toLocaleString('en-IN') + '.' + dec;
+    };
+
+    // Amount in words
+    const numberToWords = (num) => {
+        const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+            'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+        const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+        if (num === 0) return 'ZERO';
+        const convert = (n) => {
+            if (n < 20) return ones[n];
+            if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+            if (n < 1000) return ones[Math.floor(n / 100)] + ' HUNDRED' + (n % 100 ? ' ' + convert(n % 100) : '');
+            if (n < 100000) return convert(Math.floor(n / 1000)) + ' THOUSAND' + (n % 1000 ? ' ' + convert(n % 1000) : '');
+            if (n < 10000000) return convert(Math.floor(n / 100000)) + ' LAKH' + (n % 100000 ? ' ' + convert(n % 100000) : '');
+            return convert(Math.floor(n / 10000000)) + ' CRORE' + (n % 10000000 ? ' ' + convert(n % 10000000) : '');
+        };
+        const rupees = Math.floor(Math.abs(num));
+        const paise = Math.round((Math.abs(num) - rupees) * 100);
+        let words = convert(rupees) + ' RUPEES';
+        if (paise > 0) words += ' AND ' + convert(paise) + ' PAISE';
+        return words + ' ONLY';
+    };
+
+    // Landscape A4 — spacious rows, header+footer on every page
+    const ROW_H = 20;
+    const TOTAL_ROW_H = 14;
+    const HEADER_HEIGHT = 195;
+    const FOOTER_HEIGHT = 150;
 
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 30, size: 'A4' });
-        const stream = fs.createWriteStream(outputPath);
-        doc.pipe(stream);
+        const doc = new PDFDocument({ margin: 12, size: 'A4', layout: 'landscape' });
+        let stream, chunks;
+        if (outputPath) {
+            stream = fs.createWriteStream(outputPath);
+            doc.pipe(stream);
+        } else {
+            chunks = [];
+            doc.on('data', c => chunks.push(c));
+        }
 
-        // ── Header ───────────────────────────────────────────────
-        doc.rect(30, 30, doc.page.width - 60, 60).fill('#1e293b');
-        doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text(billingEntity, 40, 45);
-        doc.fontSize(10).font('Helvetica').text('TAX INVOICE', 40, 72);
-        doc.fontSize(10).text(`${address} | ${contact}`, 30, 45, { align: 'right', width: doc.page.width - 70 });
-        
-        let y = 110;
+        const PW = doc.page.width;
+        const PH = doc.page.height;
+        const M = 12;
+        const W = PW - M * 2;
 
-        // ── Invoice Details ──────────────────────────────────────
-        doc.fillColor('#000').fontSize(10).font('Helvetica-Bold').text('INVOICE TO:', 30, y);
-        doc.fontSize(14).text(partyName || '—', 30, y + 14);
-        
-        doc.fontSize(10).font('Helvetica-Bold').text('INVOICE NO:', 400, y);
-        doc.font('Helvetica').text(invoiceNumber || '—', 480, y);
-        doc.font('Helvetica-Bold').text('DATE:', 400, y + 14);
-        doc.font('Helvetica').text(invoiceDate || '—', 480, y + 14);
-        
-        y += 60;
+        // ── Helper: draw bordered cell ──
+        function cell(x, y, w, h, text, opts = {}) {
+            const { bg, align = 'left', font = 'Helvetica-BoldOblique', size = 9, color = '#000', noBorderLeft, noBorderRight, noBorderTop, noBorderBottom, padding = 3, clip } = opts;
+            if (bg) doc.save().rect(x, y, w, h).fill(bg).restore();
+            doc.save();
+            doc.lineWidth(0.5);
+            if (!noBorderTop) doc.moveTo(x, y).lineTo(x + w, y).stroke('#000');
+            if (!noBorderBottom) doc.moveTo(x, y + h).lineTo(x + w, y + h).stroke('#000');
+            if (!noBorderLeft) doc.moveTo(x, y).lineTo(x, y + h).stroke('#000');
+            if (!noBorderRight) doc.moveTo(x + w, y).lineTo(x + w, y + h).stroke('#000');
+            doc.restore();
+            if (text !== undefined && text !== null && String(text).length > 0) {
+                doc.save();
+                if (clip) doc.rect(x, y, w, h).clip();
+                doc.font(font).fontSize(size).fillColor(color);
+                const tw = w - padding * 2;
+                doc.text(String(text), x + padding, y + padding, { width: tw, height: h - padding, align, lineBreak: !clip, ellipsis: clip });
+                doc.restore();
+            }
+        }
 
-        // ── Table ────────────────────────────────────────────────
-        const table = {
-            title: 'Loading Receipts Detail',
-            headers: [
-                { label: 'Date', property: 'date', width: 60 },
-                { label: 'LR No.', property: 'lrNo', width: 50 },
-                { label: 'Truck', property: 'truckNo', width: 70 },
-                { label: 'Destination', property: 'destination', width: 100 },
-                { label: 'Material', property: 'material', width: 100 },
-                { label: 'Bags', property: 'totalBags', width: 50 },
-                { label: 'Weight(MT)', property: 'weight', width: 60 },
-            ],
-            rows: items.map(v => [
-                v.date || '—',
-                `#${v.lrNo}`,
-                v.truckNo || '—',
-                v.destination || '—',
-                v.material || '—',
-                String(v.totalBags || 0),
-                `${parseFloat(v.weight || 0).toFixed(2)} MT`
-            ])
-        };
+        // Column widths — landscape gives ~820pt usable width
+        const colPcts = [3, 18, 11, 8, 8, 8, 8, 6.5, 6.5, 4.5, 7, 3.5];
+        const cols = colPcts.map(p => Math.round(W * p / 100));
+        cols[cols.length - 1] += W - cols.reduce((s, c) => s + c, 0);
+        function colX(idx) { return M + cols.slice(0, idx).reduce((s, c) => s + c, 0); }
 
-        doc.table(table, {
-            prepareHeader: () => doc.font('Helvetica-Bold').fontSize(9).fillColor('#1e293b'),
-            prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                doc.font('Helvetica').fontSize(9).fillColor('#000');
-            },
-        });
+        // Single page per invoice — all entries on one page
+        // Row height auto-adjusts if many entries to fit on one page
+        const maxRowsAtCurrentSize = Math.floor((PH - M * 2 - HEADER_HEIGHT - FOOTER_HEIGHT - TOTAL_ROW_H) / ROW_H);
+        const actualRowH = enriched.length > maxRowsAtCurrentSize
+            ? Math.floor((PH - M * 2 - HEADER_HEIGHT - FOOTER_HEIGHT - TOTAL_ROW_H) / enriched.length)
+            : ROW_H;
+        const pages = [enriched]; // always single page
 
-        // ── Totals ───────────────────────────────────────────────
-        y = doc.y + 20;
-        doc.rect(30, y, doc.page.width - 60, 40).fill('#f8fafc');
-        doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold').text('GRAND TOTALS', 40, y + 15);
-        doc.text(`Bags: ${totalBags} | Weight: ${totalWeight.toFixed(2)} MT`, 250, y + 15, { align: 'right', width: doc.page.width - 290 });
+        // ══════════════════════════════════════════════════════════
+        function drawPage(pageItems, pageIdx, isLastPage) {
+            if (pageIdx > 0) doc.addPage();
+            let y = M;
 
-        // ── Footer ───────────────────────────────────────────────
-        doc.fontSize(8).fillColor('#94a3b8').text('This is a computer generated invoice and does not require a physical signature.', 30, doc.page.height - 50, { align: 'center' });
+            // ── Header Section ──
+            const halfW = Math.round(W / 2);
+            const qW = Math.round(W / 4);
+            const dh = 14;
+
+            // Company name
+            cell(M, y, W, 18, co.company, { align: 'center', font: 'Helvetica-Bold', size: 13, noBorderLeft: true, noBorderRight: true, noBorderTop: true, padding: 3 });
+            y += 18;
+            // Address
+            cell(M, y, W, 13, `${co.address} ,E-Mail : ${co.email},Contact : ${co.contact}`, { align: 'center', size: 8, noBorderLeft: true, noBorderRight: true, padding: 2 });
+            y += 13;
+            // Yellow banner
+            cell(M, y, W, 14, 'TRANSPORTATION FREIGHT BILL ( Primary/Grey)', { bg: '#ffff00', align: 'center', size: 10, noBorderLeft: true, noBorderRight: true, padding: 2 });
+            y += 14;
+            // Tax Invoice
+            cell(M, y, W, 14, 'TAX INVOICE (Loose/Bag/STO) - Cement/Clinker', { align: 'center', size: 10, noBorderLeft: true, noBorderRight: true, padding: 2 });
+            y += 14;
+
+            // Details grid
+            function detailRow(yy, ll, lv, rl, rv) {
+                cell(M, yy, qW, dh, ll, { size: 9, noBorderLeft: true });
+                cell(M + qW, yy, qW, dh, lv, { size: 9 });
+                if (rl !== null) {
+                    cell(M + halfW, yy, qW, dh, rl, { size: 9 });
+                    cell(M + halfW + qW, yy, qW, dh, rv, { size: 9, noBorderRight: true });
+                } else {
+                    cell(M + halfW, yy, halfW, dh, '', { noBorderRight: true });
+                }
+            }
+            detailRow(y, 'Sap Code :', plant.sapCode, 'Bill No. :', billNo); y += dh;
+            detailRow(y, 'Consignor / Bill To', plant.consignor, 'Date :', billDate); y += dh;
+            detailRow(y, 'GSTI :', plant.consignorGSTIN, 'PAN No.:', co.pan); y += dh;
+            detailRow(y, 'SAC Code :', co.sacCode, 'GSTIN No.:', co.gstin); y += dh;
+            detailRow(y, 'Plant Code :', plant.plantCode, 'Status', plant.status || 'Propriter'); y += dh;
+            cell(M, y, halfW, dh, '', { noBorderLeft: true, noBorderTop: true, noBorderBottom: true });
+            cell(M + halfW, y, qW, dh, 'Transport Mode', { size: 9 });
+            cell(M + halfW + qW, y, qW, dh, co.transportMode, { size: 9, noBorderRight: true }); y += dh;
+            cell(M, y, halfW, dh, '', { noBorderLeft: true, noBorderTop: true, noBorderBottom: true });
+            cell(M + halfW, y, qW, dh, 'RST on forward Charge', { size: 9 });
+            cell(M + halfW + qW, y, qW, dh, co.rstForwardCharge, { size: 9, noBorderRight: true }); y += dh;
+            cell(M, y, qW, dh, 'Place of Supply', { align: 'center', size: 9, noBorderLeft: true });
+            cell(M + qW, y, qW, dh, 'State Name', { align: 'center', size: 9 });
+            cell(M + halfW, y, qW, dh, 'State Code', { size: 9 });
+            cell(M + halfW + qW, y, qW, dh, plant.stateCode, { size: 9, noBorderRight: true }); y += dh;
+
+            // ── Table Header ──
+            const th = 20;
+            const hdrs = ['S NO', 'Consignee Name', 'Destination', 'Truck No', 'LR No', 'InvoiceNo', 'Invoice Date', 'Billed Qty (LD)', 'Rec. Qty\n(UL)', 'Rate\nPMT', 'Total Freight', 'Short\nQty'];
+            for (let i = 0; i < hdrs.length; i++) {
+                cell(colX(i), y, cols[i], th, hdrs[i], {
+                    bg: '#eaedf2', align: 'center', size: 7, padding: 2,
+                    noBorderLeft: i === 0, noBorderRight: i === hdrs.length - 1,
+                });
+            }
+            y += th;
+
+            // ── Data Rows — full size, no clipping ──
+            const startNum = pages.slice(0, pageIdx).reduce((s, p) => s + p.length, 0);
+            for (let r = 0; r < pageItems.length; r++) {
+                const it = pageItems[r];
+                const vals = [
+                    startNum + r + 1, it.consigneeName || '', it.destination || '',
+                    it.truckNo || '', it.lrNo || '', it.invoiceNo || '', it.invoiceDate || '',
+                    it.billed, it.rec, it.rate, it.freight, it.short || ''
+                ];
+                const aligns = ['center', 'center', 'center', 'center', 'center', 'center', 'center', 'center', 'center', 'center', 'right', 'center'];
+                const rh = actualRowH || ROW_H;
+                const rFont = rh < 16 ? 7 : rh < 18 ? 8 : 9;
+                const rPad = rh < 16 ? 2 : rh < 18 ? 3 : 4;
+                for (let c = 0; c < vals.length; c++) {
+                    cell(colX(c), y, cols[c], rh, vals[c], {
+                        align: aligns[c], size: rFont, clip: true, padding: rPad,
+                        noBorderLeft: c === 0, noBorderRight: c === vals.length - 1,
+                    });
+                }
+                y += rh;
+            }
+
+            // ── Grand Total ──
+            const mergedW = cols.slice(0, 7).reduce((s, c) => s + c, 0);
+            cell(colX(0), y, mergedW, TOTAL_ROW_H, '', { noBorderLeft: true });
+            const totVals = [fmtD3(grandBilled), fmtD3(grandRec), '', fmtD2(grandFreight), fmtD3(grandShort)];
+            for (let c = 7; c < cols.length; c++) {
+                cell(colX(c), y, cols[c], TOTAL_ROW_H, totVals[c - 7], {
+                    align: 'right', size: 8, padding: 3, noBorderRight: c === cols.length - 1,
+                });
+            }
+            y += TOTAL_ROW_H;
+
+            // ── Footer — only on last page ──
+            if (isLastPage) {
+                // GST section: 3 columns — Label | Tag | Amount
+                const gstX = colX(8);
+                const gC1 = cols[8];            // label: "Inter State" / "Intra State"
+                const gC2 = cols[9];            // tag: "IGST 18%"
+                const gC3 = cols[10] + cols[11]; // amount (wide enough for totals)
+                const gstH = 13;
+
+                cell(gstX, y, gC1, gstH, 'Inter State', { size: 8, padding: 3 });
+                cell(gstX + gC1, y, gC2, gstH, `IGST ${igstRate}%`, { size: 7, padding: 2 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, '0', { align: 'right', size: 8, padding: 2 }); y += gstH;
+
+                cell(gstX, y, gC1, gstH, 'Intra State', { size: 8, padding: 3, noBorderBottom: true });
+                cell(gstX + gC1, y, gC2, gstH, `CGST ${gstRate}%`, { size: 7, padding: 2 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, fmtD2(cgst), { align: 'right', size: 7, padding: 2 }); y += gstH;
+
+                cell(gstX, y, gC1, gstH, '', { noBorderTop: true });
+                cell(gstX + gC1, y, gC2, gstH, `SGST ${gstRate}%`, { size: 7, padding: 2 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, fmtD2(sgst), { align: 'right', size: 7, padding: 2 }); y += gstH;
+
+                cell(gstX, y, gC1 + gC2, gstH, 'Total', { size: 9, padding: 3 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, fmtD2(grandTotal), { align: 'right', font: 'Helvetica-Bold', size: 7, padding: 2 }); y += gstH;
+
+                // Amount in words
+                y += 2;
+                const wordsText = `Total Amount in words -  ${numberToWords(grandTotal)}`;
+                cell(M, y, W, 15, wordsText, { font: 'Helvetica-Bold', size: 8, noBorderLeft: true, noBorderRight: true, padding: 3 }); y += 15;
+
+                // Signature
+                const sigX = colX(8);
+                const sigW = cols.slice(8).reduce((s, c) => s + c, 0);
+                cell(sigX, y, sigW, 14, `For ${co.company}`, { align: 'right', size: 8, noBorderRight: true, padding: 3 }); y += 14;
+                cell(sigX, y, sigW, 28, '', { noBorderRight: true });
+                doc.font('Helvetica-BoldOblique').fontSize(8).fillColor('#000')
+                    .text('Autorised Signatory', sigX, y + 18, { width: sigW, align: 'right' }); y += 28;
+
+                // Declaration
+                y += 2;
+                const declText = `"I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us during the Financial Year ${financialYear} under forward charge.".\nGTA in relation to transport of goods supplied by us during the Financial Year ${financialYear} under forward charge.".`;
+                cell(M, y, W * 0.04, 30, `${igstRate}%\n(FCM)`, { align: 'center', size: 6, noBorderLeft: true, noBorderBottom: true, padding: 1 });
+                cell(M + W * 0.04, y, W * 0.11, 30, 'Decelaration -', { align: 'center', size: 8, noBorderBottom: true, padding: 3 });
+                cell(M + W * 0.15, y, W * 0.85, 30, declText, { align: 'center', size: 6, noBorderRight: true, noBorderBottom: true, padding: 3 });
+            }
+        }
+
+        // Render
+        for (let p = 0; p < pages.length; p++) {
+            drawPage(pages[p], p, p === pages.length - 1);
+        }
 
         doc.end();
-        stream.on('finish', () => resolve(outputPath));
-        stream.on('error', reject);
+        if (outputPath) {
+            stream.on('finish', () => resolve(outputPath));
+            stream.on('error', reject);
+        } else {
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+        }
     });
 }
 

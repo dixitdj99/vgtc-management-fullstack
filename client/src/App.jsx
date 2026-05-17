@@ -281,7 +281,6 @@ function AppInner() {
     },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
     { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice' },
-    { id: 'staff_profiles_dump', label: 'Profiles', Icon: Users, color: '#ec4899', section: 'jksuper', permKey: 'staff_profiles' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -329,7 +328,6 @@ function AppInner() {
     },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
     { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice' },
-    { id: 'staff_profiles_jharli', label: 'Profiles', Icon: Users, color: '#ec4899', section: 'jharli', permKey: 'staff_profiles' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -648,7 +646,6 @@ function AppInner() {
               {(active === 'sell_dump' || active === 'sell_jkl' || active === 'sell_jharli') && <SellModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_dump' || active === 'invoice_jharli') && <InvoiceModule brand={active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
               {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
-              {(active === 'staff_profiles_dump' || active === 'staff_profiles_jharli') && <StaffProfileModule role={user.role} />}
               {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl' || active === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
               {(active === 'party_master_dump' || active === 'party_master_jharli') && <PartyMaster />}
               {/* ── Generic (non-VGTC orgs) ── */}
@@ -663,7 +660,6 @@ function AppInner() {
               {active === 'pay_main'      && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
               {active === 'sell_main'     && <SellModule brand="main" role={user.role} permissions={user.permissions} />}
               {active === 'invoice_main'  && <InvoiceModule brand="main" role={user.role} permissions={user.permissions} />}
-              {active === 'profiles_main' && <StaffProfileModule role={user.role} />}
               {active === 'realtime_main' && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
             </motion.div>
           </AnimatePresence>

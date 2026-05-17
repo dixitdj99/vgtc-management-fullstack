@@ -2,10 +2,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
+import { fmtRs, fmtDate } from '../utils/format';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
+import VehicleRegistryCard from '../components/VehicleRegistryCard';
 
 const API = `/vehicles`;
 
@@ -230,7 +232,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [saving, setSaving] = useState(false);
 
     // UI State
-    const [tab, setTab] = useState('list'); 
+    const [tab, setTab] = useState('list'); // add new 'registry' option
+    // Add tab button in UI rendering section (approx line 600) 
     const [ownershipFilter, setOwnershipFilter] = useState('all'); 
     const [fSearch, setFSearch] = useState('');
     const [expandedOwners, setExpandedOwners] = useState({});
@@ -240,17 +243,32 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [ownerDeleteTarget, setOwnerDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
     
+    const [registryEntries, setRegistryEntries] = useState([]);
+    const [allVouchers, setAllVouchers] = useState([]);
+    const fetchRegistry = useCallback(async () => {
+        try {
+            const res = await ax.get(`${API}/registry`);
+            setRegistryEntries(res.data || []);
+        } catch (e) { console.error('Registry fetch error', e); }
+    }, []);
+
+    useEffect(() => { 
+        if (tab === 'registry') fetchRegistry(); 
+    }, [tab, fetchRegistry]);
+
     const fetchVehicleData = useCallback(async () => {
         setLoading(true);
         try {
-            const [vRes, pRes, prRes] = await Promise.all([
+            const [vRes, pRes, prRes, vocRes] = await Promise.all([
                 ax.get(API),
                 ax.get('/parties').catch(() => ({ data: [] })),
-                ax.get('/profiles').catch(() => ({ data: [] }))
+                ax.get('/profiles').catch(() => ({ data: [] })),
+                ax.get('/vouchers').catch(() => ({ data: [] }))
             ]);
             setVehicles(vRes.data || []);
             setParties(pRes.data || []);
             setProfiles(prRes.data || []);
+            setAllVouchers(vocRes.data || []);
 
             // Check for search redirect from other modules
             const redirectSearch = localStorage.getItem('vgtc-search-redirect');
@@ -339,6 +357,21 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             alert(error.response?.data?.error || 'GPS Deduction failed');
         }
     };
+
+    const pendingFromVouchers = useMemo(() => {
+        const systemTrucks = new Set(vehicles.map(v => cleanTruckNo(v.truckNo)));
+        const registryTrucks = new Set(registryEntries.map(e => cleanTruckNo(e.truckNo)));
+        const voucherTrucks = [...new Set(allVouchers.map(v => cleanTruckNo(v.truckNo)))].filter(Boolean);
+        
+        return voucherTrucks
+            .filter(t => !systemTrucks.has(t) && !registryTrucks.has(t))
+            .map(t => ({
+                id: `pending-${t}`,
+                truckNo: t,
+                isPending: true,
+                createdAt: new Date().toISOString()
+            }));
+    }, [allVouchers, vehicles, registryEntries]);
 
     const executeSave = async () => {
         setSaving(true); setIsConfirmingSave(false);
@@ -471,10 +504,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             }
             const oName = v.ownerName || 'Unknown Owner';
             const party = parties.find(p => String(p.name || '').toUpperCase() === String(oName || '').toUpperCase());
-            if (!map[oName]) map[oName] = { name: oName, ownerId: v.ownerId || null, partyId: v.ownerId || party?.id || null, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
+            if (!map[oName]) map[oName] = { name: oName, ownerId: v.ownerId || null, partyId: v.ownerId || party?.id || null, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '', balance: 0 };
             if (!map[oName].ownerId && v.ownerId) map[oName].ownerId = v.ownerId;
             if (!map[oName].partyId && (v.ownerId || party?.id)) map[oName].partyId = v.ownerId || party.id;
             if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
+            
+            // Note: Balance calculation here is a simplified mock. 
+            // In a real app, we'd fetch actual ledger totals.
+            const net = (parseFloat(v.total) || 0) - (parseFloat(v.paidBalance) || 0);
+            map[oName].balance += net;
+
             map[oName].vehicles.push(v);
         });
         return Object.values(map).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
@@ -509,6 +548,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Briefcase size={14} /> Asset List</button>
+                    <button className={`tab-btn${tab === 'registry' ? ' tab-amber' : ''}`} onClick={() => setTab('registry')}><Check size={14} /> Firm Registry</button>
                     <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Update Record</> : <><Plus size={14} /> New Vehicle Profile</>}</button>
                 </div>
                 {tab === 'list' && (
@@ -562,6 +602,15 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <option value="market">Market Vehicle</option>
                                     <option value="self">Self Vehicle</option>
                                     <option value="other">Other Vehicle</option>
+                                </select>
+                            </div>
+                            <div className="field">
+                                <label>GPS Type</label>
+                                <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })}>
+                                    <option value="none">None</option>
+                                    <option value="jkl">JK Lakshmi</option>
+                                    <option value="jksuper">JK Super</option>
+                                    <option value="both">Both</option>
                                 </select>
                             </div>
                         </div>
@@ -694,6 +743,31 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 </motion.div>
             )}
 
+            {tab === 'registry' && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="card" style={{ padding: '20px', background: 'var(--bg-th)' }}>
+                        <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}><Check size={18} color="var(--primary)" /> Vehicle Firm Registry</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Manage vehicle approvals and market vehicle records</p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
+                        {[...pendingFromVouchers, ...registryEntries].length === 0 && (
+                            <div className="card" style={{ padding: '40px', textAlign: 'center', gridColumn: '1 / -1' }}>
+                                <Info size={40} color="var(--text-muted)" style={{ marginBottom: '12px' }} />
+                                <p style={{ color: 'var(--text-muted)' }}>No vehicles in registry. New vehicles from vouchers will appear here.</p>
+                            </div>
+                        )}
+                        {[...pendingFromVouchers, ...registryEntries].map(entry => (
+                            <VehicleRegistryCard 
+                                key={entry.id} 
+                                entry={entry} 
+                                onApproved={() => { fetchRegistry(); fetchVehicleData(); }} 
+                            />
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+
             {tab === 'list' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ padding: '16px' }}>
@@ -716,8 +790,11 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{owner.vehicles.length} Vehicles • {owner.contact || 'No Contact'}</div>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}><CreditCard size={12} /> Bank Details Linked</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 800 }}>COMBINED BALANCE</div>
+                                        <div style={{ fontSize: '15px', fontWeight: 900, color: owner.balance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(owner.balance)}</div>
+                                    </div>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setOwnerDeleteTarget(owner); }}
                                         title="Delete owner with all vehicles"
@@ -732,98 +809,96 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 {expandedOwners[owner.name] && (
                                     <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
                                         <div style={{ padding: '20px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-                                            {owner.vehicles.map(v => (
-                                                <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: isNearExpiry(v) ? 'rgba(239,68,68,0.02)' : 'var(--bg-card)' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                                        <div>
-                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px', cursor: 'pointer' }} title="Click to open full vehicle profile">
-                                                                <Truck size={18} style={{ color: '#3b82f6' }} /> {v.truckNo}
-                                                                <span style={{ fontSize: '9px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Open Profile</span>
+                                            {owner.vehicles.map(v => {
+                                                const vBalance = (parseFloat(v.total) || 0) - (parseFloat(v.paidBalance) || 0);
+                                                return (
+                                                <div key={v.id} style={{ border: isNearExpiry(v) ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)', borderRadius: '14px', padding: '0', background: 'var(--bg-card)', overflow: 'hidden', transition: 'box-shadow 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+                                                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'}
+                                                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'}>
+                                                    {/* Header */}
+                                                    <div style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '16px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} title="Open vehicle profile">
+                                                                <Truck size={16} style={{ color: '#3b82f6', flexShrink: 0 }} /> {v.truckNo}
                                                             </div>
-                                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', marginBottom: '8px' }}>
-                                                                <span style={{ fontSize: '11px', fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}</span>
-                                                                {v.model && <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--bg-th)', color: 'var(--text)', padding: '2px 8px', borderRadius: '4px' }}>{v.model}</span>}
-                                                            </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
-
-                                                                <span>• Age: {calculateAge(v.regDate)}</span>
-                                                                {v.grossWeight > 0 && <span>• {(parseFloat(v.grossWeight) || 0).toLocaleString()} KG</span>}
+                                                            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                                                <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}{v.model ? ` ${v.model}` : ''}</span>
+                                                                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>Age: {calculateAge(v.regDate)}</span>
                                                             </div>
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
                                                             {v.ownershipType === 'self' && (
-                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'rgba(245,158,11,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Wrench size={14} /></button>
+                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Wrench size={13} /></button>
                                                             )}
-                                                            <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert email for this vehicle" style={{ color: '#8b5cf6', border: 'none', background: 'rgba(139,92,246,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Bell size={14} /></button>
-                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'rgba(59,130,246,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Edit3 size={14} /></button>
-                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'rgba(244,63,94,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Trash2 size={14} /></button>
+                                                            <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert" style={{ color: '#8b5cf6', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Bell size={13} /></button>
+                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Edit3 size={13} /></button>
+                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>
                                                         </div>
                                                     </div>
-                                                    
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-                                                        {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
-                                                        {v.nationalPermitDate && getDocIcon('National Permit', v.nationalPermitDate)}
-                                                    </div>
 
-                                                    {v.ownershipType === 'self' && parseJson(v.emiDetails).loanNo && (() => {
-                                                        const emi = parseJson(v.emiDetails);
-                                                        const paidCount = (emi.paidEmis || []).length;
-                                                        const totalTenure = parseInt(emi.tenure) || 0;
-                                                        const pendingEmis = totalTenure - paidCount;
-                                                        return (
-                                                            <div style={{ padding: '14px', background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05))', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.15)', marginBottom: '12px' }}>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                                    <div>
-                                                                        <div style={{ fontWeight: 900, color: '#3b82f6', fontSize: '14px', letterSpacing: '0.5px' }}>🏦 {emi.bankName || 'BANK'}</div>
-                                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo}</div>
-                                                                    </div>
-                                                                    <button 
-                                                                        onClick={() => handleMarkPaid(v)}
-                                                                        style={{ fontSize: '10px', fontWeight: 800, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer' }}
-                                                                    >
-                                                                        Mark Paid
-                                                                    </button>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px', padding: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '10px' }}>
-                                                                    <div style={{ textAlign: 'center' }}>
-                                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
-                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</div>
-                                                                        {emi.dueDate && <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>Due: {emi.dueDate}</div>}
-                                                                    </div>
-                                                                </div>
-                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px', textAlign: 'center' }}>
-                                                                    <div style={{ padding: '6px', background: 'rgba(16,185,129,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Paid</div><strong style={{ color: '#10b981', fontSize: '14px' }}>{paidCount}</strong></div>
-                                                                    <div style={{ padding: '6px', background: 'rgba(239,68,68,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Pending</div><strong style={{ color: '#ef4444', fontSize: '14px' }}>{pendingEmis}</strong></div>
-                                                                    <div style={{ padding: '6px', background: 'rgba(59,130,246,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Rate</div><strong style={{ color: '#3b82f6', fontSize: '14px' }}>{emi.interestRate}%</strong></div>
-                                                                </div>
-                                                                {emi.pending && (
-                                                                    <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '11px', color: 'var(--text-sub)', textAlign: 'center' }}>
-                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{(parseFloat(emi.pending) || 0).toLocaleString()}</strong>
-                                                                    </div>
-                                                                )}
+                                                    {/* Info Row */}
+                                                    {v.ownershipType !== 'self' && (
+                                                        <div style={{ padding: '0 16px 12px' }}>
+                                                            <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><CreditCard size={11} /> GPS: {(v.gpsType || 'NONE').toUpperCase()}</span>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Banknote size={11} /> {parseJson(v.bankDetails).bank || 'No Bank'}</span>
                                                             </div>
-                                                        );
-                                                    })()}
-
-                                                    {/* RC Quick Info */}
-                                                    {v.rcDetails && parseJson(v.rcDetails).engineNo && (
-                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                                                            <div>E: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).engineNo}</span></div>
-                                                            <div>C: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).chassisNo}</span></div>
+                                                            {/* Balance bar */}
+                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Balance</span>
+                                                                <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</strong>
+                                                            </div>
                                                         </div>
                                                     )}
 
-                                                    {/* Maintenance Quick Button */}
-                                                    <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '8px', background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03))', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '10px' }}>
-                                                        <Wrench size={12} /> Open Maintenance Tracker
-                                                    </button>
+                                                    {v.ownershipType === 'self' && (
+                                                        <div style={{ padding: '0 16px' }}>
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
+                                                                {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
+                                                                {v.nationalPermitDate && getDocIcon('NP', v.nationalPermitDate)}
+                                                            </div>
 
-                                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', color: 'var(--text-sub)' }}>
-                                                        <span><User size={12} /> {v.driverName || 'No Driver'}</span>
-                                                        {v.fastag && <span><CreditCard size={12} /> {v.fastag}</span>}
+                                                            {parseJson(v.emiDetails).loanNo && (() => {
+                                                                const emi = parseJson(v.emiDetails);
+                                                                const paidCount = (emi.paidEmis || []).length;
+                                                                const totalTenure = parseInt(emi.tenure) || 0;
+                                                                const pendingEmis = totalTenure - paidCount;
+                                                                return (
+                                                                    <div style={{ padding: '12px', background: 'linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.03))', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.12)', marginBottom: '10px' }}>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                                            <div>
+                                                                                <div style={{ fontWeight: 800, color: '#3b82f6', fontSize: '12px' }}>{emi.bankName || 'BANK'}</div>
+                                                                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo}</div>
+                                                                            </div>
+                                                                            <button onClick={() => handleMarkPaid(v)} style={{ fontSize: '9px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}>Mark Paid</button>
+                                                                        </div>
+                                                                        <div style={{ textAlign: 'center', padding: '6px', background: 'rgba(59,130,246,0.04)', borderRadius: '8px', marginBottom: '8px' }}>
+                                                                            <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
+                                                                            <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</div>
+                                                                        </div>
+                                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '10px', textAlign: 'center' }}>
+                                                                            <div style={{ padding: '4px', background: 'rgba(16,185,129,0.06)', borderRadius: '6px' }}><div style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Paid</div><strong style={{ color: '#10b981' }}>{paidCount}</strong></div>
+                                                                            <div style={{ padding: '4px', background: 'rgba(239,68,68,0.06)', borderRadius: '6px' }}><div style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Left</div><strong style={{ color: '#ef4444' }}>{pendingEmis}</strong></div>
+                                                                            <div style={{ padding: '4px', background: 'rgba(59,130,246,0.06)', borderRadius: '6px' }}><div style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Rate</div><strong style={{ color: '#3b82f6' }}>{emi.interestRate}%</strong></div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+
+                                                            <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '7px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '8px' }}>
+                                                                <Wrench size={12} /> Maintenance Tracker
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Footer */}
+                                                    <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: '11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', background: 'var(--bg)' }}>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><User size={11} /> {v.driverName || 'No Driver'}</span>
+                                                        <span style={{ fontSize: '10px' }}>{fmtDate(v.createdAt)}</span>
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </motion.div>
                                 )}

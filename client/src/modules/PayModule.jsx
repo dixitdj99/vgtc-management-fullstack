@@ -11,14 +11,20 @@ import ColumnFilter from '../components/ColumnFilter';
 const API_V = '/vouchers';
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill'];
 
-function calcNet(v) {
+function calcNet(v, vehicle) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
   const munshi = parseFloat(v.munshi) || 0;
   const shortage = parseFloat(v.shortage) || 0;
-  return gross - diesel - cash - online - munshi - shortage;
+  let net = gross - diesel - cash - online - munshi - shortage;
+
+  // Market vehicle + No GPS + JK Lakshmi = ₹50 deduction
+  if (vehicle && vehicle.ownershipType === 'market' && (!vehicle.gpsType || vehicle.gpsType === 'none') && v.type === 'JK_Lakshmi') {
+    net -= 50;
+  }
+  return net;
 }
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
@@ -41,6 +47,17 @@ function hasUnverifiedDiesel(v) {
 export default function PayModule({ brand, role, permissions, initialView }) {
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
+  const [truckAllVouchers, setTruckAllVouchers] = useState([]);
+  useEffect(() => {
+    if (selTruck) fetchTruckAllVouchers(selTruck);
+  }, [selTruck]);
+
+  const fetchTruckAllVouchers = async (truck) => {
+    try { 
+        const res = await ax.get(API_V);
+        setTruckAllVouchers(res.data.filter(v => v.truckNo === truck));
+    } catch { setTruckAllVouchers([]); }
+  };
   const [selectedLrs, setSelectedLrs] = useState(new Set());
   const [view, setView] = useState(initialView || 'freight');
 
@@ -74,6 +91,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   const [detailTab, setDetailTab] = useState('pending');
   const [vehiclesInfo, setVehiclesInfo] = useState([]);
+  const selVehicle = useMemo(() => vehiclesInfo.find(v => v.truckNo === selTruck), [vehiclesInfo, selTruck]);
   const [receiptModal, setReceiptModal] = useState(null);
 
   // Vehicle Advance states (synced with Balance Sheet)
@@ -217,9 +235,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const truckSummaries = useMemo(() => {
     let list = allTrucks.map(truck => {
       const rows = truckGroups[truck] || [];
-      const net = rows.reduce((s, v) => s + calcNet(v), 0);
+      const vehicle = (vehiclesInfo || []).find(vh => vh.truckNo === truck);
+      const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
       const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
-      const pendingRows = rows.filter(v => calcNet(v) > (parseFloat(v.paidBalance) || 0));
+      const pendingRows = rows.filter(v => calcNet(v, vehicle) > (parseFloat(v.paidBalance) || 0));
       const types = [...new Set(rows.map(r => r.type?.replace('_', ' ') || 'Unknown'))].join(', ');
       return { 
         truck, 
@@ -242,14 +261,14 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     });
 
     return list;
-  }, [allTrucks, truckGroups, filters]);
+  }, [allTrucks, truckGroups, filters, vehiclesInfo]);
 
   // Specific vehicle view
   const vehicleLrs = useMemo(() => {
     if (!selTruck) return [];
     let rows = truckGroups[selTruck] || [];
     // Only show pending or partially paid LRs
-    rows = rows.filter(v => calcNet(v) > (parseFloat(v.paidBalance) || 0));
+    rows = rows.filter(v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0));
 
     // Date filtering
     if (dateFilter !== 'all') {
@@ -288,7 +307,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     if (!selTruck) return [];
     let rows = truckGroups[selTruck] || [];
     // Show fully paid LRs
-    rows = rows.filter(v => calcNet(v) <= (parseFloat(v.paidBalance) || 0) && (parseFloat(v.paidBalance) || 0) > 0);
+    rows = rows.filter(v => calcNet(v, selVehicle) <= (parseFloat(v.paidBalance) || 0) && (parseFloat(v.paidBalance) || 0) > 0);
     return rows.sort((a, b) => {
       const d1 = new Date(a.paymentClearedDate || 0);
       const d2 = new Date(b.paymentClearedDate || 0);
@@ -304,6 +323,29 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     });
   };
 
+  const gpsAccrual = useMemo(() => {
+    if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
+    const companyType = brand === 'jkl' ? 'JK_Lakshmi' : 'JK_Super';
+    const hasGps = (brand === 'jkl' && (selVehicle.gpsType === 'jkl' || selVehicle.gpsType === 'both')) ||
+                   (brand === 'jks' && (selVehicle.gpsType === 'jksuper' || selVehicle.gpsType === 'both'));
+    if (!hasGps) return null;
+
+    const truckVouchers = truckAllVouchers || [];
+    const paid = truckVouchers.filter(v => v.type === companyType && v.paymentClearedDate);
+    const lastPayDateStr = paid.reduce((max, v) => (v.paymentClearedDate > max ? v.paymentClearedDate : max), null);
+    
+    let startDate = lastPayDateStr ? new Date(lastPayDateStr) : null;
+    if (!startDate) {
+        const firstV = truckVouchers.filter(v => v.type === companyType).sort((a,b) => new Date(a.date) - new Date(b.date))[0];
+        startDate = firstV ? new Date(firstV.date) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    }
+    
+    const today = new Date(paymentDate || Date.now());
+    const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
+    if (days === 0) return null;
+    return { days, amount: Math.round((days / 30) * 250), companyLabel: companyType.replace('_', ' ') };
+  }, [selTruck, selVehicle, truckAllVouchers, brand, paymentDate]);
+
   const onCheckAll = (rows, addAll) => {
     setSelectedLrs(s => {
       const n = new Set(s);
@@ -313,7 +355,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   };
 
   const selRows = vehicleLrs.filter(v => selectedLrs.has(v.id));
-  const selOutstanding = selRows.reduce((s, v) => s + Math.max(0, calcNet(v) - (parseFloat(v.paidBalance) || 0)), 0);
+  const selOutstanding = selRows.reduce((s, v) => s + Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0)), 0);
   
   // Validation checks
   const hasSelectedUnverified = selRows.some(hasUnverifiedDiesel);
@@ -325,11 +367,22 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     try {
       await Promise.all(selRows.map(v =>
         ax.patch(API_V + '/' + v.id, {
-          paidBalance: String(calcNet(v).toFixed(2)),
+          paidBalance: String(calcNet(v, selVehicle).toFixed(2)),
           paymentClearedDate: paymentDate,
           paymentMethod
         })
       ));
+      
+      // Auto-deduct GPS Rent
+      if (gpsAccrual && gpsAccrual.amount > 0) {
+        await ax.post('/vehicle-advances', {
+          truckNo: selTruck,
+          type: 'debit',
+          amount: gpsAccrual.amount,
+          date: paymentDate,
+          remark: `GPS Rent (${gpsAccrual.days} days) - ${gpsAccrual.companyLabel}`
+        });
+      }
       
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 5000);
@@ -849,7 +902,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <tbody>
                   {vehicleLrs.map((v, i) => {
                     const isChecked = selectedLrs.has(v.id);
-                    const out = Math.max(0, calcNet(v) - (parseFloat(v.paidBalance) || 0));
+                    const out = Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0));
                     const unverified = hasUnverifiedDiesel(v);
                     const bg = isChecked ? (unverified ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)') : (i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
 
@@ -904,7 +957,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </thead>
                   <tbody>
                     {paidLrs.map((v, i) => {
-                      const net = calcNet(v);
+                      const net = calcNet(v, selVehicle);
                       const method = v.paymentMethod || 'Cash';
                       return (
                         <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
@@ -950,8 +1003,18 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{selectedLrs.size}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px' }}>
-                  <span style={{ fontSize: '13px', color: 'var(--text-sub)', fontWeight: 700 }}>Total to Pay:</span>
-                  <span style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>{fmtRs(selOutstanding)}</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-sub)', fontWeight: 700 }}>Freight Total:</span>
+                  <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(selOutstanding)}</span>
+                </div>
+                {gpsAccrual && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>− GPS Rent Deduction ({gpsAccrual.days}d):</span>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--warn)' }}>− {fmtRs(gpsAccrual.amount)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid var(--border)', paddingTop: '10px', marginTop: '10px' }}>
+                  <span style={{ fontSize: '15px', color: 'var(--primary)', fontWeight: 900 }}>Net Payout:</span>
+                  <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(selOutstanding - (gpsAccrual?.amount || 0))}</span>
                 </div>
               </div>
 
@@ -966,9 +1029,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
                     Payment Date
                   </label>
                   <div style={{ position: 'relative' }}>
@@ -978,14 +1041,14 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </div>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
                     Payment Method
                   </label>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     {['Cash', 'Online'].map(m => (
                       <button key={m} type="button" onClick={() => setPaymentMethod(m)}
                         style={{
-                          flex: 1, padding: '8px', borderRadius: '8px', fontWeight: 700, fontSize: '13px',
+                          flex: 1, padding: '8px 12px', borderRadius: '8px', fontWeight: 700, fontSize: '12px',
                           border: `2px solid ${paymentMethod === m ? (m === 'Cash' ? '#10b981' : '#0A6ED1') : 'var(--border)'}`,
                           background: paymentMethod === m ? (m === 'Cash' ? 'rgba(16,185,129,0.1)' : 'rgba(10,110,209,0.1)') : 'var(--bg-input)',
                           color: paymentMethod === m ? (m === 'Cash' ? '#10b981' : '#0A6ED1') : 'var(--text-muted)',

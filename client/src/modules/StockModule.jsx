@@ -98,9 +98,9 @@ function printChallan(c, orgName) {
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Challan #${c.challanNo}</title>
   <style>
-    @page{margin:8mm}
+    @page{size:105mm 148mm;margin:6mm}
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Arial,Helvetica,sans-serif;width:100%;color:#000;font-size:14px;line-height:1.4;padding:10px}
+    body{font-family:Arial,Helvetica,sans-serif;width:100%;max-width:93mm;margin:0 auto;color:#000;font-size:13px;line-height:1.4;padding:8px}
 
     .header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}
     .header .h1{font-size:20px;font-weight:900;letter-spacing:0.5px}
@@ -900,8 +900,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             </div></div>
             <form onSubmit={triggerMigo} style={{ padding: '18px 20px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '14px', alignItems: 'end' }}>
-                {fi('Truck Number', <>
-                  <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="migo-truck-list"
+                {fi('Truck Number *', <>
+                  <input className="fi" type="text" placeholder="Enter truck number" required list="migo-truck-list"
                     value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
                   <datalist id="migo-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
@@ -909,8 +909,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Material', <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (Bags)', <div style={{ position: 'relative' }}>
-                  <input className="fi" type="number" step="1" min="1" required placeholder="e.g. 500" style={{ paddingRight: migoForm.quantity ? '70px' : '12px' }}
+                {fi('Quantity (Bags) *', <div style={{ position: 'relative' }}>
+                  <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity in bags" style={{ paddingRight: migoForm.quantity ? '70px' : '12px' }}
                     value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />
                   {migoForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', pointerEvents: 'none' }}>{(migoForm.quantity * 0.05).toFixed(2)} MT</span>}
                 </div>)}
@@ -998,15 +998,15 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             </div></div>
             <form onSubmit={triggerChallan} style={{ padding: '18px 20px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', alignItems: 'end' }}>
-                {fi('LR Number', <>
-                  <input className="fi" type="text" placeholder="e.g. 1234" required list="stock-lr-list"
+                {fi('LR Number *', <>
+                  <input className="fi" type="text" placeholder="Enter LR number" required list="stock-lr-list"
                     value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
                   <datalist id="stock-lr-list">
                     {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
                   </datalist>
                 </>)}
-                {fi('Truck Number', <>
-                  <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="stock-truck-list"
+                {fi('Truck Number *', <>
+                  <input className="fi" type="text" placeholder="Enter truck number" required list="stock-truck-list"
                     value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
                   <datalist id="stock-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
@@ -1014,13 +1014,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Material', <select className="fi" value={chalForm.material} onChange={e => setChalForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (Bags)', <div style={{ position: 'relative' }}>
-                  <input className="fi" type="number" step="1" min="1" required placeholder="bags" style={{ paddingRight: chalForm.quantity ? '70px' : '12px' }}
+                {fi('Quantity (Bags) *', <div style={{ position: 'relative' }}>
+                  <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity" style={{ paddingRight: chalForm.quantity ? '70px' : '12px' }}
                     value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
                   {chalForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--warn)', pointerEvents: 'none' }}>{(chalForm.quantity * 0.05).toFixed(2)} MT</span>}
                 </div>)}
                 {fi('Party Name', <>
-                  <input className="fi" type="text" placeholder="Customer / party" list="stock-party-list"
+                  <input className="fi" type="text" placeholder="Enter customer or party name" list="stock-party-list"
                     value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
                   <datalist id="stock-party-list">
                     {partySuggestions.map(name => <option key={name} value={name} />)}

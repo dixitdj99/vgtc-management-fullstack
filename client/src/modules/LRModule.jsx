@@ -66,9 +66,9 @@ function printReceipt(allRows, lrNo, allChallans = []) {
       <meta charset="UTF-8">
       <title>LR #${lrNo}</title>
       <style>
-        @page { margin: 8mm; }
+        @page { size: 105mm 148mm; margin: 6mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, Helvetica, sans-serif; width: 100%; max-width: 100%; color: #000; font-size: 14px; line-height: 1.4; padding: 10px; }
+        body { font-family: Arial, Helvetica, sans-serif; width: 100%; max-width: 93mm; margin: 0 auto; color: #000; font-size: 13px; line-height: 1.4; padding: 8px; }
 
         .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
         .header .h1 { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; color: #000; }
@@ -1362,23 +1362,23 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <div className="card-body">
               <form onSubmit={handleFormRequest}>
                 <div className="fg fg-2">
-                  <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
+                  <div className="field"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field">
-                    <label>Truck No. (Auto-suggests from Vehicles)</label>
-                    <input className="fi" type="text" placeholder="e.g. RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
+                    <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="fi" type="text" placeholder="Enter truck number e.g. HR47G1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
                     <datalist id="truck-list">
                       {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
                     </datalist>
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</span>}
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
                   </div>
                   <div className="field">
-                    <label><User size={11} /> Party Name</label>
-                    <input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: resolvePartyName(e.target.value, partySuggestions) })} required list="lr-party-list" />
+                    <label><User size={11} /> Party Name <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="fi" type="text" placeholder="Enter party or company name" value={form.partyName} onChange={e => setForm({ ...form, partyName: resolvePartyName(e.target.value, partySuggestions) })} required list="lr-party-list" />
                     <datalist id="lr-party-list">
                       {partySuggestions.map(name => <option key={name} value={name} />)}
                     </datalist>
                   </div>
-                  <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
+                  <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
                   {fuelStations.length > 0 && (
                     <div className="field">
                       <label>Fuel Station</label>

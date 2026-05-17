@@ -35,6 +35,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const { requireAuth } = require('./middleware/auth');
 const auditRoutes = require('./routes/auditRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
 const { getEnvCol } = require('./utils/collectionUtils');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
@@ -87,6 +88,7 @@ app.use('/api/mileage', requireAuth, mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);
 app.use('/api/payments', requireAuth, paymentRoutes);
 app.use('/api/maintenance', requireAuth, maintenanceRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 const PORT = process.env.PORT || 5000;
 

@@ -139,44 +139,54 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// Bulk Invoice Generation
+// Bulk Invoice Generation — returns PDF buffer
 router.post('/invoice/generate', async (req, res) => {
     try {
-        const { ids, invoiceNumber, invoiceDate, partyName, items, brand } = req.body;
-        await lrService.generateBulkInvoice(req.orgId, ids, invoiceNumber, invoiceDate, getCol(BASE_COL, req));
-        
+        const { ids, billNo, billDate, plantKey, items, brand } = req.body;
+        const invoiceNumber = billNo || req.body.invoiceNumber;
+        const invoiceDate = billDate || req.body.invoiceDate;
+
+        if (ids && ids.length > 0) {
+            try {
+                await lrService.generateBulkInvoice(ids, invoiceNumber, invoiceDate, getCol(BASE_COL, req));
+            } catch (dbErr) {
+                console.warn('[Invoice] Kosli LR update failed (non-fatal):', dbErr.message);
+            }
+        }
+
+        const { generateInvoicePDF } = require('../utils/pdfService');
+        const pdfBuffer = await generateInvoicePDF({ plantKey, billNo: invoiceNumber, billDate: invoiceDate, items }, null);
+
         // Background backup to Google Drive
         if (await driveService.isAuthorized()) {
             (async () => {
                 try {
                     const fs = require('fs');
                     const path = require('path');
-                    const { generateInvoicePDF } = require('../utils/pdfService');
-
                     const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
                     const safeInvoiceNo = (invoiceNumber || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
                     const fileName = `Invoice_${safeInvoiceNo}_${Date.now()}.pdf`;
                     const localPath = path.join(TEMP_DIR, fileName);
-
-                    await generateInvoicePDF({ invoiceNumber, invoiceDate, partyName, items }, localPath);
-
+                    require('fs').writeFileSync(localPath, pdfBuffer);
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    const plantName = brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
-                    const plantFolder = await driveService.getOrCreateFolder(plantName, rootId);
+                    const plantFolder = await driveService.getOrCreateFolder('Kosli_Dump', rootId);
                     const finalFolder = await driveService.getOrCreateFolder('Invoices', plantFolder);
-                    
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-                    console.log(`[Backup-Hook] Invoice backed up: ${fileName}`);
+                    console.log(`[Backup-Hook] Kosli Invoice backed up: ${fileName}`);
                 } catch (e) {
-                    console.error('[Backup-Hook] Invoice backup FAILED:', e.message);
+                    console.error('[Backup-Hook] Kosli Invoice backup FAILED:', e.message);
                 }
             })();
         }
 
-        res.json({ message: 'Invoice generated and LRs updated successfully' });
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="Invoice_${invoiceNumber || 'draft'}.pdf"`,
+            'Content-Length': pdfBuffer.length,
+        });
+        res.send(pdfBuffer);
     } catch (error) {
         console.error('Invoice generation failed:', error);
         res.status(500).json({ error: error.message });
