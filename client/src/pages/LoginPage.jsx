@@ -55,6 +55,7 @@ export default function LoginPage() {
   const [userId, setUserId] = useState(null);
   const [userEmail, setUserEmail] = useState('');
   const [resending, setResending] = useState(false);
+  const [showLocDropdown, setShowLocDropdown] = useState(false);
 
   const selectedLocation = LOCATIONS.find(l => l.id === locationId);
 
@@ -149,7 +150,7 @@ export default function LoginPage() {
 
           {!otpMode && (
             <>
-              {/* Location selection */}
+              {/* Location selection — custom dropdown */}
               <div style={{ marginBottom: '22px' }}>
                 <label style={{
                   fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
@@ -158,31 +159,64 @@ export default function LoginPage() {
                 }}>
                   <MapPin size={12} /> Select Location
                 </label>
-                <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
-                  <select
-                    id="location-select"
-                    value={locationId}
-                    onChange={(e) => { setLocationId(e.target.value); setError(''); }}
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <div onClick={() => setShowLocDropdown(!showLocDropdown)}
                     style={{
-                      display: 'block', width: '100%', minWidth: 0, background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      borderRadius: '10px', padding: '12px 36px 12px 14px', color: locationId ? 'var(--text)' : 'var(--text-muted)',
-                      fontSize: '13px', fontWeight: 700, outline: 'none', transition: 'all 0.18s',
-                      WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none',
-                      cursor: 'pointer', fontFamily: 'inherit', boxSizing: 'border-box'
-                    }}
-                    onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                  >
-                    <option value="" disabled>Choose your location...</option>
-                    {LOCATIONS.map(loc => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.label}{loc.desc ? ` — ${loc.desc}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
+                      background: 'var(--bg-input)', border: `1px solid ${showLocDropdown ? accentColor + '80' : 'var(--border)'}`,
+                      borderRadius: '10px', padding: '10px 14px', cursor: 'pointer', transition: 'all 0.15s',
+                    }}>
+                    {selectedLocation ? (
+                      <>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: selectedLocation.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <selectedLocation.icon size={14} color="white" />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{selectedLocation.label}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{selectedLocation.desc}</div>
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>Choose your location...</span>
+                    )}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: showLocDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><polyline points="6 9 12 15 18 9"></polyline></svg>
                   </div>
+
+                  {showLocDropdown && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setShowLocDropdown(false)} />
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 11,
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px',
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.15)', overflow: 'hidden',
+                      }}>
+                        {LOCATIONS.map(loc => {
+                          const Icon = loc.icon;
+                          const active = locationId === loc.id;
+                          return (
+                            <div key={loc.id} onClick={() => { setLocationId(loc.id); setShowLocDropdown(false); setError(''); }}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px',
+                                cursor: 'pointer', transition: 'background 0.1s',
+                                background: active ? loc.bg : 'transparent',
+                                borderLeft: active ? `3px solid ${loc.color}` : '3px solid transparent',
+                              }}
+                              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-th)'; }}
+                              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}>
+                              <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: active ? loc.color : 'var(--bg-th)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <Icon size={14} color={active ? 'white' : 'var(--text-muted)'} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: active ? loc.color : 'var(--text)' }}>{loc.label}</div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{loc.desc}</div>
+                              </div>
+                              {active && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={loc.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

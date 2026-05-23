@@ -141,8 +141,9 @@ export default function PartyMaster() {
                   <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>{party.type}</div>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{party.name}</h3>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => handleOpenModal(party)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><Edit3 size={14} /></button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button onClick={() => handleOpenModal(party)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}><Edit3 size={14} /></button>
+                  <button onClick={() => handleDelete(party.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f43f5e', padding: '4px' }}><Trash2 size={14} /></button>
                 </div>
               </div>
 

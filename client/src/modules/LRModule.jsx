@@ -111,7 +111,7 @@ function printReceipt(allRows, lrNo, allChallans = []) {
       <div class="info-section">
         <div class="info-row"><span class="lbl">Date</span><span class="val">${new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
         <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${base.truckNo}</span></div>
-        <div class="info-row"><span class="lbl">Party Name</span><span class="val">${base.partyName}</span></div>
+        <div class="info-row"><span class="lbl">Party Name</span><span class="val">${[...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName}</span></div>
         ${base.fuelStation ? `<div class="info-row"><span class="lbl">Fuel Station</span><span class="val">${base.fuelStation}</span></div>` : ''}
       </div>
 
@@ -487,6 +487,17 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 /* ── Challan Popup Modal ── */
 function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [] }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
+  const [challanSearch, setChallanSearch] = useState('');
+
+  const filteredChallans = challanSearch
+    ? openChallans.filter(c => {
+        const s = challanSearch.toLowerCase();
+        return (c.challanNo || '').toLowerCase().includes(s) ||
+               (c.truckNo || '').toLowerCase().includes(s) ||
+               (c.partyName || '').toLowerCase().includes(s) ||
+               (c.destination || '').toLowerCase().includes(s);
+      })
+    : openChallans;
 
   // For 'create' tab
   const [saving, setSaving] = useState(false);
@@ -559,60 +570,68 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '560px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+        style={{ width: '94%', maxWidth: '560px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Tag size={16} color="#f59e0b" />
             </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: '#f1f5f9' }}>Select or Create Challan</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>Loading Receipt Attachment</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Select or Create Challan</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>Loading Receipt Attachment</div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
             <X size={18} />
           </button>
         </div>
 
-        <div style={{ display: 'flex', padding: '0 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', padding: '0 22px', borderBottom: '1px solid var(--border)' }}>
           <button style={{
             background: 'transparent', border: 'none', padding: '12px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-            color: tab === 'select' ? '#f59e0b' : '#94a3b8', borderBottom: tab === 'select' ? '2px solid #f59e0b' : '2px solid transparent'
+            color: tab === 'select' ? 'var(--primary)' : 'var(--text-muted)', borderBottom: tab === 'select' ? '2px solid var(--primary)' : '2px solid transparent'
           }} onClick={() => setTab('select')}>Select Existing</button>
 
           <button style={{
             background: 'transparent', border: 'none', padding: '12px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-            color: tab === 'create' ? '#f59e0b' : '#94a3b8', borderBottom: tab === 'create' ? '2px solid #f59e0b' : '2px solid transparent'
+            color: tab === 'create' ? 'var(--primary)' : 'var(--text-muted)', borderBottom: tab === 'create' ? '2px solid var(--primary)' : '2px solid transparent'
           }} onClick={() => setTab('create')}>Create New</button>
         </div>
 
-        <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1 }}>
           <AnimatePresence mode="wait">
             {tab === 'select' && (
               <motion.div key="select" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Open Challans ({openChallans.length})</div>
+                {/* Search */}
+                <div style={{ position: 'relative', marginBottom: '12px' }}>
+                  <input className="fi" type="text" placeholder="Search by challan no, truck, party..."
+                    value={challanSearch} onChange={e => setChallanSearch(e.target.value)}
+                    style={{ width: '100%', paddingLeft: '32px', fontSize: '12px' }} />
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                </div>
 
-                {openChallans.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '13px' }}>No open challans available. Create a new one.</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Open Challans ({filteredChallans.length})</div>
+
+                {filteredChallans.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '13px' }}>No challans found.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {openChallans.map(c => {
+                    {filteredChallans.map(c => {
                       const isSelected = selectedChallans.find(sc => sc.challanNo === c.challanNo);
                       return (
                         <div
                           key={c.id}
                           onClick={() => onToggleSelect(c)}
-                          style={{ padding: '14px', background: isSelected ? 'rgba(245,158,11,0.05)' : 'var(--bg-card)', border: isSelected ? '1px solid rgba(245,158,11,0.5)' : '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          style={{ padding: '12px', background: isSelected ? 'rgba(99,102,241,0.06)' : 'var(--bg)', border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s' }}
                         >
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                              <span style={{ fontWeight: 800, color: '#f59e0b', fontFamily: 'monospace' }}>{c.challanNo}</span>
-                              <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 700 }}>{c.truckNo}</span>
-                              {isSelected && <span style={{ padding: '2px 6px', background: '#f59e0b', color: '#000', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
+                              <span style={{ fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{c.challanNo}</span>
+                              <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 700 }}>{c.truckNo}</span>
+                              {isSelected && <span style={{ padding: '2px 6px', background: 'var(--primary)', color: 'white', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
                             </div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                               {c.partyName || 'No Party'} {c.destination ? ` · ${c.destination}` : ''} · {new Date(c.date).toLocaleDateString('en-IN')}
                             </div>
                           </div>
@@ -620,23 +639,22 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                             {c.materials ? (
                               c.materials.map((m, idx) => (
                                 <div key={idx} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#818cf8', fontSize: '10px', fontWeight: 700 }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#6366f1', fontSize: '10px', fontWeight: 700 }}>
                                     <Package size={10} /> {m.type}
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700 }}>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 700 }}>
                                     {m.totalBags - m.loadedBags} bags <span style={{ opacity: 0.7 }}>({((m.totalBags - m.loadedBags) * 0.05).toFixed(2)} MT)</span> left
                                   </div>
                                 </div>
                               ))
                             ) : (
-                              // legacy fallback rendering
                               <>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '4px 8px', borderRadius: '6px', color: '#818cf8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '4px 8px', borderRadius: '6px', color: '#6366f1', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
                                   <Package size={12} /> {c.material}
                                 </div>
-                                 <div style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 700 }}>
-                                   {c.quantity} bags <span style={{ opacity: 0.7 }}>({(c.quantity * 0.05).toFixed(2)} MT)</span>
-                                 </div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-sub)', fontWeight: 700 }}>
+                                  {c.quantity} bags <span style={{ opacity: 0.7 }}>({(c.quantity * 0.05).toFixed(2)} MT)</span>
+                                </div>
                               </>
                             )}
                           </div>
@@ -1136,9 +1154,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
     setLoading(true);
     try {
+      // For each material, ensure partyName is set (fallback to global)
+      const globalParty = resolvePartyName(form.partyName, partySuggestions);
+      const materialsWithParty = form.materials.map(m => ({
+        ...m,
+        partyName: m.partyName ? resolvePartyName(m.partyName, partySuggestions) : globalParty
+      }));
+
+      // Validate: at least one party name must exist
+      const hasAnyParty = globalParty || materialsWithParty.some(m => m.partyName);
+      if (!hasAnyParty) {
+        alert('Please enter a party name (global or per material)');
+        setLoading(false);
+        return;
+      }
+
       const payload = {
         ...form,
-        partyName: resolvePartyName(form.partyName, partySuggestions),
+        materials: materialsWithParty,
+        partyName: globalParty || materialsWithParty[0]?.partyName || '',
         billing: form.usedChallans.map(c => c.challanNo).join(', ')
       };
 
@@ -1372,11 +1406,28 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
                   </div>
                   <div className="field">
-                    <label><User size={11} /> Party Name <span style={{color:'var(--danger)'}}>*</span></label>
-                    <input className="fi" type="text" placeholder="Enter party or company name" value={form.partyName} onChange={e => setForm({ ...form, partyName: resolvePartyName(e.target.value, partySuggestions) })} required list="lr-party-list" />
+                    <label><User size={11} /> Party Name {!form.materials.some(m => m.partyName) && <span style={{color:'var(--danger)'}}>*</span>}</label>
+                    <input className="fi" type="text" placeholder="Enter party name (applies to all materials)" value={form.partyName} onChange={e => {
+                      const name = resolvePartyName(e.target.value, partySuggestions);
+                      setForm(f => ({
+                        ...f,
+                        partyName: name,
+                        materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
+                      }));
+                    }} list="lr-party-list" />
                     <datalist id="lr-party-list">
                       {partySuggestions.map(name => <option key={name} value={name} />)}
                     </datalist>
+                    {(() => {
+                      const matParties = [...new Set(form.materials.map(m => m.partyName).filter(Boolean))];
+                      return matParties.length > 1 ? (
+                        <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {matParties.map(p => (
+                            <span key={p} style={{ fontSize: '9px', fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{p}</span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
                   {fuelStations.length > 0 && (
@@ -1437,13 +1488,18 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         Material #{i + 1}
                         {m.billing && m.billing !== 'No' && (
                           <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                            Challan: {m.billing} • {m.partyName || '—'}
+                            CH: {m.billing}
+                          </span>
+                        )}
+                        {m.partyName && (
+                          <span style={{ color: '#6366f1', marginLeft: '6px', fontSize: '9px', textTransform: 'none', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            {m.partyName}
                           </span>
                         )}
                       </span>
                       {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
                     </div>
-                    <div className="fg" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', display: 'grid', gap: '14px' }}>
+                    <div className="fg" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', display: 'grid', gap: '12px' }}>
                       <div className="field"><label>Type</label>
                         <select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
@@ -1461,6 +1517,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
                       </div>
                       <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
+                      <div className="field"><label>Party</label>
+                        <input className="fi" type="text" placeholder={form.partyName || 'Party name'} value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
+                      </div>
                     </div>
                     {m.type && (
                       <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>

@@ -83,6 +83,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [processing, setProcessing] = useState(false);
+  const [miscDeductions, setMiscDeductions] = useState([]); // [{amount, remark, date}]
   const [showConfetti, setShowConfetti] = useState(false);
   const { width, height } = useWindowSize();
 
@@ -325,26 +326,47 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   const gpsAccrual = useMemo(() => {
     if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
-    const companyType = brand === 'jkl' ? 'JK_Lakshmi' : 'JK_Super';
-    const hasGps = (brand === 'jkl' && (selVehicle.gpsType === 'jkl' || selVehicle.gpsType === 'both')) ||
-                   (brand === 'jks' && (selVehicle.gpsType === 'jksuper' || selVehicle.gpsType === 'both'));
+
+    // Check if this vehicle has GPS for current brand
+    const gpsType = selVehicle.gpsType;
+    const hasGps = gpsType === 'both' || gpsType === 'jkl' || gpsType === 'jksuper';
     if (!hasGps) return null;
 
-    const truckVouchers = truckAllVouchers || [];
-    const paid = truckVouchers.filter(v => v.type === companyType && v.paymentClearedDate);
-    const lastPayDateStr = paid.reduce((max, v) => (v.paymentClearedDate > max ? v.paymentClearedDate : max), null);
-    
-    let startDate = lastPayDateStr ? new Date(lastPayDateStr) : null;
-    if (!startDate) {
-        const firstV = truckVouchers.filter(v => v.type === companyType).sort((a,b) => new Date(a.date) - new Date(b.date))[0];
-        startDate = firstV ? new Date(firstV.date) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    }
-    
+    // ₹250 per GPS per month. 'both' = 2 GPS = ₹500/month
+    const gpsCount = gpsType === 'both' ? 2 : 1;
+    const perMonth = 250 * gpsCount;
+
+    // Find last GPS deduction from vehicle advances
+    const advances = (truckAllVouchers || []).filter(v =>
+      v.remark && v.remark.toLowerCase().includes('gps rent') && v.type === 'debit'
+    );
+    // Also check vehicle-advances if available
+    let lastDeductionDate = null;
+    advances.forEach(v => {
+      const d = new Date(v.date);
+      if (!isNaN(d.getTime()) && (!lastDeductionDate || d > lastDeductionDate)) lastDeductionDate = d;
+    });
+
+    // Calculate months pending since last deduction
     const today = new Date(paymentDate || Date.now());
-    const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
-    if (days === 0) return null;
-    return { days, amount: Math.round((days / 30) * 250), companyLabel: companyType.replace('_', ' ') };
-  }, [selTruck, selVehicle, truckAllVouchers, brand, paymentDate]);
+    let startDate = lastDeductionDate;
+    if (!startDate) {
+      // No previous deduction — check vehicle creation or first voucher
+      const firstV = (truckAllVouchers || []).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+      startDate = firstV ? new Date(firstV.date) : null;
+    }
+    if (!startDate) return null;
+
+    // Full months since last deduction
+    const monthsDiff = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
+    const pendingMonths = Math.max(0, monthsDiff);
+    if (pendingMonths === 0) return null;
+
+    const amount = pendingMonths * perMonth;
+    const gpsLabel = gpsType === 'both' ? 'JKL + JK Super' : gpsType === 'jkl' ? 'JK Lakshmi' : 'JK Super';
+
+    return { months: pendingMonths, gpsCount, perMonth, amount, gpsLabel };
+  }, [selTruck, selVehicle, truckAllVouchers, paymentDate]);
 
   const onCheckAll = (rows, addAll) => {
     setSelectedLrs(s => {
@@ -380,10 +402,24 @@ export default function PayModule({ brand, role, permissions, initialView }) {
           type: 'debit',
           amount: gpsAccrual.amount,
           date: paymentDate,
-          remark: `GPS Rent (${gpsAccrual.days} days) - ${gpsAccrual.companyLabel}`
+          remark: `GPS Rent (${gpsAccrual.months}m × ${gpsAccrual.gpsCount} GPS × ₹250) - ${gpsAccrual.gpsLabel}`
         });
       }
-      
+
+      // Save misc deductions as vehicle-advance entries
+      for (const d of miscDeductions) {
+        if (d.amount > 0) {
+          await ax.post('/vehicle-advances', {
+            truckNo: selTruck,
+            type: 'debit',
+            amount: d.amount,
+            date: d.date || paymentDate,
+            remark: d.remark || 'Miscellaneous Deduction'
+          });
+        }
+      }
+      setMiscDeductions([]);
+
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 5000);
       
@@ -1007,14 +1043,32 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(selOutstanding)}</span>
                 </div>
                 {gpsAccrual && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>− GPS Rent Deduction ({gpsAccrual.days}d):</span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--warn)' }}>− {fmtRs(gpsAccrual.amount)}</span>
+                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>− GPS Rent ({gpsAccrual.gpsLabel}):</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--warn)' }}>− {fmtRs(gpsAccrual.amount)}</span>
+                    </div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                      {gpsAccrual.gpsCount} GPS × ₹250 × {gpsAccrual.months} month{gpsAccrual.months > 1 ? 's' : ''}
+                    </div>
                   </div>
                 )}
+                {/* Misc Deductions */}
+                {miscDeductions.length > 0 && miscDeductions.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border)', paddingTop: '6px', marginTop: '6px' }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700 }}>− {d.remark || 'Misc'}</span>
+                      {d.date && <span style={{ fontSize: '9px', color: 'var(--text-muted)', marginLeft: '6px' }}>{d.date}</span>}
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', marginRight: '4px' }}>− {fmtRs(d.amount)}</span>
+                    <button onClick={() => setMiscDeductions(p => p.filter((_, j) => j !== i))}
+                      style={{ border: 'none', background: 'none', color: '#f43f5e', cursor: 'pointer', padding: '2px', fontSize: '12px' }}>×</button>
+                  </div>
+                ))}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid var(--border)', paddingTop: '10px', marginTop: '10px' }}>
                   <span style={{ fontSize: '15px', color: 'var(--primary)', fontWeight: 900 }}>Net Payout:</span>
-                  <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(selOutstanding - (gpsAccrual?.amount || 0))}</span>
+                  <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(selOutstanding - (gpsAccrual?.amount || 0) - miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0))}</span>
                 </div>
               </div>
 
@@ -1061,7 +1115,30 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 </div>
               </div>
 
-              <button className="btn btn-p" 
+              {/* Misc Deductions — add extra deductions */}
+              <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>
+                  Extra Deductions
+                </label>
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                  <input className="fi" type="number" placeholder="₹ Amount" id="misc-amt"
+                    style={{ width: '70px', fontSize: '11px', padding: '6px 8px' }} />
+                  <input className="fi" type="text" placeholder="Reason (tyre, fine, etc.)" id="misc-remark"
+                    style={{ flex: 1, fontSize: '11px', padding: '6px 8px' }} />
+                </div>
+                <button className="btn btn-g" onClick={() => {
+                  const amt = parseFloat(document.getElementById('misc-amt')?.value);
+                  const remark = document.getElementById('misc-remark')?.value?.trim();
+                  if (!amt || amt <= 0) return;
+                  setMiscDeductions(p => [...p, { amount: amt, remark: remark || 'Miscellaneous', date: paymentDate }]);
+                  document.getElementById('misc-amt').value = '';
+                  document.getElementById('misc-remark').value = '';
+                }} style={{ width: '100%', fontSize: '11px', padding: '6px' }}>
+                  + Add Deduction
+                </button>
+              </div>
+
+              <button className="btn btn-p"
                 style={{ width: '100%', padding: '12px', fontSize: '14px', borderRadius: '10px', pointerEvents: (!canPay || processing) ? 'none' : 'auto', opacity: (!canPay || processing) ? 0.6 : 1 }}
                 onClick={handlePay}
               >

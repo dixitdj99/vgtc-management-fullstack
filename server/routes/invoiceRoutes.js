@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
     try {
         if (!isAvailable()) return res.json([]);
         const snap = await db.collection(getCol(COL_INVOICES)).get();
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id }));
         list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         res.json(list);
     } catch (e) {
@@ -114,9 +114,16 @@ router.post('/generate', async (req, res) => {
                 gstRate: rate,
                 status: 'generated',
                 items: items.map(it => ({
-                    lrNo: it.lrNo, truckNo: it.truckNo, destination: it.destination,
+                    consigneeName: it.consigneeName || '',
+                    destination: it.destination || '',
+                    truckNo: it.truckNo || '',
+                    lrNo: it.lrNo || '',
+                    invoiceNo: it.invoiceNo || '',
+                    invoiceDate: it.invoiceDate || '',
                     billedQty: parseFloat(it.billedQty) || 0,
+                    recQty: parseFloat(it.recQty) || 0,
                     ratePMT: parseFloat(it.ratePMT) || 0,
+                    shortQty: parseFloat(it.shortQty) || 0,
                 })),
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
@@ -236,6 +243,19 @@ router.delete('/pending/:id', async (req, res) => {
     }
 });
 
+// ── POST /invoices/pending/delete — delete single pending (POST fallback) ──
+router.post('/pending/delete', async (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ error: 'No ID' });
+        if (!isAvailable()) return res.json({ deleted: true });
+        await db.collection(getCol(COL_PENDING)).doc(id).delete();
+        res.json({ deleted: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── DELETE /invoices/pending — clear all pending ──
 router.delete('/pending', async (req, res) => {
     try {
@@ -246,6 +266,92 @@ router.delete('/pending', async (req, res) => {
         await batch.commit();
         res.json({ deleted: snap.size });
     } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── GET /invoices/:id/pdf — re-generate and return PDF for viewing ──
+router.get('/:id/pdf', async (req, res) => {
+    try {
+        if (!isAvailable()) return res.status(404).json({ error: 'Not available' });
+        const doc = await db.collection(getCol(COL_INVOICES)).doc(req.params.id).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Invoice not found' });
+        const inv = doc.data();
+        const { generateInvoicePDF } = require('../utils/pdfService');
+        // Ensure all item fields exist for PDF generation
+        const safeItems = (inv.items || []).map(it => ({
+            consigneeName: it.consigneeName || '', destination: it.destination || '',
+            truckNo: it.truckNo || '', lrNo: it.lrNo || '',
+            invoiceNo: it.invoiceNo || '', invoiceDate: it.invoiceDate || '',
+            billedQty: parseFloat(it.billedQty) || 0, recQty: parseFloat(it.recQty) || parseFloat(it.billedQty) || 0,
+            ratePMT: parseFloat(it.ratePMT) || 0, shortQty: parseFloat(it.shortQty) || 0,
+        }));
+        const pdfBuffer = await generateInvoicePDF({
+            plantKey: inv.plantKey || 'jksuper_jharli',
+            billNo: inv.billNo, billDate: inv.billDate,
+            items: safeItems, gstRate: inv.gstRate || 6,
+        }, null);
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="Invoice_${inv.billNo}.pdf"`,
+            'Content-Length': pdfBuffer.length,
+        });
+        res.send(pdfBuffer);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── PUT /invoices/:id — update invoice (edit entries, keep same bill number) ──
+router.put('/:id', async (req, res) => {
+    try {
+        if (!isAvailable()) return res.status(500).json({ error: 'DB not available' });
+        const { items, billDate, type, gstRate } = req.body;
+        const docRef = db.collection(getCol(COL_INVOICES)).doc(req.params.id);
+        const doc = await docRef.get();
+        if (!doc.exists) return res.status(404).json({ error: 'Invoice not found' });
+
+        const totalFreight = (items || []).reduce((s, it) =>
+            s + (parseFloat(it.billedQty) || 0) * (parseFloat(it.ratePMT) || 0), 0);
+        const rate = gstRate || doc.data().gstRate || 6;
+        const totalGST = parseFloat((totalFreight * rate * 2 / 100).toFixed(2));
+
+        await docRef.update({
+            items: (items || []).map(it => ({
+                consigneeName: it.consigneeName, destination: it.destination,
+                truckNo: it.truckNo, lrNo: it.lrNo, invoiceNo: it.invoiceNo,
+                invoiceDate: it.invoiceDate,
+                billedQty: parseFloat(it.billedQty) || 0,
+                recQty: parseFloat(it.recQty) || 0,
+                ratePMT: parseFloat(it.ratePMT) || 0,
+                shortQty: parseFloat(it.shortQty) || 0,
+            })),
+            billDate: billDate || doc.data().billDate,
+            type: type || doc.data().type,
+            gstRate: rate,
+            itemCount: (items || []).length,
+            totalFreight: Math.round(totalFreight),
+            totalWithGST: parseFloat((totalFreight + totalGST).toFixed(2)),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        res.json({ updated: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── POST /invoices/delete — delete a generated invoice (POST to avoid DELETE routing issues) ──
+router.post('/delete', async (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ error: 'No ID provided' });
+        if (!isAvailable()) return res.json({ deleted: true });
+        const col = getCol(COL_INVOICES);
+        await db.collection(col).doc(id).delete();
+        res.json({ deleted: true });
+    } catch (e) {
+        console.error('[Invoice] Delete error:', e);
         res.status(500).json({ error: e.message });
     }
 });

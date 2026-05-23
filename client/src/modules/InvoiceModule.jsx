@@ -92,7 +92,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
     setHistoryLoading(false);
   }, []);
 
-  useEffect(() => { fetchLrs(); fetchNextBillNo(); fetchPending(); }, [fetchLrs, fetchNextBillNo, fetchPending]);
+  useEffect(() => { fetchLrs(); fetchNextBillNo(); fetchPending(); fetchHistory(); }, [fetchLrs, fetchNextBillNo, fetchPending]);
 
   // ══════════════════════════════════════════════════════════
   // EXCEL UPLOAD + PARSE
@@ -317,7 +317,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
     setInvoices(p => p.map((inv, i) => i === invIdx ? { ...inv, items: [...inv.items, pendingItem] } : inv));
     setSavedPending(p => p.filter(x => x.id !== pendingItem.id));
     // Delete from Firestore
-    ax.delete(`/invoices/pending/${pendingItem.id}`).catch(() => {});
+    ax.post('/invoices/pending/delete', { id: pendingItem.id }).catch(() => {});
   };
 
   const calcInvoice = (inv) => {
@@ -395,6 +395,80 @@ export default function InvoiceModule({ brand = 'dump' }) {
     fetchHistory();
   };
 
+  // ── Delete invoice from history ──
+  const handleDeleteInvoice = async (inv) => {
+    if (!window.confirm(`Delete Bill #${inv.billNo}?`)) return;
+    try {
+      await ax.post('/invoices/delete', { id: inv.id });
+      setHistoryList(p => p.filter(x => x.id !== inv.id));
+    } catch (e) {
+      console.error('Delete failed:', e);
+      alert('Delete failed: ' + (e.response?.data?.error || e.message));
+    }
+  };
+
+  // ── View invoice PDF ──
+  const handleViewInvoice = async (inv) => {
+    try {
+      const res = await ax.get(`/invoices/${inv.id}/pdf`, { responseType: 'blob' });
+      if (res.data.type?.includes('application/json')) {
+        const text = await res.data.text();
+        throw new Error(JSON.parse(text).error || 'Server error');
+      }
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error('View PDF failed:', e);
+      let msg = e.message;
+      if (e.response?.data instanceof Blob) {
+        try { msg = JSON.parse(await e.response.data.text()).error || msg; } catch {}
+      } else if (e.response?.data?.error) msg = e.response.data.error;
+      alert('Failed to load PDF: ' + msg);
+    }
+  };
+
+  // ── Edit invoice — load entries into editor, save updates back to same record ──
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+
+  const handleEditInvoice = (inv) => {
+    const items = (inv.items || []).map(it => ({
+      consigneeName: it.consigneeName || '', destination: it.destination || '',
+      truckNo: it.truckNo || '', lrNo: it.lrNo || '', invoiceNo: it.invoiceNo || '',
+      invoiceDate: it.invoiceDate || '', billedQty: it.billedQty || 0,
+      recQty: it.recQty || it.billedQty || 0, ratePMT: it.ratePMT || 0, shortQty: it.shortQty || 0,
+    }));
+    if (items.length === 0) return alert('No entries found in this invoice');
+    setEditingInvoiceId(inv.id); // track which invoice we're editing
+    setInvoices([{ billNo: inv.billNo, type: inv.type || 'Dump', gstRate: inv.gstRate || selectedPlant.gstRate, items, expanded: true }]);
+    setBillDate(inv.billDate || billDate);
+    setResults([]);
+    setView('editor');
+  };
+
+  // ── Save edited invoice (update, not create new) ──
+  const handleSaveEdit = async () => {
+    if (!editingInvoiceId || invoices.length === 0) return;
+    const inv = invoices[0];
+    try {
+      await ax.put(`/invoices/${editingInvoiceId}`, {
+        items: inv.items.map(it => ({
+          consigneeName: it.consigneeName, destination: it.destination,
+          truckNo: it.truckNo, lrNo: it.lrNo, invoiceNo: it.invoiceNo,
+          invoiceDate: it.invoiceDate, billedQty: parseFloat(it.billedQty) || 0,
+          recQty: parseFloat(it.recQty) || 0, ratePMT: parseFloat(it.ratePMT) || 0,
+          shortQty: parseFloat(it.shortQty) || 0,
+        })),
+        billDate, type: inv.type, gstRate: inv.gstRate,
+      });
+      alert(`Bill #${inv.billNo} updated`);
+      setEditingInvoiceId(null);
+      fetchHistory();
+      setView('generate');
+    } catch (e) {
+      alert('Save failed: ' + (e.response?.data?.error || e.message));
+    }
+  };
+
   // Download template
   const downloadTemplate = () => {
     const h = ['Bill No', 'Consignee Name', 'Destination', 'Truck No', 'LR No', 'InvoiceNo', 'Invoice Date', 'Billed Qty', 'Rec Qty', 'Rate PMT', 'Short Qty'];
@@ -420,7 +494,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
           <div><h1>Generate Invoice</h1><p>Transportation Freight Bill — Tax Invoice</p></div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {view !== 'upload' && <button className="btn btn-g btn-sm" onClick={() => setView('upload')}><ArrowLeft size={14} /> Back</button>}
+          {view !== 'upload' && <button className="btn btn-g btn-sm" onClick={() => { setView('upload'); setEditingInvoiceId(null); }}><ArrowLeft size={14} /> Back</button>}
         </div>
       </div>
 
@@ -525,7 +599,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                         <span>{p.truckNo}</span>
                         <span>{p.destination}</span>
                         <span style={{ color: '#f59e0b' }}>{fmtINR(p.totalFreight)}</span>
-                        <button onClick={() => { ax.delete(`/invoices/pending/${p.id}`).then(() => setSavedPending(pr => pr.filter(x => x.id !== p.id))).catch(() => {}); }}
+                        <button onClick={() => { ax.post('/invoices/pending/delete', { id: p.id }).then(() => setSavedPending(pr => pr.filter(x => x.id !== p.id))).catch(() => {}); }}
                           style={{ border: 'none', background: 'none', color: '#f43f5e', cursor: 'pointer', padding: '2px' }}><X size={12} /></button>
                       </div>
                     ))}
@@ -572,9 +646,15 @@ export default function InvoiceModule({ brand = 'dump' }) {
                     setInvoices(newInvs);
                   }} style={{ fontSize: '9px', padding: '2px 6px', whiteSpace: 'nowrap' }}>Re-split</button>
                 </div>
-                <button className="btn btn-a" onClick={handleGenerateAll} disabled={generating || invoices.length === 0} style={{ fontSize: '12px' }}>
-                  {generating ? <><RefreshCw size={13} className="ani-spin" /> {genProgress}/{invoices.length}</> : <><FileText size={13} /> Generate All</>}
-                </button>
+                {editingInvoiceId ? (
+                  <button className="btn btn-a" onClick={handleSaveEdit} style={{ fontSize: '12px' }}>
+                    <Check size={13} /> Save Changes to Bill #{invoices[0]?.billNo}
+                  </button>
+                ) : (
+                  <button className="btn btn-a" onClick={handleGenerateAll} disabled={generating || invoices.length === 0} style={{ fontSize: '12px' }}>
+                    {generating ? <><RefreshCw size={13} className="ani-spin" /> {genProgress}/{invoices.length}</> : <><FileText size={13} /> Generate All</>}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -718,7 +798,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                               <option value="">Add to...</option>
                               {invoices.map((inv, j) => <option key={j} value={j}>Bill #{inv.billNo}</option>)}
                             </select>
-                            <button onClick={() => { ax.delete(`/invoices/pending/${it.id}`).then(() => setSavedPending(p => p.filter(x => x.id !== it.id))).catch(() => {}); }}
+                            <button onClick={() => { ax.post('/invoices/pending/delete', { id: it.id }).then(() => setSavedPending(p => p.filter(x => x.id !== it.id))).catch(() => {}); }}
                               style={{ border: 'none', background: 'none', color: '#f43f5e', cursor: 'pointer', padding: '2px' }} title="Remove"><X size={12} /></button>
                           </td>
                         </tr>
@@ -803,13 +883,14 @@ export default function InvoiceModule({ brand = 'dump' }) {
                       <th style={{ ...TH, textAlign: 'center' }}>GST</th>
                       <th style={{ ...TH, textAlign: 'right' }}>Total</th>
                       <th style={TH}>Created</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {historyLoading ? (
-                      <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                      <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</td></tr>
                     ) : historyList.length === 0 ? (
-                      <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No invoices generated yet</td></tr>
+                      <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No invoices generated yet</td></tr>
                     ) : historyList.map((inv, i) => (
                       <tr key={inv.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                         <td style={{ ...TD, fontWeight: 800 }}>#{inv.billNo}</td>
@@ -823,6 +904,22 @@ export default function InvoiceModule({ brand = 'dump' }) {
                         <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{fmtINR(inv.totalWithGST)}</td>
                         <td style={{ ...TD, fontSize: '10px' }}>
                           {inv.createdAt?.seconds ? new Date(inv.createdAt.seconds * 1000).toLocaleDateString('en-IN') : '—'}
+                        </td>
+                        <td style={{ ...TD, textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button onClick={() => handleViewInvoice(inv)} title="View PDF"
+                              style={{ border: 'none', background: 'rgba(16,185,129,0.1)', color: '#10b981', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                              View
+                            </button>
+                            <button onClick={() => handleEditInvoice(inv)} title="Edit entries"
+                              style={{ border: 'none', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                              Edit
+                            </button>
+                            <button onClick={() => handleDeleteInvoice(inv)} title="Delete"
+                              style={{ border: 'none', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

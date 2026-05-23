@@ -528,9 +528,15 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     catch { alert('Delete failed'); }
   };
 
+  // Manual advances only (exclude auto GPS rent, payment deductions)
+  const isAutoEntry = (a) => {
+    const r = (a.remark || '').toLowerCase();
+    return r.includes('gps rent') || r.includes('auto-deduct') || r.includes('payment cleared');
+  };
+  const manualAdvances = useMemo(() => advances.filter(a => !isAutoEntry(a)), [advances]);
   const advanceBalance = useMemo(() => {
-    return advances.reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0);
-  }, [advances]);
+    return manualAdvances.reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0);
+  }, [manualAdvances]);
 
   const truckGroups = useMemo(() => {
     const map = {};
@@ -603,46 +609,43 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     catch { alert('Error'); } finally { setMarking(false); }
   };
 
-  /* GPS Rent Accrual Calculation (Global for Truck) */
+  /* GPS Rent Accrual — ₹250 per GPS per full month since last deduction */
   const gpsAccrual = useMemo(() => {
     if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
-    
-    const hasJklGps = selVehicle.gpsType === 'jkl' || selVehicle.gpsType === 'both';
-    const hasJksGps = selVehicle.gpsType === 'jksuper' || selVehicle.gpsType === 'both';
-    
-    const calculateForType = (type) => {
-        const typeVouchers = (truckAllVouchers || []).filter(v => v.type === type);
-        if (!typeVouchers.length) return null;
 
-        const paid = typeVouchers.filter(v => v.paymentClearedDate);
-        const lastPayDateStr = paid.reduce((max, v) => (v.paymentClearedDate > max ? v.paymentClearedDate : max), null);
-        
-        let startDate = lastPayDateStr ? new Date(lastPayDateStr) : null;
-        if (!startDate) {
-            const firstVoucher = [...typeVouchers].sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-            startDate = firstVoucher ? new Date(firstVoucher.date) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        }
-        
-        const today = new Date();
-        const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
-        
-        // Only apply if there were loads in this period
-        const hasLoads = typeVouchers.some(v => !v.paymentClearedDate || new Date(v.date) >= startDate);
-        if (!hasLoads || days === 0) return null;
+    const gpsType = selVehicle.gpsType;
+    const gpsCount = gpsType === 'both' ? 2 : 1;
+    const perMonth = 250 * gpsCount;
 
-        return { days, amount: Math.round((days / 30) * 250) };
-    };
+    // Find last GPS deduction from vehicle advances
+    const allVouchers = truckAllVouchers || [];
+    const gpsDeductions = allVouchers.filter(v =>
+      v.remark && v.remark.toLowerCase().includes('gps rent') && v.type === 'debit'
+    );
+    let lastDeductionDate = null;
+    gpsDeductions.forEach(v => {
+      const d = new Date(v.date);
+      if (!isNaN(d.getTime()) && (!lastDeductionDate || d > lastDeductionDate)) lastDeductionDate = d;
+    });
 
-    const jklRent = hasJklGps ? calculateForType('JK_Lakshmi') : null;
-    const jksRent = hasJksGps ? calculateForType('JK_Super') : null;
+    const today = new Date();
+    let startDate = lastDeductionDate;
+    if (!startDate) {
+      const firstV = allVouchers.sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+      startDate = firstV ? new Date(firstV.date) : null;
+    }
+    if (!startDate) return null;
 
-    if (!jklRent && !jksRent) return null;
+    const months = Math.max(0, (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth()));
+    if (months === 0) return null;
 
+    const gpsLabel = gpsType === 'both' ? 'JKL + JK Super' : gpsType === 'jkl' ? 'JKL' : 'JKS';
     return {
-        totalAmount: (jklRent?.amount || 0) + (jksRent?.amount || 0),
-        jkl: jklRent,
-        jks: jksRent,
-        label: jklRent && jksRent ? `GPS Rent (${jklRent.days}d + ${jksRent.days}d)` : `GPS Rent (${(jklRent || jksRent).days}d)`
+      totalAmount: months * perMonth,
+      months,
+      gpsCount,
+      perMonth,
+      label: `GPS Rent (${gpsCount} × ₹250 × ${months}m)`
     };
   }, [selTruck, selVehicle, truckAllVouchers]);
 
@@ -745,7 +748,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}><Wallet size={17} /></div>
                 <div className="card-title-text">
                   <h3>Vehicle Advance Ledger</h3>
-                  <p>{advances.length} entries · Balance: {fmtRs(advanceBalance)}</p>
+                  <p>{manualAdvances.length} entries · Balance: {fmtRs(advanceBalance)}</p>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -811,10 +814,10 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                         </tr>
                       </thead>
                       <tbody>
-                        {advances.length === 0 && (
-                          <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No advance transactions for this vehicle</td></tr>
+                        {manualAdvances.length === 0 && (
+                          <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No manual advance entries</td></tr>
                         )}
-                        {[...advances].reverse().map((a, i, arr) => {
+                        {[...manualAdvances].reverse().map((a, i, arr) => {
                           const runBal = arr.slice(0, i + 1).reduce((s, x) => s + (x.type === 'credit' ? x.amount : -x.amount), 0);
                           return (
                             <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
@@ -839,12 +842,12 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                           );
                         })}
                       </tbody>
-                      {advances.length > 0 && (
+                      {manualAdvances.length > 0 && (
                         <tfoot>
                           <tr>
-                            <td colSpan={3} style={{ ...TDF, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Total ({advances.length} entries)</td>
-                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{fmtRs(advances.filter(a => a.type === 'credit').reduce((s, a) => s + a.amount, 0))}</td>
-                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#f43f5e' }}>{fmtRs(advances.filter(a => a.type === 'debit').reduce((s, a) => s + a.amount, 0))}</td>
+                            <td colSpan={3} style={{ ...TDF, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Total ({manualAdvances.length} entries)</td>
+                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{fmtRs(manualAdvances.filter(a => a.type === 'credit').reduce((s, a) => s + a.amount, 0))}</td>
+                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#f43f5e' }}>{fmtRs(manualAdvances.filter(a => a.type === 'debit').reduce((s, a) => s + a.amount, 0))}</td>
                             <td style={{ ...TDF, textAlign: 'right', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e', fontSize: '14px' }}>{fmtRs(advanceBalance)}</td>
                             <td colSpan={role === 'admin' ? 2 : 1} style={TDF}></td>
                           </tr>

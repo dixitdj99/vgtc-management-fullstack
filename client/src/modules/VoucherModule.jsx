@@ -36,15 +36,19 @@ const getCalc = (w, r, hasComm) => {
 // Compute deductions and net payable for a voucher record
 const getNet = (v) => {
     const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
-    // dieselPending = true when diesel is set to a non-numeric value like 'FULL'
     const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
     const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
     const cash = parseFloat(v.advanceCash) || 0;
     const online = parseFloat(v.advanceOnline) || 0;
     const munshi = parseFloat(v.munshi) || 0;
     const commission = parseFloat(v.commission) || 0;
-    const totalDeductions = diesel + cash + online + munshi + commission;
-    return { gross, diesel, cash, online, munshi, commission, totalDeductions, net: gross - totalDeductions, dieselPending };
+    const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+    const tyreGreasing = parseFloat(v.tyreGreasing) || 0;
+    const tyreAir = parseFloat(v.tyreAir) || 0;
+    const extraCash = parseFloat(v.extraCash) || 0;
+    const vehicleExpenses = tyrePuncture + tyreGreasing + tyreAir + extraCash;
+    const totalDeductions = diesel + cash + online + munshi + commission + vehicleExpenses;
+    return { gross, diesel, cash, online, munshi, commission, tyrePuncture, tyreGreasing, tyreAir, extraCash, vehicleExpenses, totalDeductions, net: gross - totalDeductions, dieselPending };
 };
 
 /* ── Print ── */
@@ -59,6 +63,10 @@ function printVoucher(v, org = {}) {
         { lbl: 'Online Advance', val: n.online, raw: v.advanceOnline },
         { lbl: 'Munshi', val: n.munshi, raw: v.munshi },
         { lbl: 'Commission', val: n.commission, raw: v.commission },
+        { lbl: 'Tyre Puncture', val: n.tyrePuncture },
+        { lbl: 'Tyre Greasing', val: n.tyreGreasing },
+        { lbl: 'Tyre Air', val: n.tyreAir },
+        { lbl: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, val: n.extraCash },
     ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'));
 
     const deductionHTML = deductionRows.map(d => {
@@ -535,8 +543,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         rate: '', pump: NONE_PUMP, advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
-        materials: []
+        materials: [],
+        tyrePuncture: '', tyreGreasing: '', tyreAir: '', extraCash: '', extraCashRemark: '',
     });
+    const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
     const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
     const [fetchingKm, setFetchingKm] = useState(false);
     const [vgtcTrucks, setVgtcTrucks] = useState(new Set()); // truck numbers owned by Vikas Goods Transport
@@ -566,7 +576,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         if (formOpen) refreshData();
     }, [formOpen, refreshData]);
 
-    const isVGTCTruck = (truckNo) => vgtcTrucks.has(truckNo);
+    const isVGTCTruck = (truckNo) => vgtcTrucks.has(cleanTruckNo(truckNo));
 
     // Update tab when initialTab prop changes from sidebar navigation
     useEffect(() => {
@@ -725,7 +735,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         try {
             await ax.post(API_V, { ...form, partyName: resolvePartyName(form.partyName, knownPartyNames), type: vType, brand, ...calc, materials: form.materials || [] });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [] }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasing: '', tyreAir: '', extraCash: '', extraCashRemark: '' }));
+            setShowVehicleExpenses(false);
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
@@ -960,6 +971,49 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* ── Vehicle Expenses — VGTC self-trucks only ── */}
+                                        {form.truckNo && isVGTCTruck(cleanTruckNo(form.truckNo)) && (
+                                            <div style={{ marginTop: '12px' }}>
+                                                <button type="button" onClick={() => setShowVehicleExpenses(s => !s)}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
+                                                    <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
+                                                    🔧 Vehicle Expenses (Tyre, Extra Cash)
+                                                    {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasing) || 0) + (parseFloat(form.tyreAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
+                                                        <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasing) || 0) + (parseFloat(form.tyreAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
+                                                    )}
+                                                </button>
+                                                {showVehicleExpenses && (
+                                                    <div style={{ marginTop: '10px', padding: '14px', background: 'var(--bg)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                        <div className="fg fg-3" style={{ marginBottom: '10px' }}>
+                                                            <div className="field">
+                                                                <label style={{ fontSize: '11px' }}>🔧 Tyre Puncture</label>
+                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
+                                                            </div>
+                                                            <div className="field">
+                                                                <label style={{ fontSize: '11px' }}>⚙️ Tyre Greasing</label>
+                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasing} onChange={e => set('tyreGreasing', e.target.value)} />
+                                                            </div>
+                                                            <div className="field">
+                                                                <label style={{ fontSize: '11px' }}>💨 Tyre Air</label>
+                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreAir} onChange={e => set('tyreAir', e.target.value)} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="fg fg-2">
+                                                            <div className="field">
+                                                                <label style={{ fontSize: '11px' }}>💰 Extra Cash</label>
+                                                                <input className="fi" type="number" placeholder="₹0" value={form.extraCash} onChange={e => set('extraCash', e.target.value)} />
+                                                            </div>
+                                                            <div className="field">
+                                                                <label style={{ fontSize: '11px' }}>Remark</label>
+                                                                <input className="fi" type="text" placeholder="Reason for extra cash" value={form.extraCashRemark} onChange={e => set('extraCashRemark', e.target.value)} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {/* ── Odometer KM fields — VGTC trucks only, all voucher types ── */}
                                         {isVGTCTruck(form.truckNo) && (
                                             <div style={{ marginTop: '12px' }}>
