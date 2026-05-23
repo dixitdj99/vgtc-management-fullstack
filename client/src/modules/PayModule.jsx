@@ -385,10 +385,11 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const selRows = vehicleLrs.filter(v => selectedLrs.has(v.id));
   const selOutstanding = selRows.reduce((s, v) => s + Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0)), 0);
 
-  // Vehicle expenses from selected entries
+  // Vehicle expenses from selected entries (or all pending if none selected)
+  const expenseSource = selRows.length > 0 ? selRows : vehicleLrs;
   const selVehicleExpenses = useMemo(() => {
     const expenses = [];
-    selRows.forEach(v => {
+    expenseSource.forEach(v => {
       const tp = parseFloat(v.tyrePuncture) || 0;
       const tga = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
       const ec = parseFloat(v.extraCash) || 0;
@@ -399,7 +400,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       if (comm > 0) expenses.push({ label: 'Commission', amount: comm, date: v.date, lrNo: v.lrNo });
     });
     return expenses;
-  }, [selRows]);
+  }, [expenseSource]);
   const totalVehicleExp = selVehicleExpenses.reduce((s, e) => s + e.amount, 0);
   
   // Validation checks
@@ -1144,7 +1145,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 {/* Vehicle Expenses from selected entries */}
                 {selVehicleExpenses.length > 0 && (
                   <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Vehicle Expenses (already deducted)</div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Vehicle Expenses{selRows.length > 0 ? ' (selected)' : ' (all pending)'} — already deducted</div>
                     {selVehicleExpenses.map((e, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                         <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR#{e.lrNo} · {e.date}</span></span>

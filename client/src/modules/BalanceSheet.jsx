@@ -123,10 +123,15 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
       advanceOnline: v.advanceOnline || '', munshi: v.munshi || '',
       shortage: v.shortage || '', paidBalance: v.paidBalance || '',
-      rate: v.rate || '', weight: v.weight || '', total: v.total || ''
+      rate: v.rate || '', weight: v.weight || '', total: v.total || '',
+      commission: v.commission || '', tyrePuncture: v.tyrePuncture || '',
+      tyreGreasingAir: v.tyreGreasingAir || '', extraCash: v.extraCash || '',
+      extraCashRemark: v.extraCashRemark || '',
     });
     setEditing(true);
   };
+
+  const hasVehicleExp = (parseFloat(v.commission) || 0) + (parseFloat(v.tyrePuncture) || 0) + (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.extraCash) || 0) > 0;
   const executeSave = async () => {
     setSaving(true); setIsConfirming(false);
     try { await ax.patch(API_V + '/' + v.id, form); setEditing(false); onSave(); }
@@ -194,6 +199,23 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       </td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('munshi') : (v.munshi || '—')}</td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('shortage') : (v.shortage || '—')}</td>
+      <td style={{ ...TD, textAlign: 'right', fontSize: '11px', padding: '4px 6px' }}>
+        {editing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '80px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Comm.</span>{FI('commission', '55px')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Puncture</span>{FI('tyrePuncture', '55px')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Grease</span>{FI('tyreGreasingAir', '55px')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Extra</span>{FI('extraCash', '55px')}</div>
+          </div>
+        ) : hasVehicleExp ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            {(parseFloat(v.commission) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Com: {v.commission}</div>}
+            {(parseFloat(v.tyrePuncture) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Pnc: {v.tyrePuncture}</div>}
+            {((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0)) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>G&A: {v.tyreGreasingAir || ((parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0))}</div>}
+            {(parseFloat(v.extraCash) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Ext: {v.extraCash}</div>}
+          </div>
+        ) : '—'}
+      </td>
       <td style={{
         ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px',
         color: net >= 0 ? 'var(--accent)' : 'var(--danger)'
@@ -403,6 +425,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <th style={TH}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}>Expenses</th>
                 <th style={TH}>Net Bal</th>
                 <th style={TH}>Paid</th>
                 <th style={TH}>Status</th>
@@ -425,7 +448,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <td style={{ ...TDF, textAlign: 'right' }}>{totals.weight}</td>
                 <td style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.gross)}</td>
-                <td colSpan={5} style={TDF}></td>
+                <td colSpan={6} style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right', color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totals.net)}</td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.paid)}</td>
                 <td style={{ ...TDF, textAlign: 'center', fontSize: '13px' }}>
