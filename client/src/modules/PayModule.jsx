@@ -18,7 +18,11 @@ function calcNet(v, vehicle) {
   const online = parseFloat(v.advanceOnline) || 0;
   const munshi = parseFloat(v.munshi) || 0;
   const shortage = parseFloat(v.shortage) || 0;
-  let net = gross - diesel - cash - online - munshi - shortage;
+  const commission = parseFloat(v.commission) || 0;
+  const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+  const tyreGreasingAir = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
+  const extraCash = parseFloat(v.extraCash) || 0;
+  let net = gross - diesel - cash - online - munshi - shortage - commission - tyrePuncture - tyreGreasingAir - extraCash;
 
   // Market vehicle + No GPS + JK Lakshmi = ₹50 deduction
   if (vehicle && vehicle.ownershipType === 'market' && (!vehicle.gpsType || vehicle.gpsType === 'none') && v.type === 'JK_Lakshmi') {
@@ -240,15 +244,17 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
       const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
       const pendingRows = rows.filter(v => calcNet(v, vehicle) > (parseFloat(v.paidBalance) || 0));
+      // Calculate outstanding per-row to avoid overpaid rows cancelling unpaid ones
+      const outstanding = rows.reduce((s, v) => s + Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)), 0);
       const types = [...new Set(rows.map(r => r.type?.replace('_', ' ') || 'Unknown'))].join(', ');
-      return { 
-        truck, 
-        trips: String(rows.length), 
+      return {
+        truck,
+        trips: String(rows.length),
         pendingTrips: String(pendingRows.length),
-        net, 
-        paid, 
-        outstanding: Math.max(0, net - paid),
-        status: (Math.max(0, net - paid) <= 0 ? 'Cleared' : 'Pending'),
+        net,
+        paid,
+        outstanding,
+        status: (outstanding <= 0 ? 'Cleared' : 'Pending'),
         hasUnverified: pendingRows.some(hasUnverifiedDiesel),
         types
       };
@@ -378,6 +384,23 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   const selRows = vehicleLrs.filter(v => selectedLrs.has(v.id));
   const selOutstanding = selRows.reduce((s, v) => s + Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0)), 0);
+
+  // Vehicle expenses from selected entries
+  const selVehicleExpenses = useMemo(() => {
+    const expenses = [];
+    selRows.forEach(v => {
+      const tp = parseFloat(v.tyrePuncture) || 0;
+      const tga = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
+      const ec = parseFloat(v.extraCash) || 0;
+      const comm = parseFloat(v.commission) || 0;
+      if (tp > 0) expenses.push({ label: 'Tyre Puncture', amount: tp, date: v.date, lrNo: v.lrNo });
+      if (tga > 0) expenses.push({ label: 'Tyre Greasing & Air', amount: tga, date: v.date, lrNo: v.lrNo });
+      if (ec > 0) expenses.push({ label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash', amount: ec, date: v.date, lrNo: v.lrNo });
+      if (comm > 0) expenses.push({ label: 'Commission', amount: comm, date: v.date, lrNo: v.lrNo });
+    });
+    return expenses;
+  }, [selRows]);
+  const totalVehicleExp = selVehicleExpenses.reduce((s, e) => s + e.amount, 0);
   
   // Validation checks
   const hasSelectedUnverified = selRows.some(hasUnverifiedDiesel);
@@ -514,14 +537,15 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       
       <div className="page-hd">
         <div>
-          <h1><Banknote size={20} color="#10b981" /> Pay Module</h1>
-          <p>{selTruck ? `Clearing payments for ${selTruck}` : 'Vehicle payment settlement system'}</p>
+          <h1><Banknote size={20} color="#10b981" /> Pay</h1>
+          <p>{selTruck ? `Clearing payments for ${selTruck}` : 'Vehicle & staff payment settlement'}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
             <button className={`btn btn-sm ${view === 'freight' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('freight')}>Freight Pay</button>
             <button className={`btn btn-sm ${view === 'online' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('online')}>Online Advances</button>
             <button className={`btn btn-sm ${view === 'firm' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('firm')}>Firm Pay</button>
+            <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Staff Pay</button>
           </div>
           {selTruck && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelectedLrs(new Set());}}><ChevronLeft size={14} /> All Trucks</button>}
         </div>
@@ -697,18 +721,11 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       <option key={p.id} value={p.id}>{p.name} ({p.type}) | Bal: ₹{bal.toLocaleString()}</option>
                     );
                   })}
-                  <option value="__other__">➕ Other (Type Manually)</option>
+                  <option value="__other__">+ Other (Type Manually)</option>
                 </select>
                 {firmForm.profileId === '__other__' && (
-                  <input
-                    className="fi"
-                    style={{ marginTop: '8px' }}
-                    type="text"
-                    placeholder="Enter name (e.g. vendor, supplier, expense...)"
-                    value={firmForm.otherProfileName}
-                    onChange={e => setFirmForm({...firmForm, otherProfileName: e.target.value})}
-                    autoFocus
-                  />
+                  <input className="fi" style={{ marginTop: '8px' }} type="text" placeholder="Enter name (e.g. vendor, supplier, expense...)" value={firmForm.otherProfileName}
+                    onChange={e => setFirmForm({...firmForm, otherProfileName: e.target.value})} autoFocus />
                 )}
               </div>
               <div className="field">
@@ -716,6 +733,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <select className="fi" value={firmForm.category} onChange={e => setFirmForm({...firmForm, category: e.target.value})}>
                   <option value="Salary">Staff Salary</option>
                   <option value="Advance">Advance Payment</option>
+                  <option value="Pump">Pump Payment</option>
                   <option value="Tyre">Tyre Expense</option>
                   <option value="Maintenance">Vehicle Maintenance</option>
                   <option value="Other">Other Expenses</option>
@@ -735,7 +753,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <label>Remark / Note</label>
                 <textarea className="fi" value={firmForm.remark} onChange={e => setFirmForm({...firmForm, remark: e.target.value})} placeholder="Payment details..." style={{ minHeight: '80px' }} />
               </div>
-              <button className="btn btn-p" style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 700 }} 
+              <button className="btn btn-p" style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 700 }}
                 onClick={async () => {
                   if (!firmForm.profileId || !firmForm.amount) { alert('Please select a profile and enter an amount'); return; }
                   if (firmForm.profileId === '__other__' && !firmForm.otherProfileName.trim()) { alert('Please enter a name for Other'); return; }
@@ -773,25 +791,106 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {firmPayments.slice(0, 20).map((p, i) => {
-                    const prof = profiles.find(pr => pr.id === p.profileId);
+                  {firmPayments.slice(0, 30).map((p, i) => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                      <td style={TD}>{fmtDate(p.date)}</td>
+                      <td style={TD}>
+                        <div style={{ fontWeight: 700 }}>{p.profileName || profiles.find(pr => pr.id === p.profileId)?.name || 'Unknown'}</div>
+                        <div style={{ fontSize: '10px', opacity: 0.6 }}>{p.profileId ? (profiles.find(pr => pr.id === p.profileId)?.type || 'Profile') : 'Other'}</div>
+                      </td>
+                      <td style={TD}>
+                        <span style={{ padding: '2px 6px', background: p.category === 'Pump' ? 'rgba(59,130,246,0.1)' : 'var(--bg-input)', color: p.category === 'Pump' ? '#3b82f6' : 'inherit', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{p.category}</span>
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)' }}>₹{parseFloat(p.amount).toLocaleString()}</td>
+                      <td style={{ ...TD, whiteSpace: 'normal', fontSize: '11px' }}>{p.remark}</td>
+                    </tr>
+                  ))}
+                  {firmPayments.length === 0 && (
+                    <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', padding: '40px' }}>No firm payments recorded yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : view === 'staff' ? (
+        <div>
+          {/* Staff Summary Cards */}
+          {(() => {
+            const staffProfiles = profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff');
+            const totalEarned = staffProfiles.reduce((s, p) => s + calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves), 0);
+            const totalPaid = staffProfiles.reduce((s, p) => s + firmPayments.filter(f => f.profileId === p.id).reduce((ss, f) => ss + (parseFloat(f.amount) || 0), 0), 0);
+            const totalAdvance = staffProfiles.reduce((s, p) => s + firmPayments.filter(f => f.profileId === p.id && f.category === 'Advance').reduce((ss, f) => ss + (parseFloat(f.amount) || 0), 0), 0);
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                {[
+                  { label: 'Total Staff', val: staffProfiles.length, fmt: v => v, color: '#6366f1' },
+                  { label: 'Total Earned', val: totalEarned, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#10b981' },
+                  { label: 'Total Paid', val: totalPaid, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#f59e0b' },
+                  { label: 'Balance Due', val: totalEarned - totalPaid, fmt: v => `₹${Math.abs(v).toLocaleString('en-IN')}`, color: totalEarned - totalPaid > 0 ? '#ef4444' : '#10b981' },
+                  { label: 'Advances Given', val: totalAdvance, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#0ea5e9' },
+                ].map(c => (
+                  <div key={c.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{c.label}</div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: c.color }}>{c.fmt(c.val)}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Staff & Drivers Table */}
+          <div className="card">
+            <div className="card-header border-b">
+              <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Staff & Drivers</h3>
+            </div>
+            <div className="tbl-wrap">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    <th style={TH}>Name</th>
+                    <th style={TH}>Type</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Monthly Salary</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Earned</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Paid</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Balance</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Advances</th>
+                    <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff').map((p, i) => {
+                    const earned = calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves);
+                    const paid = firmPayments.filter(f => f.profileId === p.id).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                    const balance = earned - paid;
+                    const advAmt = firmPayments.filter(f => f.profileId === p.id && f.category === 'Advance').reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
                     return (
-                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                        <td style={TD}>{fmtDate(p.date)}</td>
+                      <tr key={p.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                         <td style={TD}>
-                          <div style={{ fontWeight: 700 }}>{p.profileName || profiles.find(pr => pr.id === p.profileId)?.name || 'Unknown'}</div>
-                          <div style={{ fontSize: '10px', opacity: 0.6 }}>{p.profileId ? (profiles.find(pr => pr.id === p.profileId)?.type || 'Profile') : 'Other'}</div>
+                          <div style={{ fontWeight: 700, color: 'var(--text)' }}>{p.name}</div>
+                          {p.department && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{p.department}</div>}
                         </td>
                         <td style={TD}>
-                          <span style={{ padding: '2px 6px', background: 'var(--bg-input)', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{p.category}</span>
+                          <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: p.type === 'Driver' ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)', color: p.type === 'Driver' ? '#f59e0b' : '#6366f1' }}>{p.type}</span>
                         </td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)' }}>₹{parseFloat(p.amount).toLocaleString()}</td>
-                        <td style={{ ...TD, whiteSpace: 'normal', fontSize: '11px' }}>{p.remark}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>₹{(p.fixedSalary || 0).toLocaleString('en-IN')}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>₹{earned.toLocaleString('en-IN')}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>₹{paid.toLocaleString('en-IN')}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: balance > 0 ? 'var(--danger)' : 'var(--accent)' }}>₹{Math.abs(balance).toLocaleString('en-IN')}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: '#0ea5e9' }}>{advAmt > 0 ? `₹${advAmt.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ ...TD, textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }}
+                              onClick={() => setShowLedger(p)}>Ledger</button>
+                            <button className="btn btn-p btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }}
+                              onClick={() => { setView('firm'); setFirmForm(f => ({ ...f, profileId: p.id, otherProfileName: '', category: 'Salary' })); }}>Pay</button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
-                  {firmPayments.length === 0 && (
-                    <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', padding: '40px' }}>No firm payments recorded yet.</td></tr>
+                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff').length === 0 && (
+                    <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No staff/driver profiles found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -807,8 +906,8 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <div className="card-title-block">
               <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><HandCoins size={17} color="#10b981" /></div>
               <div className="card-title-text">
-                <h3>Pending Payments ({brand === 'jkl' ? 'JK Lakshmi Area' : 'JK Super Area'})</h3>
-                <p>Select a vehicle to process LRs</p>
+                <h3>All Vehicles</h3>
+                <p>Select a vehicle to view details & process payments</p>
               </div>
             </div>
           </div>
@@ -827,7 +926,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
               </thead>
               <tbody>
                 {truckSummaries.filter(ts => ts.outstanding > 0).map((ts, i) => (
-                  <tr key={ts.truck} 
+                  <tr key={ts.truck}
                     style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', cursor: 'pointer', transition: 'background 0.12s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}
@@ -862,7 +961,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </tr>
                 ))}
                 {truckSummaries.filter(ts => ts.outstanding > 0).length === 0 && (
-                  <tr><td colSpan={6} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>All vehicles clear! No pending payments.</td></tr>
+                  <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>All vehicles clear! No pending payments.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1042,6 +1141,22 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   <span style={{ fontSize: '13px', color: 'var(--text-sub)', fontWeight: 700 }}>Freight Total:</span>
                   <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(selOutstanding)}</span>
                 </div>
+                {/* Vehicle Expenses from selected entries */}
+                {selVehicleExpenses.length > 0 && (
+                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Vehicle Expenses (already deducted)</div>
+                    {selVehicleExpenses.map((e, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR#{e.lrNo} · {e.date}</span></span>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dotted var(--border)', paddingTop: '4px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>Total Expenses:</span>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b' }}>{fmtRs(totalVehicleExp)}</span>
+                    </div>
+                  </div>
+                )}
                 {gpsAccrual && (
                   <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>

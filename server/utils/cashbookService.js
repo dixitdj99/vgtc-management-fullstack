@@ -18,7 +18,7 @@ const getAll = async (orgId, collection = DEFAULT_COLLECTION) => {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
-const addEntry = async (orgId, type, amount, remark = '', date = '', collection = DEFAULT_COLLECTION) => {
+const addEntry = async (orgId, type, amount, remark = '', date = '', collection = DEFAULT_COLLECTION, extraFields = {}) => {
     if (!amount || isNaN(amount) || parseFloat(amount) <= 0)
         throw new Error('Amount must be a positive number');
 
@@ -28,6 +28,7 @@ const addEntry = async (orgId, type, amount, remark = '', date = '', collection 
         remark: remark || '',
         orgId,
         date: date || new Date().toISOString().slice(0, 10),
+        ...extraFields,
     };
 
     if (firebaseAvailable()) {
@@ -37,6 +38,24 @@ const addEntry = async (orgId, type, amount, remark = '', date = '', collection 
     }
 
     return localStore.insert(collection, { ...entryData, orgId, createdAt: new Date().toISOString() });
+};
+
+const getById = async (id, collection = DEFAULT_COLLECTION) => {
+    if (firebaseAvailable()) {
+        const doc = await db.collection(collection).doc(id).get();
+        if (!doc.exists) return null;
+        return { id: doc.id, ...doc.data() };
+    }
+    const all = localStore.getAll(collection);
+    return all.find(e => e.id === id) || null;
+};
+
+const updateEntry = async (id, fields, collection = DEFAULT_COLLECTION) => {
+    if (firebaseAvailable()) {
+        await db.collection(collection).doc(id).update(fields);
+    } else {
+        localStore.update(collection, id, fields);
+    }
 };
 
 const deleteEntry = async (id, collection = DEFAULT_COLLECTION) => {
@@ -49,4 +68,4 @@ const deleteEntry = async (id, collection = DEFAULT_COLLECTION) => {
     }
 };
 
-module.exports = { getAll, addEntry, deleteEntry };
+module.exports = { getAll, addEntry, deleteEntry, getById, updateEntry };

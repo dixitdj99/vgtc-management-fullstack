@@ -69,8 +69,8 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
       <td style="text-align:right">${v.shortage || '—'}</td>
       <td style="text-align:right;font-weight:800;color:${n >= 0 ? '#16a34a' : '#dc2626'}">Rs.${Math.round(n).toLocaleString()}</td>
       <td style="text-align:right">${p ? 'Rs.' + Math.round(p).toLocaleString() : '—'}</td>
-      <td style="text-align:center;font-weight:700;color:${o <= 0 ? '#16a34a' : '#b45309'}">
-        ${o <= 0 ? `✓ Paid${v.paymentClearedDate ? `<div style="font-size:8px;color:#666;font-weight:normal">${v.paymentClearedDate}</div>` : ''}` : 'Rs.' + Math.round(o).toLocaleString()}
+      <td style="text-align:center;font-weight:700;color:${n < 0 ? '#6366f1' : o <= 0 ? '#16a34a' : '#b45309'}">
+        ${n < 0 ? `Adjusted (Rs.${Math.abs(Math.round(n)).toLocaleString()})` : o <= 0 ? `✓ Paid${v.paymentClearedDate ? `<div style="font-size:8px;color:#666;font-weight:normal">${v.paymentClearedDate}</div>` : ''}` : 'Rs.' + Math.round(o).toLocaleString()}
       </td>
     </tr>`;
   }).join('');
@@ -202,12 +202,17 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       </td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('paidBalance') : (paid ? fmtRs(paid) : '—')}</td>
       <td style={{ ...TD, textAlign: 'center' }}>
-        {cleared
+        {net < 0
           ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}><Check size={10} /> Paid</span>
-            {v.paymentClearedDate && <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>{fmtDate(v.paymentClearedDate)}</span>}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '11px', fontWeight: 700 }}>Adjusted</span>
+            <span style={{ fontSize: '9px', color: '#6366f1', fontWeight: 700 }}>{fmtRs(Math.abs(net))}</span>
           </div>
-          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>}
+          : cleared
+            ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}><Check size={10} /> Paid</span>
+              {v.paymentClearedDate && <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>{fmtDate(v.paymentClearedDate)}</span>}
+            </div>
+            : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>}
       </td>
       {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
       {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
@@ -272,13 +277,28 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
   const allSelected = rows.length > 0 && monthChecked.length === rows.length;
   const someSelected = monthChecked.length > 0 && !allSelected;
 
-  const totals = useMemo(() => ({
-    weight: rows.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0).toFixed(2),
-    gross: rows.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
-    net: rows.reduce((s, v) => s + calcNet(v, vehicle), 0),
-    paid: rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0),
-    out: rows.reduce((s, v) => Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)) + s, 0),
-  }), [rows, vehicle]);
+  const totals = useMemo(() => {
+    const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
+    const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
+    // Separate positive outstanding and negative (adjusted) amounts
+    const positiveOut = rows.reduce((s, v) => {
+      const n = calcNet(v, vehicle);
+      const p = parseFloat(v.paidBalance) || 0;
+      return n > 0 ? s + Math.max(0, n - p) : s;
+    }, 0);
+    const adjustedAmount = rows.reduce((s, v) => {
+      const n = calcNet(v, vehicle);
+      return n < 0 ? s + Math.abs(n) : s;
+    }, 0);
+    return {
+      weight: rows.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0).toFixed(2),
+      gross: rows.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
+      net,
+      paid,
+      out: Math.max(0, positiveOut - adjustedAmount),
+      adjusted: adjustedAmount,
+    };
+  }, [rows, vehicle]);
 
   const [marking, setMarking] = useState(false);
   const [confirmMarkRows, setConfirmMarkRows] = useState(null);
@@ -323,7 +343,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
           <div>
             <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{monthLabel(ym)}</div>
             <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '1px' }}>
-              {rows.length} trips · Net {fmtRs(totals.net)} · Paid {fmtRs(totals.paid)}
+              {rows.length} trips · Net {fmtRs(totals.net)} · Paid {fmtRs(totals.paid)}{totals.adjusted > 0 ? ` · Adjusted ${fmtRs(totals.adjusted)}` : ''}
             </div>
           </div>
         </div>
@@ -331,6 +351,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
           {totals.out > 0
             ? <span style={{ fontSize: '12px', color: 'var(--warn)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={13} />{fmtRs(totals.out)} due</span>
             : <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} />Cleared</span>}
+          {totals.adjusted > 0 && <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: 700 }}>({fmtRs(totals.adjusted)} adjusted)</span>}
           {/* Mark all in month */}
           {(role === 'admin' || permissions?.balance === 'edit') && (
             <button className="btn btn-g btn-sm" onClick={() => triggerMarkPaid(rows)} disabled={marking} title="Mark all rows in this month as Paid">
@@ -407,8 +428,11 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <td colSpan={5} style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right', color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totals.net)}</td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.paid)}</td>
-                <td style={{ ...TDF, textAlign: 'center', color: totals.out > 0 ? 'var(--warn)' : 'var(--accent)', fontSize: '13px' }}>
-                  {totals.out > 0 ? fmtRs(totals.out) : <><Check size={11} /> Cleared</>}
+                <td style={{ ...TDF, textAlign: 'center', fontSize: '13px' }}>
+                  {totals.out > 0
+                    ? <span style={{ color: 'var(--warn)' }}>{fmtRs(totals.out)}</span>
+                    : <span style={{ color: 'var(--accent)' }}><Check size={11} /> Cleared</span>}
+                  {totals.adjusted > 0 && <div style={{ fontSize: '9px', color: '#6366f1', fontWeight: 700, marginTop: '2px' }}>Adj: {fmtRs(totals.adjusted)}</div>}
                 </td>
                 <td colSpan={role === 'admin' ? 3 : 1} style={TDF}></td>
               </tr>
@@ -658,7 +682,16 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     const rows = truckGroups[selTruck] || [];
     const net = rows.reduce((s, v) => s + calcNet(v, selVehicle), 0);
     const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
-    return { trips: rows.length, net, paid, outstanding: Math.max(0, net - paid) };
+    const positiveOut = rows.reduce((s, v) => {
+      const n = calcNet(v, selVehicle);
+      const p = parseFloat(v.paidBalance) || 0;
+      return n > 0 ? s + Math.max(0, n - p) : s;
+    }, 0);
+    const adjusted = rows.reduce((s, v) => {
+      const n = calcNet(v, selVehicle);
+      return n < 0 ? s + Math.abs(n) : s;
+    }, 0);
+    return { trips: rows.length, net, paid, outstanding: Math.max(0, positiveOut - adjusted), adjusted };
   }, [selTruck, truckGroups, selVehicle]);
 
   const truckSummaries = useMemo(() => {
@@ -733,6 +766,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 { label: 'Net Balance', val: fmtRs(truckTotals.net), color: 'var(--text)' },
                 { label: 'Total Paid', val: fmtRs(truckTotals.paid), color: 'var(--accent)' },
                 { label: 'Outstanding', val: fmtRs(truckTotals.outstanding), color: truckTotals.outstanding > 0 ? 'var(--warn)' : 'var(--accent)' },
+                ...(truckTotals.adjusted > 0 ? [{ label: 'Adjusted', val: fmtRs(truckTotals.adjusted), color: '#6366f1' }] : []),
                 { label: 'Advance Balance', val: fmtRs(advanceBalance), color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' },
                 ...(gpsDeduction > 0 ? [{ label: gpsAccrual.label, val: fmtRs(gpsDeduction), color: 'var(--warn)' }] : []),
                 ...(vehicleExp > 0 ? [{ label: 'Vehicle Expenses', val: fmtRs(vehicleExp), color: '#f59e0b' }] : []),

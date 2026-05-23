@@ -273,10 +273,11 @@ function AppInner() {
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
-    { id: 'pay_dump', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay', sub: [
+    { id: 'pay_dump', label: 'Pay', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay', sub: [
         { id: 'freight', label: 'Freight Pay' },
         { id: 'online', label: 'Online Advances' },
         { id: 'firm', label: 'Firm Pay' },
+        { id: 'staff', label: 'Staff Pay' },
       ]
     },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
@@ -320,10 +321,11 @@ function AppInner() {
     { id: 'vehicles_jharli', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
     { id: 'diesel_jharli', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jharli', permKey: 'diesel' },
     { id: 'mileage_jharli', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jharli', permKey: 'mileage' },
-    { id: 'pay_jharli', label: 'Pay Vehicles', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay', sub: [
+    { id: 'pay_jharli', label: 'Pay', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay', sub: [
         { id: 'freight', label: 'Freight Pay' },
         { id: 'online', label: 'Online Advances' },
         { id: 'firm', label: 'Firm Pay' },
+        { id: 'staff', label: 'Staff Pay' },
       ]
     },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },

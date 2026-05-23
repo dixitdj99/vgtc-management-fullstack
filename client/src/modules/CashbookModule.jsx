@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Plus, ArrowDownCircle, ArrowUpCircle, Trash2,
   AlertTriangle, X, Check, RefreshCw, Wallet, CreditCard,
-  TrendingDown, Smartphone, FileText, Filter, Download, Printer, Search, Loader2
+  TrendingDown, Smartphone, FileText, Filter, Download, Printer, Search, Loader2,
+  User, Truck, RotateCcw, Users
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -51,12 +52,23 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     );
   };
 
-  const EntryForm = ({ type, onSave, onCancel }) => {
-    const [form, setForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const EntryForm = ({ type, onSave, onCancel, drivers, staffList, vehicles }) => {
+    const [form, setForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '', entityKey: '' });
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState('');
     const [isConfirming, setIsConfirming] = useState(false);
     const isDeposit = type === 'deposit';
+
+    const parseEntityKey = (key) => {
+      if (!key) return {};
+      const [entityType, entityId] = key.split('::');
+      let entityName = '';
+      if (entityType === 'driver') entityName = drivers.find(d => d.id === entityId)?.name || '';
+      else if (entityType === 'staff') entityName = staffList.find(s => s.id === entityId)?.name || '';
+      else if (entityType === 'vehicle') entityName = vehicles.find(v => v.truckNo === entityId)?.truckNo || entityId;
+      return { entityType, entityId, entityName };
+    };
+
     const handleFormRequest = e => {
       e.preventDefault(); setErr('');
       if (!form.amount || parseFloat(form.amount) <= 0) { setErr('Enter a valid amount'); return; }
@@ -64,10 +76,24 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     };
     const executeSave = async () => {
       setSaving(true); setIsConfirming(false);
-      try { await ax.post(API_CB + (isDeposit ? '/deposit' : '/cash-out'), form); setForm({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '' }); onSave(); }
+      try {
+        const entity = parseEntityKey(form.entityKey);
+        if (!isDeposit && entity.entityType) {
+          await ax.post(API_CB + '/cash-out-linked', { amount: form.amount, date: form.date, remark: form.remark, ...entity });
+        } else {
+          await ax.post(API_CB + (isDeposit ? '/deposit' : '/cash-out'), form);
+        }
+        setForm({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '', entityKey: '' }); onSave();
+      }
       catch (e) { setErr(e.response?.data?.error || 'Error'); }
       finally { setSaving(false); }
     };
+
+    const selectedEntity = parseEntityKey(form.entityKey);
+    const confirmMsg = isDeposit
+      ? `Are you sure you want to save this Deposit of Rs.${form.amount}?`
+      : `Are you sure you want to save this Cash Out of Rs.${form.amount}?${selectedEntity.entityName ? `\n\nLinked to: ${selectedEntity.entityName} (${selectedEntity.entityType})` : ''}`;
+
     return (
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ background: 'var(--bg-card)', border: `1px solid ${isDeposit ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`, borderRadius: '14px', padding: '18px 20px', marginBottom: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '14px' }}>
@@ -77,6 +103,23 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{isDeposit ? 'Add Deposit' : 'Cash Out'}</span>
         </div>
         <form onSubmit={handleFormRequest}>
+          {!isDeposit && (
+            <div className="field" style={{ marginBottom: '10px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Give Cash To (Optional)</label>
+              <select className="fi" value={form.entityKey} onChange={e => setForm(f => ({ ...f, entityKey: e.target.value }))}>
+                <option value="">— None (General Expense) —</option>
+                {drivers.length > 0 && <optgroup label="Drivers">
+                  {drivers.map(d => <option key={d.id} value={`driver::${d.id}`}>{d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}</option>)}
+                </optgroup>}
+                {vehicles.length > 0 && <optgroup label="Vehicles">
+                  {vehicles.map(v => <option key={v.truckNo} value={`vehicle::${v.truckNo}`}>{v.truckNo} — {v.ownerName || v.driverName || ''}</option>)}
+                </optgroup>}
+                {staffList.length > 0 && <optgroup label="Staff Members">
+                  {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
+                </optgroup>}
+              </select>
+            </div>
+          )}
           <div className="fg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '9px', alignItems: 'end' }}>
             <div className="field"><label>Amount (Rs.)</label><input className="fi" type="number" step="0.01" placeholder="0" required value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
             <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
@@ -88,7 +131,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           </div>
           {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600, marginTop: '6px' }}>{err}</div>}
         </form>
-        <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : 'Confirm Cash Out'} message={`Are you sure you want to save this ${isDeposit ? 'Deposit' : 'Cash Out'} of Rs.${form.amount}?`} isSaving={saving} />
+        <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : 'Confirm Cash Out'} message={confirmMsg} isSaving={saving} />
       </motion.div>
     );
   };
@@ -101,6 +144,12 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const [delTarget, setDelTarget] = useState(null);
   const [onlinePaidTarget, setOnlinePaidTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [profiles, setProfiles] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [returnTarget, setReturnTarget] = useState(null); // { id, label, date, remark }
+
+  const drivers = useMemo(() => profiles.filter(p => p.type === 'Driver'), [profiles]);
+  const staffList = useMemo(() => profiles.filter(p => p.type === 'Office Staff'), [profiles]);
 
   /* Filter states */
   const [fSearch, setFSearch] = useState('');
@@ -127,13 +176,17 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [cb, ...voucherArrays] = await Promise.all([
+      const [cb, profs, vehs, ...voucherArrays] = await Promise.all([
         ax.get(API_CB).then(r => r.data),
+        ax.get('/profiles').then(r => r.data).catch(() => []),
+        ax.get('/vehicles').then(r => r.data).catch(() => []),
         ...VTYPES.map(t => ax.get(`/vouchers/${t}`).then(r =>
           r.data.map(v => ({ ...v, vType: t }))
         )),
       ]);
       setCbEntries(cb);
+      setProfiles(profs);
+      setVehicles(vehs);
       setAllVouchers(voucherArrays.flat());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -222,14 +275,14 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const ledgerWithBalance = useMemo(() => {
     const rows = [
       ...deposits.map(e => ({
-        ...e, credit: e.amount, debit: 0,
-        label: e.remark || 'Deposit',
-        badge: 'deposit', deletable: true,
+        ...e, credit: e.isReturned ? 0 : e.amount, debit: 0,
+        label: e.remark || (e.isRefundEntry ? 'Cash Returned' : 'Deposit'),
+        badge: e.isRefundEntry ? 'refund' : 'deposit', deletable: !e.isRefundEntry,
       })),
       ...cashOuts.map(e => ({
-        ...e, credit: 0, debit: e.amount,
+        ...e, credit: 0, debit: e.isReturned ? 0 : e.amount,
         label: e.remark || 'Cash Out',
-        badge: 'cash_out', deletable: true,
+        badge: e.isReturned ? 'returned' : 'cash_out', deletable: !e.isReturned,
       })),
       ...voucherCashAdv.map(e => ({
         ...e, credit: 0, debit: Math.abs(e.amount),
@@ -297,6 +350,19 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     deposit: { bg: 'rgba(16,185,129,0.1)', color: 'var(--accent)', label: 'Deposit' },
     cash_out: { bg: 'rgba(244,63,94,0.1)', color: 'var(--danger)', label: 'Cash Out' },
     voucher_cash: { bg: 'rgba(99,102,241,0.1)', color: 'var(--primary)', label: 'Voucher Adv' },
+    refund: { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', label: 'Refund' },
+    returned: { bg: 'rgba(156,163,175,0.15)', color: '#9ca3af', label: 'Returned' },
+  };
+
+  const ENTITY_ICON = { driver: User, vehicle: Truck, staff: Users };
+
+  const handleReturn = async () => {
+    if (!returnTarget) return;
+    try {
+      await ax.post(API_CB + '/' + returnTarget.id + '/return', { date: returnTarget.date, remark: returnTarget.remark });
+      setReturnTarget(null);
+      fetchAll();
+    } catch (e) { alert(e.response?.data?.error || 'Return failed'); }
   };
 
   const toggleOnlinePaid = async (voucherId, currentStatus, paymentDate = null) => {
@@ -348,17 +414,25 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                 <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
                 <td style={{ ...TD, maxWidth: '320px' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontWeight: 600, color: r.isReturned ? 'var(--text-muted)' : 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.isReturned ? 'line-through' : 'none' }}>
                     {r.label}
                   </div>
-                  {(r.truckNo || r.lrNo) && (
+                  {r.entityType && r.entityName && (() => {
+                    const EIcon = ENTITY_ICON[r.entityType] || User;
+                    return (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '3px', padding: '1px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.08)', fontSize: '10.5px', fontWeight: 700, color: 'var(--primary)' }}>
+                        <EIcon size={11} /> {r.entityName}
+                      </div>
+                    );
+                  })()}
+                  {(r.truckNo || r.lrNo) && !r.entityType && (
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
                       {r.truckNo && (
                         <>
-                          Truck: <span 
+                          Truck: <span
                             onClick={() => {
-                                const event = new CustomEvent('nav-module', { 
-                                    detail: { active: 'vehicles_dump', search: r.truckNo } 
+                                const event = new CustomEvent('nav-module', {
+                                    detail: { active: 'vehicles_dump', search: r.truckNo }
                                 });
                                 window.dispatchEvent(event);
                             }}
@@ -395,14 +469,22 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 {role === 'admin' && <td style={TD}>{r.createdBy || '—'}</td>}
                 {role === 'admin' && <td style={TD}>{r.updatedBy || '—'}</td>}
                 <td style={{ ...TD, textAlign: 'center' }}>
-                  {r.deletable !== false && role === 'admin' ? (
-                    <button className="btn btn-d btn-icon btn-sm" title="Delete entry"
-                      onClick={() => setDelTarget({ id: r.id, label: r.label })}>
-                      <Trash2 size={13} />
-                    </button>
-                  ) : (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.deletable !== false ? 'Restricted' : 'Auto'}</span>
-                  )}
+                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                    {r.type === 'cash_out' && r.entityType && !r.isReturned && (role === 'admin' || permissions?.cashbook === 'edit') && (
+                      <button className="btn btn-sm" title="Mark as Returned" style={{ padding: '3px 7px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9', border: '1px solid rgba(14,165,233,0.2)', borderRadius: '6px', cursor: 'pointer' }}
+                        onClick={() => setReturnTarget({ id: r.id, label: `${r.entityName} — ${fmtRs(r.amount)}`, date: new Date().toISOString().slice(0, 10), remark: '' })}>
+                        <RotateCcw size={11} /> Return
+                      </button>
+                    )}
+                    {r.deletable !== false && role === 'admin' ? (
+                      <button className="btn btn-d btn-icon btn-sm" title="Delete entry"
+                        onClick={() => setDelTarget({ id: r.id, label: r.label })}>
+                        <Trash2 size={13} />
+                      </button>
+                    ) : (
+                      !r.entityType && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.deletable !== false ? 'Restricted' : 'Auto'}</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             );
@@ -545,6 +627,30 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             onClose={() => setDelTarget(null)}
             onDone={() => { setDelTarget(null); fetchAll(); }} />
         )}
+        {returnTarget && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+              style={{ width: '90%', maxWidth: '360px', background: 'var(--bg)', borderRadius: '16px', padding: '24px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <RotateCcw size={18} color="#0ea5e9" />
+                <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>Mark as Returned</span>
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '16px' }}>{returnTarget.label}</div>
+              <div className="field" style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Return Date</label>
+                <input type="date" className="fi" value={returnTarget.date} onChange={e => setReturnTarget(p => ({ ...p, date: e.target.value }))} />
+              </div>
+              <div className="field" style={{ marginBottom: '18px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Remark (Optional)</label>
+                <input type="text" className="fi" placeholder="e.g. Cash returned by driver" value={returnTarget.remark} onChange={e => setReturnTarget(p => ({ ...p, remark: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button className="btn btn-g" onClick={() => setReturnTarget(null)}>Cancel</button>
+                <button className="btn btn-a" onClick={handleReturn}><RotateCcw size={14} /> Confirm Return</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
         {onlinePaidTarget && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -604,7 +710,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       {/* Entry forms */}
       <AnimatePresence>
         {showForm && (
-          <EntryForm type={showForm} onSave={() => { fetchAll(); setShowForm(null); }} onCancel={() => setShowForm(null)} />
+          <EntryForm type={showForm} onSave={() => { fetchAll(); setShowForm(null); }} onCancel={() => setShowForm(null)} drivers={drivers} staffList={staffList} vehicles={vehicles} />
         )}
       </AnimatePresence>
 
