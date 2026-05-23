@@ -14,13 +14,16 @@ const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v, vehicle) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
-  // If v.advanceDiesel is 'FULL', use the 4000 fallback, otherwise use the actual value
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
   const munshi = parseFloat(v.munshi) || 0;
+  const commission = parseFloat(v.commission) || 0;
   const shortage = parseFloat(v.shortage) || 0;
-  let net = gross - diesel - cash - online - munshi - shortage;
+  const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+  const tyreGreasingAir = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
+  const extraCash = parseFloat(v.extraCash) || 0;
+  let net = gross - diesel - cash - online - munshi - commission - shortage - tyrePuncture - tyreGreasingAir - extraCash;
 
   // Market vehicle + No GPS + JK Lakshmi = ₹50 deduction
   if (vehicle && vehicle.ownershipType === 'market' && (!vehicle.gpsType || vehicle.gpsType === 'none') && v.type === 'JK_Lakshmi') {
@@ -720,17 +723,22 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
         <div>
           {/* Truck summary */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            {[
-              { label: 'Total Trips', val: truckTotals.trips, color: 'var(--primary)' },
-              { label: 'Net Balance', val: fmtRs(truckTotals.net), color: 'var(--text)' },
-              { label: 'Total Paid', val: fmtRs(truckTotals.paid), color: 'var(--accent)' },
-              { label: 'Outstanding', val: fmtRs(truckTotals.outstanding), color: truckTotals.outstanding > 0 ? 'var(--warn)' : 'var(--accent)' },
-              { label: 'Advance Balance', val: fmtRs(advanceBalance), color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' },
-              ...(gpsAccrual ? [
-                { label: gpsAccrual.label, val: fmtRs(gpsAccrual.totalAmount), color: 'var(--warn)' },
-                { label: 'Net Payable', val: fmtRs(truckTotals.outstanding + advanceBalance - gpsAccrual.totalAmount), color: 'var(--primary)' }
-              ] : []),
-            ].map(({ label, val, color }) => (
+            {(() => {
+              const gpsDeduction = gpsAccrual?.totalAmount || 0;
+              const rows = truckGroups[selTruck] || [];
+              const vehicleExp = rows.reduce((s, v) => s + (parseFloat(v.tyrePuncture) || 0) + (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.extraCash) || 0), 0);
+              const netPayable = truckTotals.outstanding + advanceBalance - gpsDeduction;
+              return [
+                { label: 'Total Trips', val: truckTotals.trips, color: 'var(--primary)' },
+                { label: 'Net Balance', val: fmtRs(truckTotals.net), color: 'var(--text)' },
+                { label: 'Total Paid', val: fmtRs(truckTotals.paid), color: 'var(--accent)' },
+                { label: 'Outstanding', val: fmtRs(truckTotals.outstanding), color: truckTotals.outstanding > 0 ? 'var(--warn)' : 'var(--accent)' },
+                { label: 'Advance Balance', val: fmtRs(advanceBalance), color: advanceBalance >= 0 ? '#10b981' : '#f43f5e' },
+                ...(gpsDeduction > 0 ? [{ label: gpsAccrual.label, val: fmtRs(gpsDeduction), color: 'var(--warn)' }] : []),
+                ...(vehicleExp > 0 ? [{ label: 'Vehicle Expenses', val: fmtRs(vehicleExp), color: '#f59e0b' }] : []),
+                { label: 'NET PAYABLE', val: fmtRs(netPayable), color: netPayable > 0 ? '#10b981' : '#f43f5e' },
+              ];
+            })().map(({ label, val, color }) => (
               <div key={label} style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
                 padding: '11px 18px', display: 'inline-flex', flexDirection: 'column', gap: '4px', minWidth: '130px'

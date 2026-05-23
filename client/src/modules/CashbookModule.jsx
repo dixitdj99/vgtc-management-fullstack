@@ -23,7 +23,7 @@ const API_V = `/vouchers`;
 export default function CashbookModule({ initialTab, moduleType, role = 'user', permissions = {} }) {
   /* ── local state ── */
   const API_CB = moduleType === 'jkl' ? `/jkl/cashbook` : `/cashbook`;
-  const VTYPES = moduleType === 'jkl' ? ['JK_Lakshmi'] : ['Dump', 'JK_Super'];
+  const VTYPES = moduleType === 'jkl' ? ['JK_Lakshmi', 'JK_Super', 'Dump'] : ['Dump', 'JK_Super', 'JK_Lakshmi'];
 
   /* ── sub-components ── */
   const DelConfirm = ({ id, label, onClose, onDone }) => {
@@ -159,6 +159,41 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
 
+  // Vehicle expenses from vouchers (tyre puncture, greasing, air, extra cash)
+  const voucherVehicleExpenses = useMemo(() => {
+    const expenses = [];
+    allVouchers.forEach(v => {
+      const fields = [
+        { key: 'tyrePuncture', label: 'Tyre Puncture' },
+        { key: 'tyreGreasingAir', label: 'Tyre Greasing & Air' },
+        { key: 'extraCash', label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash' },
+      ];
+      // Also check old separate fields for backward compatibility
+      const greasingAmt = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
+      if (greasingAmt > 0 && !parseFloat(v.tyreGreasingAir)) {
+        const amt = greasingAmt;
+        if (amt > 0) expenses.push({
+          id: `v_tyreGA_${v.id}`, voucherId: v.id, date: v.date, type: 'voucher_expense',
+          amount: -amt, remark: `Tyre Greasing & Air — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'}`,
+          truckNo: v.truckNo, lrNo: v.lrNo, vType: v.vType,
+        });
+      }
+      fields.forEach(f => {
+        const amt = parseFloat(v[f.key]) || 0;
+        if (amt > 0) {
+          expenses.push({
+            id: `v_${f.key}_${v.id}`,
+            voucherId: v.id, date: v.date, type: 'voucher_expense',
+            amount: -amt,
+            remark: `${f.label} — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'}`,
+            truckNo: v.truckNo, lrNo: v.lrNo, vType: v.vType,
+          });
+        }
+      });
+    });
+    return expenses.sort((a, b) => b.date > a.date ? 1 : -1);
+  }, [allVouchers]);
+
   const onlineAdvList = useMemo(() =>
     allVouchers
       .filter(v => parseFloat(v.advanceOnline) > 0)
@@ -201,6 +236,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         label: e.remark,
         badge: 'voucher_cash', deletable: false,
       })),
+      ...voucherVehicleExpenses.map(e => ({
+        ...e, credit: 0, debit: Math.abs(e.amount),
+        label: e.remark,
+        badge: 'voucher_expense', deletable: false,
+      })),
     ].sort((a, b) => {
       const da = a.date || '', db = b.date || '';
       if (da !== db) return da > db ? 1 : -1;
@@ -211,7 +251,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       bal = bal + r.credit - r.debit;
       return { ...r, balance: bal };
     });
-  }, [deposits, cashOuts, voucherCashAdv]);
+  }, [deposits, cashOuts, voucherCashAdv, voucherVehicleExpenses]);
 
   /* ── Filtered data ── */
   const filterRows = (rows, applyPaidFilter = false) => {

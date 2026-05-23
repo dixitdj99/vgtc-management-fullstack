@@ -43,12 +43,11 @@ const getNet = (v) => {
     const munshi = parseFloat(v.munshi) || 0;
     const commission = parseFloat(v.commission) || 0;
     const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
-    const tyreGreasing = parseFloat(v.tyreGreasing) || 0;
-    const tyreAir = parseFloat(v.tyreAir) || 0;
+    const tyreGreasingAir = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
     const extraCash = parseFloat(v.extraCash) || 0;
-    const vehicleExpenses = tyrePuncture + tyreGreasing + tyreAir + extraCash;
+    const vehicleExpenses = tyrePuncture + tyreGreasingAir + extraCash;
     const totalDeductions = diesel + cash + online + munshi + commission + vehicleExpenses;
-    return { gross, diesel, cash, online, munshi, commission, tyrePuncture, tyreGreasing, tyreAir, extraCash, vehicleExpenses, totalDeductions, net: gross - totalDeductions, dieselPending };
+    return { gross, diesel, cash, online, munshi, commission, tyrePuncture, tyreGreasingAir, extraCash, vehicleExpenses, totalDeductions, net: gross - totalDeductions, dieselPending };
 };
 
 /* ── Print ── */
@@ -64,8 +63,7 @@ function printVoucher(v, org = {}) {
         { lbl: 'Munshi', val: n.munshi, raw: v.munshi },
         { lbl: 'Commission', val: n.commission, raw: v.commission },
         { lbl: 'Tyre Puncture', val: n.tyrePuncture },
-        { lbl: 'Tyre Greasing', val: n.tyreGreasing },
-        { lbl: 'Tyre Air', val: n.tyreAir },
+        { lbl: 'Tyre Greasing & Air', val: n.tyreGreasingAir },
         { lbl: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, val: n.extraCash },
     ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'));
 
@@ -232,94 +230,73 @@ function printVoucher(v, org = {}) {
 </body>
 </html>`;
     } else {
-        // Generic Slip Format for JK_Super, JK_Lakshmi, etc.
+        // Clean A6 Slip for JK_Lakshmi Dump/Factory, JK_Super Factory
+        const fmtRsP = (n) => 'Rs.' + Math.round(n).toLocaleString('en-IN');
         html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo}</title>
 <style>
-@page{size:105mm 148mm;margin:6mm}
+@page{size:105mm 148mm;margin:4mm}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;font-size:13px;padding:8px;width:100%;max-width:93mm;margin:0 auto;color:#000;line-height:1.4}
-
-.header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}
-.header .h1{font-size:22px;font-weight:900;letter-spacing:0.5px;color:#000}
-.header .h2{font-size:15px;font-weight:800;margin-top:4px;color:#000}
-.header .addr{font-size:12px;font-weight:400;color:#000;margin-top:4px}
-
-.voucher-badge-wrap{text-align:center;margin-bottom:16px}
-.voucher-badge{font-size:18px;font-weight:900;border:2px solid #000;display:inline-block;padding:4px 20px;letter-spacing:1px;color:#000}
-.voucher-type{font-size:13px;font-weight:700;color:#000;margin-top:4px}
-
-.info-section{margin-bottom:14px;border:1px solid #000;border-radius:4px;overflow:hidden}
-.info-row{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #000;font-size:14px}
-.info-row:last-child{border-bottom:none}
-.info-row .lbl{font-weight:800;font-size:13px;color:#000;text-transform:uppercase;letter-spacing:0.5px}
-.info-row .val{font-weight:600;font-size:15px;text-align:right;color:#000}
-
-.data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-.data-cell{padding:10px 14px;border:1px solid #000;border-radius:4px}
-.data-cell .clbl{font-size:11px;font-weight:800;color:#000;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px}
-.data-cell .cval{font-size:17px;font-weight:900;color:#000}
-
-.calc-box{border:1px solid #000;border-radius:4px;padding:12px 14px;margin-bottom:14px}
-.calc-title{font-size:12px;font-weight:800;color:#000;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;border-bottom:1px solid #000;padding-bottom:6px}
-.calc-row{display:flex;justify-content:space-between;padding:5px 0;font-size:14px;font-weight:700;color:#000;border-bottom:1px solid #999}
-.calc-row:last-child{border-bottom:none}
-.calc-formula{font-size:11px;color:#000;margin-top:2px;font-weight:400}
-.calc-table{width:100%;margin-top:8px}
-.calc-table td{padding:5px 0;font-size:13px;color:#000}
-
-.total-box{display:flex;justify-content:space-between;padding:12px 16px;background:#000;color:#fff;border-radius:4px;margin-bottom:14px;font-size:18px;font-weight:900}
-.total-pending{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#92400e;color:#fff;border-radius:4px;margin-bottom:14px;font-size:15px;font-weight:900}
-.pending-badge{font-size:10px;background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:3px;font-weight:800}
-.pending-note{font-size:11px;color:#92400e;font-weight:700;padding:8px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;margin-bottom:14px}
-
-.sig{display:flex;justify-content:space-between;margin-top:40px}
-.sig-box{text-align:center;font-size:12px;font-weight:800;min-width:100px;border-top:1.5px solid #000;padding-top:6px;text-transform:uppercase;letter-spacing:0.5px}
-
-@media print{.no-print{display:none}}
+body{font-family:Arial,sans-serif;font-size:11px;padding:4px;width:97mm;margin:0 auto;color:#000}
+.hd{text-align:center;border-bottom:1.5px solid #000;padding-bottom:6px;margin-bottom:8px}
+.hd h1{font-size:14px;font-weight:900;margin:0}
+.hd p{font-size:9px;margin:2px 0}
+.badge{display:inline-block;border:1.5px solid #000;padding:2px 14px;font-size:13px;font-weight:900;margin:6px 0 2px}
+.typ{font-size:10px;font-weight:700}
+table{width:100%;border-collapse:collapse;margin-bottom:6px}
+.info td{padding:3px 6px;font-size:11px;border:1px solid #000}
+.info .l{font-weight:800;width:35%;background:#f5f5f5}
+.info .v{font-weight:600}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:6px}
+.gc{border:1px solid #000;padding:4px 6px;text-align:center}
+.gc .gl{font-size:8px;font-weight:700;text-transform:uppercase}
+.gc .gv{font-size:13px;font-weight:900}
+.calc td{padding:2px 6px;font-size:10px;border-bottom:1px solid #ddd}
+.calc .rl{font-weight:700}
+.calc .rv{text-align:right;font-weight:700}
+.tot{display:flex;justify-content:space-between;padding:6px 8px;background:#000;color:#fff;font-size:13px;font-weight:900;margin:6px 0}
+.pend{background:#92400e;color:#fff;text-align:center;padding:6px;font-size:11px;font-weight:800;margin:6px 0}
+.sig{display:flex;justify-content:space-between;margin-top:20px;padding-top:4px}
+.sb{text-align:center;font-size:9px;font-weight:700;min-width:60px;border-top:1px solid #000;padding-top:3px}
+@media print{body{padding:0}}
 </style></head>
 <body>
-<div class="header">
-  <div class="h1">Vikas Goods Transport Company</div>
-  <div class="h2">Voucher</div>
-  <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar</div>
+<div class="hd">
+  <h1>VIKAS GOODS TRANSPORT</h1>
+  <p>Jharli, Jhajjar | 9416319445</p>
+</div>
+<div style="text-align:center">
+  <div class="badge">LR #${v.lrNo}</div>
+  <div class="typ">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
 </div>
 
-<div class="voucher-badge-wrap">
-  <div class="voucher-badge">LR # ${v.lrNo}</div>
-  <div class="voucher-type">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
+<table class="info">
+  <tr><td class="l">Date</td><td class="v">${v.date}</td><td class="l">Truck</td><td class="v">${v.truckNo}</td></tr>
+  <tr><td class="l">Dest.</td><td class="v" colspan="3">${v.destination || '—'}</td></tr>
+</table>
+
+<div class="grid">
+  <div class="gc"><div class="gl">Weight</div><div class="gv">${v.weight} MT</div></div>
+  <div class="gc"><div class="gl">Bags</div><div class="gv">${v.bags}</div></div>
+  <div class="gc"><div class="gl">Rate</div><div class="gv">${v.rate}/MT</div></div>
 </div>
 
-<div class="info-section">
-  <div class="info-row"><span class="lbl">Date</span><span class="val">${v.date}</span></div>
-  <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${v.truckNo}</span></div>
-  <div class="info-row"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
-</div>
-
-<div class="data-grid">
-  <div class="data-cell"><div class="clbl">Weight</div><div class="cval">${v.weight} MT</div></div>
-  <div class="data-cell"><div class="clbl">Bags</div><div class="cval">${v.bags}</div></div>
-  <div class="data-cell"><div class="clbl">Rate</div><div class="cval">Rs.${v.rate}/MT</div></div>
-  <div class="data-cell"><div class="clbl">Pump</div><div class="cval">${getPumpDisplay(v.pump)}</div></div>
-</div>
-
-<div class="calc-box">
-  <div class="calc-title">Payment Calculation</div>
-  <div class="calc-row"><span>Gross Total</span><span>Rs.${Math.round(n.gross).toLocaleString()}</span></div>
-  <div class="calc-formula">${v.weight} MT × Rs.${v.rate}/MT</div>
-  ${deductionRows.length > 0 ? `<table class="calc-table">${deductionHTML}${!n.dieselPending ? `<tr style="border-top:1.5px solid #999"><td style="padding:6px 0;font-weight:900;font-size:14px">Total Deductions</td><td style="text-align:right;font-weight:900;font-size:14px;color:#c0392b">- Rs.${Math.round(n.totalDeductions).toLocaleString()}</td></tr>` : ''}</table>` : ''}
-</div>
+<table class="calc">
+  <tr><td class="rl">Gross (${v.weight}×${v.rate})</td><td class="rv">${fmtRsP(n.gross)}</td></tr>
+  ${deductionRows.map(d => `<tr><td class="rl">${d.lbl}</td><td class="rv" style="color:#c00">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
+  ${deductionRows.length > 0 && !n.dieselPending ? `<tr style="border-top:1.5px solid #000"><td class="rl">Total Deductions</td><td class="rv" style="color:#c00">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
+</table>
 
 ${n.dieselPending
-    ? `<div class="total-pending"><span>NET PAYABLE</span><span class="pending-badge">&#8987; DIESEL PENDING</span></div>
-       <div class="pending-note">&#9888; Diesel advance is <strong>FULL TANK</strong> — the actual amount has not been entered yet. Net payable will be finalised once the diesel amount is updated.</div>`
-    : `<div class="total-box"><span>NET PAYABLE</span><span>Rs.${Math.round(n.net).toLocaleString()}</span></div>`
+    ? `<div class="pend">NET PAYABLE — DIESEL PENDING (FULL TANK)</div>`
+    : `<div class="tot"><span>NET PAYABLE</span><span>${fmtRsP(n.net)}</span></div>`
 }
+${getPumpDisplay(v.pump) !== '—' ? `<div style="font-size:9px;text-align:center;margin-bottom:4px">Pump: ${getPumpDisplay(v.pump)}</div>` : ''}
 
 <div class="sig">
-  <div class="sig-box">Driver Sign</div>
-  <div class="sig-box">Accountant</div>
-  <div class="sig-box">Authorised Sign</div>
+  <div class="sb">Driver</div>
+  <div class="sb">Accountant</div>
+  <div class="sb">Auth. Sign</div>
 </div>
 <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
 </body></html>`;
@@ -544,7 +521,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         hasCommission: false, isFullTank: false,
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
         materials: [],
-        tyrePuncture: '', tyreGreasing: '', tyreAir: '', extraCash: '', extraCashRemark: '',
+        tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '',
     });
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
     const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
@@ -735,7 +712,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         try {
             await ax.post(API_V, { ...form, partyName: resolvePartyName(form.partyName, knownPartyNames), type: vType, brand, ...calc, materials: form.materials || [] });
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasing: '', tyreAir: '', extraCash: '', extraCashRemark: '' }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '' }));
             setShowVehicleExpenses(false);
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
@@ -979,8 +956,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
                                                     <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
                                                     🔧 Vehicle Expenses (Tyre, Extra Cash)
-                                                    {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasing) || 0) + (parseFloat(form.tyreAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
-                                                        <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasing) || 0) + (parseFloat(form.tyreAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
+                                                    {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
+                                                        <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
                                                     )}
                                                 </button>
                                                 {showVehicleExpenses && (
@@ -991,12 +968,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                                 <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
                                                             </div>
                                                             <div className="field">
-                                                                <label style={{ fontSize: '11px' }}>⚙️ Tyre Greasing</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasing} onChange={e => set('tyreGreasing', e.target.value)} />
-                                                            </div>
-                                                            <div className="field">
-                                                                <label style={{ fontSize: '11px' }}>💨 Tyre Air</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreAir} onChange={e => set('tyreAir', e.target.value)} />
+                                                                <label style={{ fontSize: '11px' }}>⚙️ Tyre Greasing & Air</label>
+                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => set('tyreGreasingAir', e.target.value)} />
                                                             </div>
                                                         </div>
                                                         <div className="fg fg-2">
