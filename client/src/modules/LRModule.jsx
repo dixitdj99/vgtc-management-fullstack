@@ -23,42 +23,14 @@ function printReceipt(allRows, lrNo, allChallans = []) {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
-  const materialsHtml = rows.map(m => `
-    <tr>
-      <td>${m.material}</td>
-      <td style="text-align:center;font-weight:700;">${m.loadingType || 'Godown'}</td>
-      <td style="text-align:center;">${m.totalBags}</td>
-      <td style="text-align:center;">${Number(m.weight).toFixed(2)} MT</td>
-    </tr>
-  `).join('');
-
   const totalBags = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
+  const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
+  const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  let challanLine = '';
-  if (base.billing) {
-    const challanNos = base.billing.split(',').map(s => s.trim());
-    const challanDetails = challanNos.map(cNo => {
-      const ch = allChallans.find(c => c.challanNo === cNo);
-      let dateStr = '';
-      if (ch && ch.date) {
-        dateStr = ` (Dated: ${new Date(ch.date).toLocaleDateString('en-IN')})`;
-      }
-      if (ch && ch.materials) {
-        const mats = ch.materials.map(m => `${m.type}: ${m.totalBags - (m.loadedBags || 0)} left`).join(', ');
-        return `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${cNo}${dateStr} — Bal: ${mats}</div>`;
-      } else if (ch) {
-        return `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${cNo}${dateStr} — Bal: ${ch.material} (${ch.quantity} bags)</div>`;
-      }
-      return `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${cNo}</div>`;
-    }).join('');
-
-    challanLine = `<div class="row" style="grid-column: 1 / -1; display: block;">
-         <span class="lbl">Attached Challans</span>
-         <span class="val" style="display:block; margin-bottom: 6px;">${base.billing}</span>
-         ${challanDetails}
-      </div>`;
-  }
+  const materialLines = rows.map(m =>
+    `<div class="line"><span class="lbl">${m.material}</span><span class="val">${m.totalBags} bags · ${Number(m.weight).toFixed(2)} MT${m.loadingType && m.loadingType !== 'Godown' ? ` · ${m.loadingType}` : ''}</span></div>`
+  ).join('');
 
   const html = `<!DOCTYPE html>
   <html>
@@ -66,76 +38,55 @@ function printReceipt(allRows, lrNo, allChallans = []) {
       <meta charset="UTF-8">
       <title>LR #${lrNo}</title>
       <style>
-        @page { size: 105mm 148mm; margin: 6mm; }
+        @page { size: 105mm 148mm; margin: 5mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, Helvetica, sans-serif; width: 100%; max-width: 93mm; margin: 0 auto; color: #000; font-size: 13px; line-height: 1.4; padding: 8px; }
-
-        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
-        .header .h1 { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; color: #000; }
-        .header .h2 { font-size: 17px; font-weight: 800; margin-top: 3px; color: #000; }
-        .header .addr { font-size: 12px; font-weight: 400; color: #000; margin-top: 4px; }
-
-        .lr-wrap { text-align: center; margin-bottom: 16px; }
-        .lr-no { font-size: 18px; font-weight: 900; border: 2px solid #000; display: inline-block; padding: 4px 20px; letter-spacing: 1px; color: #000; }
-
-        .info-section { margin-bottom: 14px; border: 1px solid #000; border-radius: 4px; overflow: hidden; }
-        .info-row { display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid #000; font-size: 14px; color: #000; }
-        .info-row:last-child { border-bottom: none; }
-        .info-row .lbl { font-weight: 800; font-size: 13px; color: #000; text-transform: uppercase; letter-spacing: 0.5px; }
-        .info-row .val { font-weight: 600; font-size: 15px; text-align: right; color: #000; }
-
-        .challan-sec { font-size: 13px; margin-bottom: 14px; padding: 8px 14px; border: 1px solid #000; border-radius: 4px; color: #000; }
-        .challan-sec b { font-weight: 800; }
-
-        table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-        th { font-size: 13px; font-weight: 800; text-transform: uppercase; padding: 8px 10px; border: 1px solid #000; background: #e8e8e8; text-align: left; letter-spacing: 0.5px; color: #000; }
-        td { font-size: 14px; font-weight: 600; padding: 7px 10px; border: 1px solid #000; color: #000; }
-        .tot td { font-weight: 900; font-size: 15px; background: #e8e8e8; border-top: 2px solid #000; }
-
-        .sig { display: flex; justify-content: space-between; margin-top: 40px; }
-        .sig-box { text-align: center; font-size: 12px; font-weight: 800; min-width: 100px; border-top: 1.5px solid #000; padding-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; color: #000; }
-
-        .no-print { display: block; width: 100%; padding: 12px; background: #10b981; color: #fff; text-align: center; font-weight: 800; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; margin-top: 16px; }
+        body { font-family: Arial, sans-serif; width: 95mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.3; }
+        .hd { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 6px; }
+        .hd .co { font-size: 13px; font-weight: 900; }
+        .hd .sub { font-size: 9px; margin-top: 2px; }
+        .lr { text-align: center; font-size: 16px; font-weight: 900; border: 1.5px solid #000; display: inline-block; padding: 2px 16px; margin: 4px auto 8px; letter-spacing: 1px; }
+        .lr-wrap { text-align: center; }
+        .sec { border: 1px solid #000; border-radius: 3px; margin-bottom: 6px; }
+        .line { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 0.5px solid #ccc; font-size: 11px; }
+        .line:last-child { border-bottom: none; }
+        .lbl { font-weight: 800; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .val { font-weight: 600; text-align: right; }
+        .tot { background: #eee; font-weight: 900; font-size: 12px; border-top: 1.5px solid #000; }
+        .sig { display: flex; justify-content: space-between; margin-top: 20px; }
+        .sig-box { text-align: center; font-size: 9px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; min-width: 60px; text-transform: uppercase; }
+        .no-print { display: block; width: 100%; padding: 10px; background: #10b981; color: #fff; text-align: center; font-weight: 800; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; margin-top: 12px; }
         @media print { .no-print { display: none; } }
       </style>
     </head>
     <body>
-      <div class="header">
-        <div class="h1">JK Lakshmi Depo Loading Receipt</div>
-        <div class="h2">Vikas Goods Transport Company</div>
-        <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar</div>
+      <div class="hd">
+        <div class="co">Vikas Goods Transport Company</div>
+        <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar</div>
       </div>
 
-      <div class="lr-wrap"><div class="lr-no">LR # ${lrNo}</div></div>
+      <div class="lr-wrap"><div class="lr">LR # ${lrNo}</div></div>
 
-      <div class="info-section">
-        <div class="info-row"><span class="lbl">Date</span><span class="val">${new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
-        <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${base.truckNo}</span></div>
-        <div class="info-row"><span class="lbl">Party Name</span><span class="val">${[...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName}</span></div>
-        ${base.fuelStation ? `<div class="info-row"><span class="lbl">Fuel Station</span><span class="val">${base.fuelStation}</span></div>` : ''}
+      <div class="sec">
+        <div class="line"><span class="lbl">Date</span><span class="val">${fmtDate}</span></div>
+        <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13px;font-weight:900;">${base.truckNo}</span></div>
+        <div class="line"><span class="lbl">Party</span><span class="val">${parties}</span></div>
+        ${base.fuelStation ? `<div class="line"><span class="lbl">Fuel Station</span><span class="val">${base.fuelStation}</span></div>` : ''}
+        ${base.billing ? `<div class="line"><span class="lbl">Challans</span><span class="val">${base.billing}</span></div>` : ''}
       </div>
 
-      ${base.billing ? `<div class="challan-sec"><b>Challans:</b> ${base.billing}</div>` : ''}
-
-      <table>
-        <thead><tr><th>Material</th><th style="text-align:center;">Type</th><th style="text-align:center;">Bags</th><th style="text-align:center;">Weight (MT)</th></tr></thead>
-        <tbody>
-          ${materialsHtml}
-          <tr class="tot">
-            <td colspan="2" style="text-align:right;">TOTAL</td>
-            <td style="text-align:center;">${totalBags}</td>
-            <td style="text-align:center;">${totalWeight} MT</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="sec">
+        <div class="line" style="background:#eee;"><span class="lbl">Material</span><span class="lbl">Details</span></div>
+        ${materialLines}
+        <div class="line tot"><span class="lbl">Total</span><span class="val">${totalBags} bags · ${totalWeight} MT</span></div>
+      </div>
 
       <div class="sig">
-        <div class="sig-box">Driver Sign</div>
-        <div class="sig-box">Receiver Sign</div>
-        <div class="sig-box">Authorised Sign</div>
+        <div class="sig-box">Driver</div>
+        <div class="sig-box">Receiver</div>
+        <div class="sig-box">Authorised</div>
       </div>
 
-      <button class="no-print" onclick="window.print()">Print Receipt</button>
+      <button class="no-print" onclick="window.print()">Print</button>
       <script>setTimeout(() => window.print(), 500);</script>
     </body>
   </html>`;
