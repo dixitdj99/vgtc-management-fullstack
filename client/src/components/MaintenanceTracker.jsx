@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wrench, Plus, Calendar, MapPin, DollarSign, X, ChevronDown, Droplets, Disc, Lightbulb, Package, Settings, Zap, AlertTriangle, Shield, Search, Truck as TruckIcon } from 'lucide-react';
-const Truck3D = lazy(() => import('./Truck3D'));
 
 const CATEGORY_META = {
   engine:       { icon: Settings,      color: '#f59e0b', label: 'Engine & Filters' },
@@ -51,8 +50,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   const [showForm, setShowForm] = useState(false);
   const [expandedCat, setExpandedCat] = useState('');
   const [viewIdx, setViewIdx] = useState(0);
-  const [view3DErr, setView3DErr] = useState(null);
-  const [visibleCategories, setVisibleCategories] = useState([]);
+  const [selectedCatFilter, setSelectedCatFilter] = useState('');
   const [form, setForm] = useState({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '', manualPart: false, customPartName: '' });
   const [err, setErr] = useState('');
 
@@ -168,51 +166,78 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
             ))}
           </div>
 
-          {/* Category filter chips */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', flex: 1 }}>
-              {Object.entries(CATEGORY_META).map(([cat, meta]) => {
-                const Icon = meta.icon;
-                const isActive = visibleCategories.length === 0 || visibleCategories.includes(cat);
-                const catParts = Object.keys(summary || {}).filter(k => {
-                  const allParts = catalog[cat] || [];
-                  return allParts.some(p => p.id === k);
-                });
-                const hasIssue = catParts.some(k => summary[k]?.status === 'overdue' || summary[k]?.status === 'due_soon');
+          {/* Visual Parts Overview — interactive SVG truck with health indicators */}
+          <div style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)', borderRadius: '14px', padding: '20px', marginBottom: '12px', position: 'relative', overflow: 'hidden' }}>
+            {/* Vehicle info badge */}
+            <div style={{ position: 'absolute', top: '12px', right: '14px', fontSize: '10px', color: '#94a3b8', fontWeight: 800, background: 'rgba(0,0,0,0.3)', padding: '4px 10px', borderRadius: '6px' }}>
+              {vehicle.make || 'Truck'} · {vehicle.vehicleType || 'Trailer'} · {truckNo}
+            </div>
+
+            {/* SVG Truck Diagram */}
+            <svg viewBox="0 0 500 180" style={{ width: '100%', height: 'auto', maxHeight: '200px' }}>
+              {/* Chassis frame */}
+              <rect x="40" y="110" width="420" height="8" rx="3" fill="#334155" />
+              {/* Cabin */}
+              <rect x="40" y="45" width="90" height="65" rx="8" fill={(() => { const m = (vehicle.make || '').toLowerCase(); return m.includes('leyland') ? '#166534' : m.includes('bharat') ? '#991b1b' : m.includes('eicher') ? '#c2410c' : m.includes('mahindra') ? '#7f1d1d' : '#1e40af'; })()} />
+              <rect x="42" y="50" width="40" height="30" rx="4" fill="#87ceeb" opacity="0.4" />
+              {/* Body */}
+              <rect x="140" y="30" width="310" height="80" rx="6" fill="#475569" />
+              <line x1="230" y1="30" x2="230" y2="110" stroke="#334155" strokeWidth="1" />
+              <line x1="320" y1="30" x2="320" y2="110" stroke="#334155" strokeWidth="1" />
+              {/* Wheels */}
+              {[75, 105, 350, 380, 410, 440].map((cx, i) => (
+                <g key={i}>
+                  <circle cx={cx} cy="125" r="16" fill="#1a1a1a" />
+                  <circle cx={cx} cy="125" r="8" fill="#555" />
+                </g>
+              ))}
+              {/* Fuel tank */}
+              <rect x="125" y="112" width="40" height="14" rx="6" fill="#444" />
+              {/* Part zone labels */}
+              {[
+                { x: 85, y: 75, label: 'ENGINE', cat: 'engine' },
+                { x: 175, y: 70, label: 'TRANS', cat: 'transmission' },
+                { x: 265, y: 70, label: 'BODY', cat: 'body' },
+                { x: 355, y: 70, label: 'TRAILER', cat: 'trailer' },
+                { x: 85, y: 140, label: 'BRAKES', cat: 'brakes' },
+                { x: 395, y: 140, label: 'TYRES', cat: 'tyres' },
+                { x: 175, y: 140, label: 'AXLE', cat: 'axle_hubs' },
+                { x: 265, y: 140, label: 'SUSP', cat: 'suspension' },
+                { x: 440, y: 55, label: 'ELEC', cat: 'electrical' },
+              ].map(z => {
+                const catParts = (categories[z.cat] || []);
+                const tracked = catParts.filter(p => summary[p.id]);
+                const hasOverdue = tracked.some(p => summary[p.id]?.status === 'overdue');
+                const hasDue = tracked.some(p => summary[p.id]?.status === 'due_soon');
+                const color = hasOverdue ? '#ef4444' : hasDue ? '#f59e0b' : tracked.length > 0 ? '#10b981' : '#64748b';
+                const isActive = selectedCatFilter === z.cat;
                 return (
-                  <button key={cat} onClick={() => {
-                    setVisibleCategories(prev => {
-                      if (prev.length === 0) return [cat];
-                      if (prev.includes(cat)) {
-                        const next = prev.filter(c => c !== cat);
-                        return next.length === 0 ? [] : next;
-                      }
-                      return [...prev, cat];
-                    });
-                  }} style={{
-                    display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px',
-                    borderRadius: '20px', border: `1px solid ${isActive ? meta.color + '55' : 'var(--border)'}`,
-                    background: isActive ? meta.color + '15' : 'transparent',
-                    color: isActive ? meta.color : 'var(--text-muted)', cursor: 'pointer',
-                    fontSize: '10px', fontWeight: 700, fontFamily: 'inherit', transition: 'all 0.15s',
-                    opacity: visibleCategories.length > 0 && !visibleCategories.includes(cat) ? 0.4 : 1,
-                  }}>
-                    <Icon size={10} />
-                    {meta.label.split(' ')[0]}
-                    {hasIssue && <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ef4444' }} />}
-                  </button>
+                  <g key={z.cat} onClick={() => { setSelectedCatFilter(isActive ? '' : z.cat); setExpandedCat(isActive ? '' : z.cat); }} style={{ cursor: 'pointer' }}>
+                    <circle cx={z.x} cy={z.y} r={isActive ? 14 : 10} fill={color} opacity={isActive ? 0.9 : 0.3} />
+                    <circle cx={z.x} cy={z.y} r={isActive ? 6 : 4} fill={color} />
+                    <text x={z.x} y={z.y + (z.y < 100 ? -16 : 22)} textAnchor="middle" fill="#94a3b8" fontSize="8" fontWeight="800" fontFamily="inherit">{z.label}</text>
+                    {(hasOverdue || hasDue) && <circle cx={z.x + 10} cy={z.y - 8} r="3" fill={hasOverdue ? '#ef4444' : '#f59e0b'} />}
+                  </g>
                 );
               })}
-            </div>
-            <button onClick={() => setVisibleCategories([])} style={{ fontSize: '10px', fontWeight: 700, color: visibleCategories.length === 0 ? '#3b82f6' : 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap', marginLeft: '8px' }}>
-              {visibleCategories.length === 0 ? 'All Visible' : 'Show All'}
-            </button>
-          </div>
+            </svg>
 
-          {/* 3D Truck Model */}
-          <Suspense fallback={<div style={{ width: '100%', height: '350px', borderRadius: '14px', background: 'linear-gradient(180deg, #0f172a, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Loading 3D Model...</div>}>
-            <Truck3D summary={summary} onPartClick={handlePartClick} vehicle={vehicle} visibleCategories={visibleCategories} />
-          </Suspense>
+            {/* Legend */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
+              {[
+                { color: '#10b981', label: 'OK' },
+                { color: '#f59e0b', label: 'Due Soon' },
+                { color: '#ef4444', label: 'Overdue' },
+                { color: '#64748b', label: 'No Data' },
+              ].map(s => (
+                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#94a3b8', fontWeight: 700 }}>
+                  <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: s.color }} />
+                  {s.label}
+                </div>
+              ))}
+            </div>
+            <div style={{ textAlign: 'center', fontSize: '9px', color: '#475569', marginTop: '4px', fontWeight: 600 }}>Click any zone to jump to that category</div>
+          </div>
 
           {/* Add Button */}
           <button onClick={() => setShowForm(true)} style={{ width: '100%', margin: '16px 0', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
