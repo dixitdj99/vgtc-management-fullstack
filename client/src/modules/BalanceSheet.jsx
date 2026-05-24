@@ -17,7 +17,8 @@ function calcNet(v, vehicle) {
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
-  const munshi = parseFloat(v.munshi) || 0;
+  const weight = parseFloat(v.weight) || 0;
+  const munshi = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
   const commission = parseFloat(v.commission) || 0;
   const shortage = parseFloat(v.shortage) || 0;
   const tyrePuncture = parseFloat(v.tyrePuncture) || 0;

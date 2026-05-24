@@ -28,7 +28,7 @@ const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_B
 
 const getCalc = (w, r, hasComm) => {
     const wt = parseFloat(w) || 0, rt = parseFloat(r) || 0;
-    const munshi = wt > 0 ? (wt < 15 ? 50 : 100) : 0;
+    const munshi = wt > 0 ? (wt < 18 ? 50 : 100) : 0;
     const commission = hasComm ? wt * 20 : 0;
     return { munshi, commission, total: rt * wt };
 };
