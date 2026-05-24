@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wrench, Plus, Calendar, MapPin, DollarSign, X, ChevronDown, Droplets, Disc, Lightbulb, Package, Settings, Zap, AlertTriangle, Shield, Search, Truck as TruckIcon } from 'lucide-react';
-import TruckDiagram from './TruckDiagram';
-const Truck3D = lazy(() => import('./Truck3D').catch(() => ({ default: () => <div style={{ padding: '40px', textAlign: 'center', color: '#ef4444' }}>3D not supported in this browser</div> })));
+const Truck3D = lazy(() => import('./Truck3D'));
 
 const CATEGORY_META = {
   engine:       { icon: Settings,      color: '#f59e0b', label: 'Engine & Filters' },
@@ -52,7 +51,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   const [showForm, setShowForm] = useState(false);
   const [expandedCat, setExpandedCat] = useState('');
   const [viewIdx, setViewIdx] = useState(0);
-  const [view3D, setView3D] = useState(false);
+  const [view3DErr, setView3DErr] = useState(null);
   const [visibleCategories, setVisibleCategories] = useState([]);
   const [form, setForm] = useState({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '', manualPart: false, customPartName: '' });
   const [err, setErr] = useState('');
@@ -169,22 +168,9 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
             ))}
           </div>
 
-          {/* 3D/2D Toggle */}
+          {/* Category filter chips */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-input)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <button onClick={() => setView3D(true)} style={{ padding: '5px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '11px', fontWeight: 700, background: view3D ? '#3b82f6' : 'transparent', color: view3D ? '#fff' : 'var(--text-muted)' }}>3D Model</button>
-              <button onClick={() => setView3D(false)} style={{ padding: '5px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '11px', fontWeight: 700, background: !view3D ? '#3b82f6' : 'transparent', color: !view3D ? '#fff' : 'var(--text-muted)' }}>2D Diagram</button>
-            </div>
-            {view3D && (
-              <button onClick={() => setVisibleCategories([])} style={{ fontSize: '10px', fontWeight: 700, color: visibleCategories.length === 0 ? '#3b82f6' : 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                {visibleCategories.length === 0 ? 'All Parts Visible' : 'Show All'}
-              </button>
-            )}
-          </div>
-
-          {/* Category filter chips (3D mode) */}
-          {view3D && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', flex: 1 }}>
               {Object.entries(CATEGORY_META).map(([cat, meta]) => {
                 const Icon = meta.icon;
                 const isActive = visibleCategories.length === 0 || visibleCategories.includes(cat);
@@ -218,22 +204,15 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                 );
               })}
             </div>
-          )}
+            <button onClick={() => setVisibleCategories([])} style={{ fontSize: '10px', fontWeight: 700, color: visibleCategories.length === 0 ? '#3b82f6' : 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap', marginLeft: '8px' }}>
+              {visibleCategories.length === 0 ? 'All Visible' : 'Show All'}
+            </button>
+          </div>
 
-          {/* Truck Visualization */}
-          {view3D ? (
-            <Suspense fallback={<div style={{ width: '100%', height: '350px', borderRadius: '14px', background: 'linear-gradient(180deg, #0f172a, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Loading 3D Model...</div>}>
-              <Truck3D summary={summary} onPartClick={handlePartClick} vehicle={vehicle} visibleCategories={visibleCategories} />
-            </Suspense>
-          ) : (
-            <div style={{ position: 'relative' }}>
-              <TruckDiagram summary={summary} records={records} onPartClick={handlePartClick} vehicle={vehicle} viewIdx={viewIdx} setViewIdx={setViewIdx} />
-              <button onClick={() => window.open(`https://www.google.com/search?q=${vehicle.make}+${vehicle.model}+truck+${VIEWS[viewIdx]?.id}+view+technical+blueprint+diagram&tbm=isch`, '_blank')}
-                style={{ position: 'absolute', top: '16px', right: '16px', background: 'rgba(59,130,246,0.2)', border: '1px solid #3b82f6', color: '#3b82f6', padding: '6px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: 900, cursor: 'pointer', zIndex: 300, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Search size={12} /> SEARCH {VIEWS[viewIdx]?.id.toUpperCase()} BLUEPRINTS
-              </button>
-            </div>
-          )}
+          {/* 3D Truck Model */}
+          <Suspense fallback={<div style={{ width: '100%', height: '350px', borderRadius: '14px', background: 'linear-gradient(180deg, #0f172a, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Loading 3D Model...</div>}>
+            <Truck3D summary={summary} onPartClick={handlePartClick} vehicle={vehicle} visibleCategories={visibleCategories} />
+          </Suspense>
 
           {/* Add Button */}
           <button onClick={() => setShowForm(true)} style={{ width: '100%', margin: '16px 0', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
