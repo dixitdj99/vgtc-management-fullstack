@@ -2,8 +2,8 @@
 
 /* Hide number input spinners globally */
 input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
+input[type="number"] { -moz-appearance: textfield !important; appearance: textfield !important; }
 
 /* ── SAP Horizon Light theme (Default) ──────────────────── */
 :root,
