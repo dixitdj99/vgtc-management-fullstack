@@ -815,7 +815,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
         <div>
           {/* Staff Summary Cards */}
           {(() => {
-            const staffProfiles = profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff');
+            const staffProfiles = profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour');
             const totalEarned = staffProfiles.reduce((s, p) => s + calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves), 0);
             const totalPaid = staffProfiles.reduce((s, p) => s + firmPayments.filter(f => f.profileId === p.id).reduce((ss, f) => ss + (parseFloat(f.amount) || 0), 0), 0);
             const totalAdvance = staffProfiles.reduce((s, p) => s + firmPayments.filter(f => f.profileId === p.id && f.category === 'Advance').reduce((ss, f) => ss + (parseFloat(f.amount) || 0), 0), 0);
@@ -857,7 +857,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff').map((p, i) => {
+                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour').map((p, i) => {
                     const earned = calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves);
                     const paid = firmPayments.filter(f => f.profileId === p.id).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
                     const balance = earned - paid;
@@ -887,7 +887,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       </tr>
                     );
                   })}
-                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff').length === 0 && (
+                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour').length === 0 && (
                     <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No staff/driver profiles found</td></tr>
                   )}
                 </tbody>

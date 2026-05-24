@@ -149,7 +149,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const [returnTarget, setReturnTarget] = useState(null); // { id, label, date, remark }
 
   const drivers = useMemo(() => profiles.filter(p => p.type === 'Driver'), [profiles]);
-  const staffList = useMemo(() => profiles.filter(p => p.type === 'Office Staff'), [profiles]);
+  const staffList = useMemo(() => profiles.filter(p => p.type === 'Office Staff' || p.type === 'Labour'), [profiles]);
 
   /* Filter states */
   const [fSearch, setFSearch] = useState('');

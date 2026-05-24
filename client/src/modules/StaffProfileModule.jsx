@@ -11,7 +11,7 @@ const BRAND_LOGOS = {
     'Bharat': 'https://upload.wikimedia.org/wikipedia/en/thumb/c/c5/Bharat_Petroleum_Logo.svg/1200px-Bharat_Petroleum_Logo.svg.png'
 };
 
-const PROFILE_TYPES = ['Driver', 'Office Staff', 'Tyre', 'Manual'];
+const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour', 'Tyre', 'Manual'];
 // Vendor-type profiles: no salary formula, no leaves
 const VENDOR_TYPES = ['Tyre', 'Manual'];
 const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver'];
@@ -284,9 +284,11 @@ const StaffProfileModule = ({ role }) => {
     };
 
     const filtered = profiles.filter(p => {
+        // Exclude pump profiles — managed in Fuel Stations
+        if ((p.type || '').toLowerCase() === 'pump') return false;
         if (filterType !== 'All' && p.type !== filterType) return false;
         const s = searchTerm.toLowerCase();
-        return (p.name || '').toLowerCase().includes(s) || 
+        return (p.name || '').toLowerCase().includes(s) ||
                (p.department || '').toLowerCase().includes(s) ||
                (p.mobileNumbers || []).join(' ').includes(s);
     });
