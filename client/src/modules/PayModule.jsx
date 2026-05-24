@@ -333,7 +333,6 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const gpsAccrual = useMemo(() => {
     if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
 
-    // Check if this vehicle has GPS for current brand
     const gpsType = selVehicle.gpsType;
     const hasGps = gpsType === 'both' || gpsType === 'jkl' || gpsType === 'jksuper';
     if (!hasGps) return null;
@@ -342,37 +341,35 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     const gpsCount = gpsType === 'both' ? 2 : 1;
     const perMonth = 250 * gpsCount;
 
-    // Find last GPS deduction from vehicle advances
-    const advances = (truckAllVouchers || []).filter(v =>
-      v.remark && v.remark.toLowerCase().includes('gps rent') && v.type === 'debit'
-    );
-    // Also check vehicle-advances if available
+    // Find last GPS deduction from vehicle_advances (not vouchers)
     let lastDeductionDate = null;
-    advances.forEach(v => {
-      const d = new Date(v.date);
-      if (!isNaN(d.getTime()) && (!lastDeductionDate || d > lastDeductionDate)) lastDeductionDate = d;
+    (advances || []).forEach(a => {
+      if (a.remark && a.remark.toLowerCase().includes('gps rent') && a.type === 'debit') {
+        const d = new Date(a.date);
+        if (!isNaN(d.getTime()) && (!lastDeductionDate || d > lastDeductionDate)) lastDeductionDate = d;
+      }
     });
 
     // Calculate months pending since last deduction
     const today = new Date(paymentDate || Date.now());
     let startDate = lastDeductionDate;
     if (!startDate) {
-      // No previous deduction — check vehicle creation or first voucher
+      // No previous deduction — use first voucher date
       const firstV = (truckAllVouchers || []).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
       startDate = firstV ? new Date(firstV.date) : null;
     }
     if (!startDate) return null;
 
-    // Full months since last deduction
+    // Full months since last deduction (deduct only 1 month at a time)
     const monthsDiff = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
-    const pendingMonths = Math.max(0, monthsDiff);
+    const pendingMonths = Math.min(1, Math.max(0, monthsDiff));
     if (pendingMonths === 0) return null;
 
     const amount = pendingMonths * perMonth;
     const gpsLabel = gpsType === 'both' ? 'JKL + JK Super' : gpsType === 'jkl' ? 'JK Lakshmi' : 'JK Super';
 
     return { months: pendingMonths, gpsCount, perMonth, amount, gpsLabel };
-  }, [selTruck, selVehicle, truckAllVouchers, paymentDate]);
+  }, [selTruck, selVehicle, advances, truckAllVouchers, paymentDate]);
 
   const onCheckAll = (rows, addAll) => {
     setSelectedLrs(s => {
