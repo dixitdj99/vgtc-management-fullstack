@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wrench, Plus, Calendar, MapPin, DollarSign, X, ChevronDown, Droplets, Disc, Lightbulb, Package, Settings, Zap, AlertTriangle, Shield, Search, Truck as TruckIcon } from 'lucide-react';
 import TruckDiagram from './TruckDiagram';
-import Truck3D from './Truck3D';
+const Truck3D = lazy(() => import('./Truck3D').catch(() => ({ default: () => <div style={{ padding: '40px', textAlign: 'center', color: '#ef4444' }}>3D not supported in this browser</div> })));
 
 const CATEGORY_META = {
   engine:       { icon: Settings,      color: '#f59e0b', label: 'Engine & Filters' },
@@ -52,7 +52,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   const [showForm, setShowForm] = useState(false);
   const [expandedCat, setExpandedCat] = useState('');
   const [viewIdx, setViewIdx] = useState(0);
-  const [view3D, setView3D] = useState(true);
+  const [view3D, setView3D] = useState(false);
   const [visibleCategories, setVisibleCategories] = useState([]);
   const [form, setForm] = useState({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '', manualPart: false, customPartName: '' });
   const [err, setErr] = useState('');
@@ -222,7 +222,9 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
 
           {/* Truck Visualization */}
           {view3D ? (
-            <Truck3D summary={summary} onPartClick={handlePartClick} vehicle={vehicle} visibleCategories={visibleCategories} />
+            <Suspense fallback={<div style={{ width: '100%', height: '350px', borderRadius: '14px', background: 'linear-gradient(180deg, #0f172a, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Loading 3D Model...</div>}>
+              <Truck3D summary={summary} onPartClick={handlePartClick} vehicle={vehicle} visibleCategories={visibleCategories} />
+            </Suspense>
           ) : (
             <div style={{ position: 'relative' }}>
               <TruckDiagram summary={summary} records={records} onPartClick={handlePartClick} vehicle={vehicle} viewIdx={viewIdx} setViewIdx={setViewIdx} />
