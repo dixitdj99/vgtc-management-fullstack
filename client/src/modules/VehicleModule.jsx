@@ -827,9 +827,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                             </div>
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
-                                                            {v.ownershipType === 'self' && (
-                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Wrench size={13} /></button>
-                                                            )}
+                                                            <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Wrench size={13} /></button>
                                                             <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert" style={{ color: '#8b5cf6', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Bell size={13} /></button>
                                                             <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Edit3 size={13} /></button>
                                                             <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>
@@ -844,10 +842,13 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Banknote size={11} /> {parseJson(v.bankDetails).bank || 'No Bank'}</span>
                                                             </div>
                                                             {/* Balance bar */}
-                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                                                 <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Balance</span>
                                                                 <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</strong>
                                                             </div>
+                                                            <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '7px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
+                                                                <Wrench size={12} /> Maintenance Tracker
+                                                            </button>
                                                         </div>
                                                     )}
 
