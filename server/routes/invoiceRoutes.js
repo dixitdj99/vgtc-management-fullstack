@@ -150,7 +150,7 @@ router.post('/generate', async (req, res) => {
                 try {
                     const fs = require('fs');
                     const path = require('path');
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
                     const safeBillNo = String(billNo).replace(/[/\\?%*:|"<>]/g, '-');
                     const safeType = String(type || 'Dump').replace(/[/\\?%*:|"<>]/g, '-');

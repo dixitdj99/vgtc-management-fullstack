@@ -9,7 +9,7 @@ const voucherService = require('../services/voucherService');
 const cashbookService = require('./cashbookService');
 const lrService = require('../services/lrService');
 
-const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
 
 const PLANTS = {
     SUPER: 'JK_Super',

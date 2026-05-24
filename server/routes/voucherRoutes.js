@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
                     const { PLANTS } = require('../utils/backupService');
 
                     const voucherData = { ...req.body, ...result };
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
                     const dateStr = (voucherData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');

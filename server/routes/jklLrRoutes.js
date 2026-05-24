@@ -25,7 +25,7 @@ router.post('/', async (req, res) => {
                     const path = require('path');
                     const { generateLoadingReceiptPDF } = require('../utils/pdfService');
 
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
                     const fullData = { ...req.body, ...result };
