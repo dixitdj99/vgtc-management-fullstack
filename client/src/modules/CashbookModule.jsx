@@ -739,7 +739,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px', marginBottom: '18px' }}>
         {[
-          { label: 'Current Balance', val: currentBalance, Icon: Wallet, color: '#6366f1', big: true },
+          { label: 'Current Balance', val: currentBalance, Icon: Wallet, color: '#6366f1', big: true, note: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
           { label: 'Total Deposited', val: totalDeposited, Icon: ArrowDownCircle, color: '#10b981' },
         ].map(({ label, val, Icon, color, big, note }) => (
           <div key={label} style={{
