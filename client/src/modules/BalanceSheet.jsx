@@ -209,10 +209,10 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
           </div>
         ) : hasVehicleExp ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            {(parseFloat(v.commission) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Com: {v.commission}</div>}
-            {(parseFloat(v.tyrePuncture) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Pnc: {v.tyrePuncture}</div>}
-            {((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0)) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>G&A: {v.tyreGreasingAir || ((parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0))}</div>}
-            {(parseFloat(v.extraCash) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Ext: {v.extraCash}</div>}
+            {(parseFloat(v.commission) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Com: {Math.round(parseFloat(v.commission))}</div>}
+            {(parseFloat(v.tyrePuncture) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Pnc: {Math.round(parseFloat(v.tyrePuncture))}</div>}
+            {((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0)) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>G&A: {Math.round((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0))}</div>}
+            {(parseFloat(v.extraCash) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Ext: {Math.round(parseFloat(v.extraCash))}</div>}
           </div>
         ) : '—'}
       </td>
