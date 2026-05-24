@@ -306,6 +306,28 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     });
   }, [deposits, cashOuts, voucherCashAdv, voucherVehicleExpenses]);
 
+  /* ── Monthly summary with carry-forward ── */
+  const monthlySummary = useMemo(() => {
+    const monthMap = {};
+    ledgerWithBalance.forEach(r => {
+      const d = r.date || '';
+      const ym = d.slice(0, 7); // "2026-05"
+      if (!ym) return;
+      if (!monthMap[ym]) monthMap[ym] = { ym, credit: 0, debit: 0, entries: 0 };
+      monthMap[ym].credit += r.credit || 0;
+      monthMap[ym].debit += r.debit || 0;
+      monthMap[ym].entries++;
+    });
+    const months = Object.values(monthMap).sort((a, b) => a.ym.localeCompare(b.ym));
+    let carry = 0;
+    return months.map(m => {
+      const opening = carry;
+      const net = m.credit - m.debit;
+      carry = opening + net;
+      return { ...m, opening, closing: carry };
+    });
+  }, [ledgerWithBalance]);
+
   /* ── Filtered data ── */
   const filterRows = (rows, applyPaidFilter = false) => {
     return rows.filter(r => {
@@ -740,6 +762,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {[
           { id: 'ledger', label: 'Full Ledger', count: ledgerWithBalance.length },
+          { id: 'monthly', label: 'Monthly Summary', count: '' },
           { id: 'deposits', label: 'Deposits', count: deposits.length },
           { id: 'voucher_cash', label: 'Voucher Cash Adv', count: voucherCashAdv.length },
           { id: 'cash_out', label: 'Cash Outs', count: cashOuts.length },
@@ -753,12 +776,81 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               color: tab === id ? 'var(--primary)' : 'var(--text-muted)'
             }}>
             {label}
-            <span style={{ marginLeft: '6px', fontSize: '10px', fontWeight: 800, opacity: 0.7 }}>({count})</span>
+            {count !== '' && <span style={{ marginLeft: '6px', fontSize: '10px', fontWeight: 800, opacity: 0.7 }}>({count})</span>}
           </button>
         ))}
       </div>
 
       {/* Table content */}
+      {tab === 'monthly' ? (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-block">
+              <div className="card-icon" style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--primary)' }}>
+                <BookOpen size={17} />
+              </div>
+              <div className="card-title-text" style={{ flex: 1 }}>
+                <h3>Monthly Summary (with carry-forward)</h3>
+                <p>{monthlySummary.length} months</p>
+              </div>
+            </div>
+          </div>
+          <div className="tbl-wrap">
+            <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+              <thead><tr>
+                <th style={TH}>Month</th>
+                <th style={{ ...TH, textAlign: 'right' }}>Opening Balance</th>
+                <th style={{ ...TH, textAlign: 'right', color: 'var(--accent)' }}>Credit (In)</th>
+                <th style={{ ...TH, textAlign: 'right', color: 'var(--danger)' }}>Debit (Out)</th>
+                <th style={{ ...TH, textAlign: 'right' }}>Net</th>
+                <th style={{ ...TH, textAlign: 'right' }}>Closing Balance</th>
+                <th style={{ ...TH, textAlign: 'center' }}>Entries</th>
+              </tr></thead>
+              <tbody>
+                {monthlySummary.length === 0 && (
+                  <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No entries yet</td></tr>
+                )}
+                {monthlySummary.map((m, i) => {
+                  const net = m.credit - m.debit;
+                  const monthName = new Date(m.ym + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                  return (
+                    <tr key={m.ym} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                      <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>{monthName}</td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: m.opening >= 0 ? '#6366f1' : 'var(--danger)' }}>
+                        {m.opening !== 0 ? (m.opening < 0 ? '-' : '') + fmtRs(Math.abs(m.opening)) : '—'}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(m.credit)}</td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)', fontSize: '13px' }}>{fmtRs(m.debit)}</td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: net >= 0 ? 'var(--accent)' : 'var(--danger)' }}>
+                        {net >= 0 ? '+' : '-'}{fmtRs(Math.abs(net))}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: m.closing >= 0 ? '#6366f1' : 'var(--danger)' }}>
+                        {m.closing < 0 ? '-' : ''}{fmtRs(Math.abs(m.closing))}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'center', fontWeight: 600 }}>{m.entries}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {monthlySummary.length > 0 && (
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-tf)' }}>
+                    <td style={{ ...TD, fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Grand Total</td>
+                    <td style={TD}></td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(monthlySummary.reduce((s, m) => s + m.credit, 0))}</td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)', fontSize: '13px' }}>{fmtRs(monthlySummary.reduce((s, m) => s + m.debit, 0))}</td>
+                    <td style={TD}></td>
+                    <td style={{ ...TD, textAlign: 'right', fontWeight: 900, fontSize: '15px', color: (monthlySummary[monthlySummary.length - 1]?.closing || 0) >= 0 ? '#6366f1' : 'var(--danger)' }}>
+                      {(() => { const c = monthlySummary[monthlySummary.length - 1]?.closing || 0; return (c < 0 ? '-' : '') + fmtRs(Math.abs(c)); })()}
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center', fontWeight: 800 }}>{monthlySummary.reduce((s, m) => s + m.entries, 0)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      ) : (
       <div className="card">
         <div className="card-header">
           <div className="card-title-block">
@@ -792,8 +884,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   rows={paginatedRows}
                   showBalance={tab === 'ledger'}
                   showBadge={tab === 'ledger'} />
-              
-              <Pagination 
+
+              <Pagination
                 currentPage={currentPage}
                 totalItems={activeRows.length}
                 pageSize={PAGE_SIZE}
@@ -801,6 +893,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               />
             </>}
       </div>
+      )}
     </div>
   );
 }
