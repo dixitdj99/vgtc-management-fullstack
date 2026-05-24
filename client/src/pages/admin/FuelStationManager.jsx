@@ -1,144 +1,223 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../../api';
-import { Fuel, Plus, Check, X, Trash2, Edit3 } from 'lucide-react';
+import { Fuel, Plus, Check, X, Trash2, Edit3, Phone, MapPin, Banknote, Search, User } from 'lucide-react';
 
 export default function FuelStationManager() {
   const [stations, setStations] = useState([]);
-  const [form, setForm] = useState('');
+  const [payments, setPayments] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [editName, setEditName] = useState('');
+  const [search, setSearch] = useState('');
+  const [form, setForm] = useState({ name: '', address: '', contactPerson: '', mobileNumbers: [''] });
 
-  const fetch = async () => {
+  const fetchAll = async () => {
     try {
-      const all = (await ax.get('/profiles')).data;
-      setStations(all.filter(p => p.type === 'pump'));
+      const [profRes, payRes] = await Promise.all([
+        ax.get('/profiles'),
+        ax.get('/payments').catch(() => ({ data: [] })),
+      ]);
+      setStations((profRes.data || []).filter(p => (p.type || '').toLowerCase() === 'pump'));
+      setPayments((payRes.data || []).filter(p => p.category === 'Pump'));
     } catch {}
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchAll(); }, []);
 
-  const handleAdd = async e => {
+  const openAdd = () => {
+    setEditTarget(null);
+    setForm({ name: '', address: '', contactPerson: '', mobileNumbers: [''] });
+    setShowForm(true);
+  };
+
+  const openEdit = (s) => {
+    setEditTarget(s);
+    setForm({
+      name: s.name || '',
+      address: s.address || '',
+      contactPerson: s.contactPerson || s.fatherName || '',
+      mobileNumbers: s.mobileNumbers?.length ? [...s.mobileNumbers] : [''],
+    });
+    setShowForm(true);
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.trim()) return;
+    if (!form.name.trim()) return;
     setBusy(true);
     try {
-      await ax.post('/profiles', { name: form.trim(), type: 'pump' });
-      setForm('');
-      fetch();
+      const payload = {
+        name: form.name.trim(),
+        type: 'pump',
+        address: form.address.trim(),
+        contactPerson: form.contactPerson.trim(),
+        fatherName: form.contactPerson.trim(),
+        mobileNumbers: form.mobileNumbers.filter(m => m.trim()),
+      };
+      if (editTarget) {
+        await ax.put(`/profiles/${editTarget.id}`, payload);
+      } else {
+        await ax.post('/profiles', payload);
+      }
+      setShowForm(false);
+      setEditTarget(null);
+      fetchAll();
     } catch (err) { alert(err.response?.data?.error || 'Failed'); }
     finally { setBusy(false); }
   };
 
-  const handleDelete = async id => {
+  const handleDelete = async (id) => {
     if (!confirm('Delete this fuel station?')) return;
-    try { await ax.delete(`/profiles/${id}`); fetch(); }
+    try { await ax.delete(`/profiles/${id}`); fetchAll(); }
     catch { alert('Delete failed'); }
   };
 
-  const handleEdit = async id => {
-    if (!editName.trim()) return;
-    try {
-      await ax.put(`/profiles/${id}`, { name: editName.trim(), type: 'pump' });
-      setEditId(null); setEditName('');
-      fetch();
-    } catch { alert('Update failed'); }
-  };
+  const filtered = stations.filter(s => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (s.name || '').toLowerCase().includes(q) ||
+      (s.address || '').toLowerCase().includes(q) ||
+      (s.mobileNumbers || []).join(' ').includes(q);
+  });
+
+  const getPumpTotal = (id) => payments.filter(p => p.profileId === id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const getPumpCount = (id) => payments.filter(p => p.profileId === id).length;
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Fuel size={22} color="#3b82f6" />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Fuel size={22} color="#3b82f6" />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 900 }}>Fuel Stations</h2>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>Manage diesel pump stations — appears in LR, Voucher & Diesel module</p>
+          </div>
         </div>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 900 }}>Fuel Station Management</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>Add, edit or remove diesel pump stations. These appear in Loading Receipt & Voucher forms.</p>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)}
+              style={{ paddingLeft: '32px', padding: '8px 12px 8px 32px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', width: '200px' }} />
+          </div>
+          <button onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#3b82f6', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}>
+            <Plus size={16} /> Add Station
+          </button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px' }}>
-        {/* Add Form */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Plus size={16} /> Add New Station
-          </h3>
-          <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Station Name</label>
-              <input
-                type="text" placeholder="e.g. HP Petrol Pump, Jharli"
-                value={form} onChange={e => setForm(e.target.value)} required
-                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', fontSize: '14px', color: 'var(--text)', outline: 'none', width: '100%' }}
-              />
+      {/* Add/Edit Form Modal */}
+      {showForm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '90%', maxWidth: '440px', background: 'var(--bg-card)', borderRadius: '16px', padding: '28px', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>{editTarget ? 'Edit Station' : 'Add New Station'}</h3>
+              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
             </div>
-            <button type="submit" disabled={busy} style={{
-              padding: '10px', borderRadius: '8px', border: 'none', background: '#3b82f6', color: 'white',
-              fontWeight: 700, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
-            }}>
-              {busy ? '...' : <><Plus size={14} /> Add Station</>}
-            </button>
-          </form>
-
-          <div style={{ marginTop: '20px', padding: '14px', borderRadius: '8px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
-            <div style={{ fontSize: '10px', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Where this list appears</div>
-            <ul style={{ fontSize: '12px', color: 'var(--text-sub)', paddingLeft: '16px', lineHeight: 1.8 }}>
-              <li>Loading Receipt form — Fuel Station dropdown</li>
-              <li>Voucher form — Pump/Station selection</li>
-              <li>Print receipts — shows selected station</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Station List */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>All Stations ({stations.length})</h3>
-          </div>
-
-          {stations.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '10px', color: 'var(--text-muted)', fontSize: '13px' }}>
-              No fuel stations added yet. Add one to get started.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {stations.map((s, i) => (
-                <div key={s.id} style={{
-                  display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px',
-                  background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
-                  border: '1px solid var(--border)', borderRadius: '10px', transition: 'border-color 0.15s'
-                }}>
-                  <div style={{
-                    width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                  }}>
-                    <Fuel size={16} color="#3b82f6" />
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="field">
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Station Name *</label>
+                <input className="fi" type="text" placeholder="e.g. HP Petrol Pump, Jharli" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Owner / Contact Person</label>
+                <input className="fi" type="text" placeholder="Owner name" value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Address / Location</label>
+                <input className="fi" type="text" placeholder="Full address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Mobile Numbers</label>
+                {form.mobileNumbers.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                    <input className="fi" type="tel" placeholder="Mobile number" value={m}
+                      onChange={e => { const nums = [...form.mobileNumbers]; nums[i] = e.target.value; setForm(f => ({ ...f, mobileNumbers: nums })); }}
+                      style={{ flex: 1 }} />
+                    {form.mobileNumbers.length > 1 && (
+                      <button type="button" onClick={() => setForm(f => ({ ...f, mobileNumbers: f.mobileNumbers.filter((_, j) => j !== i) }))}
+                        style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: 'none', borderRadius: '6px', padding: '0 8px', cursor: 'pointer' }}><X size={14} /></button>
+                    )}
                   </div>
-
-                  {editId === s.id ? (
-                    <div style={{ flex: 1, display: 'flex', gap: '8px' }}>
-                      <input
-                        type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                        style={{ flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 10px', fontSize: '13px', color: 'var(--text)', outline: 'none' }}
-                      />
-                      <button onClick={() => handleEdit(s.id)} style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Check size={14} /></button>
-                      <button onClick={() => { setEditId(null); setEditName(''); }} style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', border: 'none', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={14} /></button>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)' }}>{s.name}</div>
-                      </div>
-                      <button onClick={() => { setEditId(s.id); setEditName(s.name); }} title="Edit" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: 'none', borderRadius: '8px', padding: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Edit3 size={14} /></button>
-                      <button onClick={() => handleDelete(s.id)} title="Delete" style={{ background: 'rgba(244,63,94,0.1)', color: '#fb7185', border: 'none', borderRadius: '8px', padding: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Trash2 size={14} /></button>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+                <button type="button" onClick={() => setForm(f => ({ ...f, mobileNumbers: [...f.mobileNumbers, ''] }))}
+                  style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>+ Add Number</button>
+              </div>
+              <button type="submit" disabled={busy} style={{ padding: '12px', borderRadius: '8px', border: 'none', background: '#3b82f6', color: 'white', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
+                {busy ? 'Saving...' : editTarget ? 'Update Station' : 'Add Station'}
+              </button>
+            </form>
+          </div>
         </div>
+      )}
+
+      {/* Station Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
+        {filtered.map(s => {
+          const total = getPumpTotal(s.id);
+          const count = getPumpCount(s.id);
+          return (
+            <div key={s.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
+              <div style={{ height: '4px', background: '#3b82f6', width: '100%' }} />
+              <div style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 4px 0' }}>{s.name}</h3>
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Fuel size={14} /> Fuel Station
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => openEdit(s)} style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit"><Edit3 size={16} /></button>
+                    <button onClick={() => handleDelete(s.id)} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                    <User size={15} color="var(--text-muted)" />
+                    <span><span style={{ color: 'var(--text-muted)' }}>Owner:</span> {s.contactPerson || s.fatherName || 'N/A'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px' }}>
+                    <MapPin size={15} color="var(--text-muted)" style={{ marginTop: '2px' }} />
+                    <span style={{ flex: 1 }}>{s.address || 'N/A'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                    <Phone size={15} color="var(--text-muted)" />
+                    <span>{(s.mobileNumbers || []).filter(Boolean).join(', ') || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Payment summary */}
+                <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed var(--border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Total Diesel Due</div>
+                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Banknote size={16} />
+                        ₹{total.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Payments Made</div>
+                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981' }}>
+                        {count} <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>transactions</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)', background: 'var(--bg-card)', borderRadius: '16px', border: '1px dashed var(--border)' }}>
+          No fuel stations found. Click "Add Station" to get started.
+        </div>
+      )}
     </div>
   );
 }
