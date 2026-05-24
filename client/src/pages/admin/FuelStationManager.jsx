@@ -5,6 +5,7 @@ import { Fuel, Plus, Check, X, Trash2, Edit3, Phone, MapPin, Banknote, Search, U
 export default function FuelStationManager() {
   const [stations, setStations] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [vouchers, setVouchers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -13,12 +14,14 @@ export default function FuelStationManager() {
 
   const fetchAll = async () => {
     try {
-      const [profRes, payRes] = await Promise.all([
+      const [profRes, payRes, ...vRes] = await Promise.all([
         ax.get('/profiles'),
         ax.get('/payments').catch(() => ({ data: [] })),
+        ...['Dump', 'JK_Lakshmi', 'JK_Super'].map(t => ax.get(`/vouchers/${t}`).then(r => r.data).catch(() => [])),
       ]);
       setStations((profRes.data || []).filter(p => (p.type || '').toLowerCase() === 'pump'));
       setPayments((payRes.data || []).filter(p => p.category === 'Pump'));
+      setVouchers(vRes.flat().filter(v => v.advanceDiesel || v.isFullTank));
     } catch {}
   };
 
@@ -80,8 +83,16 @@ export default function FuelStationManager() {
       (s.mobileNumbers || []).join(' ').includes(q);
   });
 
-  const getPumpTotal = (id) => payments.filter(p => p.profileId === id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-  const getPumpCount = (id) => payments.filter(p => p.profileId === id).length;
+  const getPumpDiesel = (name) => {
+    const pumpVouchers = vouchers.filter(v => (v.pump || '').toLowerCase() === (name || '').toLowerCase());
+    const totalDiesel = pumpVouchers.reduce((s, v) => s + (v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0)), 0);
+    return { total: totalDiesel, count: pumpVouchers.length };
+  };
+  const getPumpPaid = (id) => {
+    const paid = payments.filter(p => p.profileId === id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const count = payments.filter(p => p.profileId === id).length;
+    return { paid, count };
+  };
 
   return (
     <div>
@@ -155,17 +166,18 @@ export default function FuelStationManager() {
       {/* Station Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
         {filtered.map(s => {
-          const total = getPumpTotal(s.id);
-          const count = getPumpCount(s.id);
+          const diesel = getPumpDiesel(s.name);
+          const paid = getPumpPaid(s.id);
+          const balance = diesel.total - paid.paid;
           return (
             <div key={s.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
-              <div style={{ height: '4px', background: '#3b82f6', width: '100%' }} />
+              <div style={{ height: '4px', background: balance > 0 ? '#f59e0b' : '#10b981', width: '100%' }} />
               <div style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                   <div>
                     <h3 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 4px 0' }}>{s.name}</h3>
                     <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Fuel size={14} /> Fuel Station
+                      <Fuel size={14} /> Fuel Station · {diesel.count} entries
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -189,21 +201,21 @@ export default function FuelStationManager() {
                   </div>
                 </div>
 
-                {/* Payment summary */}
+                {/* Diesel & Payment summary */}
                 <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed var(--border)' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Total Diesel Due</div>
-                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Banknote size={16} />
-                        ₹{total.toLocaleString('en-IN')}
-                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Total Diesel</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: '#3b82f6' }}>₹{diesel.total.toLocaleString('en-IN')}</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Payments Made</div>
-                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981' }}>
-                        {count} <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>transactions</span>
-                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Paid</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: '#10b981' }}>₹{paid.paid.toLocaleString('en-IN')}</div>
+                      {paid.count > 0 && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{paid.count} payment{paid.count > 1 ? 's' : ''}</div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Balance</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: balance > 0 ? '#f59e0b' : '#10b981' }}>₹{Math.abs(balance).toLocaleString('en-IN')}</div>
                     </div>
                   </div>
                 </div>
