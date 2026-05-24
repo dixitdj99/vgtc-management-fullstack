@@ -366,6 +366,9 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   /* ── Summary stats ── */
   const currentBalance = deposits.reduce((s, e) => s + e.amount, 0) - cashOuts.reduce((s, e) => s + e.amount, 0) - voucherCashAdv.reduce((s, e) => s + Math.abs(e.amount), 0);
   const totalDeposited = filteredDeposits.reduce((s, e) => s + e.credit, 0);
+  const currentMonthYM = new Date().toISOString().slice(0, 7);
+  const currentMonthDeposit = deposits.filter(e => (e.date || '').startsWith(currentMonthYM)).reduce((s, e) => s + e.amount, 0);
+  const currentMonthName = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const totalOnline = filteredOnline.reduce((s, e) => s + e.amount, 0);
 
   const BADGE_STYLE = {
@@ -740,7 +743,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px', marginBottom: '18px' }}>
         {[
           { label: 'Current Balance', val: currentBalance, Icon: Wallet, color: '#6366f1', big: true, note: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) },
-          { label: 'Total Deposited', val: totalDeposited, Icon: ArrowDownCircle, color: '#10b981' },
+          { label: `Deposited — ${currentMonthName}`, val: currentMonthDeposit, Icon: ArrowDownCircle, color: '#10b981', note: 'This month only' },
         ].map(({ label, val, Icon, color, big, note }) => (
           <div key={label} style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px',
