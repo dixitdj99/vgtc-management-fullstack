@@ -70,7 +70,6 @@ function printReceipt(allRows, lrNo, allChallans = []) {
         <div class="line"><span class="lbl">Date</span><span class="val">${fmtDate}</span></div>
         <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13px;font-weight:900;">${base.truckNo}</span></div>
         <div class="line"><span class="lbl">Party</span><span class="val">${parties}</span></div>
-        ${base.fuelStation ? `<div class="line"><span class="lbl">Fuel Station</span><span class="val">${base.fuelStation}</span></div>` : ''}
         ${base.billing ? `<div class="line"><span class="lbl">Challans</span><span class="val">${base.billing}</span></div>` : ''}
       </div>
 
@@ -1381,15 +1380,6 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     })()}
                   </div>
                   <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
-                  {fuelStations.length > 0 && (
-                    <div className="field">
-                      <label>Fuel Station</label>
-                      <select className="fi" value={form.fuelStation || ''} onChange={e => setForm({ ...form, fuelStation: e.target.value })}>
-                        <option value="">— No Fuel —</option>
-                        {fuelStations.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                  )}
                   <div className="field">
                     <label><Tag size={11} /> Challan Selection</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1578,7 +1568,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td><span className="t-lr">#{lr.lrNo}</span></td>
                         <td>
                           <div className="t-main">{lr.truckNo}</div>
-                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}{lr.fuelStation ? ` · ⛽ ${lr.fuelStation}` : ''}</div>
+                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
                         </td>
                         <td>
                           <span className="badge badge-tag">{lr.material}</span>
