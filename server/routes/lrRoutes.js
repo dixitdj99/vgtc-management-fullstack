@@ -140,6 +140,28 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// Update LR status with history tracking
+router.patch('/:id/status', async (req, res) => {
+    const { status, updatedBy } = req.body;
+    const VALID = ['Created', 'Loaded', 'In Transit', 'Delivered', 'Billed'];
+    if (!VALID.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const col = getCol(BASE_COL, req);
+        const entry = { status, timestamp: new Date().toISOString(), updatedBy: updatedBy || 'system' };
+        if (isAvailable()) {
+            await db.collection(col).doc(req.params.id).update({
+                status,
+                statusHistory: admin.firestore.FieldValue.arrayUnion(entry),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+        res.json({ message: 'Status updated', status, entry });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Bulk Invoice Generation — returns PDF buffer
 router.post('/invoice/generate', async (req, res) => {
     try {

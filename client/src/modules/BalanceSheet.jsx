@@ -205,7 +205,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL, onVerifyDiesel }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -277,6 +277,15 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
             <span style={{ fontWeight: v.isDieselVerified ? 800 : 400 }}>
               {v.advanceDiesel === 'FULL' ? '4000 (Est.)' : (v.advanceDiesel || '—')}
             </span>
+            {v.isDieselVerified
+              ? <span style={{ fontSize: '8px', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '1px 5px', borderRadius: '3px', fontWeight: 800 }}>✓ {v.dieselActualLitres ? v.dieselActualLitres + 'L' : 'Verified'}{v.dieselPumpName ? ' · ' + v.dieselPumpName : ''}</span>
+              : (parseFloat(v.advanceDiesel) > 0 || v.advanceDiesel === 'FULL') && !editing && (role === 'admin' || permissions?.balance === 'edit') && (
+                <button style={{ fontSize: '8px', fontWeight: 800, padding: '1px 5px', borderRadius: '3px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', cursor: 'pointer' }}
+                  onClick={() => onVerifyDiesel && onVerifyDiesel(v)}>
+                  ⚠ Verify Diesel
+                </button>
+              )
+            }
             {v.isFullTank && <span style={{ fontSize: '8px', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '1px 3px', borderRadius: '3px', fontWeight: 800 }}>FULL TANK</span>}
           </div>
         )}
@@ -406,7 +415,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL, onVerifyDiesel }) {
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const [open, setOpen] = useState(true);
 
@@ -554,7 +563,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} onVerifyDiesel={onVerifyDiesel} />
               ))}
             </tbody>
             <tfoot>
@@ -646,6 +655,23 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [showPnL, setShowPnL] = useState(false);
   const [showMonthPLModal, setShowMonthPLModal] = useState(false);
   const [selectedPLMonth, setSelectedPLMonth] = useState('');
+  const [dieselVerifyTarget, setDieselVerifyTarget] = useState(null);
+  const [dieselVerifyForm, setDieselVerifyForm] = useState({ litres: '', pump: '' });
+  const [dieselVerifySaving, setDieselVerifySaving] = useState(false);
+
+  const executeDieselVerify = async () => {
+    if (!dieselVerifyTarget) return;
+    setDieselVerifySaving(true);
+    try {
+      await ax.patch(`${API_V}/${dieselVerifyTarget.id}/verify-diesel`, {
+        dieselActualLitres: dieselVerifyForm.litres,
+        dieselPumpName: dieselVerifyForm.pump,
+      });
+      setDieselVerifyTarget(null);
+      fetchVouchers();
+    } catch { alert('Verification failed'); }
+    finally { setDieselVerifySaving(false); }
+  };
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -1121,7 +1147,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll} onDelete={setDelVoucher}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
-              role={role} permissions={permissions} orgName={orgName} vehicle={selVehicle} showPnL={showPnL} />
+              role={role} permissions={permissions} orgName={orgName} vehicle={selVehicle} showPnL={showPnL}
+              onVerifyDiesel={(v) => { setDieselVerifyTarget(v); setDieselVerifyForm({ litres: '', pump: '' }); }} />
           ))}
 
           <AnimatePresence>
@@ -1131,6 +1158,43 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 onClose={() => setDelVoucher(null)}
                 onConfirm={() => { setDelVoucher(null); fetchVouchers(); }}
               />
+            )}
+          </AnimatePresence>
+
+          {/* Diesel Verification Modal */}
+          <AnimatePresence>
+            {dieselVerifyTarget && (
+              <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+                <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                  style={{ width: '90%', maxWidth: '380px', background: 'var(--bg-card)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
+                  <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Verify Diesel</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '4px' }}>LR <strong>#{dieselVerifyTarget.lrNo}</strong> · {dieselVerifyTarget.truckNo} · {dieselVerifyTarget.date}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--warn)', marginBottom: '18px', fontWeight: 700 }}>
+                    Advance given: {dieselVerifyTarget.advanceDiesel === 'FULL' ? 'Full Tank (Est. Rs.4000)' : `Rs.${dieselVerifyTarget.advanceDiesel}`}
+                  </div>
+                  <div className="fg fg-2" style={{ marginBottom: '18px' }}>
+                    <div className="field">
+                      <label>Actual Litres Filled</label>
+                      <input className="fi" type="number" step="0.1" placeholder="e.g. 45.5" value={dieselVerifyForm.litres} onChange={e => setDieselVerifyForm(f => ({ ...f, litres: e.target.value }))} />
+                    </div>
+                    <div className="field">
+                      <label>Pump Name</label>
+                      <input className="fi" type="text" placeholder="e.g. HP Petrol Pump" value={dieselVerifyForm.pump} onChange={e => setDieselVerifyForm(f => ({ ...f, pump: e.target.value }))} />
+                    </div>
+                  </div>
+                  {dieselVerifyForm.litres && (() => {
+                    const advance = dieselVerifyTarget.advanceDiesel === 'FULL' ? 4000 : (parseFloat(dieselVerifyTarget.advanceDiesel) || 0);
+                    const pricePerLitre = advance > 0 && parseFloat(dieselVerifyForm.litres) > 0 ? (advance / parseFloat(dieselVerifyForm.litres)).toFixed(2) : null;
+                    return pricePerLitre ? <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '14px' }}>≈ Rs.{pricePerLitre}/litre implied rate</div> : null;
+                  })()}
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                    <button className="btn btn-g" onClick={() => setDieselVerifyTarget(null)} disabled={dieselVerifySaving}>Cancel</button>
+                    <button className="btn btn-p" onClick={executeDieselVerify} disabled={dieselVerifySaving}>
+                      {dieselVerifySaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Mark Verified</>}
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
             )}
           </AnimatePresence>
 

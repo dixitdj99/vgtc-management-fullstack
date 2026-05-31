@@ -155,6 +155,37 @@ router.patch('/registry/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Tyre & vehicle expense history for a truck (aggregated from vouchers)
+router.get('/tyre-history/:truckNo', async (req, res) => {
+    try {
+        const { db, isAvailable } = require('../firebase');
+        const { getCol: _getCol } = require('../utils/collectionUtils');
+        if (!isAvailable()) return res.json([]);
+        const voucherCol = _getCol('vouchers', req);
+        const snapshot = await db.collection(voucherCol)
+            .where('orgId', '==', req.orgId)
+            .where('truckNo', '==', req.params.truckNo)
+            .get();
+        const history = [];
+        snapshot.docs.forEach(doc => {
+            const v = { id: doc.id, ...doc.data() };
+            const pnc = parseFloat(v.tyrePuncture) || 0;
+            if (pnc > 0) history.push({ id: v.id + '_pnc', date: v.date, lrNo: v.lrNo, type: 'Tyre Puncture', amount: pnc });
+            const gre = (parseFloat(v.tyreGreasingAir)||0) + (parseFloat(v.tyreGreasing)||0) + (parseFloat(v.tyreAir)||0);
+            if (gre > 0) history.push({ id: v.id + '_gre', date: v.date, lrNo: v.lrNo, type: 'Tyre Greasing & Air', amount: gre });
+            const ext = parseFloat(v.extraCash) || 0;
+            if (ext > 0) history.push({ id: v.id + '_ext', date: v.date, lrNo: v.lrNo, type: `Extra Cash${v.extraCashRemark ? ' ('+v.extraCashRemark+')' : ''}`, amount: ext });
+        });
+        history.sort((a, b) => (b.date||'').localeCompare(a.date||''));
+        // add running total
+        let total = 0;
+        const withTotal = history.map(e => { total += e.amount; return { ...e, runningTotal: total }; });
+        res.json(withTotal);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.delete('/registry/:id', async (req, res) => {
     try {
         const { db, isAvailable } = require('../firebase');

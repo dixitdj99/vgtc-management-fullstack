@@ -4,7 +4,7 @@ import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { fmtRs, fmtDate } from '../utils/format';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
+import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X, Loader2 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
 import VehicleRegistryCard from '../components/VehicleRegistryCard';
@@ -242,6 +242,19 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [ownerDeleteTarget, setOwnerDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
+    const [tyreTarget, setTyreTarget] = useState(null); // { truckNo }
+    const [tyreHistory, setTyreHistory] = useState([]);
+    const [tyreLoading, setTyreLoading] = useState(false);
+
+    const openTyreLog = async (truckNo) => {
+        setTyreTarget({ truckNo });
+        setTyreLoading(true);
+        try {
+            const res = await ax.get(`/vehicles/tyre-history/${encodeURIComponent(truckNo)}`);
+            setTyreHistory(res.data || []);
+        } catch { setTyreHistory([]); }
+        finally { setTyreLoading(false); }
+    };
     
     const [registryEntries, setRegistryEntries] = useState([]);
     const [allVouchers, setAllVouchers] = useState([]);
@@ -531,6 +544,65 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
             <AnimatePresence>
                 {maintenanceTarget && <MaintenanceTracker truckNo={maintenanceTarget.truckNo} onClose={() => setMaintenanceTarget(null)} />}
+            </AnimatePresence>
+
+            {/* Tyre & Expense Log Modal */}
+            <AnimatePresence>
+                {tyreTarget && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+                        <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                            style={{ width: '95%', maxWidth: '680px', maxHeight: '85vh', background: 'var(--bg-card)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div>
+                                    <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>🛞 Tyre & Vehicle Expenses</div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{tyreTarget.truckNo} — from voucher history</div>
+                                </div>
+                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setTyreTarget(null)}><X size={18} /></button>
+                            </div>
+                            <div style={{ flex: 1, overflow: 'auto', padding: '0' }}>
+                                {tyreLoading ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: 'var(--text-muted)' }}><Loader2 size={20} className="spin" style={{ marginRight: '8px' }} /> Loading...</div>
+                                ) : tyreHistory.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)', fontSize: '13px' }}>No tyre or vehicle expenses found for this truck.</div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                                        <thead>
+                                            <tr style={{ background: 'var(--bg-th)' }}>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>#</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>LR No.</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Type</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'right', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Amount</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'right', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Running Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {tyreHistory.map((e, i) => (
+                                                <tr key={e.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                                                    <td style={{ padding: '7px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                                    <td style={{ padding: '7px 16px' }}>{e.date || '—'}</td>
+                                                    <td style={{ padding: '7px 16px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>#{e.lrNo}</td>
+                                                    <td style={{ padding: '7px 16px' }}>
+                                                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: e.type.includes('Puncture') ? 'rgba(244,63,94,0.1)' : e.type.includes('Grease') ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)', color: e.type.includes('Puncture') ? '#f43f5e' : e.type.includes('Grease') ? '#f59e0b' : '#6366f1' }}>{e.type}</span>
+                                                    </td>
+                                                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>Rs.{Math.round(e.amount).toLocaleString('en-IN')}</td>
+                                                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--warn)' }}>Rs.{Math.round(e.runningTotal).toLocaleString('en-IN')}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                                                <td colSpan={4} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total ({tyreHistory.length} entries)</td>
+                                                <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--danger)' }}>Rs.{Math.round(tyreHistory.reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}</td>
+                                                <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 900, color: 'var(--warn)' }}>Rs.{Math.round(tyreHistory[tyreHistory.length - 1]?.runningTotal || 0).toLocaleString('en-IN')}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
             </AnimatePresence>
 
             <ConfirmSaveModal isOpen={isConfirmingSave} onClose={() => setIsConfirmingSave(false)} onConfirm={executeSave} title={editId ? "Update Vehicle" : "Add Vehicle"} message={`Save changes for ${form.truckNo}?`} isSaving={saving} />
@@ -830,6 +902,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                             {v.ownershipType === 'self' && (
                                                                 <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Wrench size={13} /></button>
                                                             )}
+                                                            <button onClick={() => openTyreLog(v.truckNo)} title="Tyre & Expense Log" style={{ color: '#10b981', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center', fontSize: '10px', fontWeight: 700 }}>🛞</button>
                                                             <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert" style={{ color: '#8b5cf6', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Bell size={13} /></button>
                                                             <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Edit3 size={13} /></button>
                                                             <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>

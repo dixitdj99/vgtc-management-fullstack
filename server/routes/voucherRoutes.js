@@ -134,6 +134,31 @@ router.patch('/:id', async (req, res) => {
     }
 });
 
+// ─── Diesel Verification ─────────────────────────────────────────────────────
+router.patch('/:id/verify-diesel', async (req, res) => {
+    const { dieselActualLitres, dieselPumpName } = req.body;
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const col = getCol(BASE_COL, req);
+        const update = {
+            isDieselVerified: true,
+            dieselActualLitres: parseFloat(dieselActualLitres) || 0,
+            dieselPumpName: dieselPumpName || '',
+            dieselVerifiedAt: new Date().toISOString(),
+            dieselVerifiedBy: req.user?.name || 'system',
+        };
+        if (isAvailable()) {
+            await db.collection(col).doc(req.params.id).update({
+                ...update,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+        res.json({ message: 'Diesel verified', ...update });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ─── Delete ───────────────────────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
     try {

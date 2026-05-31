@@ -3,7 +3,7 @@ import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -800,6 +800,22 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [chalPreFill, setChalPreFill] = useState(null);
   const [linkingLrId, setLinkingLrId] = useState(null);
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
+  const [statusTarget, setStatusTarget] = useState(null); // { lr, nextStatus }
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  const LR_STATUS_FLOW = ['Created', 'Loaded', 'In Transit', 'Delivered', 'Billed'];
+  const LR_STATUS_COLOR = { 'Created': '#6366f1', 'Loaded': '#f59e0b', 'In Transit': '#3b82f6', 'Delivered': '#10b981', 'Billed': '#059669' };
+
+  const advanceLRStatus = async () => {
+    if (!statusTarget) return;
+    setStatusSaving(true);
+    try {
+      await ax.patch(`${API}/${statusTarget.lr.id}/status`, { status: statusTarget.nextStatus });
+      setStatusTarget(null);
+      fetchData();
+    } catch { alert('Status update failed'); }
+    finally { setStatusSaving(false); }
+  };
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     truckNo: '', partyName: '',
@@ -1322,6 +1338,30 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         )}
       </AnimatePresence>
 
+      {/* Status Advance Modal */}
+      <AnimatePresence>
+        {statusTarget && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              style={{ width: '90%', maxWidth: '360px', background: 'var(--bg-card)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Advance Trip Status?</div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', marginBottom: '6px' }}>LR <strong>#{statusTarget.lr.lrNo}</strong> · {statusTarget.lr.truckNo}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '16px 0' }}>
+                <span style={{ padding: '4px 12px', borderRadius: '8px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontWeight: 800, fontSize: '12px' }}>{statusTarget.lr.status || 'Created'}</span>
+                <ArrowRight size={14} color="var(--text-muted)" />
+                <span style={{ padding: '4px 12px', borderRadius: '8px', background: (LR_STATUS_COLOR[statusTarget.nextStatus] || '#6366f1') + '1a', color: LR_STATUS_COLOR[statusTarget.nextStatus] || '#6366f1', fontWeight: 800, fontSize: '12px', border: '1px solid ' + (LR_STATUS_COLOR[statusTarget.nextStatus] || '#6366f1') + '33' }}>{statusTarget.nextStatus}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button className="btn btn-g" onClick={() => setStatusTarget(null)} disabled={statusSaving}>Cancel</button>
+                <button className="btn btn-p" onClick={advanceLRStatus} disabled={statusSaving}>
+                  {statusSaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Confirm</>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div>
         <div className="page-hd">
           <div>
@@ -1557,6 +1597,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th className="c" style={{ padding: '8px 12px' }}>Voucher Status</th>
+                  <th className="c" style={{ padding: '8px 12px' }}>Trip Status</th>
                   {role === 'admin' && <th style={{ padding: '8px 12px' }}>Created By</th>}
                   {role === 'admin' && <th style={{ padding: '8px 12px' }}>Updated By</th>}
                   <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
@@ -1672,6 +1713,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                                     </div>
                                  ))}
                                </div>
+                            );
+                          })()}
+                        </td>
+                        <td className="c">
+                          {(() => {
+                            const status = lr.status || 'Created';
+                            const idx = LR_STATUS_FLOW.indexOf(status);
+                            const nextStatus = idx < LR_STATUS_FLOW.length - 1 ? LR_STATUS_FLOW[idx + 1] : null;
+                            const color = LR_STATUS_COLOR[status] || '#6366f1';
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 8px', borderRadius: '6px', background: color + '1a', color, fontSize: '10px', fontWeight: 800, border: '1px solid ' + color + '33' }}>{status}</span>
+                                {nextStatus && (
+                                  <button style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}
+                                    onClick={() => setStatusTarget({ lr, nextStatus })}>
+                                    <ArrowRight size={9} /> {nextStatus}
+                                  </button>
+                                )}
+                              </div>
                             );
                           })()}
                         </td>
