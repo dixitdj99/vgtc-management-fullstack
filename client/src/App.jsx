@@ -28,6 +28,7 @@ import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import TruckDashboard from './modules/TruckDashboard';
+import { processSyncQueue, count as queueCount } from './utils/offlineQueue';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -65,10 +66,37 @@ function AppInner() {
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [justCameOnline, setJustCameOnline] = useState(false);
+  const [pendingSync, setPendingSync] = useState(0);
+  const [syncStatus, setSyncStatus] = useState(null); // 'syncing' | 'done' | null
+
+  // Load initial queue count
+  useEffect(() => { queueCount().then(setPendingSync).catch(() => {}); }, []);
+
+  // Listen for queue changes
+  useEffect(() => {
+    const handler = (e) => setPendingSync(e.detail?.count ?? 0);
+    window.addEventListener('offline-queue-changed', handler);
+    return () => window.removeEventListener('offline-queue-changed', handler);
+  }, []);
 
   useEffect(() => {
-    const goOnline = () => { setIsOnline(true); setJustCameOnline(true); setTimeout(() => setJustCameOnline(false), 3000); };
-    const goOffline = () => { setIsOnline(false); setJustCameOnline(false); };
+    const goOnline = async () => {
+      setIsOnline(true);
+      setJustCameOnline(true);
+      setTimeout(() => setJustCameOnline(false), 3000);
+      // Process sync queue
+      const n = await queueCount().catch(() => 0);
+      if (n > 0) {
+        setSyncStatus('syncing');
+        try {
+          const { synced, failed } = await processSyncQueue(ax);
+          setSyncStatus('done');
+          setTimeout(() => setSyncStatus(null), 4000);
+          if (synced > 0) console.log(`[Sync] ${synced} ops synced${failed ? `, ${failed} failed` : ''}`);
+        } catch { setSyncStatus(null); }
+      }
+    };
+    const goOffline = () => { setIsOnline(false); setJustCameOnline(false); setSyncStatus(null); };
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
     return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
@@ -607,6 +635,14 @@ function AppInner() {
             </div>
           </div>
           <div className="topbar-right" style={{ position: 'relative', zIndex: 1 }}>
+            {/* Offline/sync indicator */}
+            {(pendingSync > 0 || !isOnline) && (
+              <div title={isOnline ? `${pendingSync} operations queued offline — syncing` : `Offline — ${pendingSync} operations queued`}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', background: !isOnline ? 'rgba(244,63,94,0.3)' : 'rgba(99,102,241,0.3)', borderRadius: '10px', padding: '4px 10px', marginRight: '8px', border: `1px solid ${!isOnline ? 'rgba(244,63,94,0.5)' : 'rgba(99,102,241,0.5)'}`, cursor: 'default' }}>
+                <span style={{ fontSize: '10px' }}>{!isOnline ? '⚡' : '⟳'}</span>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#fff' }}>{pendingSync > 0 ? `${pendingSync} pending` : 'Offline'}</span>
+              </div>
+            )}
             {/* Global Weather Widget */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '12px', background: 'rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '14px', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -639,24 +675,31 @@ function AppInner() {
           </div>
         </header>
 
-        {/* Offline / Back-online banner */}
+        {/* Offline / sync status banner */}
         <AnimatePresence>
-          {(!isOnline || justCameOnline) && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              style={{
-                background: justCameOnline ? 'rgba(16,185,129,0.92)' : 'rgba(244,63,94,0.92)',
-                color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800,
-                padding: '7px 16px', backdropFilter: 'blur(4px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                letterSpacing: '0.02em', zIndex: 50,
-              }}>
-              {justCameOnline
-                ? '✓ Back online — data will refresh shortly'
-                : '⚡ You are offline — showing last cached data. Edits are disabled until connection is restored.'}
+          {syncStatus === 'syncing' && (
+            <motion.div key="syncing" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+              style={{ background: 'rgba(99,102,241,0.92)', color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              ⟳ Syncing {pendingSync} offline operation{pendingSync !== 1 ? 's' : ''} to server…
+            </motion.div>
+          )}
+          {syncStatus === 'done' && (
+            <motion.div key="done" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+              style={{ background: 'rgba(16,185,129,0.92)', color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              ✓ All offline changes synced successfully
+            </motion.div>
+          )}
+          {!syncStatus && justCameOnline && (
+            <motion.div key="online" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+              style={{ background: 'rgba(16,185,129,0.92)', color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              ✓ Back online
+            </motion.div>
+          )}
+          {!isOnline && (
+            <motion.div key="offline" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+              style={{ background: 'rgba(244,63,94,0.92)', color: '#fff', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <span>⚡ Offline — showing cached data. Entries are queued and will sync when reconnected.</span>
+              {pendingSync > 0 && <span style={{ background: 'rgba(255,255,255,0.2)', padding: '1px 8px', borderRadius: '10px' }}>{pendingSync} pending</span>}
             </motion.div>
           )}
         </AnimatePresence>

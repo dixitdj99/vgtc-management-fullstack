@@ -16,10 +16,12 @@ export function AuthProvider({ children }) {
     if (token) {
       setAuthToken(token);
       ax.get(`/auth/me`)
-        .then(r => { 
+        .then(r => {
           const userData = r.data;
-          setUser(userData); 
-          setCurrentUser(userData); 
+          setUser(userData);
+          setCurrentUser(userData);
+          // Trigger SW prefetch of critical data after auth
+          setTimeout(() => window.triggerSWPrefetch?.(), 1500);
         })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
@@ -66,6 +68,7 @@ export function AuthProvider({ children }) {
     setToken(t);
     setUser(u);
     setCurrentUser(u);
+    setTimeout(() => window.triggerSWPrefetch?.(), 2000);
     return u;
   };
 
