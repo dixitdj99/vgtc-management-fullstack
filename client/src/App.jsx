@@ -27,6 +27,7 @@ import LabourLoadingStatus from './modules/LabourLoadingStatus';
 import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
+import TruckDashboard from './modules/TruckDashboard';
 
 const THEMES = [
   { id: 'dark', label: 'Dark', Icon: Moon },
@@ -271,6 +272,7 @@ function AppInner() {
       ]
     },
     { id: 'vehicles_dump', label: 'Vehicle Details', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
+    { id: 'truck_dashboard', label: 'Truck Dashboard', Icon: BarChart3, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
     { id: 'pay_dump', label: 'Pay', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay', sub: [
@@ -642,6 +644,7 @@ function AppInner() {
               {active === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jhajjar" />}
               {(active === 'stock_jkl' || active === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jkl" />}
               {(active === 'vehicles_dump' || active === 'vehicles_jkl' || active === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
+              {active === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
               {(active === 'diesel_dump' || active === 'diesel_jkl' || active === 'diesel_jharli') && <DieselModule permissions={user.permissions} />}
               {(active === 'mileage_dump' || active === 'mileage_jkl' || active === 'mileage_jharli') && <MileageModule />}
               {(active === 'pay_dump' || active === 'pay_jkl' || active === 'pay_jharli') && <PayModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={subActive || 'freight'} />}

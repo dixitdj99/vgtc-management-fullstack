@@ -62,6 +62,83 @@ const TH = {
 const TD = { padding: '7px 9px', fontSize: '12px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
 const TDF = { ...TD, fontWeight: 800, color: 'var(--text)', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' };
 
+/* ── Monthly P&L Report ── */
+function doPrintMonthlyPL(ym, rows, tabName, orgName, vehicle) {
+  if (!rows || !rows.length) { alert('No data for this month'); return; }
+  const label = (() => { const [y, m] = ym.split('-'); return new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' }); })();
+
+  const totalGross = rows.reduce((s, v) => s + (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0), 0);
+  const totalNet = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
+  const totalDed = totalGross - totalNet;
+  const totalPaid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
+  const totalOut = Math.max(0, totalNet - totalPaid);
+  const avgMargin = totalGross > 0 ? (totalDed / totalGross * 100) : 0;
+
+  const dedBreakdown = {
+    diesel: rows.reduce((s, v) => s + (v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0)), 0),
+    cash: rows.reduce((s, v) => s + (parseFloat(v.advanceCash) || 0), 0),
+    online: rows.reduce((s, v) => s + (parseFloat(v.advanceOnline) || 0), 0),
+    munshi: rows.reduce((s, v) => { const w = parseFloat(v.weight)||0; return s + (parseFloat(v.munshi)||(w>0?(w<18?50:100):0)); }, 0),
+    shortage: rows.reduce((s, v) => s + (parseFloat(v.shortage) || 0), 0),
+    commission: rows.reduce((s, v) => s + (parseFloat(v.commission) || 0), 0),
+    tyres: rows.reduce((s, v) => s + (parseFloat(v.tyrePuncture)||0) + (parseFloat(v.tyreGreasingAir)||0) + (parseFloat(v.tyreGreasing)||0) + (parseFloat(v.tyreAir)||0) + (parseFloat(v.extraCash)||0), 0),
+  };
+
+  const tbody = rows.map((v, i) => {
+    const n = calcNet(v, vehicle);
+    const g = (parseFloat(v.weight)||0) * (parseFloat(v.rate)||0);
+    const margin = g > 0 ? ((g-n)/g*100) : 0;
+    return `<tr style="background:${i%2===0?'#f9f9f9':'#fff'}">
+      <td>${i+1}</td><td>${v.date||''}</td><td>#${v.lrNo||''}</td>
+      <td>${v.destination||v.partyName||'—'}</td>
+      <td style="text-align:right">${v.weight||''}</td>
+      <td style="text-align:right">Rs.${Math.round(g).toLocaleString()}</td>
+      <td style="text-align:right;color:#c00">Rs.${Math.round(g-n).toLocaleString()}</td>
+      <td style="text-align:right;font-weight:800;color:#16a34a">Rs.${Math.round(n).toLocaleString()}</td>
+      <td style="text-align:center;color:${margin<20?'#16a34a':margin<40?'#b45309':'#dc2626'}">${margin.toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Monthly P&L — ${label}</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;padding:10mm}
+  h1{font-size:16px;font-weight:900;text-align:center}.sub{text-align:center;font-size:10px;color:#666;margin:3px 0 10px}
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+  .card{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center}
+  .card-label{font-size:9px;color:#666;font-weight:700;text-transform:uppercase;margin-bottom:4px}
+  .card-val{font-size:15px;font-weight:900}
+  .breakdown{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;background:#f5f5f5;padding:8px;border-radius:6px}
+  .brow{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid #e5e5e5}
+  table{width:100%;border-collapse:collapse}th{padding:5px 8px;background:#333;color:#fff;font-size:10px}
+  td{padding:4px 8px;border-bottom:1px solid #eee}.tot{background:#eee;font-weight:bold}
+  @media print{body{padding:0}}</style></head><body>
+  <h1>${orgName}</h1>
+  <div class="sub">Monthly P&L Report — ${tabName} — ${label}</div>
+  <div class="summary">
+    <div class="card"><div class="card-label">Trips</div><div class="card-val">${rows.length}</div></div>
+    <div class="card"><div class="card-label">Total Gross</div><div class="card-val" style="color:#2563eb">Rs.${Math.round(totalGross).toLocaleString()}</div></div>
+    <div class="card"><div class="card-label">Total Net</div><div class="card-val" style="color:#16a34a">Rs.${Math.round(totalNet).toLocaleString()}</div></div>
+    <div class="card"><div class="card-label">Avg Margin</div><div class="card-val" style="color:${avgMargin<20?'#16a34a':avgMargin<40?'#b45309':'#dc2626'}">${avgMargin.toFixed(1)}%</div></div>
+  </div>
+  <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#666;margin-bottom:6px">Deduction Breakdown</div>
+  <div class="breakdown">
+    ${Object.entries(dedBreakdown).map(([k, v]) => `<div class="brow"><span style="text-transform:capitalize">${k}</span><span style="font-weight:700">Rs.${Math.round(v).toLocaleString()}</span></div>`).join('')}
+    <div class="brow" style="font-weight:800"><span>TOTAL DEDUCTIONS</span><span>Rs.${Math.round(totalDed).toLocaleString()}</span></div>
+    <div class="brow" style="font-weight:800;color:${totalOut>0?'#b45309':'#16a34a'}"><span>Outstanding</span><span>${totalOut>0?'Rs.'+Math.round(totalOut).toLocaleString():'✓ Cleared'}</span></div>
+  </div>
+  <table><thead><tr><th>#</th><th>Date</th><th>LR No.</th><th>Route</th><th>Weight</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Margin%</th></tr></thead>
+  <tbody>${tbody}</tbody>
+  <tfoot><tr class="tot"><td colspan="4">TOTALS</td>
+    <td></td><td style="text-align:right">Rs.${Math.round(totalGross).toLocaleString()}</td>
+    <td style="text-align:right;color:#c00">Rs.${Math.round(totalDed).toLocaleString()}</td>
+    <td style="text-align:right;font-weight:800;color:#16a34a">Rs.${Math.round(totalNet).toLocaleString()}</td>
+    <td style="text-align:center">${avgMargin.toFixed(1)}%</td>
+  </tr></tfoot></table>
+  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  </body></html>`;
+  const w = window.open('', '_blank', 'width=1000,height=700');
+  w.document.write(html); w.document.close();
+}
+
 /* ── Print Driver (used from both selection bar and month header) ── */
 function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
   if (!rows.length) { alert('No rows to print'); return; }
@@ -567,6 +644,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [filters, setFilters] = useState({});
   const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
   const [showPnL, setShowPnL] = useState(false);
+  const [showMonthPLModal, setShowMonthPLModal] = useState(false);
+  const [selectedPLMonth, setSelectedPLMonth] = useState('');
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -1027,6 +1106,13 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   </button>
                 </div>
               </>)}
+              {selected.size === 0 && (
+                <div style={{ marginLeft: 'auto' }}>
+                  <button className="btn btn-g btn-sm" onClick={() => { setSelectedPLMonth(sortedMonths[0] || ''); setShowMonthPLModal(true); }}>
+                    <Printer size={13} /> Monthly P&L Report
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1045,6 +1131,35 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 onClose={() => setDelVoucher(null)}
                 onConfirm={() => { setDelVoucher(null); fetchVouchers(); }}
               />
+            )}
+          </AnimatePresence>
+
+          {/* Monthly P&L Report Modal */}
+          <AnimatePresence>
+            {showMonthPLModal && (
+              <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+                <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                  style={{ width: '90%', maxWidth: '400px', background: 'var(--bg-card)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
+                  <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Monthly P&L Report</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '20px' }}>Select a month to generate the P&L breakdown PDF for <strong>{selTruck}</strong>.</div>
+                  <div className="field" style={{ marginBottom: '20px' }}>
+                    <label>Month</label>
+                    <select className="fi" value={selectedPLMonth} onChange={e => setSelectedPLMonth(e.target.value)} style={{ width: '100%' }}>
+                      {sortedMonths.map(ym => {
+                        const [y, m] = ym.split('-');
+                        const label = new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+                        return <option key={ym} value={ym}>{label} ({(monthMap[ym] || []).length} trips)</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                    <button className="btn btn-g" onClick={() => setShowMonthPLModal(false)}>Cancel</button>
+                    <button className="btn btn-p" onClick={() => { doPrintMonthlyPL(selectedPLMonth, monthMap[selectedPLMonth] || [], tab, orgName, selVehicle); setShowMonthPLModal(false); }}>
+                      <Printer size={13} /> Print P&L Report
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
             )}
           </AnimatePresence>
 
