@@ -44,4 +44,20 @@ const preventProdWrite = (req, res, next) => {
     next();
 };
 
-module.exports = { requireAuth, requireAdmin, preventProdWrite, SECRET };
+/**
+ * requirePermission(permKey, action) — Middleware factory for granular permission checks.
+ * Permission levels: view < edit < delete. Admins bypass all checks.
+ * Usage: router.delete('/:id', requirePermission('balance', 'delete'), handler)
+ */
+const requirePermission = (permKey, action = 'view') => (req, res, next) => {
+    requireAuth(req, res, () => {
+        if (req.user.role === 'admin') return next();
+        const perm = req.user.permissions?.[permKey];
+        if (!perm) return res.status(403).json({ error: `No access to ${permKey}` });
+        const allows = { view: ['view', 'edit', 'delete'], edit: ['edit', 'delete'], delete: ['delete'] };
+        if ((allows[action] || []).includes(perm)) return next();
+        return res.status(403).json({ error: `Requires ${action} permission for ${permKey}` });
+    });
+};
+
+module.exports = { requireAuth, requireAdmin, preventProdWrite, requirePermission, SECRET };

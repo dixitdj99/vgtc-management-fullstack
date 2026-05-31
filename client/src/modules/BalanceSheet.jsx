@@ -370,9 +370,9 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
               onClick={() => window.open('https://wa.me/?text=' + encodeURIComponent(waText), '_blank')}>
               <MessageCircle size={12} color="#25d366" />
             </button>
-            {(role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') && <>
+            {(role === 'admin' || permissions?.balance === 'edit' || permissions?.balance === 'delete' || permissions?.voucher === 'edit' || permissions?.voucher === 'delete') && <>
               <button className="btn btn-g btn-icon btn-sm" onClick={startEdit} title="Edit Record"><Pencil size={12} /></button>
-              {role === 'admin' && <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>}
+              {(role === 'admin' || permissions?.balance === 'delete' || permissions?.voucher === 'delete') && <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>}
             </>}
           </div>
         )}
@@ -626,7 +626,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
 
 /* ══════ MAIN ══════ */
 export default function BalanceSheet({ initialTab, lockedType, role = 'user', permissions = {}, brand }) {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   // For non-VGTC orgs (brand='main'), always use 'main' type — no sub-tabs
   const isGeneric = brand === 'main';

@@ -346,19 +346,24 @@ export default function AdminPage() {
         {MODULES.find(m => m.key === moduleKey)?.label}
       </span>
       <div style={{ display: 'flex', gap: '4px' }}>
-        {['None', 'View', 'Edit'].map(opt => {
-          const val = opt === 'None' ? null : opt.toLowerCase();
+        {[
+          { label: 'None', val: null, color: 'var(--text-muted)' },
+          { label: 'View', val: 'view', color: '#6366f1' },
+          { label: 'Edit', val: 'edit', color: 'var(--accent)' },
+          { label: 'Delete', val: 'delete', color: 'var(--danger)' },
+        ].map(({ label, val, color }) => {
           const isActive = current === val;
           return (
-            <button key={opt} type="button" onClick={() => onChange(moduleKey, val)}
+            <button key={label} type="button" onClick={() => onChange(moduleKey, val)}
+              title={val === 'delete' ? 'Can view, edit, and delete' : val === 'edit' ? 'Can view and edit' : val === 'view' ? 'Read-only access' : 'No access'}
               style={{
                 fontSize: '9px', fontWeight: 800, padding: '3px 6px', borderRadius: '4px',
-                border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border)',
-                background: isActive ? 'var(--accent)20' : 'transparent',
-                color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                border: '1px solid', borderColor: isActive ? color : 'var(--border)',
+                background: isActive ? color + '20' : 'transparent',
+                color: isActive ? color : 'var(--text-muted)',
                 cursor: 'pointer', transition: 'all 0.15s'
               }}>
-              {opt}
+              {label}
             </button>
           );
         })}

@@ -118,8 +118,20 @@ export function AuthProvider({ children }) {
     setGodownState('');
   };
 
+  const hasPermission = (permKey, action = 'view') => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    const perm = user.permissions?.[permKey];
+    if (!perm) return false;
+    if (action === 'view') return true; // any permission level allows view
+    if (action === 'edit') return perm === 'edit' || perm === 'delete';
+    if (action === 'delete') return perm === 'delete';
+    if (action === 'export') return perm === 'edit' || perm === 'delete';
+    return false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, refreshUser, logout, ready }}>
+    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, refreshUser, logout, ready, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );
