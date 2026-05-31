@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
-import { Building2, Plus, Search, MapPin, Phone, Mail, Edit3, Trash2, ArrowLeft, Briefcase, FileText, CheckCircle2, XCircle } from 'lucide-react';
+import { Building2, Plus, Search, MapPin, Phone, Mail, Edit3, Trash2, ArrowLeft, Briefcase, FileText, CheckCircle2, XCircle, BookOpen, Loader2, X as XIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
+const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 export default function PartyMaster() {
   const { user } = useAuth();
@@ -15,6 +18,22 @@ export default function PartyMaster() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [ledgerParty, setLedgerParty] = useState(null);
+  const [ledgerData, setLedgerData] = useState(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerTab, setLedgerTab] = useState('vouchers');
+
+  const openLedger = async (party) => {
+    setLedgerParty(party);
+    setLedgerData(null);
+    setLedgerLoading(true);
+    setLedgerTab('vouchers');
+    try {
+      const res = await ax.get(`/parties/${party.id}/ledger`);
+      setLedgerData(res.data);
+    } catch { setLedgerData({ vouchers: [], lrs: [], summary: {} }); }
+    finally { setLedgerLoading(false); }
+  };
   
   const [formData, setFormData] = useState({
     name: '', type: 'customer', contactPerson: '', phone: '', email: '',
@@ -142,6 +161,7 @@ export default function PartyMaster() {
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{party.name}</h3>
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
+                  <button onClick={() => openLedger(party)} title="View Party Ledger" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: '4px' }}><BookOpen size={14} /></button>
                   <button onClick={() => handleOpenModal(party)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}><Edit3 size={14} /></button>
                   <button onClick={() => handleDelete(party.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f43f5e', padding: '4px' }}><Trash2 size={14} /></button>
                 </div>
@@ -170,6 +190,109 @@ export default function PartyMaster() {
           )}
         </div>
       )}
+
+      {/* Party Ledger Modal */}
+      <AnimatePresence>
+        {ledgerParty && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              style={{ background: 'var(--bg-card)', borderRadius: '20px', width: '100%', maxWidth: '820px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', border: '1px solid rgba(99,102,241,0.25)', boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}>
+              {/* Header */}
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>{ledgerParty.name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', textTransform: 'capitalize' }}>{ledgerParty.type} · Party Ledger</div>
+                </div>
+                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setLedgerParty(null)}><XIcon size={20} /></button>
+              </div>
+              {ledgerLoading ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)' }}><Loader2 size={18} className="spin" /> Loading ledger...</div>
+              ) : ledgerData ? (
+                <>
+                  {/* Summary cards */}
+                  <div style={{ padding: '16px 24px', display: 'flex', gap: '10px', flexWrap: 'wrap', borderBottom: '1px solid var(--border)' }}>
+                    {[
+                      { label: 'Vouchers', val: ledgerData.summary.trips || 0, color: 'var(--primary)' },
+                      { label: 'Loading Receipts', val: ledgerData.summary.lrCount || 0, color: '#6366f1' },
+                      { label: 'Total Net', val: fmtRs(ledgerData.summary.totalNet || 0), color: 'var(--accent)' },
+                      { label: 'Outstanding', val: fmtRs(ledgerData.summary.outstanding || 0), color: (ledgerData.summary.outstanding || 0) > 0 ? 'var(--warn)' : 'var(--accent)' },
+                      { label: 'Last Activity', val: fmtDate(ledgerData.summary.lastActivity), color: 'var(--text-muted)' },
+                    ].map(({ label, val, color }) => (
+                      <div key={label} style={{ background: 'var(--bg-input)', borderRadius: '10px', padding: '8px 14px', minWidth: '120px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</div>
+                        <div style={{ fontSize: '15px', fontWeight: 900, color, lineHeight: 1.2, marginTop: '2px' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Tabs */}
+                  <div style={{ padding: '10px 24px 0', display: 'flex', gap: '8px' }}>
+                    {[['vouchers', 'Vouchers'], ['lrs', 'Loading Receipts']].map(([key, label]) => (
+                      <button key={key} onClick={() => setLedgerTab(key)} className={`tab-btn${ledgerTab === key ? ' tab-indigo' : ''}`}>{label}</button>
+                    ))}
+                  </div>
+                  {/* Table */}
+                  <div style={{ flex: 1, overflow: 'auto', padding: '12px 24px 20px' }}>
+                    {ledgerTab === 'vouchers' && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                        <thead><tr style={{ background: 'var(--bg-th)' }}>
+                          {['Date', 'LR No.', 'Truck', 'Destination', 'Weight', 'Gross', 'Net Balance', 'Paid', 'Outstanding'].map(h => (
+                            <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {ledgerData.vouchers.length === 0 ? <tr><td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No vouchers found</td></tr>
+                            : ledgerData.vouchers.map((v, i) => {
+                              const g = (parseFloat(v.weight)||0) * (parseFloat(v.rate)||0);
+                              const d = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel)||0);
+                              const net = g - d - (parseFloat(v.advanceCash)||0) - (parseFloat(v.advanceOnline)||0) - (parseFloat(v.munshi)||0) - (parseFloat(v.shortage)||0) - (parseFloat(v.commission)||0);
+                              const paid = parseFloat(v.paidBalance) || 0;
+                              const out = Math.max(0, net - paid);
+                              return <tr key={v.id} style={{ background: i%2===0?'var(--bg-row-even)':'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '6px 12px' }}>{fmtDate(v.date)}</td>
+                                <td style={{ padding: '6px 12px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                                <td style={{ padding: '6px 12px', fontWeight: 700 }}>{v.truckNo}</td>
+                                <td style={{ padding: '6px 12px' }}>{v.destination || '—'}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{v.weight}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{fmtRs(g)}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 800, color: 'var(--accent)' }}>{fmtRs(net)}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{paid ? fmtRs(paid) : '—'}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 800, color: out>0?'var(--warn)':'var(--accent)' }}>{out>0?fmtRs(out):'✓'}</td>
+                              </tr>;
+                            })}
+                        </tbody>
+                      </table>
+                    )}
+                    {ledgerTab === 'lrs' && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                        <thead><tr style={{ background: 'var(--bg-th)' }}>
+                          {['Date', 'LR No.', 'Truck', 'Material', 'Weight', 'Bags', 'Destination', 'Status'].map(h => (
+                            <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {ledgerData.lrs.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No loading receipts found</td></tr>
+                            : ledgerData.lrs.map((l, i) => (
+                              <tr key={l.id} style={{ background: i%2===0?'var(--bg-row-even)':'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '6px 12px' }}>{fmtDate(l.date)}</td>
+                                <td style={{ padding: '6px 12px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{l.lrNo}</td>
+                                <td style={{ padding: '6px 12px', fontWeight: 700 }}>{l.truckNo}</td>
+                                <td style={{ padding: '6px 12px' }}>{l.material}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{l.weight}</td>
+                                <td style={{ padding: '6px 12px', textAlign: 'right' }}>{l.totalBags}</td>
+                                <td style={{ padding: '6px 12px' }}>{l.destination || '—'}</td>
+                                <td style={{ padding: '6px 12px' }}><span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '5px', background: l.status === 'Billed' || l.status === 'Delivered' ? 'rgba(16,185,129,0.1)' : 'rgba(99,102,241,0.1)', color: l.status === 'Billed' || l.status === 'Delivered' ? '#10b981' : '#6366f1' }}>{l.status || 'Created'}</span></td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal */}
       <AnimatePresence>
