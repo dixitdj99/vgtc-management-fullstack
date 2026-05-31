@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -32,6 +32,21 @@ function calcNet(v, vehicle) {
   }
   return net;
 }
+function calcGross(v) {
+  return (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+}
+function calcTotalDeductions(v, vehicle) {
+  return calcGross(v) - calcNet(v, vehicle);
+}
+function calcMarginPct(v, vehicle) {
+  const g = calcGross(v);
+  return g > 0 ? (calcTotalDeductions(v, vehicle) / g) * 100 : 0;
+}
+function daysAgo(dateStr) {
+  if (!dateStr) return 0;
+  return Math.floor((Date.now() - new Date(dateStr)) / 86400000);
+}
+
 function monthLabel(ym) {
   const [y, m] = ym.split('-');
   return new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -113,7 +128,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle }) {
+function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -152,9 +167,14 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
   const outstanding = Math.max(0, net - paid);
   const cleared = outstanding <= 0;
   const bg = checked ? 'rgba(99,102,241,0.07)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
+  const days = outstanding > 0 ? daysAgo(v.date) : 0;
+  const overdueColor = days > 30 ? '#f43f5e' : days > 15 ? '#f59e0b' : null;
+
+  const gross = calcGross(cv);
+  const waText = `*VGTC Voucher*\nLR #${v.lrNo} | ${v.truckNo || ''}\nDate: ${v.date || ''}\nRoute: ${v.destination || v.partyName || '—'}\nGross: Rs.${Math.round(gross).toLocaleString('en-IN')}\nNet Bal: Rs.${Math.round(net).toLocaleString('en-IN')}\nOutstanding: ${outstanding > 0 ? 'Rs.' + Math.round(outstanding).toLocaleString('en-IN') : 'Cleared ✓'}`;
 
   return (
-    <tr style={{ background: editing ? 'var(--bg-input)' : bg, outline: checked ? '1px solid var(--primary)' : '' }}
+    <tr style={{ background: editing ? 'var(--bg-input)' : bg, outline: checked ? '1px solid var(--primary)' : '', borderLeft: overdueColor && !editing ? `3px solid ${overdueColor}` : '' }}
       onMouseEnter={e => { if (!editing && !checked) e.currentTarget.style.background = 'var(--bg-row-hover)'; }}
       onMouseLeave={e => { if (!editing && !checked) e.currentTarget.style.background = bg; }}>
 
@@ -235,8 +255,21 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}><Check size={10} /> Paid</span>
               {v.paymentClearedDate && <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>{fmtDate(v.paymentClearedDate)}</span>}
             </div>
-            : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>}
+            : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>
+              {days > 15 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '9px', fontWeight: 800, color: overdueColor }}><Clock size={8} />{days}d overdue</span>}
+            </div>}
       </td>
+      {showPnL && (() => {
+        const deductions = calcTotalDeductions(cv, vehicle);
+        const margin = calcMarginPct(cv, vehicle);
+        return <>
+          <td style={{ ...TD, textAlign: 'right', color: 'var(--danger)', fontWeight: 700 }}>{gross > 0 ? fmtRs(deductions) : '—'}</td>
+          <td style={{ ...TD, textAlign: 'center' }}>
+            {gross > 0 ? <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 800, background: margin < 20 ? 'rgba(16,185,129,0.1)' : margin < 40 ? 'rgba(245,158,11,0.1)' : 'rgba(244,63,94,0.1)', color: margin < 20 ? '#10b981' : margin < 40 ? '#f59e0b' : '#f43f5e' }}>{margin.toFixed(1)}%</span> : '—'}
+          </td>
+        </>;
+      })()}
       {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
       {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
       <td style={{ ...TD, textAlign: 'center' }}>
@@ -245,14 +278,18 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
             <button className="btn btn-p btn-icon btn-sm" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Edit">{saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}</button>
             <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditing(false)} title="Cancel"><X size={12} /></button>
           </div>
-        ) : (role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') ? (
+        ) : (
           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-            <button className="btn btn-g btn-icon btn-sm" onClick={startEdit} title="Edit Record"><Pencil size={12} /></button>
-            {role === 'admin' && (
-              <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>
-            )}
+            <button className="btn btn-g btn-icon btn-sm" title="Share via WhatsApp"
+              onClick={() => window.open('https://wa.me/?text=' + encodeURIComponent(waText), '_blank')}>
+              <MessageCircle size={12} color="#25d366" />
+            </button>
+            {(role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') && <>
+              <button className="btn btn-g btn-icon btn-sm" onClick={startEdit} title="Edit Record"><Pencil size={12} /></button>
+              {role === 'admin' && <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>}
+            </>}
           </div>
-        ) : null}
+        )}
       </td>
       <ConfirmSaveModal
         isOpen={isConfirming}
@@ -292,7 +329,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL }) {
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
   const [open, setOpen] = useState(true);
 
@@ -404,7 +441,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
 
       {open && (
         <div className="tbl-wrap">
-          <table style={{ minWidth: '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <table style={{ minWidth: showPnL ? '1620px' : '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr>
                 <th style={{ ...TH, textAlign: 'center', padding: '7px 8px' }}>
@@ -430,15 +467,17 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <th style={TH}>Net Bal</th>
                 <th style={TH}>Paid</th>
                 <th style={TH}>Status</th>
+                {showPnL && <th style={{ ...TH, color: '#f43f5e' }}>Deductions</th>}
+                {showPnL && <th style={{ ...TH, color: '#6366f1' }}>Margin %</th>}
                 {role === 'admin' && <th style={TH}>Created By</th>}
                 {role === 'admin' && <th style={TH}>Updated By</th>}
-                <th style={TH}>Edit</th>
+                <th style={TH}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} />
               ))}
             </tbody>
             <tfoot>
@@ -458,6 +497,14 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                     : <span style={{ color: 'var(--accent)' }}><Check size={11} /> Cleared</span>}
                   {totals.adjusted > 0 && <div style={{ fontSize: '9px', color: '#6366f1', fontWeight: 700, marginTop: '2px' }}>Adj: {fmtRs(totals.adjusted)}</div>}
                 </td>
+                {showPnL && (() => {
+                  const totalDed = rows.reduce((s, v) => s + calcTotalDeductions(v, vehicle), 0);
+                  const avgMargin = totals.gross > 0 ? (totalDed / totals.gross * 100) : 0;
+                  return <>
+                    <td style={{ ...TDF, textAlign: 'right', color: 'var(--danger)' }}>{fmtRs(totalDed)}</td>
+                    <td style={{ ...TDF, textAlign: 'center', color: '#6366f1' }}>{avgMargin.toFixed(1)}%</td>
+                  </>;
+                })()}
                 <td colSpan={role === 'admin' ? 3 : 1} style={TDF}></td>
               </tr>
             </tfoot>
@@ -519,6 +566,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   // Excel-style filters
   const [filters, setFilters] = useState({});
   const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
+  const [showPnL, setShowPnL] = useState(false);
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -768,6 +816,9 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {selTruck && <button className="btn btn-g btn-sm" onClick={() => setSelTruck(null)}><ChevronLeft size={14} /> All Trucks</button>}
+          <button className={`btn btn-sm ${showPnL ? 'btn-p' : 'btn-g'}`} onClick={() => setShowPnL(s => !s)} title="Toggle P&L columns (deductions + margin %)">
+            <TrendingDown size={13} /> {showPnL ? 'Hide P&L' : 'P&L View'}
+          </button>
           {!lockedType && !isGeneric && (
             <div className="tab-grp">
               {TYPES.map(t => <button key={t} className={`tab-btn${tab === t ? ' tab-amber' : ''}`} onClick={() => setTab(t)}>{t.replace('_', ' ')}</button>)}
@@ -984,7 +1035,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll} onDelete={setDelVoucher}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
-              role={role} permissions={permissions} orgName={orgName} vehicle={selVehicle} />
+              role={role} permissions={permissions} orgName={orgName} vehicle={selVehicle} showPnL={showPnL} />
           ))}
 
           <AnimatePresence>
@@ -1023,6 +1074,25 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
         </div>
       ) : (
         /* ── OVERVIEW ── */
+        <div>
+        {(() => {
+          const overdueCount = truckSummaries.filter(t => {
+            const rows = truckGroups[t.truck] || [];
+            const veh = (vehicles || []).find(vh => vh.truckNo === t.truck);
+            return rows.some(v => {
+              const n = calcNet(v, veh), p = parseFloat(v.paidBalance) || 0;
+              return Math.max(0, n - p) > 0 && daysAgo(v.date) > 30;
+            });
+          }).length;
+          return overdueCount > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', background: 'rgba(244,63,94,0.07)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '10px', marginBottom: '14px' }}>
+              <AlertCircle size={15} color="#f43f5e" />
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#f43f5e' }}>
+                {overdueCount} truck{overdueCount > 1 ? 's have' : ' has'} trips with payments overdue 30+ days — click to view
+              </span>
+            </div>
+          ) : null;
+        })()}
         <div className="card">
           <div className="card-header">
             <div className="card-title-block">
@@ -1088,13 +1158,27 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                     <td style={{ ...TD, textAlign: 'center' }}>
                       {outstanding <= 0
                         ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}><Check size={10} /> Cleared</span>
-                        : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>Pending</span>}
+                        : (() => {
+                          const veh = (vehicles||[]).find(vh => vh.truckNo === truck);
+                          const rows2 = truckGroups[truck] || [];
+                          const maxDays = rows2.reduce((m, v) => {
+                            const n = calcNet(v, veh), p = parseFloat(v.paidBalance)||0;
+                            return Math.max(0, n-p) > 0 ? Math.max(m, daysAgo(v.date)) : m;
+                          }, 0);
+                          const color = maxDays > 30 ? '#f43f5e' : 'var(--warn)';
+                          return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>Pending</span>
+                            {maxDays > 15 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '9px', fontWeight: 800, color }}><Clock size={8} />{maxDays}d</span>}
+                          </div>;
+                        })()
+                      }
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
     </div>
