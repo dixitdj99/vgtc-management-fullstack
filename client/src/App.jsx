@@ -63,6 +63,17 @@ function AppInner() {
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [justCameOnline, setJustCameOnline] = useState(false);
+
+  useEffect(() => {
+    const goOnline = () => { setIsOnline(true); setJustCameOnline(true); setTimeout(() => setJustCameOnline(false), 3000); };
+    const goOffline = () => { setIsOnline(false); setJustCameOnline(false); };
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+  }, []);
+
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [weather, setWeather] = useState({ temp: null, cond: 'Clear', code: 1000, isDay: true, advice: 'Loading weather...' });
   const [currentHour, setCurrentHour] = useState(new Date().getHours());
@@ -627,6 +638,29 @@ function AppInner() {
             </div>
           </div>
         </header>
+
+        {/* Offline / Back-online banner */}
+        <AnimatePresence>
+          {(!isOnline || justCameOnline) && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              style={{
+                background: justCameOnline ? 'rgba(16,185,129,0.92)' : 'rgba(244,63,94,0.92)',
+                color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800,
+                padding: '7px 16px', backdropFilter: 'blur(4px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                letterSpacing: '0.02em', zIndex: 50,
+              }}>
+              {justCameOnline
+                ? '✓ Back online — data will refresh shortly'
+                : '⚡ You are offline — showing last cached data. Edits are disabled until connection is restored.'}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="page-area">
           <AnimatePresence mode="wait">
             <motion.div key={active + subActive} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
