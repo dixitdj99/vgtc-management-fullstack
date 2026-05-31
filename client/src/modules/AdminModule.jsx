@@ -324,8 +324,8 @@ const AdminModule = () => {
                                                         {log.status}
                                                     </span>
                                                 </td>
-                                                <td style={{ padding: '12px 16px', color: 'var(--text-sub)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {log.details || (log.error ? `Error: ${log.error}` : '-')}
+                                                <td style={{ padding: '12px 16px', color: 'var(--text-sub)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.error ? `${log.details} — ${log.error}` : log.details}>
+                                                    {log.details}{log.error ? <span style={{ color: '#f43f5e', marginLeft: '6px', fontSize: '11px' }}>{log.error}</span> : null}
                                                 </td>
                                             </tr>
                                         ))

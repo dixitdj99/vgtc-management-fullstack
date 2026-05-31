@@ -21,54 +21,52 @@ router.post('/', async (req, res) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
-        // Real-time backup — runs whenever Google Drive is authorized
-        const authorized = await driveService.isAuthorized();
-        console.log(`[Backup-Hook] Drive authorized: ${authorized}`);
-        if (authorized) {
-            (async () => {
-                try {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const { generateVoucherPDF } = require('../utils/pdfService');
-                    const sheetsService = require('../utils/sheetsService');
-                    const { PLANTS } = require('../utils/backupService');
-
-                    const voucherData = { ...req.body, ...result };
-                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
-                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-                    const dateStr = (voucherData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
-                    const fileName = `Voucher_LR${voucherData.lrNo || 'N-A'}_${dateStr}.pdf`;
-                    const localPath = path.join(TEMP_DIR, fileName);
-
-                    console.log(`[Backup-Hook] Generating voucher PDF: ${fileName}`);
-                    await generateVoucherPDF(voucherData, localPath);
-
-                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    const plantLabel = (req.body.brand === 'jklakshmi' || voucherData.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
-                    const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
-                    const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
-                    const monthStr = new Date(voucherData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
-                    const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
-                    await driveService.uploadFile(localPath, fileName, finalFolder);
-                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-                    // Upsert row in Google Sheet - send exact brand!
-                    await sheetsService.upsertVoucherRow(voucherData, req.body.type || 'Dump', req.body.brand);
-
-                    await driveService.logActivity('Voucher_Create', 'success', `Backed up: ${fileName}`);
-                    console.log(`[Backup-Hook] Voucher backed up successfully: ${fileName}`);
-                } catch (e) {
-                    console.error('[Backup-Hook] Voucher create FAILED:', e.message);
-                    console.error(e.stack);
-                    await driveService.logActivity('Voucher_Create', 'error', 'Backup failed', e).catch(() => {});
-                }
-            })();
-        } else {
-            console.log('[Backup-Hook] Skipping voucher backup — Drive not authorized');
-        }
-
+        // Real-time backup — fire and forget, never blocks response
+        const savedResult = result;
+        const savedBody = { ...req.body };
         res.status(201).json(result);
+
+        (async () => {
+            try {
+                if (!await driveService.isAuthorized()) {
+                    console.log('[Backup-Hook] Skipping voucher backup — Drive not authorized');
+                    return;
+                }
+                const fs = require('fs');
+                const path = require('path');
+                const { generateVoucherPDF } = require('../utils/pdfService');
+                const sheetsService = require('../utils/sheetsService');
+
+                const voucherData = { ...savedBody, ...savedResult };
+                const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
+                if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+
+                const dateStr = (voucherData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
+                const fileName = `Voucher_LR${voucherData.lrNo || 'N-A'}_${dateStr}.pdf`;
+                const localPath = path.join(TEMP_DIR, fileName);
+
+                console.log(`[Backup-Hook] Generating voucher PDF: ${fileName}`);
+                await generateVoucherPDF(voucherData, localPath);
+
+                const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
+                const plantLabel = (savedBody.brand === 'jklakshmi' || voucherData.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
+                const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
+                const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
+                const monthStr = new Date(voucherData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
+                await driveService.uploadFile(localPath, fileName, finalFolder);
+                if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+
+                await sheetsService.upsertVoucherRow(voucherData, savedBody.type || 'Dump', savedBody.brand);
+
+                await driveService.logActivity('Voucher_Create', 'success', `Backed up: ${fileName}`);
+                console.log(`[Backup-Hook] Voucher backed up successfully: ${fileName}`);
+            } catch (e) {
+                console.error('[Backup-Hook] Voucher create FAILED:', e.message);
+                console.error(e.stack);
+                await driveService.logActivity('Voucher_Create', 'error', 'Backup failed', e).catch(() => {});
+            }
+        })();
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

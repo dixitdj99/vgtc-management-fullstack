@@ -377,6 +377,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     voucher_cash: { bg: 'rgba(99,102,241,0.1)', color: 'var(--primary)', label: 'Voucher Adv' },
     refund: { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9', label: 'Refund' },
     returned: { bg: 'rgba(156,163,175,0.15)', color: '#9ca3af', label: 'Returned' },
+    voucher_expense: { bg: 'rgba(251,146,60,0.1)', color: '#f97316', label: 'Veh. Expense' },
   };
 
   const ENTITY_ICON = { driver: User, vehicle: Truck, staff: Users };
