@@ -240,73 +240,108 @@ function printVoucher(v, org = {}) {
 </body>
 </html>`;
     } else {
-        // Clean A6 Slip for JK_Lakshmi Dump/Factory, JK_Super Factory
-        const fmtRsP = (n) => 'Rs.' + Math.round(n).toLocaleString('en-IN');
+        // A4 slip for JK_Lakshmi / JK_Super (supports multi-delivery)
+        const fmtRsP = (x) => 'Rs.' + Math.round(x).toLocaleString('en-IN');
+        const hasDeliveries = v.deliveries && v.deliveries.length > 0;
+        const totalWeight = hasDeliveries
+            ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
+            : (parseFloat(v.weight) || 0);
+        const totalBags = hasDeliveries
+            ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
+            : (parseInt(v.bags) || 0);
+
+        const deliveryTableHTML = hasDeliveries ? `
+<table style="width:100%;border-collapse:collapse;margin-bottom:5px;font-size:8px">
+  <thead>
+    <tr style="background:#000;color:#fff">
+      <th style="padding:3px 4px;text-align:left;font-weight:700">LR No.</th>
+      <th style="padding:3px 4px;text-align:left;font-weight:700">Destination</th>
+      <th style="padding:3px 4px;text-align:left;font-weight:700">Party</th>
+      <th style="padding:3px 4px;text-align:right;font-weight:700">Wt(MT)</th>
+      <th style="padding:3px 4px;text-align:right;font-weight:700">Bags</th>
+      <th style="padding:3px 4px;text-align:right;font-weight:700">Rate</th>
+      <th style="padding:3px 4px;text-align:right;font-weight:700">Gross</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${v.deliveries.map((d, i) => {
+        const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+        return `<tr style="background:${i % 2 === 0 ? '#f5f5f5' : '#fff'}">
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd;font-weight:800">#${d.lrNo || '—'}</td>
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd">${d.destination || '—'}</td>
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd">${d.partyName || '—'}</td>
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right;font-weight:700">${parseFloat(d.weight||0).toFixed(2)}</td>
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right">${d.bags||'—'}</td>
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right">${d.rate||'—'}</td>
+          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right;font-weight:800">${rowGross>0?fmtRsP(rowGross):'—'}</td>
+        </tr>`;
+    }).join('')}
+  </tbody>
+  <tfoot>
+    <tr style="background:#e8e8e8;border-top:1.5px solid #000">
+      <td colspan="3" style="padding:3px 4px;font-weight:800">TOTAL (${v.deliveries.length} dest.)</td>
+      <td style="padding:3px 4px;text-align:right;font-weight:900">${totalWeight.toFixed(2)}</td>
+      <td style="padding:3px 4px;text-align:right;font-weight:900">${totalBags.toLocaleString('en-IN')}</td>
+      <td style="padding:3px 4px;text-align:right">—</td>
+      <td style="padding:3px 4px;text-align:right;font-weight:900;font-size:10px">${fmtRsP(n.gross)}</td>
+    </tr>
+  </tfoot>
+</table>` : `
+<table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+  <tr><td style="padding:3px 5px;font-weight:800;width:28%;background:#f5f5f5;border:1px solid #000;font-size:9px">Date</td><td style="padding:3px 5px;border:1px solid #000;font-size:9px">${v.date}</td><td style="padding:3px 5px;font-weight:800;background:#f5f5f5;border:1px solid #000;font-size:9px">Truck</td><td style="padding:3px 5px;border:1px solid #000;font-size:9px;font-weight:700">${v.truckNo}</td></tr>
+  <tr><td style="padding:3px 5px;font-weight:800;background:#f5f5f5;border:1px solid #000;font-size:9px">Dest.</td><td style="padding:3px 5px;border:1px solid #000;font-size:9px" colspan="3">${v.destination||'—'}</td></tr>
+</table>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:5px">
+  <div style="border:1px solid #000;padding:3px 5px;text-align:center"><div style="font-size:7px;font-weight:700;text-transform:uppercase">Weight</div><div style="font-size:12px;font-weight:900">${v.weight} MT</div></div>
+  <div style="border:1px solid #000;padding:3px 5px;text-align:center"><div style="font-size:7px;font-weight:700;text-transform:uppercase">Bags</div><div style="font-size:12px;font-weight:900">${v.bags}</div></div>
+  <div style="border:1px solid #000;padding:3px 5px;text-align:center"><div style="font-size:7px;font-weight:700;text-transform:uppercase">Rate</div><div style="font-size:12px;font-weight:900">${v.rate}/MT</div></div>
+</div>`;
+
         html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo}</title>
+<html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d=>d.lrNo).join(',') : '')}</title>
 <style>
 @page{size:105mm 148mm;margin:4mm}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size:11px;padding:4px;width:97mm;margin:0 auto;color:#000}
-.hd{text-align:center;border-bottom:1.5px solid #000;padding-bottom:6px;margin-bottom:8px}
-.hd h1{font-size:14px;font-weight:900;margin:0}
-.hd p{font-size:9px;margin:2px 0}
-.badge{display:inline-block;border:1.5px solid #000;padding:2px 14px;font-size:13px;font-weight:900;margin:6px 0 2px}
-.typ{font-size:10px;font-weight:700}
-table{width:100%;border-collapse:collapse;margin-bottom:6px}
-.info td{padding:3px 6px;font-size:11px;border:1px solid #000}
-.info .l{font-weight:800;width:35%;background:#f5f5f5}
-.info .v{font-weight:600}
-.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:6px}
-.gc{border:1px solid #000;padding:4px 6px;text-align:center}
-.gc .gl{font-size:8px;font-weight:700;text-transform:uppercase}
-.gc .gv{font-size:13px;font-weight:900}
-.calc td{padding:2px 6px;font-size:10px;border-bottom:1px solid #ddd}
-.calc .rl{font-weight:700}
-.calc .rv{text-align:right;font-weight:700}
-.tot{display:flex;justify-content:space-between;padding:6px 8px;background:#000;color:#fff;font-size:13px;font-weight:900;margin:6px 0}
-.pend{background:#92400e;color:#fff;text-align:center;padding:6px;font-size:11px;font-weight:800;margin:6px 0}
-.sig{display:flex;justify-content:space-between;margin-top:20px;padding-top:4px}
-.sb{text-align:center;font-size:9px;font-weight:700;min-width:60px;border-top:1px solid #000;padding-top:3px}
+body{font-family:Arial,sans-serif;font-size:9px;width:97mm;margin:0 auto;color:#000}
 @media print{body{padding:0}}
 </style></head>
 <body>
-<div class="hd">
-  <h1>VIKAS GOODS TRANSPORT</h1>
-  <p>Jharli, Jhajjar | 9416319445</p>
-</div>
-<div style="text-align:center">
-  <div class="badge">LR #${v.lrNo}</div>
-  <div class="typ">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
+<div style="text-align:center;border-bottom:1.5px solid #000;padding-bottom:4px;margin-bottom:5px">
+  <h1 style="font-size:13px;font-weight:900;margin:0">VIKAS GOODS TRANSPORT</h1>
+  <p style="font-size:8px;margin:1px 0">Jharli, Jhajjar | 9416319445</p>
 </div>
 
-<table class="info">
-  <tr><td class="l">Date</td><td class="v">${v.date}</td><td class="l">Truck</td><td class="v">${v.truckNo}</td></tr>
-  <tr><td class="l">Dest.</td><td class="v" colspan="3">${v.destination || '—'}</td></tr>
-</table>
-
-<div class="grid">
-  <div class="gc"><div class="gl">Weight</div><div class="gv">${v.weight} MT</div></div>
-  <div class="gc"><div class="gl">Bags</div><div class="gv">${v.bags}</div></div>
-  <div class="gc"><div class="gl">Rate</div><div class="gv">${v.rate}/MT</div></div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+  <div>
+    ${hasDeliveries
+        ? `<div style="font-size:9px;font-weight:800">Ref: <span style="font-size:11px;font-weight:900">#${v.lrNo || 'AUTO'}</span></div>
+           <div style="font-size:8px;color:#444">LRs: ${v.deliveries.map(d => '#'+d.lrNo).join(', ')}</div>`
+        : `<div style="display:inline-block;border:1.5px solid #000;padding:2px 10px;font-size:12px;font-weight:900">LR #${v.lrNo}</div>`}
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:8px;font-weight:700;text-transform:uppercase">${v.type ? v.type.replace(/_/g,' ') : ''}</div>
+    <div style="font-size:8px;margin-top:1px"><b>Date:</b> ${v.date} &nbsp;<b>Truck:</b> ${v.truckNo}</div>
+  </div>
 </div>
 
-<table class="calc">
-  <tr><td class="rl">Gross (${v.weight}×${v.rate})</td><td class="rv">${fmtRsP(n.gross)}</td></tr>
-  ${deductionRows.map(d => `<tr><td class="rl">${d.lbl}</td><td class="rv" style="color:#c00">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
-  ${deductionRows.length > 0 && !n.dieselPending ? `<tr style="border-top:1.5px solid #000"><td class="rl">Total Deductions</td><td class="rv" style="color:#c00">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
+${deliveryTableHTML}
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:9px">
+  <tr><td style="padding:2px 4px;font-weight:700">Gross ${hasDeliveries ? '(Σ)' : `(${v.weight}×${v.rate})`}</td><td style="padding:2px 4px;text-align:right;font-weight:700">${fmtRsP(n.gross)}</td></tr>
+  ${deductionRows.map(d => `<tr><td style="padding:2px 4px;border-bottom:1px solid #eee">${d.lbl}</td><td style="padding:2px 4px;text-align:right;font-weight:700;color:#c00;border-bottom:1px solid #eee">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
+  ${deductionRows.length > 0 && !n.dieselPending ? `<tr style="border-top:1.5px solid #000"><td style="padding:2px 4px;font-weight:800">Total Deductions</td><td style="padding:2px 4px;text-align:right;font-weight:800;color:#c00">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
 </table>
 
 ${n.dieselPending
-    ? `<div class="pend">NET PAYABLE — DIESEL PENDING (FULL TANK)</div>`
-    : `<div class="tot"><span>NET PAYABLE</span><span>${fmtRsP(n.net)}</span></div>`
-}
-${getPumpDisplay(v.pump) !== '—' ? `<div style="font-size:9px;text-align:center;margin-bottom:4px">Pump: ${getPumpDisplay(v.pump)}</div>` : ''}
+    ? `<div style="background:#92400e;color:#fff;text-align:center;padding:5px;font-size:10px;font-weight:800;margin:4px 0">NET PAYABLE — DIESEL PENDING (FULL TANK)</div>`
+    : `<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#000;color:#fff;font-size:12px;font-weight:900;margin:4px 0"><span>NET PAYABLE</span><span>${fmtRsP(n.net)}</span></div>`}
 
-<div class="sig">
-  <div class="sb">Driver</div>
-  <div class="sb">Accountant</div>
-  <div class="sb">Auth. Sign</div>
+${getPumpDisplay(v.pump) !== '—' ? `<div style="font-size:8px;text-align:center;margin-bottom:3px">Pump: ${getPumpDisplay(v.pump)}</div>` : ''}
+
+<div style="display:flex;justify-content:space-between;margin-top:16px">
+  <div style="text-align:center;font-size:8px;font-weight:700;min-width:55px;border-top:1px solid #000;padding-top:3px">Driver</div>
+  <div style="text-align:center;font-size:8px;font-weight:700;min-width:55px;border-top:1px solid #000;padding-top:3px">Accountant</div>
+  <div style="text-align:center;font-size:8px;font-weight:700;min-width:55px;border-top:1px solid #000;padding-top:3px">Auth. Sign</div>
 </div>
 <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
 </body></html>`;
