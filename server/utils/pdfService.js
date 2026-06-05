@@ -110,23 +110,37 @@ async function generateReceiptPDF(title, data, outputPath) {
  */
 async function generateVoucherPDF(v, outputPath) {
     const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
-    
-    const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+
+    // Support multi-delivery vouchers (deliveries array)
+    const gross = v.deliveries?.length > 0
+        ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+        : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+
     const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
-    const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
-    const cash = parseFloat(v.advanceCash) || 0;
-    const online = parseFloat(v.advanceOnline) || 0;
-    const munshi = parseFloat(v.munshi) || 0;
+    const diesel   = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
+    const cash     = parseFloat(v.advanceCash) || 0;
+    const online   = parseFloat(v.advanceOnline) || 0;
+    const weight   = parseFloat(v.weight) || 0;
+    const munshi   = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+    const shortage  = parseFloat(v.shortage) || 0;
     const commission = parseFloat(v.commission) || 0;
-    const totalDeductions = diesel + cash + online + munshi + commission;
+    const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+    const tyreGreasing = (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
+    const extraCash  = parseFloat(v.extraCash) || 0;
+    const totalDeductions = diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash;
     const net = gross - totalDeductions;
 
+    // Match exact same deduction list as browser printVoucher function
     const deductions = [
-        { label: 'Diesel Advance', value: diesel, isPending: dieselPending },
-        { label: 'Cash Advance', value: cash },
-        { label: 'Online Advance', value: online },
-        { label: 'Munshi', value: munshi },
-        { label: 'Commission', value: commission },
+        { label: 'Diesel Advance',    value: diesel,    isPending: dieselPending },
+        { label: 'Cash Advance',      value: cash },
+        { label: 'Online Advance',    value: online },
+        { label: 'Munshi',            value: munshi },
+        { label: 'Shortage',          value: shortage },
+        { label: 'Commission',        value: commission },
+        { label: 'Tyre Puncture',     value: tyrePuncture },
+        { label: 'Tyre Greasing & Air', value: tyreGreasing },
+        { label: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, value: extraCash },
     ].filter(d => d.value > 0 || d.isPending);
 
     return new Promise((resolve, reject) => {
@@ -294,11 +308,14 @@ async function generateVoucherPDF(v, outputPath) {
         doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
         y += 10;
 
-        // LR badge
-        const badge = `LR # ${v.lrNo}`;
-        const bw = doc.widthOfString(badge) + 20;
+        // LR badge — show all delivery LRs if multi-delivery
+        const hasDeliveries = v.deliveries && v.deliveries.length > 0;
+        const lrDisplay = hasDeliveries
+            ? `LRs: ${v.deliveries.map(d => d.lrNo).filter(Boolean).join(', ')}`
+            : `LR # ${v.lrNo}`;
+        const bw = Math.min(doc.widthOfString(lrDisplay) + 20, CW);
         doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
-        doc.fontSize(12).font('Helvetica-Bold').text(badge, M, y + 4, { align: 'center', width: CW });
+        doc.fontSize(hasDeliveries ? 8 : 12).font('Helvetica-Bold').text(lrDisplay, M, y + (hasDeliveries ? 5 : 4), { align: 'center', width: CW });
         y += 22;
         doc.fontSize(8).font('Helvetica').fillColor('#000').text(v.type ? v.type.replace(/_/g, ' ') : '', M, y, { align: 'center', width: CW });
         y += 14;
@@ -312,22 +329,43 @@ async function generateVoucherPDF(v, outputPath) {
         };
         drawInfoRow('Date', v.date);
         drawInfoRow('Truck No.', v.truckNo);
-        drawInfoRow('Destination', v.destination || '—');
+
+        if (hasDeliveries) {
+            // Multi-delivery: show each destination inline
+            v.deliveries.forEach(d => {
+                drawInfoRow(`${d.lrNo ? '#'+d.lrNo+' ' : ''}Dest`, `${d.destination || '—'} ${d.partyName ? '('+d.partyName+')' : ''}`);
+            });
+        } else {
+            drawInfoRow('Destination', v.destination || '—');
+        }
         y += 4;
 
-        // Data grid 2x2
+        // Data grid — show totals
+        const totalWeight = hasDeliveries
+            ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
+            : (parseFloat(v.weight) || 0);
+        const totalBags = hasDeliveries
+            ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
+            : (parseInt(v.bags) || 0);
+
         const CELLW = (CW - 4) / 2, CELLH = 28;
         const drawCell = (label, value, cx, cy) => {
             doc.rect(cx, cy, CELLW, CELLH).strokeColor('#000').lineWidth(0.5).stroke();
             doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), cx + 6, cy + 4);
             doc.fontSize(11).font('Helvetica-Bold').text(String(value || '—'), cx + 6, cy + 14);
         };
-        drawCell('Weight', `${v.weight} MT`, M, y);
-        drawCell('Bags', v.bags || '—', M + CELLW + 4, y);
+        drawCell('Weight', `${totalWeight.toFixed(2)} MT`, M, y);
+        drawCell('Bags', String(totalBags), M + CELLW + 4, y);
         y += CELLH + 4;
-        drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
-        drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 4, y);
-        y += CELLH + 8;
+        if (!hasDeliveries) {
+            drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
+            drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 4, y);
+            y += CELLH + 8;
+        } else {
+            drawCell('Pump', getPumpDisplay(v.pump), M, y);
+            drawCell('Gross', `Rs.${Math.round(gross).toLocaleString()}`, M + CELLW + 4, y);
+            y += CELLH + 8;
+        }
 
         // Calc box
         doc.rect(M, y, CW, 16).fill('#e8e8e8');
@@ -337,7 +375,10 @@ async function generateVoucherPDF(v, outputPath) {
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Gross Total', M + 6, y);
         doc.text(`Rs.${Math.round(gross).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
         y += 14;
-        doc.fontSize(7).font('Helvetica').text(`${v.weight} MT x Rs.${v.rate}/MT`, M + 6, y);
+        const grossDetail = hasDeliveries
+            ? `${v.deliveries.length} destinations`
+            : `${v.weight} MT x Rs.${v.rate}/MT`;
+        doc.fontSize(7).font('Helvetica').text(grossDetail, M + 6, y);
         y += 12;
 
         deductions.forEach(d => {
