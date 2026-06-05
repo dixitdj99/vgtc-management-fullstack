@@ -235,6 +235,29 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
     const fmtRsL = (n) => 'Rs.' + Math.round(n).toLocaleString('en-IN');
     const fmtDateL = (s) => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
+    // Active trucks from Balance Sheet for the selected date range
+    const [activeTrucks, setActiveTrucks] = useState(new Set()); // trucks that have vouchers in range
+    const [rangeLoading, setRangeLoading] = useState(false);
+
+    // When date range is applied, fetch vouchers to determine active trucks
+    const loadActiveTrucksForRange = async (from, to) => {
+        if (!from || !to) { setActiveTrucks(new Set()); return; }
+        setRangeLoading(true);
+        try {
+            const res = await ax.get('/vouchers');
+            const vouchers = res.data || [];
+            const trucks = new Set(
+                vouchers
+                    .filter(v => v.date >= from && v.date <= to)
+                    .map(v => (v.truckNo || '').toUpperCase().replace(/\s/g, ''))
+                    .filter(Boolean)
+            );
+            setActiveTrucks(trucks);
+            console.log(`[Toll] Active trucks in ${from}→${to}: ${[...trucks].join(', ')}`);
+        } catch { setActiveTrucks(new Set()); }
+        finally { setRangeLoading(false); }
+    };
+
     // Filter displayed records
     const filtered = useMemo(() => {
         const q = tollSearch.toLowerCase();
@@ -346,11 +369,32 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
                 }
 
                 if (parsed.length === 0) {
-                    alert('No toll transactions found.\nMake sure the file has "VRN", "Transaction Date", and "Debit Amt" columns (NETC/FASTag format).');
+                    alert('No toll transactions found in the file.\nMake sure it has "VRN", "Transaction Date", and "Debit Amt" columns (NETC/FASTag format).');
                     return;
                 }
 
-                setTollImportPreview({ rows: parsed, fileName: file.name });
+                // Filter by date range and active trucks from Balance Sheet
+                let filtered = parsed;
+                let skippedDate = 0, skippedTruck = 0;
+
+                if (tollFrom && tollTo) {
+                    const before = filtered.length;
+                    filtered = filtered.filter(r => r.date >= tollFrom && r.date <= tollTo);
+                    skippedDate = before - filtered.length;
+                }
+
+                if (activeTrucks.size > 0) {
+                    const before = filtered.length;
+                    filtered = filtered.filter(r => activeTrucks.has(r.truckNo));
+                    skippedTruck = before - filtered.length;
+                }
+
+                if (filtered.length === 0) {
+                    alert(`No matching records after filtering:\n- Skipped ${skippedDate} records outside date range (${tollFrom} → ${tollTo})\n- Skipped ${skippedTruck} records for trucks not in Balance Sheet\n\nCheck the date range and make sure the trucks have vouchers in that period.`);
+                    return;
+                }
+
+                setTollImportPreview({ rows: filtered, fileName: file.name, totalInFile: parsed.length, skippedDate, skippedTruck });
             } catch (err) { alert('Failed to parse Excel: ' + err.message); }
             finally { setTollImporting(false); }
         };
@@ -408,19 +452,50 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
                             <label style={{ fontSize: '10px', fontWeight: 700 }}>To</label>
                             <input className="fi" type="date" value={tollTo} onChange={e => setTollTo(e.target.value)} style={{ height: '32px' }} />
                         </div>
-                        <button className="btn btn-p btn-sm" onClick={() => onRefresh(tollFrom, tollTo)}><Calendar size={13} /> Apply</button>
-                        <button className="btn btn-g btn-sm" onClick={() => { setTollFrom(''); setTollTo(''); onRefresh('', ''); }}>Clear</button>
+                        <button className="btn btn-p btn-sm" disabled={!tollFrom || !tollTo || rangeLoading}
+                            onClick={() => { onRefresh(tollFrom, tollTo); loadActiveTrucksForRange(tollFrom, tollTo); }}>
+                            {rangeLoading ? <Loader2 size={12} className="spin" /> : <><Calendar size={13} /> Apply</>}
+                        </button>
+                        <button className="btn btn-g btn-sm" onClick={() => { setTollFrom(''); setTollTo(''); setActiveTrucks(new Set()); onRefresh('', ''); }}>Clear</button>
                     </div>
                 </div>
             </div>
+
+            {/* Active trucks status */}
+            {tollFrom && tollTo && activeTrucks.size > 0 && (
+                <div style={{ padding: '10px 16px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <Check size={15} color="#10b981" style={{ marginTop: '1px', flexShrink: 0 }} />
+                    <div>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>
+                            {activeTrucks.size} active truck{activeTrucks.size !== 1 ? 's' : ''} found in Balance Sheet for {fmtDateL(tollFrom)} → {fmtDateL(tollTo)}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {[...activeTrucks].join(' · ')}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#10b981', marginTop: '3px', fontWeight: 700 }}>
+                            Excel import will only include toll records for these trucks within this date range.
+                        </div>
+                    </div>
+                </div>
+            )}
+            {tollFrom && tollTo && !rangeLoading && activeTrucks.size === 0 && (
+                <div style={{ padding: '10px 16px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <AlertTriangle size={14} color="#f59e0b" />
+                    <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 700 }}>No voucher entries found in Balance Sheet for this date range. Click Apply first to load active trucks.</span>
+                </div>
+            )}
 
             {/* Excel import */}
             <div className="card" style={{ padding: '16px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <Upload size={15} color="#6366f1" />
                     <span style={{ fontSize: '13px', fontWeight: 700 }}>Import from Excel</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Supports NETC/FASTag (Kotak) statements directly — or any generic Excel with VRN, Transaction Date, Debit Amt columns</span>
-                    <label className="btn btn-p btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {activeTrucks.size > 0
+                            ? `Will import only: date ${tollFrom} → ${tollTo} + ${activeTrucks.size} active trucks`
+                            : 'Set date range and click Apply first to validate against Balance Sheet'}
+                    </span>
+                    <label className={`btn btn-sm ${activeTrucks.size > 0 ? 'btn-p' : 'btn-g'}`} style={{ cursor: 'pointer', margin: 0 }}>
                         <Upload size={12} /> {tollImporting ? 'Reading…' : 'Choose Excel File'}
                         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} style={{ display: 'none' }} disabled={tollImporting} />
                     </label>
@@ -430,7 +505,16 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
                 {tollImportPreview && (
                     <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
                         <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 700 }}>{tollImportPreview.rows.length} records from <em>{tollImportPreview.fileName}</em> — preview (first 10)</span>
+                            <div>
+                                <span style={{ fontSize: '12px', fontWeight: 700 }}>{tollImportPreview.rows.length} records from <em>{tollImportPreview.fileName}</em> — preview (first 10)</span>
+                                {(tollImportPreview.skippedDate > 0 || tollImportPreview.skippedTruck > 0) && (
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                        {tollImportPreview.totalInFile} total in file
+                                        {tollImportPreview.skippedDate > 0 && ` · ${tollImportPreview.skippedDate} skipped (outside date range)`}
+                                        {tollImportPreview.skippedTruck > 0 && ` · ${tollImportPreview.skippedTruck} skipped (truck not in Balance Sheet)`}
+                                    </div>
+                                )}
+                            </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button className="btn btn-g btn-sm" onClick={() => setTollImportPreview(null)}>Cancel</button>
                                 <button className="btn btn-p btn-sm" onClick={handleImportConfirm} disabled={tollImporting}>
