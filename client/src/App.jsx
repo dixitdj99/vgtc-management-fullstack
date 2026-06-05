@@ -64,6 +64,21 @@ function AppInner() {
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'sepia');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setUpdateAvailable(true);
+    window.addEventListener('sw-update-available', handler);
+    return () => window.removeEventListener('sw-update-available', handler);
+  }, []);
+
+  const handleApplyUpdate = () => {
+    setUpdateAvailable(false);
+    window.applyUpdate?.();
+    // fallback if SW not available
+    setTimeout(() => window.location.reload(), 500);
+  };
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [justCameOnline, setJustCameOnline] = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
@@ -674,6 +689,34 @@ function AppInner() {
             </div>
           </div>
         </header>
+
+        {/* ── Update available banner ── */}
+        {updateAvailable && (
+          <div style={{
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: '#fff', fontSize: '13px', fontWeight: 700,
+            padding: '10px 20px', display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap',
+            boxShadow: '0 2px 12px rgba(99,102,241,0.4)',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>🚀</span>
+              <span>New update available — reload to get the latest version</span>
+            </span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                onClick={handleApplyUpdate}
+                style={{ background: '#fff', color: '#6366f1', border: 'none', borderRadius: '8px', padding: '6px 18px', fontWeight: 800, fontSize: '12px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                Reload Now
+              </button>
+              <button
+                onClick={() => setUpdateAvailable(false)}
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontWeight: 600, fontSize: '11px', cursor: 'pointer' }}>
+                Later
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Offline / sync status banner — single child pattern for AnimatePresence compat */}
         {(() => {

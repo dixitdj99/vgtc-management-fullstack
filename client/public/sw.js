@@ -5,8 +5,10 @@ const API_CACHE    = 'vgtc-api-v3';
 const FONT_CACHE   = 'vgtc-fonts-v1';
 
 // ── Install ───────────────────────────────────────────────────────────────
+// Do NOT call skipWaiting here — we want the new SW to wait so the app
+// can show an "Update available" banner and let the user choose when to reload.
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Take control immediately on update
+  // SW waits in 'installed' state until page calls SKIP_WAITING
 });
 
 // ── Activate: purge stale caches ─────────────────────────────────────────

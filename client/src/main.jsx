@@ -35,17 +35,58 @@ if ('serviceWorker' in navigator) {
       .then((reg) => {
         console.log('[VGTC] Service Worker registered');
 
-        // Listen for SW messages
+        // ── Update detection ──────────────────────────────────────────────
+        // When a new SW is found (new Netlify deploy), notify the user
+        const notifyUpdate = () => {
+          window.dispatchEvent(new CustomEvent('sw-update-available'));
+        };
+
+        // New SW installing now
+        if (reg.installing) {
+          reg.installing.addEventListener('statechange', (e) => {
+            if (e.target.state === 'installed' && navigator.serviceWorker.controller) notifyUpdate();
+          });
+        }
+
+        // New SW found during this session
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) notifyUpdate();
+          });
+        });
+
+        // Poll for updates every 30 minutes (catches deploys while app is open)
+        setInterval(() => reg.update(), 30 * 60 * 1000);
+
+        // When SW takes control after user clicks "Update" → reload page
+        let reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (reloading) return;
+          reloading = true;
+          window.location.reload();
+        });
+
+        // Listen for SW messages (prefetch done etc.)
         navigator.serviceWorker.addEventListener('message', (event) => {
           if (event.data?.type === 'PREFETCH_DONE') {
             console.log('[VGTC] Critical API data pre-fetched and cached');
-            window.dispatchEvent(new CustomEvent('sw-prefetch-done'));
           }
         });
       })
       .catch(e => console.warn('[VGTC] SW registration failed:', e));
   });
 }
+
+// Trigger SW skip-waiting: tell the waiting SW to take control
+window.applyUpdate = () => {
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (reg?.waiting) {
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+  });
+};
 
 // Helper: tell the SW to pre-fetch critical API data with current auth token
 window.triggerSWPrefetch = () => {
