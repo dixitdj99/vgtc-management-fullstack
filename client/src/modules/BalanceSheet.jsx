@@ -13,7 +13,9 @@ const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v, vehicle) {
-  const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+  const gross = v.deliveries?.length > 0
+    ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0) * (parseFloat(d.rate)||0), 0)
+    : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
@@ -33,6 +35,8 @@ function calcNet(v, vehicle) {
   return net;
 }
 function calcGross(v) {
+  if (v.deliveries?.length > 0)
+    return v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0) * (parseFloat(d.rate)||0), 0);
   return (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
 }
 function calcTotalDeductions(v, vehicle) {
@@ -262,14 +266,46 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       </td>
       <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
       <td style={{ ...TD }}>{v.date}</td>
-      <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span></td>
+      <td style={{ ...TD }}>
+        {v.deliveries?.length > 0
+          ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              {v.deliveries.map((d, di) => <span key={di} style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '11px' }}>#{d.lrNo || '—'}</span>)}
+            </div>
+          : <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span>}
+      </td>
       {isBillType && <td style={{ ...TD }}>{v.billNo || '—'}</td>}
       {isBillType && <td style={{ ...TD }}>{v.partyCode || '—'}</td>}
-      <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
-      <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('weight', '60px') : (v.weight || '—')}</td>
-      <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('rate', '60px') : (v.rate || '—')}</td>
+      <td style={{ ...TD }}>
+        {v.deliveries?.length > 0
+          ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              {v.deliveries.map((d, di) => (
+                <div key={di} style={{ fontSize: '11px' }}>
+                  <span style={{ fontWeight: 700 }}>{d.destination || '—'}</span>
+                  {d.partyName && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}> · {d.partyName}</span>}
+                </div>
+              ))}
+            </div>
+          : (v.destination || v.partyName || '—')}
+      </td>
+      <td style={{ ...TD, textAlign: 'right' }}>
+        {editing ? FI('weight', '60px') : (v.deliveries?.length > 0
+          ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
+              {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '10px' }}>{d.weight}</span>)}
+              <span style={{ fontWeight: 900, color: 'var(--accent)', fontSize: '11px', borderTop: '1px solid var(--border)', paddingTop: '1px' }}>
+                Σ {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0), 0).toFixed(2)}
+              </span>
+            </div>
+          : (v.weight || '—'))}
+      </td>
+      <td style={{ ...TD, textAlign: 'right' }}>
+        {editing ? FI('rate', '60px') : (v.deliveries?.length > 0
+          ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
+              {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '10px' }}>{d.rate}</span>)}
+            </div>
+          : (v.rate || '—'))}
+      </td>
       <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
-        {editing ? FI('total', '75px') : fmtRs((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0))}
+        {editing ? FI('total', '75px') : fmtRs(calcGross(cv))}
       </td>
       <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>
         {editing ? FI('advanceDiesel', '70px', true) : (
@@ -438,7 +474,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
     }, 0);
     return {
       weight: rows.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0).toFixed(2),
-      gross: rows.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
+      gross: rows.reduce((s, v) => s + calcGross(v), 0),
       net,
       paid,
       out: Math.max(0, positiveOut - adjustedAmount),
@@ -880,7 +916,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
       return { 
         truck, 
         trips: String(rows.length), 
-        gross: rows.reduce((s, v) => s + (parseFloat(v.total) || 0), 0), 
+        gross: rows.reduce((s, v) => s + calcGross(v), 0),
         net, 
         paid, 
         outstanding: Math.max(0, net - paid),

@@ -20,7 +20,9 @@ const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 function calcNet(v) {
-  const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+  const gross = v.deliveries?.length > 0
+    ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0) * (parseFloat(d.rate)||0), 0)
+    : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
@@ -118,8 +120,14 @@ export default function TruckDashboard({ role, permissions }) {
     return Object.values(map).map(({ truckNo, vouchers: vList }) => {
       const veh = (vehicles || []).find(vh => vh.truckNo === truckNo);
       const trips = vList.length;
-      const totalWeight = vList.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0);
-      const totalGross = vList.reduce((s, v) => s + (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0), 0);
+      const totalWeight = vList.reduce((s, v) => {
+        if (v.deliveries?.length > 0) return s + v.deliveries.reduce((ds, d) => ds + (parseFloat(d.weight)||0), 0);
+        return s + (parseFloat(v.weight) || 0);
+      }, 0);
+      const totalGross = vList.reduce((s, v) => {
+        if (v.deliveries?.length > 0) return s + v.deliveries.reduce((ds, d) => ds + (parseFloat(d.weight)||0)*(parseFloat(d.rate)||0), 0);
+        return s + (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+      }, 0);
       const totalNet = vList.reduce((s, v) => s + calcNet(v), 0);
       const totalDeductions = totalGross - totalNet;
       const avgMargin = totalGross > 0 ? (totalDeductions / totalGross) * 100 : 0;

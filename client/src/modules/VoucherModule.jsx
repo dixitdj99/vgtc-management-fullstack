@@ -17,6 +17,16 @@ const API_LR = `/lr`;
 const NONE_PUMP = 'None';
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
+const EMPTY_DELIVERY = { lrNo: '', destination: '', partyName: '', weight: '', bags: '', rate: '' };
+
+// Compute gross for a voucher — handles both single and multi-delivery
+const calcGrossV = (v) => {
+    if (v.deliveries?.length > 0) {
+        return v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
+    }
+    return (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+};
+
 const hasDieselAdvance = (value) => String(value ?? '').trim() !== '';
 const getAllowedPump = (pump, advanceDiesel, pumpOptions = []) => {
     if (!hasDieselAdvance(advanceDiesel)) return NONE_PUMP;
@@ -35,7 +45,7 @@ const getCalc = (w, r, hasComm) => {
 
 // Compute deductions and net payable for a voucher record
 const getNet = (v) => {
-    const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+    const gross = calcGrossV(v);
     const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
     const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
     const cash = parseFloat(v.advanceCash) || 0;
@@ -524,6 +534,35 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '',
     });
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
+
+    // Multi-delivery state (JK_Super / JK_Lakshmi only)
+    const [deliveries, setDeliveries] = useState([{ ...EMPTY_DELIVERY }]);
+
+    const updateDelivery = (idx, key, val) => {
+        setDeliveries(d => d.map((row, i) => {
+            if (i !== idx) return row;
+            const updated = { ...row, [key]: val };
+            // Auto-compute bags when weight changes and vice-versa
+            if (key === 'weight' && val) updated.bags = String(Math.round(parseFloat(val) * 20));
+            if (key === 'bags' && val) updated.weight = (parseFloat(val) * 0.05).toFixed(2);
+            return updated;
+        }));
+    };
+    const removeDelivery = (idx) => setDeliveries(d => d.filter((_, i) => i !== idx));
+    const addDelivery = () => setDeliveries(d => [...d, { ...EMPTY_DELIVERY }]);
+
+    const deliveryTotals = useMemo(() => {
+        const totalWeight = deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0);
+        const totalBags   = deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0);
+        const totalGross  = deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
+        return { totalWeight, totalBags, totalGross };
+    }, [deliveries]);
+
+    // Reset deliveries when switching to/from factory type
+    useEffect(() => {
+        if (!isFactory) setDeliveries([{ ...EMPTY_DELIVERY }]);
+    }, [isFactory]);
+
     const [lastKmInfo, setLastKmInfo] = useState(null); // { endKm, lrNo, date }
     const [fetchingKm, setFetchingKm] = useState(false);
     const [vgtcTrucks, setVgtcTrucks] = useState(new Set()); // truck numbers owned by Vikas Goods Transport
@@ -708,11 +747,27 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const executeSaveVoucher = async () => {
         setSaving(true); setIsConfirmingSave(false);
-        const calc = getCalc(form.weight, form.rate, form.hasCommission);
+        const validDeliveries = isFactory ? deliveries.filter(d => d.weight || d.lrNo || d.destination) : [];
+        const hasMultiDelivery = validDeliveries.length > 0;
+        const totalW = hasMultiDelivery ? deliveryTotals.totalWeight : parseFloat(form.weight) || 0;
+        const totalB = hasMultiDelivery ? deliveryTotals.totalBags   : parseInt(form.bags) || 0;
+        const calc   = getCalc(totalW, validDeliveries[0]?.rate || form.rate, form.hasCommission);
+        const payload = {
+            ...form,
+            partyName: hasMultiDelivery ? (validDeliveries.map(d => d.partyName).filter(Boolean).join(', ') || form.partyName) : resolvePartyName(form.partyName, knownPartyNames),
+            destination: hasMultiDelivery ? validDeliveries.map(d => d.destination).filter(Boolean).join(', ') : form.destination,
+            weight: String(totalW.toFixed ? totalW.toFixed(2) : totalW),
+            bags: String(totalB),
+            type: vType, brand,
+            ...calc,
+            materials: form.materials || [],
+            ...(hasMultiDelivery ? { deliveries: validDeliveries } : {}),
+        };
         try {
-            await ax.post(API_V, { ...form, partyName: resolvePartyName(form.partyName, knownPartyNames), type: vType, brand, ...calc, materials: form.materials || [] });
+            await ax.post(API_V, payload);
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '' }));
+            setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
@@ -837,6 +892,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     {vehicleNumbers.map(no => <option key={no} value={no} />)}
                                                 </datalist>
                                             </div>
+                                                {!isFactory && <>
                                             <div className="field">
                                                 <label><MapPin size={11} /> Destination</label>
                                                 <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
@@ -848,6 +904,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     {knownPartyNames.map(name => <option key={name} value={name} />)}
                                                 </datalist>
                                             </div>
+                                            </>}
                                             {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill') && (
                                                 <>
                                                     <div className="field">
@@ -898,23 +955,119 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                         )}
 
-                                        <div className="fg fg-4" style={{ marginTop: '12px' }}>
+                                        {/* ── Multi-delivery table for JK_Super / JK_Lakshmi ── */}
+                                        {isFactory && (
+                                            <div style={{ marginTop: '14px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <MapPin size={12} /> Delivery Entries
+                                                        <span style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>— one row per LR / destination</span>
+                                                    </span>
+                                                    <button type="button" className="btn btn-p btn-sm" onClick={addDelivery}>
+                                                        <Plus size={12} /> Add Destination
+                                                    </button>
+                                                </div>
+                                                <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                                        <thead>
+                                                            <tr style={{ background: 'var(--bg-th)' }}>
+                                                                {['LR No.', 'Destination', 'Party Name', 'Weight (MT)', 'Total Bags', 'Rate (Rs/MT)', 'Gross', ''].map(h => (
+                                                                    <th key={h} style={{ padding: '7px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', textAlign: h === 'Gross' || h === 'Weight (MT)' || h === 'Rate (Rs/MT)' || h === 'Total Bags' ? 'right' : 'left' }}>{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {deliveries.map((d, idx) => {
+                                                                const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+                                                                return (
+                                                                    <tr key={idx} style={{ background: idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                                                        <td style={{ padding: '5px 8px' }}>
+                                                                            <input className="fi" type="text" placeholder="e.g. 101" value={d.lrNo}
+                                                                                onChange={e => updateDelivery(idx, 'lrNo', e.target.value)}
+                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 8px' }}>
+                                                                            <input className="fi" type="text" placeholder="City / Party" value={d.destination}
+                                                                                onChange={e => updateDelivery(idx, 'destination', e.target.value)}
+                                                                                style={{ width: '130px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 8px' }}>
+                                                                            <input className="fi" type="text" placeholder="Party name" value={d.partyName}
+                                                                                onChange={e => updateDelivery(idx, 'partyName', e.target.value)}
+                                                                                list={`del-party-${idx}`}
+                                                                                style={{ width: '150px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                            <datalist id={`del-party-${idx}`}>
+                                                                                {knownPartyNames.map(n => <option key={n} value={n} />)}
+                                                                            </datalist>
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                                            <input className="fi" type="number" step="0.01" placeholder="0.00" value={d.weight}
+                                                                                onChange={e => updateDelivery(idx, 'weight', e.target.value)}
+                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                                            <input className="fi" type="number" placeholder="0" value={d.bags}
+                                                                                onChange={e => updateDelivery(idx, 'bags', e.target.value)}
+                                                                                style={{ width: '75px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                                            <input className="fi" type="number" placeholder="0" value={d.rate}
+                                                                                onChange={e => updateDelivery(idx, 'rate', e.target.value)}
+                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 700, color: rowGross > 0 ? 'var(--accent)' : 'var(--text-muted)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                                                                            {rowGross > 0 ? 'Rs.' + Math.round(rowGross).toLocaleString('en-IN') : '—'}
+                                                                        </td>
+                                                                        <td style={{ padding: '5px 8px', textAlign: 'center' }}>
+                                                                            {deliveries.length > 1 && (
+                                                                                <button type="button" className="btn btn-d btn-icon btn-sm" onClick={() => removeDelivery(idx)} title="Remove row"><X size={11} /></button>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                        {/* Totals row */}
+                                                        <tfoot>
+                                                            <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                                                                <td colSpan={3} style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                                                                    Total ({deliveries.length} {deliveries.length === 1 ? 'destination' : 'destinations'})
+                                                                </td>
+                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>
+                                                                    {deliveryTotals.totalWeight > 0 ? deliveryTotals.totalWeight.toFixed(2) + ' MT' : '—'}
+                                                                </td>
+                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>
+                                                                    {deliveryTotals.totalBags > 0 ? deliveryTotals.totalBags.toLocaleString('en-IN') : '—'}
+                                                                </td>
+                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px' }}>Various</td>
+                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '14px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                                                                    {deliveryTotals.totalGross > 0 ? 'Rs.' + Math.round(deliveryTotals.totalGross).toLocaleString('en-IN') : '—'}
+                                                                </td>
+                                                                <td />
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!isFactory && <div className="fg fg-4" style={{ marginTop: '12px' }}>
                                             <div className="field">
                                                 <label>Weight (MT)</label>
-                                                <input className="fi" type="number" step="0.01" placeholder="0.00" value={form.weight} 
+                                                <input className="fi" type="number" step="0.01" placeholder="0.00" value={form.weight}
                                                     onChange={e => {
                                                         const val = e.target.value;
                                                         setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
-                                                    }} 
+                                                    }}
                                                 />
                                             </div>
                                             <div className="field">
                                                 <label>Total Bags</label>
-                                                <input className="fi" type="number" placeholder="0" value={form.bags} 
+                                                <input className="fi" type="number" placeholder="0" value={form.bags}
                                                     onChange={e => {
                                                         const val = e.target.value;
                                                         setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
-                                                    }} 
+                                                    }}
                                                 />
                                             </div>
                                             <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" placeholder="0" value={form.rate} onChange={e => set('rate', e.target.value)} /></div>
@@ -923,8 +1076,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     {pumpOptions.map(p => <option key={p}>{p}</option>)}
                                                 </select>
                                             </div>
-                                        </div>
+                                        </div>}
                                         <div className="fg fg-4" style={{ marginTop: '12px' }}>
+                                            {isFactory && (
+                                                <div className="field">
+                                                    <label>Fuel Station</label>
+                                                    <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
+                                                        {pumpOptions.map(p => <option key={p}>{p}</option>)}
+                                                    </select>
+                                                </div>
+                                            )}
                                             <div className="field">
                                                 <label><Fuel size={11} /> Diesel Advance</label>
                                                 <div className="fi-row">
@@ -1118,7 +1279,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
                                         <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                                        <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span></td>
+                                        <td style={{ ...TD }}>
+                                            {v.deliveries?.length > 0
+                                                ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    {v.deliveries.map((d, di) => (
+                                                        <span key={di} style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '11px' }}>#{d.lrNo || '—'}</span>
+                                                    ))}
+                                                </div>
+                                                : <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span>}
+                                        </td>
                                         <td style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
                                         <td style={{ ...TD, fontWeight: 700 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1131,13 +1300,46 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 )}
                                             </div>
                                         </td>
-                                        <td style={{ ...TD }}>{v.destination || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{v.weight}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
-                                            <div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>
-                                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div>
+                                        <td style={{ ...TD }}>
+                                            {v.deliveries?.length > 0
+                                                ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    {v.deliveries.map((d, di) => (
+                                                        <div key={di} style={{ fontSize: '11px' }}>
+                                                            <span style={{ fontWeight: 700, color: 'var(--text)' }}>{d.destination || '—'}</span>
+                                                            {d.partyName && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}> · {d.partyName}</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                : v.destination || '—'}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.rate}</td>
+                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
+                                            {v.deliveries?.length > 0
+                                                ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
+                                                    {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.weight || '—'}</span>)}
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px' }}>
+                                                        Σ {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0), 0).toFixed(2)}
+                                                    </span>
+                                                </div>
+                                                : v.weight}
+                                        </td>
+                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                            {v.deliveries?.length > 0
+                                                ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
+                                                    {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px', fontWeight: 700 }}>{d.bags || '—'}</span>)}
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px' }}>
+                                                        Σ {v.deliveries.reduce((s, d) => s + (parseInt(d.bags)||0), 0).toLocaleString('en-IN')}
+                                                    </span>
+                                                </div>
+                                                : <><div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>
+                                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div></>}
+                                        </td>
+                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                            {v.deliveries?.length > 0
+                                                ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
+                                                    {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.rate || '—'}</span>)}
+                                                </div>
+                                                : v.rate}
+                                        </td>
                                         <td style={{ ...TD }}>{getPumpDisplay(v.pump)}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
