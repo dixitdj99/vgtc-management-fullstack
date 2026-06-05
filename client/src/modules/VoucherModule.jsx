@@ -651,6 +651,21 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         lrMaterials.map(m => m.partyName)
     ), [vouchers, lrMaterials]);
 
+    // Collect ALL used LR numbers from existing vouchers (top-level + delivery rows)
+    const usedLRSet = useMemo(() => {
+        const s = new Set();
+        vouchers.forEach(v => {
+            // top-level lrNo (could be comma-separated for old multi-lr vouchers)
+            if (v.lrNo) String(v.lrNo).split(',').map(x => x.trim()).filter(Boolean).forEach(lr => s.add(lr));
+            // delivery-level lrNos
+            (v.deliveries || []).forEach(d => { if (d.lrNo) s.add(String(d.lrNo).trim()); });
+        });
+        return s;
+    }, [vouchers]);
+
+    // For factory types: check which delivery rows have duplicate LRs
+    const [dupLRModal, setDupLRModal] = useState(null); // { lrNos: [...] } — shown on save attempt
+
     // Factory types: compute next LR number from existing voucher list
     // Dump & Bill types: user enters LR from loading receipt (no auto-number)
     // isFactory declared earlier (before deliveries state) to avoid TDZ
@@ -784,6 +799,18 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             alert('Truck No. is required');
             return;
         }
+
+        // Check delivery LR duplicates for factory types
+        if (isFactory) {
+            const duplicates = deliveries
+                .map(d => d.lrNo?.trim())
+                .filter(lr => lr && usedLRSet.has(lr));
+            if (duplicates.length > 0) {
+                setDupLRModal({ lrNos: [...new Set(duplicates)] });
+                return;
+            }
+        }
+
         setIsConfirmingSave(true);
     };
 
@@ -882,6 +909,31 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             />
             <AnimatePresence>{editVoucher && <EditModal v={editVoucher} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+
+            {/* Duplicate LR popup */}
+            <AnimatePresence>
+                {dupLRModal && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+                        <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                            style={{ width: '90%', maxWidth: '400px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px', textAlign: 'center' }}>
+                            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                                <AlertTriangle size={26} color="#f43f5e" />
+                            </div>
+                            <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Duplicate LR Number{dupLRModal.lrNos.length > 1 ? 's' : ''}</div>
+                            <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '12px' }}>
+                                The following LR number{dupLRModal.lrNos.length > 1 ? 's are' : ' is'} already assigned to an existing voucher:
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '20px' }}>
+                                {dupLRModal.lrNos.map(lr => (
+                                    <span key={lr} style={{ display: 'inline-block', padding: '4px 12px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', borderRadius: '6px', fontWeight: 900, fontFamily: 'monospace', fontSize: '14px' }}>#{lr}</span>
+                                ))}
+                            </div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>Please use a different LR number for each delivery.</div>
+                            <button className="btn btn-p" onClick={() => setDupLRModal(null)} style={{ minWidth: '120px' }}>OK, Fix It</button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             <div>
                 {/* ── Page Header ── */}
@@ -1023,12 +1075,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         <tbody>
                                                             {deliveries.map((d, idx) => {
                                                                 const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+                                                                const isDupLR = d.lrNo?.trim() && usedLRSet.has(d.lrNo.trim());
                                                                 return (
-                                                                    <tr key={idx} style={{ background: idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                                                    <tr key={idx} style={{ background: isDupLR ? 'rgba(244,63,94,0.04)' : idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                                                                         <td style={{ padding: '5px 8px' }}>
                                                                             <input className="fi" type="text" placeholder="e.g. 101" value={d.lrNo}
                                                                                 onChange={e => updateDelivery(idx, 'lrNo', e.target.value)}
-                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px',
+                                                                                    ...(isDupLR ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.15)' } : {})
+                                                                                }} />
+                                                                            {isDupLR && <div style={{ fontSize: '9px', color: '#f43f5e', fontWeight: 800, marginTop: '2px' }}>⚠ Already used</div>}
                                                                         </td>
                                                                         <td style={{ padding: '5px 8px' }}>
                                                                             <input className="fi" type="text" placeholder="City / Party" value={d.destination}
