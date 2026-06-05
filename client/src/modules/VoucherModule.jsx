@@ -740,9 +740,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const handleFormRequest = e => {
         e.preventDefault();
-        if (lrAlreadyUsed) return;  // Block save if LR is already assigned
+        if (lrAlreadyUsed) return;
         if (isBillVoucherType(vType) && !String(form.billNo || '').trim()) {
             alert('Bill No is required for bills');
+            return;
+        }
+        if (isFactory && !form.truckNo) {
+            alert('Truck No. is required');
             return;
         }
         setIsConfirmingSave(true);
@@ -878,6 +882,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 <div className="card-body">
                                     <form onSubmit={handleFormRequest}>
                                         <div className="fg fg-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                                            {!isFactory && (
                                             <div className="field">
                                                 <label><Search size={11} /> LR Number <span style={{color:'var(--danger)'}}>*</span></label>
                                                 <input
@@ -888,6 +893,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     required
                                                 />
                                             </div>
+                                            )}
                                             <div className="field">
                                                 <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
                                                 <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
