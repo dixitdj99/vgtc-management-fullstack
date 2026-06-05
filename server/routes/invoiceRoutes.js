@@ -75,14 +75,21 @@ router.post('/generate', async (req, res) => {
                 return res.status(409).json({ error: `Bill #${billNo} already exists` });
             }
 
-            // Check if any LR numbers already invoiced
-            const allInvoices = await db.collection(getCol(COL_INVOICES)).get();
-            const invoicedLRs = new Set();
-            allInvoices.docs.forEach(d => {
-                const data = d.data();
-                (data.items || []).forEach(it => { if (it.lrNo) invoicedLRs.add(it.lrNo); });
-            });
-            const duplicateLRs = items.filter(it => it.lrNo && invoicedLRs.has(it.lrNo)).map(it => it.lrNo);
+            // Check if any LR numbers already invoiced (only fetch invoices that overlap)
+            const lrNosToCheck = items.map(it => it.lrNo).filter(Boolean);
+            const duplicateLRs = [];
+            if (lrNosToCheck.length > 0) {
+                // Firestore 'in' supports up to 30 items per query; chunk if needed
+                const chunks = [];
+                for (let i = 0; i < lrNosToCheck.length; i += 30) chunks.push(lrNosToCheck.slice(i, i + 30));
+                for (const chunk of chunks) {
+                    const snap = await db.collection(getCol(COL_INVOICES))
+                        .where('lrNos', 'array-contains-any', chunk).get();
+                    snap.docs.forEach(d => {
+                        (d.data().items || []).forEach(it => { if (it.lrNo && chunk.includes(it.lrNo)) duplicateLRs.push(it.lrNo); });
+                    });
+                }
+            }
             if (duplicateLRs.length > 0) {
                 return res.status(409).json({ error: `${duplicateLRs.length} entries already invoiced: ${duplicateLRs.slice(0, 3).join(', ')}${duplicateLRs.length > 3 ? '...' : ''}` });
             }

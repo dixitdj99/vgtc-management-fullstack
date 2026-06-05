@@ -37,8 +37,19 @@ const { requireAuth } = require('../../server/middleware/auth');
 const orgRoutes = require('../../server/routes/orgRoutes');
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+
+// CORS — restrict to known origins in production
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+    : ['http://localhost:5173', 'http://localhost:5174'];
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        return cb(new Error('CORS: origin not allowed'), false);
+    },
+    credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
 
 // Main router to handle various possible prefixes
 const apiRouter = express.Router();

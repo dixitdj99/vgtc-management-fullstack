@@ -4,6 +4,10 @@ const orgService = require('../services/orgService');
 const authService = require('../utils/authService');
 const auditService = require('../services/auditService');
 const { invalidate } = require('../utils/orgStatusCache');
+const { requireAuth } = require('../middleware/auth');
+
+// All org routes require authentication
+router.use(requireAuth);
 
 const ensureAdmin = (req, res) => {
     if (req.user?.role !== 'admin') {

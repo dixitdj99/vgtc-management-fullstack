@@ -1,11 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const authService = require('../utils/authService');
 const emailService = require('../utils/emailService');
 const { SECRET } = require('../middleware/auth');
 const { ENV, getEnvPrefix } = require('../utils/envConfig');
 const { isAvailable } = require('../firebase');
+
+// Brute-force protection: 10 attempts per 15 min per IP
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// OTP resend: 5 per 10 min per IP
+const otpLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 5,
+    message: { error: 'Too many OTP requests. Please wait before requesting again.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 // GET /api/auth/status (Diagnostic)
 router.get('/status', (req, res) => {
@@ -23,7 +42,7 @@ router.get('/status', (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
@@ -78,7 +97,8 @@ router.post('/login', async (req, res) => {
         res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('[Auth] Login error:', err.message);
+        res.status(500).json({ error: 'Login failed. Please try again.' });
     }
 });
 
@@ -133,7 +153,7 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // POST /api/auth/resend-otp
-router.post('/resend-otp', async (req, res) => {
+router.post('/resend-otp', otpLimiter, async (req, res) => {
     try {
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'User ID required' });

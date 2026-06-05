@@ -1,6 +1,12 @@
 const jwt = require('jsonwebtoken');
 const { isProduction, ENV } = require('../utils/envConfig');
-const SECRET = process.env.JWT_SECRET || 'vgtc-secret-2026';
+
+// Fail loudly if JWT_SECRET is missing in production
+if (isProduction() && !process.env.JWT_SECRET) {
+    console.error('[SECURITY] JWT_SECRET env var is not set in production! Refusing to start.');
+    process.exit(1);
+}
+const SECRET = process.env.JWT_SECRET || 'vgtc-dev-secret-change-in-prod';
 
 const requireAuth = async (req, res, next) => {
     const auth = req.headers.authorization;
