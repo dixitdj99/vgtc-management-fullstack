@@ -675,34 +675,25 @@ function AppInner() {
           </div>
         </header>
 
-        {/* Offline / sync status banner */}
-        <AnimatePresence>
-          {syncStatus === 'syncing' && (
-            <motion.div key="syncing" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              style={{ background: 'rgba(99,102,241,0.92)', color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              ⟳ Syncing {pendingSync} offline operation{pendingSync !== 1 ? 's' : ''} to server…
-            </motion.div>
-          )}
-          {syncStatus === 'done' && (
-            <motion.div key="done" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              style={{ background: 'rgba(16,185,129,0.92)', color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              ✓ All offline changes synced successfully
-            </motion.div>
-          )}
-          {!syncStatus && justCameOnline && (
-            <motion.div key="online" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              style={{ background: 'rgba(16,185,129,0.92)', color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              ✓ Back online
-            </motion.div>
-          )}
-          {!isOnline && (
-            <motion.div key="offline" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              style={{ background: 'rgba(244,63,94,0.92)', color: '#fff', fontSize: '12px', fontWeight: 800, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-              <span>⚡ Offline — showing cached data. Entries are queued and will sync when reconnected.</span>
-              {pendingSync > 0 && <span style={{ background: 'rgba(255,255,255,0.2)', padding: '1px 8px', borderRadius: '10px' }}>{pendingSync} pending</span>}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Offline / sync status banner — single child pattern for AnimatePresence compat */}
+        {(() => {
+          let banner = null;
+          if (!isOnline)
+            banner = { key: 'offline', bg: 'rgba(244,63,94,0.92)', text: `⚡ Offline — showing cached data. Entries queued, will sync on reconnect.${pendingSync > 0 ? ` (${pendingSync} pending)` : ''}` };
+          else if (syncStatus === 'syncing')
+            banner = { key: 'syncing', bg: 'rgba(99,102,241,0.92)', text: `⟳ Syncing ${pendingSync} offline operation${pendingSync !== 1 ? 's' : ''} to server…` };
+          else if (syncStatus === 'done')
+            banner = { key: 'done', bg: 'rgba(16,185,129,0.92)', text: '✓ All offline changes synced successfully' };
+          else if (justCameOnline)
+            banner = { key: 'online', bg: 'rgba(16,185,129,0.92)', text: '✓ Back online' };
+
+          if (!banner) return null;
+          return (
+            <div style={{ background: banner.bg, color: '#fff', textAlign: 'center', fontSize: '12px', fontWeight: 800, padding: '7px 16px' }}>
+              {banner.text}
+            </div>
+          );
+        })()}
 
         <div className="page-area">
           <AnimatePresence mode="wait">
