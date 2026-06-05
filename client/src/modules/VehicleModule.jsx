@@ -637,8 +637,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             setVehicles(vRes.data || []);
             setParties(pRes.data || []);
             setProfiles(prRes.data || []);
-            setAllVouchers(vocRes.data || []);
+            const vouchers = vocRes.data || [];
+            setAllVouchers(vouchers);
             setAllTolls(tollRes.data || []);
+            // Debug: log unique truck numbers found in vouchers (visible in browser console)
+            const vTrucks = [...new Set(vouchers.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))];
+            console.log(`[VehicleModule] Loaded ${vouchers.length} vouchers for ${vTrucks.length} trucks:`, vTrucks.join(', '));
 
             // Check for search redirect from other modules
             const redirectSearch = localStorage.getItem('vgtc-search-redirect');
@@ -1347,6 +1351,19 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
                                                     {v.ownershipType === 'self' && (
                                                         <div style={{ padding: '0 16px' }}>
+                                                            {/* Balance bar for self vehicles */}
+                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', marginBottom: '10px' }}>
+                                                                {tb?.toll > 0 && (
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>🚧 Toll Deducted</span>
+                                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b' }}>− {fmtRs(tb.toll)}</span>
+                                                                    </div>
+                                                                )}
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Outstanding Balance</span>
+                                                                    <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance > 0 ? '#10b981' : vBalance < 0 ? '#f43f5e' : 'var(--text-muted)' }}>{fmtRs(vBalance)}</strong>
+                                                                </div>
+                                                            </div>
                                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
                                                                 {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
                                                                 {v.nationalPermitDate && getDocIcon('NP', v.nationalPermitDate)}
