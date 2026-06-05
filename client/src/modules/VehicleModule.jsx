@@ -257,7 +257,23 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
 
     const totalToll = filtered.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
 
-    // Excel import handler
+    // Parse DD/MM/YYYY or DD/MM/YYYY HH:MM:SS → YYYY-MM-DD
+    const parseIndianDate = (raw) => {
+        if (!raw) return '';
+        const s = String(raw).trim();
+        // DD/MM/YYYY HH:MM:SS  or  DD/MM/YYYY
+        const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+        if (m) {
+            const [, dd, mm, yy] = m;
+            const yyyy = yy.length === 2 ? '20' + yy : yy;
+            return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        }
+        const d = new Date(s);
+        if (!isNaN(d)) return d.toISOString().slice(0, 10);
+        return s.slice(0, 10);
+    };
+
+    // Excel import handler — supports NETC/FASTag (Kotak) format + generic formats
     const handleExcelImport = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -265,43 +281,81 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
         const reader = new FileReader();
         reader.onload = (ev) => {
             try {
-                const wb = XLSX.read(ev.target.result, { type: 'binary', cellDates: true });
+                const wb = XLSX.read(ev.target.result, { type: 'binary', cellDates: false });
                 const ws = wb.Sheets[wb.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-                const parsed = rows.map(row => {
-                    // Try various column name patterns
-                    const k = Object.keys(row);
-                    const find = (...names) => { for (const n of names) { const m = k.find(c => c.toLowerCase().replace(/[\s_-]/g,'').includes(n.toLowerCase().replace(/[\s_-]/g,''))); if (m) return String(row[m] ?? '').trim(); } return ''; };
-                    const truck = find('truck','vehicle','truckno','vehicleno','regno');
-                    const date = (() => {
-                        const raw = find('date','transactiondate','txndate');
-                        if (!raw) return '';
-                        if (raw instanceof Date) return raw.toISOString().slice(0,10);
-                        // Try parsing common date formats
-                        const d = new Date(raw);
-                        if (!isNaN(d)) return d.toISOString().slice(0,10);
-                        // DD/MM/YYYY
-                        const parts = raw.split(/[\/\-\.]/);
-                        if (parts.length === 3) {
-                            const dd = parts[0], mm = parts[1], yyyy = parts[2].length === 2 ? '20'+parts[2] : parts[2];
-                            const d2 = new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`);
-                            if (!isNaN(d2)) return d2.toISOString().slice(0,10);
-                        }
-                        return raw;
-                    })();
-                    const amount = parseFloat(find('amount','toll','fee','charge','debit','deducted','tollamt','tollcharges').replace(/[^0-9.]/g,'')) || 0;
-                    const route = find('route','plaza','location','tollplaza','plazaname','highwayname','from','source');
-                    const remark = find('remark','note','description','narration','particulars');
-                    return { truckNo: truck, date, amount, route, remark };
-                }).filter(r => r.truckNo && r.amount > 0);
+                // Use raw rows (header: false) to find where Transaction Details actually start
+                const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                // ── Detect NETC/FASTag format ───────────────────────────────
+                // Look for the "Transaction Details" header row or a row with "VRN" column
+                let txnHeaderIdx = -1;
+                for (let i = 0; i < allRows.length; i++) {
+                    const row = allRows[i].map(c => String(c).trim().toLowerCase());
+                    if (row.includes('vrn') || (row.includes('debit amt') && row.includes('transaction date'))) {
+                        txnHeaderIdx = i;
+                        break;
+                    }
+                }
+
+                let parsed = [];
+
+                if (txnHeaderIdx >= 0) {
+                    // ── NETC/FASTag (Kotak) format ──────────────────────────
+                    const headers = allRows[txnHeaderIdx].map(c => String(c).trim());
+                    const col = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+
+                    const iVRN        = col('VRN');
+                    const iTxnDate    = col('Transaction Date');
+                    const iDebitAmt   = col('Debit Amt');
+                    const iDesc       = col('Transaction Description');
+                    const iTxnType    = col('Type of Transaction');
+
+                    for (let i = txnHeaderIdx + 1; i < allRows.length; i++) {
+                        const row = allRows[i];
+                        if (!row || row.every(c => !c)) continue; // skip empty rows
+
+                        const txnType = String(row[iTxnType] || '').trim();
+                        if (txnType && txnType.toLowerCase() !== 'toll txn') continue; // only toll transactions
+
+                        const truck  = String(row[iVRN] || '').trim().replace(/\s/g, '').toUpperCase();
+                        const date   = parseIndianDate(String(row[iTxnDate] || ''));
+                        const amount = parseFloat(String(row[iDebitAmt] || '0').replace(/[^0-9.]/g, '')) || 0;
+
+                        // Extract plaza name from "Plaza Name: Kitlana" → "Kitlana"
+                        const desc   = String(row[iDesc] || '');
+                        const route  = desc.replace(/^plaza\s*name\s*:\s*/i, '').trim() || desc;
+
+                        if (!truck || amount <= 0) continue;
+                        parsed.push({ truckNo: truck, date, amount, route, remark: 'FASTag' });
+                    }
+                } else {
+                    // ── Generic format fallback ─────────────────────────────
+                    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                    rows.forEach(row => {
+                        const k = Object.keys(row);
+                        const find = (...names) => { for (const n of names) { const m = k.find(c => c.toLowerCase().replace(/[\s_-]/g,'').includes(n.toLowerCase().replace(/[\s_-]/g,''))); if (m) return String(row[m] ?? '').trim(); } return ''; };
+                        const truck  = find('truck','vrn','vehicle','truckno','vehicleno','regno').replace(/\s/g,'').toUpperCase();
+                        const date   = parseIndianDate(find('transactiondate','date','txndate'));
+                        const amount = parseFloat(find('debitamt','amount','toll','debit','fee','charge').replace(/[^0-9.]/g,'')) || 0;
+                        const route  = find('description','plaza','route','location').replace(/^plaza\s*name\s*:\s*/i,'').trim();
+                        const remark = find('remark','note','narration','type') || '';
+                        if (!truck || amount <= 0) return;
+                        parsed.push({ truckNo: truck, date, amount, route, remark });
+                    });
+                }
+
+                if (parsed.length === 0) {
+                    alert('No toll transactions found.\nMake sure the file has "VRN", "Transaction Date", and "Debit Amt" columns (NETC/FASTag format).');
+                    return;
+                }
 
                 setTollImportPreview({ rows: parsed, fileName: file.name });
             } catch (err) { alert('Failed to parse Excel: ' + err.message); }
             finally { setTollImporting(false); }
         };
         reader.readAsBinaryString(file);
-        e.target.value = ''; // reset input
+        e.target.value = '';
     };
 
     const handleImportConfirm = async () => {
@@ -365,7 +419,7 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <Upload size={15} color="#6366f1" />
                     <span style={{ fontSize: '13px', fontWeight: 700 }}>Import from Excel</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Columns auto-detected: Truck No, Date, Amount, Route/Plaza, Remark</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Supports NETC/FASTag (Kotak) statements directly — or any generic Excel with VRN, Transaction Date, Debit Amt columns</span>
                     <label className="btn btn-p btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
                         <Upload size={12} /> {tollImporting ? 'Reading…' : 'Choose Excel File'}
                         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} style={{ display: 'none' }} disabled={tollImporting} />
