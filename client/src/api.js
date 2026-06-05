@@ -16,6 +16,28 @@ export const setAuthToken = (token) => {
 let currentUser = null;
 export const setCurrentUser = (user) => { currentUser = user; };
 
+// ── GET Response Cache (TTL: 3 minutes) ──────────────────────────────────────
+// Dramatically reduces Firestore reads by serving repeated module mounts from cache.
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+const _cache = new Map(); // key → { data, expiresAt }
+
+export function invalidateCache(urlPattern) {
+    // Call after a write to bust related cached GETs
+    // urlPattern: string prefix, e.g. '/vouchers' busts all voucher GETs
+    for (const key of _cache.keys()) {
+        if (key.includes(urlPattern)) _cache.delete(key);
+    }
+}
+
+export function clearAllCache() {
+    _cache.clear();
+}
+
+function getCacheKey(config) {
+    // Key = method + url + org (so different orgs don't share cache)
+    return `${config.method}:${config.url}:${currentUser?.orgId || ''}`;
+}
+
 let pendingRequests = 0;
 let slowRequestTimer = null;
 
@@ -37,34 +59,45 @@ ax.interceptors.request.use(async (config) => {
         }
     }
 
+    // ── GET Cache check ──────────────────────────────────────────────────
+    if (config.method === 'get' && !config._skipCache) {
+        const key = getCacheKey(config);
+        const cached = _cache.get(key);
+        if (cached && Date.now() < cached.expiresAt) {
+            // Return cached response without hitting Firestore
+            const cancelSource = axios.CancelToken.source();
+            config.cancelToken = cancelSource.token;
+            config._cachedResponse = { data: cached.data, status: 200, statusText: 'OK (cached)', headers: {}, config };
+            cancelSource.cancel('__cache_hit__');
+        }
+    }
+
+    // ── Write → bust related cache + bust on write methods ──────────────
+    if (['post', 'patch', 'put', 'delete'].includes(config.method)) {
+        // e.g. POST /vouchers → bust all GET /vouchers* entries
+        const base = config.url.split('/').slice(0, 2).join('/');
+        invalidateCache(base);
+    }
+
     // ── Offline write queue ───────────────────────────────────────────────
     const isWrite = ['post', 'patch', 'put', 'delete'].includes(config.method);
     if (isWrite && !navigator.onLine) {
-        const label = `${config.method.toUpperCase()} ${config.url}`;
         const op = await enqueue({
             method:  config.method,
             url:     config.url,
             data:    config.data || null,
             headers: { Authorization: ax.defaults.headers.common['Authorization'], 'x-org-id': currentUser?.orgId },
-            label,
+            label:   `${config.method.toUpperCase()} ${config.url}`,
         });
-        // Notify UI about queue size
         const n = await count();
         window.dispatchEvent(new CustomEvent('offline-queue-changed', { detail: { count: n } }));
-        // Return a synthetic "queued" response — component code treats it as success
         const syntheticResp = {
             data: { _queued: true, queueId: op.queueId, message: 'Saved offline — will sync when reconnected' },
-            status: 202,
-            statusText: 'Queued Offline',
-            headers: {},
-            config,
-            _queued: true,
+            status: 202, statusText: 'Queued Offline', headers: {}, config, _queued: true,
         };
-        // Abort the real request and resolve with synthetic response
         const cancelSource = axios.CancelToken.source();
         config.cancelToken = cancelSource.token;
         cancelSource.cancel('__offline_queued__');
-        // Store the synthetic response on the config for the response error handler
         config._offlineResponse = syntheticResp;
     }
 
@@ -88,6 +121,13 @@ ax.interceptors.response.use(
         pendingRequests = Math.max(0, pendingRequests - 1);
         emitLoading();
         if (pendingRequests === 0) { clearTimeout(slowRequestTimer); window.dispatchEvent(new CustomEvent('api-fast')); }
+
+        // Store successful GET responses in cache
+        if (res.config?.method === 'get' && !res.config?._skipCache && Array.isArray(res.data) || (res.config?.method === 'get' && res.data)) {
+            const key = getCacheKey(res.config);
+            _cache.set(key, { data: res.data, expiresAt: Date.now() + CACHE_TTL_MS });
+        }
+
         return res;
     },
     (error) => {
@@ -95,7 +135,12 @@ ax.interceptors.response.use(
         emitLoading();
         if (pendingRequests === 0) { clearTimeout(slowRequestTimer); window.dispatchEvent(new CustomEvent('api-fast')); }
 
-        // Resolve cancelled offline-queued requests with the synthetic response
+        // Serve cache hit as success
+        if (axios.isCancel(error) && error.message === '__cache_hit__') {
+            return Promise.resolve(error.config._cachedResponse);
+        }
+
+        // Resolve offline-queued requests
         if (axios.isCancel(error) && error.message === '__offline_queued__') {
             return Promise.resolve(error.config._offlineResponse);
         }

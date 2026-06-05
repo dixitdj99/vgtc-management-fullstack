@@ -89,6 +89,7 @@ app.use('/api/profiles', requireAuth, profileRoutes);
 app.use('/api/payments', requireAuth, paymentRoutes);
 app.use('/api/maintenance', requireAuth, maintenanceRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/tolls', requireAuth, require('./routes/tollRoutes'));
 
 const PORT = process.env.PORT || 5000;
 

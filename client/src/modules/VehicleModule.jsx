@@ -4,7 +4,8 @@ import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { fmtRs, fmtDate } from '../utils/format';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X, Loader2, Receipt, Upload, Calendar, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
 import VehicleRegistryCard from '../components/VehicleRegistryCard';
@@ -225,6 +226,280 @@ function OwnerDeleteConfirm({ owner, onClose, onConfirm }) {
     );
 }
 
+/* ─── Toll Tab ────────────────────────────────────────────────────────────── */
+const TH2 = { padding: '8px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
+const TD2 = { padding: '8px 10px', fontSize: '12px', color: 'var(--text-sub)', verticalAlign: 'middle', borderBottom: '1px solid var(--border-row)', whiteSpace: 'nowrap' };
+
+function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setTollTo, tollForm, setTollForm, tollSaving, setTollSaving, tollImporting, setTollImporting, tollImportPreview, setTollImportPreview, tollSearch, setTollSearch, vehicleNumbers, onRefresh, truckBalanceMap }) {
+
+    const fmtRsL = (n) => 'Rs.' + Math.round(n).toLocaleString('en-IN');
+    const fmtDateL = (s) => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+    // Filter displayed records
+    const filtered = useMemo(() => {
+        const q = tollSearch.toLowerCase();
+        return tollRecords.filter(r =>
+            !q || (r.truckNo || '').toLowerCase().includes(q) || (r.route || '').toLowerCase().includes(q) || (r.remark || '').toLowerCase().includes(q)
+        );
+    }, [tollRecords, tollSearch]);
+
+    // Per-truck toll summary
+    const truckSummary = useMemo(() => {
+        const map = {};
+        filtered.forEach(r => {
+            const t = r.truckNo || 'Unknown';
+            if (!map[t]) map[t] = { truckNo: t, totalToll: 0, count: 0 };
+            map[t].totalToll += parseFloat(r.amount) || 0;
+            map[t].count++;
+        });
+        return Object.values(map).sort((a, b) => b.totalToll - a.totalToll);
+    }, [filtered]);
+
+    const totalToll = filtered.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+    // Excel import handler
+    const handleExcelImport = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setTollImporting(true);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const wb = XLSX.read(ev.target.result, { type: 'binary', cellDates: true });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+                const parsed = rows.map(row => {
+                    // Try various column name patterns
+                    const k = Object.keys(row);
+                    const find = (...names) => { for (const n of names) { const m = k.find(c => c.toLowerCase().replace(/[\s_-]/g,'').includes(n.toLowerCase().replace(/[\s_-]/g,''))); if (m) return String(row[m] ?? '').trim(); } return ''; };
+                    const truck = find('truck','vehicle','truckno','vehicleno','regno');
+                    const date = (() => {
+                        const raw = find('date','transactiondate','txndate');
+                        if (!raw) return '';
+                        if (raw instanceof Date) return raw.toISOString().slice(0,10);
+                        // Try parsing common date formats
+                        const d = new Date(raw);
+                        if (!isNaN(d)) return d.toISOString().slice(0,10);
+                        // DD/MM/YYYY
+                        const parts = raw.split(/[\/\-\.]/);
+                        if (parts.length === 3) {
+                            const dd = parts[0], mm = parts[1], yyyy = parts[2].length === 2 ? '20'+parts[2] : parts[2];
+                            const d2 = new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`);
+                            if (!isNaN(d2)) return d2.toISOString().slice(0,10);
+                        }
+                        return raw;
+                    })();
+                    const amount = parseFloat(find('amount','toll','fee','charge','debit','deducted','tollamt','tollcharges').replace(/[^0-9.]/g,'')) || 0;
+                    const route = find('route','plaza','location','tollplaza','plazaname','highwayname','from','source');
+                    const remark = find('remark','note','description','narration','particulars');
+                    return { truckNo: truck, date, amount, route, remark };
+                }).filter(r => r.truckNo && r.amount > 0);
+
+                setTollImportPreview({ rows: parsed, fileName: file.name });
+            } catch (err) { alert('Failed to parse Excel: ' + err.message); }
+            finally { setTollImporting(false); }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = ''; // reset input
+    };
+
+    const handleImportConfirm = async () => {
+        if (!tollImportPreview?.rows?.length) return;
+        setTollImporting(true);
+        try {
+            await ax.post('/tolls/bulk', tollImportPreview.rows);
+            setTollImportPreview(null);
+            onRefresh();
+        } catch (err) { alert('Import failed: ' + (err.response?.data?.error || err.message)); }
+        finally { setTollImporting(false); }
+    };
+
+    const handleManualSave = async (e) => {
+        e.preventDefault();
+        if (!tollForm.truckNo || !tollForm.amount || parseFloat(tollForm.amount) <= 0) {
+            alert('Truck No and Amount are required');
+            return;
+        }
+        setTollSaving(true);
+        try {
+            await ax.post('/tolls', tollForm);
+            setTollForm({ truckNo: '', date: new Date().toISOString().slice(0, 10), amount: '', route: '', remark: '' });
+            onRefresh();
+        } catch (err) { alert('Save failed'); }
+        finally { setTollSaving(false); }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Delete this toll record?')) return;
+        try { await ax.delete('/tolls/' + id); onRefresh(); }
+        catch { alert('Delete failed'); }
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Header + date filter */}
+            <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}><Receipt size={17} color="#f59e0b" /> Toll Records</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Upload Excel or add manually. Filter by date range.</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                        <div className="field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: '10px', fontWeight: 700 }}>From</label>
+                            <input className="fi" type="date" value={tollFrom} onChange={e => setTollFrom(e.target.value)} style={{ height: '32px' }} />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: '10px', fontWeight: 700 }}>To</label>
+                            <input className="fi" type="date" value={tollTo} onChange={e => setTollTo(e.target.value)} style={{ height: '32px' }} />
+                        </div>
+                        <button className="btn btn-p btn-sm" onClick={() => onRefresh(tollFrom, tollTo)}><Calendar size={13} /> Apply</button>
+                        <button className="btn btn-g btn-sm" onClick={() => { setTollFrom(''); setTollTo(''); onRefresh('', ''); }}>Clear</button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Excel import */}
+            <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <Upload size={15} color="#6366f1" />
+                    <span style={{ fontSize: '13px', fontWeight: 700 }}>Import from Excel</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Columns auto-detected: Truck No, Date, Amount, Route/Plaza, Remark</span>
+                    <label className="btn btn-p btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+                        <Upload size={12} /> {tollImporting ? 'Reading…' : 'Choose Excel File'}
+                        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} style={{ display: 'none' }} disabled={tollImporting} />
+                    </label>
+                </div>
+
+                {/* Import preview */}
+                {tollImportPreview && (
+                    <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                        <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700 }}>{tollImportPreview.rows.length} records from <em>{tollImportPreview.fileName}</em> — preview (first 10)</span>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn btn-g btn-sm" onClick={() => setTollImportPreview(null)}>Cancel</button>
+                                <button className="btn btn-p btn-sm" onClick={handleImportConfirm} disabled={tollImporting}>
+                                    {tollImporting ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Import {tollImportPreview.rows.length} Records</>}
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                                <thead><tr>{['Truck No.', 'Date', 'Amount', 'Route/Plaza', 'Remark'].map(h => <th key={h} style={TH2}>{h}</th>)}</tr></thead>
+                                <tbody>
+                                    {tollImportPreview.rows.slice(0, 10).map((r, i) => (
+                                        <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                            <td style={{ ...TD2, fontWeight: 800 }}>{r.truckNo}</td>
+                                            <td style={TD2}>{r.date}</td>
+                                            <td style={{ ...TD2, color: '#f43f5e', fontWeight: 700 }}>Rs.{parseFloat(r.amount).toLocaleString('en-IN')}</td>
+                                            <td style={TD2}>{r.route || '—'}</td>
+                                            <td style={TD2}>{r.remark || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Manual entry form */}
+            <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={13} /> Add Toll Entry Manually</div>
+                <form onSubmit={handleManualSave} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+                    <div className="field" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Truck No. *</label>
+                        <input className="fi" type="text" placeholder="HR47G3246" value={tollForm.truckNo} onChange={e => setTollForm(f => ({ ...f, truckNo: e.target.value }))} list="toll-truck-list" required />
+                        <datalist id="toll-truck-list">{vehicleNumbers.map(n => <option key={n} value={n} />)}</datalist>
+                    </div>
+                    <div className="field" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Date *</label>
+                        <input className="fi" type="date" value={tollForm.date} onChange={e => setTollForm(f => ({ ...f, date: e.target.value }))} required />
+                    </div>
+                    <div className="field" style={{ flex: '1', minWidth: '100px' }}>
+                        <label>Amount (Rs.) *</label>
+                        <input className="fi" type="number" step="any" min="1" placeholder="0" value={tollForm.amount} onChange={e => setTollForm(f => ({ ...f, amount: e.target.value }))} required />
+                    </div>
+                    <div className="field" style={{ flex: '2', minWidth: '140px' }}>
+                        <label>Route / Plaza</label>
+                        <input className="fi" type="text" placeholder="e.g. Delhi–Jaipur NH48" value={tollForm.route} onChange={e => setTollForm(f => ({ ...f, route: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Remark</label>
+                        <input className="fi" type="text" placeholder="Optional" value={tollForm.remark} onChange={e => setTollForm(f => ({ ...f, remark: e.target.value }))} />
+                    </div>
+                    <button type="submit" className="btn btn-p" disabled={tollSaving} style={{ height: '38px' }}>
+                        {tollSaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Save</>}
+                    </button>
+                </form>
+            </div>
+
+            {/* Summary cards */}
+            {truckSummary.length > 0 && (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '11px 18px', minWidth: '130px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Toll</div>
+                        <div style={{ fontSize: '18px', fontWeight: 900, color: '#f43f5e' }}>{fmtRsL(totalToll)}</div>
+                    </div>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '11px 18px', minWidth: '130px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Records</div>
+                        <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>{filtered.length}</div>
+                    </div>
+                    {truckSummary.slice(0, 4).map(t => (
+                        <div key={t.truckNo} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '11px 18px', minWidth: '130px' }}>
+                            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t.truckNo} ({t.count} trips)</div>
+                            <div style={{ fontSize: '16px', fontWeight: 900, color: '#f43f5e' }}>{fmtRsL(t.totalToll)}</div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Records table */}
+            <div className="card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <Search size={13} color="var(--text-muted)" />
+                    <input className="fi" placeholder="Search truck, route, remark…" value={tollSearch} onChange={e => setTollSearch(e.target.value)} style={{ flex: 1, height: '30px' }} />
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{filtered.length} records</span>
+                </div>
+                <div className="tbl-wrap">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                        <thead>
+                            <tr>{['#', 'Date', 'Truck No.', 'Amount', 'Route / Plaza', 'Remark', 'Del'].map(h => <th key={h} style={TH2}>{h}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                            {tollLoading && <tr><td colSpan={7} style={{ ...TD2, textAlign: 'center', padding: '30px' }}><Loader2 size={18} className="spin" /></td></tr>}
+                            {!tollLoading && filtered.length === 0 && <tr><td colSpan={7} style={{ ...TD2, textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No toll records. Upload Excel or add manually.</td></tr>}
+                            {!tollLoading && filtered.map((r, i) => (
+                                <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                    <td style={{ ...TD2, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                    <td style={TD2}>{fmtDateL(r.date)}</td>
+                                    <td style={{ ...TD2, fontWeight: 800, color: 'var(--primary)' }}>{r.truckNo}</td>
+                                    <td style={{ ...TD2, textAlign: 'right', fontWeight: 800, color: '#f43f5e' }}>{fmtRsL(parseFloat(r.amount) || 0)}</td>
+                                    <td style={TD2}>{r.route || '—'}</td>
+                                    <td style={TD2}>{r.remark || '—'}</td>
+                                    <td style={{ ...TD2, textAlign: 'center' }}>
+                                        <button className="btn btn-d btn-icon btn-sm" onClick={() => handleDelete(r.id)} title="Delete"><Trash2 size={12} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        {filtered.length > 0 && (
+                            <tfoot>
+                                <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                                    <td colSpan={3} style={{ ...TD2, fontWeight: 800, fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total ({filtered.length} records)</td>
+                                    <td style={{ ...TD2, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: '#f43f5e' }}>{fmtRsL(totalToll)}</td>
+                                    <td colSpan={3} style={TD2} />
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [vehicles, setVehicles] = useState([]);
     const [parties, setParties] = useState([]);
@@ -256,8 +531,32 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         finally { setTyreLoading(false); }
     };
     
+    // ── Toll state ──────────────────────────────────────────────────────────
+    const [tollRecords, setTollRecords] = useState([]);
+    const [tollLoading, setTollLoading] = useState(false);
+    const [tollFrom, setTollFrom] = useState('');
+    const [tollTo, setTollTo] = useState('');
+    const [tollForm, setTollForm] = useState({ truckNo: '', date: new Date().toISOString().slice(0, 10), amount: '', route: '', remark: '' });
+    const [tollSaving, setTollSaving] = useState(false);
+    const [tollImporting, setTollImporting] = useState(false);
+    const [tollImportPreview, setTollImportPreview] = useState(null); // { rows, fileName }
+    const [tollSearch, setTollSearch] = useState('');
+
+    const fetchTolls = useCallback(async (from = tollFrom, to = tollTo) => {
+        setTollLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (from) params.set('from', from);
+            if (to) params.set('to', to);
+            const res = await ax.get(`/tolls?${params}`);
+            setTollRecords(res.data || []);
+        } catch { setTollRecords([]); }
+        finally { setTollLoading(false); }
+    }, [tollFrom, tollTo]);
+
     const [registryEntries, setRegistryEntries] = useState([]);
     const [allVouchers, setAllVouchers] = useState([]);
+    const [allTolls, setAllTolls] = useState([]);
     const fetchRegistry = useCallback(async () => {
         try {
             const res = await ax.get(`${API}/registry`);
@@ -265,23 +564,27 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         } catch (e) { console.error('Registry fetch error', e); }
     }, []);
 
-    useEffect(() => { 
-        if (tab === 'registry') fetchRegistry(); 
-    }, [tab, fetchRegistry]);
+    useEffect(() => {
+        if (tab === 'registry') fetchRegistry();
+        if (tab === 'toll') fetchTolls();
+    }, [tab, fetchRegistry, fetchTolls]);
 
     const fetchVehicleData = useCallback(async () => {
         setLoading(true);
         try {
-            const [vRes, pRes, prRes, vocRes] = await Promise.all([
+            // Vouchers + tolls fetched lazily (cache in api.js serves repeat calls for free)
+            const [vRes, pRes, prRes, vocRes, tollRes] = await Promise.all([
                 ax.get(API),
                 ax.get('/parties').catch(() => ({ data: [] })),
                 ax.get('/profiles').catch(() => ({ data: [] })),
-                ax.get('/vouchers').catch(() => ({ data: [] }))
+                ax.get('/vouchers').catch(() => ({ data: [] })),
+                ax.get('/tolls').catch(() => ({ data: [] }))
             ]);
             setVehicles(vRes.data || []);
             setParties(pRes.data || []);
             setProfiles(prRes.data || []);
             setAllVouchers(vocRes.data || []);
+            setAllTolls(tollRes.data || []);
 
             // Check for search redirect from other modules
             const redirectSearch = localStorage.getItem('vgtc-search-redirect');
@@ -506,13 +809,13 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setTab('add');
     };
 
-    // Compute outstanding balance per truck from real voucher data
+    // Compute outstanding balance per truck from real voucher + toll data
     const truckBalanceMap = useMemo(() => {
         const map = {};
         (allVouchers || []).forEach(voucher => {
             const truck = cleanTruckNo(voucher.truckNo);
             if (!truck) return;
-            if (!map[truck]) map[truck] = { net: 0, paid: 0 };
+            if (!map[truck]) map[truck] = { net: 0, paid: 0, toll: 0 };
             const gross = voucher.deliveries?.length > 0
                 ? voucher.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
                 : (parseFloat(voucher.weight) || 0) * (parseFloat(voucher.rate) || 0);
@@ -528,10 +831,20 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             map[truck].net += net;
             map[truck].paid += parseFloat(voucher.paidBalance) || 0;
         });
-        // outstanding = max(0, net - paid) per truck
-        Object.keys(map).forEach(t => { map[t].outstanding = Math.max(0, map[t].net - map[t].paid); });
+        // Add toll deductions per truck
+        (allTolls || []).forEach(t => {
+            const truck = cleanTruckNo(t.truckNo);
+            if (!truck) return;
+            if (!map[truck]) map[truck] = { net: 0, paid: 0, toll: 0 };
+            map[truck].toll = (map[truck].toll || 0) + (parseFloat(t.amount) || 0);
+        });
+        // outstanding = max(0, net - toll - paid) per truck
+        Object.keys(map).forEach(t => {
+            const r = map[t];
+            r.outstanding = Math.max(0, r.net - (r.toll || 0) - r.paid);
+        });
         return map;
-    }, [allVouchers]);
+    }, [allVouchers, allTolls]);
 
     const owners = useMemo(() => {
         const map = Object.create(null);
@@ -647,6 +960,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Briefcase size={14} /> Asset List</button>
+                    <button className={`tab-btn${tab === 'toll' ? ' tab-amber' : ''}`} onClick={() => setTab('toll')}><Receipt size={14} /> Toll Records</button>
                     <button className={`tab-btn${tab === 'registry' ? ' tab-amber' : ''}`} onClick={() => setTab('registry')}><Check size={14} /> Firm Registry</button>
                     <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Update Record</> : <><Plus size={14} /> New Vehicle Profile</>}</button>
                 </div>
@@ -842,6 +1156,23 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 </motion.div>
             )}
 
+            {tab === 'toll' && (
+                <TollTab
+                    tollRecords={tollRecords}
+                    tollLoading={tollLoading}
+                    tollFrom={tollFrom} setTollFrom={setTollFrom}
+                    tollTo={tollTo} setTollTo={setTollTo}
+                    tollForm={tollForm} setTollForm={setTollForm}
+                    tollSaving={tollSaving} setTollSaving={setTollSaving}
+                    tollImporting={tollImporting} setTollImporting={setTollImporting}
+                    tollImportPreview={tollImportPreview} setTollImportPreview={setTollImportPreview}
+                    tollSearch={tollSearch} setTollSearch={setTollSearch}
+                    vehicleNumbers={uniqueTruckNos}
+                    onRefresh={async (f, t) => { await fetchTolls(f, t); fetchVehicleData(); }}
+                    truckBalanceMap={truckBalanceMap}
+                />
+            )}
+
             {tab === 'registry' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ padding: '20px', background: 'var(--bg-th)' }}>
@@ -945,9 +1276,17 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Banknote size={11} /> {parseJson(v.bankDetails).bank || 'No Bank'}</span>
                                                             </div>
                                                             {/* Balance bar */}
-                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Balance</span>
-                                                                <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</strong>
+                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px' }}>
+                                                                {tb?.toll > 0 && (
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>🚧 Toll Deducted</span>
+                                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b' }}>− {fmtRs(tb.toll)}</span>
+                                                                    </div>
+                                                                )}
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Outstanding Balance</span>
+                                                                    <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</strong>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     )}

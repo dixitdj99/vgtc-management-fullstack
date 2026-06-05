@@ -32,6 +32,7 @@ const stockTransferRoutes = require('../../server/routes/stockTransferRoutes');
 const profileRoutes = require('../../server/routes/profileRoutes');
 const paymentRoutes = require('../../server/routes/paymentRoutes');
 const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
+const tollRoutes = require('../../server/routes/tollRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
 const orgRoutes = require('../../server/routes/orgRoutes');
 
@@ -59,6 +60,7 @@ apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
 apiRouter.use('/org', requireAuth, orgRoutes);
 apiRouter.use('/parties', requireAuth, partyRoutes);
 apiRouter.use('/maintenance', requireAuth, maintenanceRoutes);
+apiRouter.use('/tolls', requireAuth, tollRoutes);
 apiRouter.use('/profiles', requireAuth, profileRoutes);
 apiRouter.use('/payments', requireAuth, paymentRoutes);
 apiRouter.use('/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
