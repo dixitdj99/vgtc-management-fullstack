@@ -48,34 +48,44 @@ router.post('/', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST bulk import (array)
+// POST bulk import (array) — chunked to stay within Firestore 500-op batch limit
 router.post('/bulk', async (req, res) => {
     try {
         const { db, admin, isAvailable } = require('../firebase');
         const localStore = require('../utils/localStore');
         const col = getCol(BASE_COL, req);
-        const records = req.body; // array of toll records
+        const records = req.body;
         if (!Array.isArray(records) || records.length === 0)
             return res.status(400).json({ error: 'Expected array of records' });
 
-        const results = [];
+        let totalCount = 0;
+
         if (isAvailable()) {
-            const batch = db.batch();
-            records.forEach(r => {
-                const ref = db.collection(col).doc();
-                const data = { ...r, orgId: req.orgId, createdAt: admin.firestore.FieldValue.serverTimestamp() };
-                batch.set(ref, data);
-                results.push({ id: ref.id, ...r });
-            });
-            await batch.commit();
+            const CHUNK = 400; // well under Firestore 500-op batch limit
+            for (let i = 0; i < records.length; i += CHUNK) {
+                const chunk = records.slice(i, i + CHUNK);
+                const batch = db.batch();
+                chunk.forEach(r => {
+                    const ref = db.collection(col).doc();
+                    const data = { ...r, orgId: req.orgId, createdAt: admin.firestore.FieldValue.serverTimestamp() };
+                    batch.set(ref, data);
+                });
+                await batch.commit();
+                totalCount += chunk.length;
+                console.log(`[Tolls] Imported chunk ${i / CHUNK + 1}: ${chunk.length} records`);
+            }
         } else {
             records.forEach(r => {
-                const data = { ...r, orgId: req.orgId, createdAt: new Date().toISOString() };
-                results.push(localStore.insert(col, data));
+                localStore.insert(col, { ...r, orgId: req.orgId, createdAt: new Date().toISOString() });
+                totalCount++;
             });
         }
-        res.status(201).json({ count: results.length, records: results });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+
+        res.status(201).json({ count: totalCount, message: `${totalCount} toll records imported successfully` });
+    } catch (e) {
+        console.error('[Tolls] Bulk import error:', e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // DELETE single toll record
