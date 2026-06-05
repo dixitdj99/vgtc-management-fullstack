@@ -38,14 +38,19 @@ const orgRoutes = require('../../server/routes/orgRoutes');
 
 const app = express();
 
-// CORS — restrict to known origins in production
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-    : ['http://localhost:5173', 'http://localhost:5174'];
+// CORS — open on Netlify (same-domain app; JWT provides auth security)
+// Configure ALLOWED_ORIGINS env var to restrict if needed
 app.use(cors({
     origin: (origin, cb) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        return cb(new Error('CORS: origin not allowed'), false);
+        // Allow no origin (same-origin requests, server-to-server)
+        if (!origin) return cb(null, true);
+        // If ALLOWED_ORIGINS is set, enforce it
+        if (process.env.ALLOWED_ORIGINS) {
+            const allowed = process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim());
+            return allowed.includes(origin) ? cb(null, true) : cb(new Error('CORS: origin not allowed'));
+        }
+        // Default: allow all (this is an internal app protected by JWT)
+        return cb(null, true);
     },
     credentials: true,
 }));
