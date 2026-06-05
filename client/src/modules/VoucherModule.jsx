@@ -1098,7 +1098,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             <div className="field">
                                                 <label style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                     <span><CreditCard size={11} /> Online Advance</span>
-                                                    <span onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { active: active.includes('jharli') ? 'pay_jharli' : 'pay_dump' } }))} style={{ fontSize: '9px', color: 'var(--primary)', cursor: 'pointer', fontWeight: 700 }}>View All →</span>
+                                                    <span onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { module: brand === 'jklakshmi' ? 'pay_jharli' : 'pay_dump' } }))} style={{ fontSize: '9px', color: 'var(--primary)', cursor: 'pointer', fontWeight: 700 }}>View All →</span>
                                                 </label>
                                                 <input className="fi" type="number" placeholder="0" value={form.advanceOnline} onChange={e => set('advanceOnline', e.target.value)} />
                                             </div>

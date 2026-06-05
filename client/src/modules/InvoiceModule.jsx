@@ -233,7 +233,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
         } else {
           // Generic format
           const rows = sheet1;
-          const parsed = rows.map(row => {
+          let parsed = rows.map(row => {
             const k = Object.keys(row);
             const f = (a) => { for (const x of a) { const m = k.find(c => c.toLowerCase().includes(x)); if (m) return m; } return null; };
             const v = (a) => { const c = f(a); return c ? String(row[c] ?? '').trim() : ''; };
