@@ -535,6 +535,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     });
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
 
+    // Must be declared before deliveries state (used in useEffect dependency)
+    const isFactory = vType === 'JK_Super' || vType === 'JK_Lakshmi';
+
     // Multi-delivery state (JK_Super / JK_Lakshmi only)
     const [deliveries, setDeliveries] = useState([{ ...EMPTY_DELIVERY }]);
 
@@ -615,7 +618,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     // Factory types: compute next LR number from existing voucher list
     // Dump & Bill types: user enters LR from loading receipt (no auto-number)
-    const isFactory = vType === 'JK_Super' || vType === 'JK_Lakshmi';
+    // isFactory declared earlier (before deliveries state) to avoid TDZ
     const nextLrNo = useMemo(() => {
         if (!isFactory) return '';
         if (vouchers.length === 0) return '1';
