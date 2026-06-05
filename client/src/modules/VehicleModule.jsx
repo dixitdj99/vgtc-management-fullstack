@@ -506,6 +506,33 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setTab('add');
     };
 
+    // Compute outstanding balance per truck from real voucher data
+    const truckBalanceMap = useMemo(() => {
+        const map = {};
+        (allVouchers || []).forEach(voucher => {
+            const truck = cleanTruckNo(voucher.truckNo);
+            if (!truck) return;
+            if (!map[truck]) map[truck] = { net: 0, paid: 0 };
+            const gross = voucher.deliveries?.length > 0
+                ? voucher.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+                : (parseFloat(voucher.weight) || 0) * (parseFloat(voucher.rate) || 0);
+            const diesel = voucher.advanceDiesel === 'FULL' ? 4000 : (parseFloat(voucher.advanceDiesel) || 0);
+            const cash = parseFloat(voucher.advanceCash) || 0;
+            const online = parseFloat(voucher.advanceOnline) || 0;
+            const weight = parseFloat(voucher.weight) || 0;
+            const munshi = parseFloat(voucher.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+            const commission = parseFloat(voucher.commission) || 0;
+            const shortage = parseFloat(voucher.shortage) || 0;
+            const tyres = (parseFloat(voucher.tyrePuncture) || 0) + (parseFloat(voucher.tyreGreasingAir) || 0) + (parseFloat(voucher.tyreGreasing) || 0) + (parseFloat(voucher.tyreAir) || 0) + (parseFloat(voucher.extraCash) || 0);
+            const net = gross - diesel - cash - online - munshi - commission - shortage - tyres;
+            map[truck].net += net;
+            map[truck].paid += parseFloat(voucher.paidBalance) || 0;
+        });
+        // outstanding = max(0, net - paid) per truck
+        Object.keys(map).forEach(t => { map[t].outstanding = Math.max(0, map[t].net - map[t].paid); });
+        return map;
+    }, [allVouchers]);
+
     const owners = useMemo(() => {
         const map = Object.create(null);
         const lowerSearch = (fSearch || '').toLowerCase();
@@ -521,16 +548,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             if (!map[oName].ownerId && v.ownerId) map[oName].ownerId = v.ownerId;
             if (!map[oName].partyId && (v.ownerId || party?.id)) map[oName].partyId = v.ownerId || party.id;
             if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
-            
-            // Note: Balance calculation here is a simplified mock. 
-            // In a real app, we'd fetch actual ledger totals.
-            const net = (parseFloat(v.total) || 0) - (parseFloat(v.paidBalance) || 0);
-            map[oName].balance += net;
+
+            // Use real voucher-based outstanding balance for this truck
+            const truck = cleanTruckNo(v.truckNo);
+            const tb = truckBalanceMap[truck];
+            map[oName].balance += tb ? tb.outstanding : 0;
 
             map[oName].vehicles.push(v);
         });
         return Object.values(map).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    }, [vehicles, parties, fSearch, ownershipFilter]);
+    }, [vehicles, parties, fSearch, ownershipFilter, truckBalanceMap]);
 
     const uniqueOwners = [...new Set([...parties.filter(p => p.type === 'supplier' || p.type === 'transporter').map(p => p.name), ...vehicles.map(v => v.ownerName)])].filter(Boolean).sort();
     const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
@@ -882,7 +909,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
                                         <div style={{ padding: '20px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
                                             {owner.vehicles.map(v => {
-                                                const vBalance = (parseFloat(v.total) || 0) - (parseFloat(v.paidBalance) || 0);
+                                                const tb = truckBalanceMap[cleanTruckNo(v.truckNo)];
+                                                const vBalance = tb ? tb.outstanding : 0;
                                                 return (
                                                 <div key={v.id} style={{ border: isNearExpiry(v) ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)', borderRadius: '14px', padding: '0', background: 'var(--bg-card)', overflow: 'hidden', transition: 'box-shadow 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
                                                     onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'}
