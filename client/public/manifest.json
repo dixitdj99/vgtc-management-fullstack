@@ -4,6 +4,12 @@
   "description": "VGTC Fleet & Transport Management System",
   "icons": [
     {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
       "src": "/vgtc-logo.svg",
       "type": "image/svg+xml",
       "sizes": "any",
@@ -19,9 +25,12 @@
   "start_url": "/",
   "scope": "/",
   "background_color": "#0f1117",
-  "theme_color": "#0A6ED1",
+  "theme_color": "#6366F1",
   "display": "standalone",
   "orientation": "any",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "lang": "en-IN"
 }
