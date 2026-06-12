@@ -10,7 +10,8 @@
       "Bash(curl -s http://localhost:5000/api/jkl/stock/additions -H 'Authorization: Bearer __TRACKED_VAR__')",
       "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\);const a=JSON.parse\\(d\\);console.log\\('Count:',a.length\\);const m={};a.forEach\\(x=>{m[x.material]=\\(m[x.material]||0\\)+\\(parseInt\\(x.totalBags\\)||0\\)}\\);console.log\\('By material:',m\\)\")",
       "Bash(npx vite:*)",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(curl -X GET http://localhost:5000/api/mileage/settings -H \"Authorization: Bearer test\")"
     ]
   }
 }
