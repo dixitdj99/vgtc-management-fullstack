@@ -9,6 +9,8 @@ import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
+import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
+import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 
 const PAGE_SIZE = 20;
 
@@ -113,6 +115,11 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showChalPopup, setShowChalPopup] = useState(false);
+  const modalRef = useFormShortcuts({
+    onSave: () => setIsConfirming(true),
+    onCancel: onClose,
+    enabled: !isConfirming && !showChalPopup,
+  });
   const resolvedPartySuggestions = useMemo(() => buildPartySuggestions(
     partySuggestions,
     row.partyName,
@@ -273,21 +280,22 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)'
     }}>
       <motion.div
+        ref={modalRef}
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '520px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden' }}
+        style={{ width: '94%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}
       >
         {/* Modal header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Pencil size={16} color="#6366f1" />
             </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: '#f1f5f9' }}>Edit Receipt</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>ID: {row.id.slice(0, 10)}...</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Receipt</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>ID: {row.id.slice(0, 10)}...</div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
             <X size={18} />
           </button>
         </div>
@@ -351,7 +359,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           <div className="field">
             <label><Tag size={11} /> Challan Selection</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                    <Tag size={14} color="#f59e0b" />
                    {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
@@ -403,7 +411,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
         </div>
 
         {/* Modal footer */}
-        <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.07)', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
           <button className="btn btn-g" onClick={onClose} disabled={loading}>Cancel</button>
           <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading}>
             {loading ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}
@@ -739,16 +747,16 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
-        style={{ width: '90%', maxWidth: '380px', background: '#0f172a', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}
+        style={{ width: '90%', maxWidth: '380px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.35)', padding: '28px 24px', textAlign: 'center' }}
       >
         <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <AlertTriangle size={26} color="#f43f5e" />
         </div>
-        <div style={{ fontSize: '16px', fontWeight: 800, color: '#f1f5f9', marginBottom: '8px' }}>Delete Entry?</div>
-        <div style={{ fontSize: '12.5px', color: '#94a3b8', marginBottom: '6px' }}>
-          LR <strong style={{ color: '#f1f5f9' }}>#{row.lrNo}</strong> · {row.material} · {row.truckNo}
+        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Entry?</div>
+        <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', marginBottom: '6px' }}>
+          LR <strong style={{ color: 'var(--text)' }}>#{row.lrNo}</strong> · {row.material} · {row.truckNo}
         </div>
-        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '22px' }}>This action cannot be undone.</div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This action cannot be undone.</div>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
           <button className="btn btn-g" onClick={onClose}>Cancel</button>
           <button className="btn btn-d" onClick={handleDelete} disabled={deleting} title="Confirm Delete">
@@ -786,6 +794,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
   const [receipts, setReceipts] = useState([]);
+  const [tableLoading, setTableLoading] = useState(true);
   const [parties, setParties] = useState([]);
   const [allVouchers, setAllVouchers] = useState([]);
   const [openChallans, setOpenChallans] = useState([]);
@@ -817,7 +826,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     finally { setStatusSaving(false); }
   };
   const [form, setForm] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: getSticky('lr.date', new Date().toISOString().split('T')[0]),
     truckNo: '', partyName: '',
     destination: '',
     note: '',
@@ -922,6 +931,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
          setAllVouchers(vRes.data || []);
       } catch(e) { console.error('Failed to fetch vouchers', e); }
     } catch { }
+    finally { setTableLoading(false); }
   };
 
   const fetchChallans = async () => {
@@ -1005,8 +1015,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
   const removeMat = idx => setForm({ ...form, materials: form.materials.filter((_, i) => i !== idx) });
 
-  const handleFormRequest = e => {
-    e.preventDefault();
+  const requestCreateSave = () => {
+    if (markInvalidFields(createFormRef.current)) return;
     if (!validateTruckNo(form.truckNo)) {
       alert('Invalid truck number format. Please enter in GJ01AB1234 format (No spaces).');
       return;
@@ -1023,6 +1033,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     }
     setIsConfirmingSave(true);
   };
+  const handleFormRequest = e => { e.preventDefault(); requestCreateSave(); };
+
+  // Tally-style keyboard entry on the creation form. Inline card form — no Esc-close.
+  // Disabled while any stacked layer (confirm modal, challan popup, edit/delete modal) is open.
+  const createFormRef = useFormShortcuts({
+    onSave: requestCreateSave,
+    enabled: !isConfirmingSave && !showChalPopup && !editRow && !deleteRow && !statusTarget,
+    autoFocus: false, // table view loads with the form on-page; don't yank scroll on mount
+  });
 
   const handleChallanCreatedFromLR = async (newChNo, challanQty) => {
     if (!linkingLrId) return;
@@ -1163,7 +1182,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       alert('Receipt #' + res.data.lrNo + ' created!');
       fetchLRData(); fetchChallans();
       clearVoice();
-      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+      rememberSticky('lr.date', form.date);
+      setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -1384,7 +1404,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </div>
             </div>
             <div className="card-body">
-              <form onSubmit={handleFormRequest}>
+              <form onSubmit={handleFormRequest} ref={createFormRef}>
                 <div className="fg fg-2">
                   <div className="field"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field">
@@ -1603,7 +1623,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
+                  {tableLoading && filteredReceipts.length === 0 ? (
+                    [1, 2, 3, 4, 5].map(i => (
+                      <tr key={`sk-${i}`} className="skeleton-row">
+                        {Array.from({ length: role === 'admin' ? 8 : 6 }).map((_, j) => (
+                          <td key={j}><span className="skeleton skeleton-text" /></td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
                         <td><span className="t-lr">#{lr.lrNo}</span></td>

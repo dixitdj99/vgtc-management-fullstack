@@ -1,8 +1,37 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Check, X, Loader2 } from 'lucide-react';
 
 export default function ConfirmSaveModal({ isOpen, onClose, onConfirm, title, message, isSaving, confirmText }) {
+    const confirmBtnRef = useRef(null);
+    const stateRef = useRef({});
+    stateRef.current = { isOpen, isSaving, onConfirm, onClose };
+
+    // Keyboard: Enter / Ctrl+S confirms, Esc cancels. Capture phase + stopPropagation
+    // so the underlying form's shortcuts never see these keys while we're open.
+    useEffect(() => {
+        if (!isOpen) return;
+        const t = setTimeout(() => confirmBtnRef.current?.focus(), 60);
+        const handler = (e) => {
+            const { isSaving, onConfirm, onClose } = stateRef.current;
+            if (isSaving) { e.preventDefault(); e.stopPropagation(); return; }
+            if (e.key === 'Enter' || ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S'))) {
+                e.preventDefault();
+                e.stopPropagation();
+                onConfirm?.();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose?.();
+            }
+        };
+        document.addEventListener('keydown', handler, { capture: true });
+        return () => {
+            clearTimeout(t);
+            document.removeEventListener('keydown', handler, { capture: true });
+        };
+    }, [isOpen]);
+
     return (
         <AnimatePresence>
             {isOpen && (
@@ -20,9 +49,12 @@ export default function ConfirmSaveModal({ isOpen, onClose, onConfirm, title, me
                         </div>
                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                             <button type="button" className="btn btn-g" onClick={onClose} disabled={isSaving}>Cancel</button>
-                            <button type="button" className="btn btn-p" onClick={onConfirm} disabled={isSaving}>
+                            <button type="button" ref={confirmBtnRef} className="btn btn-p" onClick={onConfirm} disabled={isSaving}>
                                 {isSaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> {confirmText || 'Yes, Save'}</>}
                             </button>
+                        </div>
+                        <div style={{ marginTop: '14px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            Enter = Save &nbsp;·&nbsp; Esc = Cancel
                         </div>
                     </motion.div>
                 </div>

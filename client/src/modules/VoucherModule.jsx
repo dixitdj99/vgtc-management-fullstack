@@ -9,6 +9,8 @@ import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
+import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
+import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 
 const PAGE_SIZE = 20;
 
@@ -366,6 +368,19 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
     const setPartyName = (value) => S('partyName', resolvePartyName(value, partySuggestions));
 
+    // Validate BEFORE the confirm modal opens — not after the user already confirmed
+    const requestSave = () => {
+        if (markInvalidFields(modalRef.current)) return;
+        if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) return;
+        setIsConfirming(true);
+    };
+
+    const modalRef = useFormShortcuts({
+        onSave: requestSave,
+        onCancel: onClose,
+        enabled: !isConfirming,
+    });
+
     useEffect(() => {
         setForm(f => {
             const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions);
@@ -376,11 +391,6 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
-        if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) {
-            alert('Bill No is required for bills');
-            setSaving(false);
-            return;
-        }
         try {
             await ax.patch(API_V + '/' + v.id, { ...form, partyName: resolvePartyName(form.partyName, partySuggestions), ...calc });
             onSave();
@@ -389,7 +399,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
+            <motion.div ref={modalRef} initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
                 style={{ width: '94%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.55)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -472,7 +482,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
-                    <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Changes">{saving ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}</button>
+                    <button className="btn btn-p" onClick={requestSave} disabled={saving} title="Save Changes">{saving ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}</button>
                 </div>
             </motion.div>
             <ConfirmSaveModal
@@ -527,11 +537,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         || permissions?.bill_jhajjar === 'edit';
     // For non-VGTC orgs (brand='main'), always use 'main' type — no sub-tabs
     const isGeneric = brand === 'main';
-    const [vType, setVType] = useState(isGeneric ? 'main' : (lockedType || initialTab || 'Kosli_Bill'));
+    const [vType, setVType] = useState(isGeneric ? 'main' : (lockedType || initialTab || getSticky('voucher.type', 'Kosli_Bill')));
 
     useEffect(() => { if (lockedType) setVType(lockedType); }, [lockedType]);
 
     const [vouchers, setVouchers] = useState([]);
+    const [tableLoading, setTableLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
     const [lrAlreadyUsed, setLrAlreadyUsed] = useState(false);
@@ -560,7 +571,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     }, [profiles]);
 
     const [form, setForm] = useState({
-        lrNo: '', date: new Date().toISOString().split('T')[0],
+        lrNo: '', date: getSticky('voucher.date', new Date().toISOString().split('T')[0]),
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
         rate: '', pump: NONE_PUMP, advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
@@ -644,6 +655,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const fetchVouchers = async () => {
         try { setVouchers((await ax.get(API_V + '/' + vType)).data); } catch { }
+        finally { setTableLoading(false); }
     };
 
     const knownPartyNames = useMemo(() => buildPartySuggestions(
@@ -788,9 +800,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const handlePartyNameChange = (val) => set('partyName', resolvePartyName(val, knownPartyNames));
 
 
-    const handleFormRequest = e => {
-        e.preventDefault();
+    const requestVoucherSave = () => {
         if (lrAlreadyUsed) return;
+        if (markInvalidFields(voucherFormRef.current)) return;
         if (isBillVoucherType(vType) && !String(form.billNo || '').trim()) {
             alert('Bill No is required for bills');
             return;
@@ -813,6 +825,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
         setIsConfirmingSave(true);
     };
+    const handleFormRequest = e => { e.preventDefault(); requestVoucherSave(); };
+
+    // Tally-style keyboard entry. Inline page form — no Esc-close. Yields to stacked modals.
+    const voucherFormRef = useFormShortcuts({
+        onSave: requestVoucherSave,
+        enabled: !isConfirmingSave && !editVoucher && !delVoucher && !dupLRModal,
+        autoFocus: false,
+    });
 
     const executeSaveVoucher = async () => {
         setSaving(true); setIsConfirmingSave(false);
@@ -834,6 +854,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         };
         try {
             await ax.post(API_V, payload);
+            rememberSticky('voucher.date', form.date);
+            if (!lockedType && !isGeneric) rememberSticky('voucher.type', vType);
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '' }));
             setDeliveries([{ ...EMPTY_DELIVERY }]);
@@ -967,7 +989,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                         {formOpen && (
                             <motion.div key="form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeInOut' }} style={{ overflow: 'hidden' }}>
                                 <div className="card-body">
-                                    <form onSubmit={handleFormRequest}>
+                                    <form onSubmit={handleFormRequest} ref={voucherFormRef}>
                                         <div className="fg fg-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                             {!isFactory && (
                                             <div className="field">
@@ -1371,7 +1393,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.length === 0 && (
+                                {tableLoading && filtered.length === 0 && (
+                                    [1, 2, 3, 4, 5].map(i => (
+                                        <tr key={`sk-${i}`} className="skeleton-row">
+                                            {Array.from({ length: 15 }).map((_, j) => (
+                                                <td key={j}><span className="skeleton skeleton-text" /></td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                )}
+                                {!tableLoading && filtered.length === 0 && (
                                     <tr><td colSpan={15} style={{ padding: '40px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>No records found</td></tr>
                                 )}
                                 {paginatedVouchers.map((v, i) => (

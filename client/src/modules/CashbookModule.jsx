@@ -10,6 +10,8 @@ import {
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import Pagination from '../components/Pagination';
+import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
+import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 
 const PAGE_SIZE = 20;
 
@@ -18,123 +20,132 @@ const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit
 
 const API_V = `/vouchers`;
 
+/* ── sub-components (module scope so parent re-renders don't remount them) ── */
+const DelConfirm = ({ id, label, apiCb, onClose, onDone }) => {
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try { await ax.delete(apiCb + '/' + id); onDone(); }
+    catch (e) { alert(e.response?.data?.error || 'Delete failed'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <motion.div initial={{ opacity: 0, scale: 0.93 }} animate={{ opacity: 1, scale: 1 }} style={{ width: '90%', maxWidth: '320px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', textAlign: 'center' }}>
+        <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <AlertTriangle size={24} color="var(--danger)" />
+        </div>
+        <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Delete Entry?</div>
+        <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '20px' }}>{label}</div>
+        <div style={{ display: 'flex', gap: '9px', justifyContent: 'center' }}>
+          <button className="btn btn-g" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-d" onClick={go} disabled={busy} title="Confirm Delete">{busy ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}</button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
+const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles }) => {
+  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [isConfirming, setIsConfirming] = useState(false);
+  const isDeposit = type === 'deposit';
+
+  const parseEntityKey = (key) => {
+    if (!key) return {};
+    const [entityType, entityId] = key.split('::');
+    let entityName = '';
+    if (entityType === 'driver') entityName = drivers.find(d => d.id === entityId)?.name || '';
+    else if (entityType === 'staff') entityName = staffList.find(s => s.id === entityId)?.name || '';
+    else if (entityType === 'vehicle') entityName = vehicles.find(v => v.truckNo === entityId)?.truckNo || entityId;
+    return { entityType, entityId, entityName };
+  };
+
+  const requestSave = () => {
+    setErr('');
+    if (markInvalidFields(formRef.current)) return;
+    if (!form.amount || parseFloat(form.amount) <= 0) { setErr('Enter a valid amount'); return; }
+    setIsConfirming(true);
+  };
+  const handleFormRequest = e => { e.preventDefault(); requestSave(); };
+
+  const formRef = useFormShortcuts({
+    onSave: requestSave,
+    onCancel,
+    enabled: !isConfirming,
+  });
+
+  const executeSave = async () => {
+    setSaving(true); setIsConfirming(false);
+    try {
+      const entity = parseEntityKey(form.entityKey);
+      if (!isDeposit && entity.entityType) {
+        await ax.post(apiCb + '/cash-out-linked', { amount: form.amount, date: form.date, remark: form.remark, ...entity });
+      } else {
+        await ax.post(apiCb + (isDeposit ? '/deposit' : '/cash-out'), form);
+      }
+      rememberSticky('cashbook.date', form.date);
+      setForm({ amount: '', date: form.date, remark: '', entityKey: '' }); onSave();
+    }
+    catch (e) { setErr(e.response?.data?.error || 'Error'); }
+    finally { setSaving(false); }
+  };
+
+  const selectedEntity = parseEntityKey(form.entityKey);
+  const confirmMsg = isDeposit
+    ? `Are you sure you want to save this Deposit of Rs.${form.amount}?`
+    : `Are you sure you want to save this Cash Out of Rs.${form.amount}?${selectedEntity.entityName ? `\n\nLinked to: ${selectedEntity.entityName} (${selectedEntity.entityType})` : ''}`;
+
+  return (
+    <motion.div ref={formRef} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ background: 'var(--bg-card)', border: `1px solid ${isDeposit ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`, borderRadius: '14px', padding: '18px 20px', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '14px' }}>
+        <div style={{ width: '32px', height: '32px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDeposit ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.1)' }}>
+          {isDeposit ? <ArrowDownCircle size={16} color="var(--accent)" /> : <ArrowUpCircle size={16} color="var(--danger)" />}
+        </div>
+        <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{isDeposit ? 'Add Deposit' : 'Cash Out'}</span>
+        <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Enter = next · Ctrl+S = save · Esc = close</span>
+      </div>
+      <form onSubmit={handleFormRequest}>
+        {!isDeposit && (
+          <div className="field" style={{ marginBottom: '10px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Give Cash To (Optional)</label>
+            <select className="fi" value={form.entityKey} onChange={e => setForm(f => ({ ...f, entityKey: e.target.value }))}>
+              <option value="">— None (General Expense) —</option>
+              {drivers.length > 0 && <optgroup label="Drivers">
+                {drivers.map(d => <option key={d.id} value={`driver::${d.id}`}>{d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}</option>)}
+              </optgroup>}
+              {vehicles.length > 0 && <optgroup label="Vehicles">
+                {vehicles.map(v => <option key={v.truckNo} value={`vehicle::${v.truckNo}`}>{v.truckNo} — {v.ownerName || v.driverName || ''}</option>)}
+              </optgroup>}
+              {staffList.length > 0 && <optgroup label="Staff Members">
+                {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
+              </optgroup>}
+            </select>
+          </div>
+        )}
+        <div className="fg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '9px', alignItems: 'end' }}>
+          <div className="field"><label>Amount (Rs.)</label><input className="fi" type="number" step="0.01" placeholder="0" required value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
+          <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
+          <div className="field"><label>Remark</label><input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office expenses'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} /></div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button type="submit" className={`btn ${isDeposit ? 'btn-a' : 'btn-d'}`} disabled={saving} title="Save Entry">{saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />}</button>
+            <button type="button" className="btn btn-g btn-icon" onClick={onCancel} title="Cancel"><X size={14} /></button>
+          </div>
+        </div>
+        {err && <div className="field-error" style={{ marginTop: '6px' }}>{err}</div>}
+      </form>
+      <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : 'Confirm Cash Out'} message={confirmMsg} isSaving={saving} />
+    </motion.div>
+  );
+};
 
 /* ══════ MAIN ══════ */
 export default function CashbookModule({ initialTab, moduleType, role = 'user', permissions = {} }) {
   /* ── local state ── */
   const API_CB = moduleType === 'jkl' ? `/jkl/cashbook` : `/cashbook`;
   const VTYPES = moduleType === 'jkl' ? ['JK_Lakshmi', 'JK_Super', 'Dump'] : ['Dump', 'JK_Super', 'JK_Lakshmi'];
-
-  /* ── sub-components ── */
-  const DelConfirm = ({ id, label, onClose, onDone }) => {
-    const [busy, setBusy] = useState(false);
-    const go = async () => {
-      setBusy(true);
-      try { await ax.delete(API_CB + '/' + id); onDone(); }
-      catch (e) { alert(e.response?.data?.error || 'Delete failed'); }
-      finally { setBusy(false); }
-    };
-    return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <motion.div initial={{ opacity: 0, scale: 0.93 }} animate={{ opacity: 1, scale: 1 }} style={{ width: '90%', maxWidth: '320px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', textAlign: 'center' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-            <AlertTriangle size={24} color="var(--danger)" />
-          </div>
-          <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Delete Entry?</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '20px' }}>{label}</div>
-          <div style={{ display: 'flex', gap: '9px', justifyContent: 'center' }}>
-            <button className="btn btn-g" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn btn-d" onClick={go} disabled={busy} title="Confirm Delete">{busy ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}</button>
-          </div>
-        </motion.div>
-      </div>
-    );
-  };
-
-  const EntryForm = ({ type, onSave, onCancel, drivers, staffList, vehicles }) => {
-    const [form, setForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '', entityKey: '' });
-    const [saving, setSaving] = useState(false);
-    const [err, setErr] = useState('');
-    const [isConfirming, setIsConfirming] = useState(false);
-    const isDeposit = type === 'deposit';
-
-    const parseEntityKey = (key) => {
-      if (!key) return {};
-      const [entityType, entityId] = key.split('::');
-      let entityName = '';
-      if (entityType === 'driver') entityName = drivers.find(d => d.id === entityId)?.name || '';
-      else if (entityType === 'staff') entityName = staffList.find(s => s.id === entityId)?.name || '';
-      else if (entityType === 'vehicle') entityName = vehicles.find(v => v.truckNo === entityId)?.truckNo || entityId;
-      return { entityType, entityId, entityName };
-    };
-
-    const handleFormRequest = e => {
-      e.preventDefault(); setErr('');
-      if (!form.amount || parseFloat(form.amount) <= 0) { setErr('Enter a valid amount'); return; }
-      setIsConfirming(true);
-    };
-    const executeSave = async () => {
-      setSaving(true); setIsConfirming(false);
-      try {
-        const entity = parseEntityKey(form.entityKey);
-        if (!isDeposit && entity.entityType) {
-          await ax.post(API_CB + '/cash-out-linked', { amount: form.amount, date: form.date, remark: form.remark, ...entity });
-        } else {
-          await ax.post(API_CB + (isDeposit ? '/deposit' : '/cash-out'), form);
-        }
-        setForm({ amount: '', date: new Date().toISOString().slice(0, 10), remark: '', entityKey: '' }); onSave();
-      }
-      catch (e) { setErr(e.response?.data?.error || 'Error'); }
-      finally { setSaving(false); }
-    };
-
-    const selectedEntity = parseEntityKey(form.entityKey);
-    const confirmMsg = isDeposit
-      ? `Are you sure you want to save this Deposit of Rs.${form.amount}?`
-      : `Are you sure you want to save this Cash Out of Rs.${form.amount}?${selectedEntity.entityName ? `\n\nLinked to: ${selectedEntity.entityName} (${selectedEntity.entityType})` : ''}`;
-
-    return (
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ background: 'var(--bg-card)', border: `1px solid ${isDeposit ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`, borderRadius: '14px', padding: '18px 20px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '14px' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDeposit ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.1)' }}>
-            {isDeposit ? <ArrowDownCircle size={16} color="var(--accent)" /> : <ArrowUpCircle size={16} color="var(--danger)" />}
-          </div>
-          <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{isDeposit ? 'Add Deposit' : 'Cash Out'}</span>
-        </div>
-        <form onSubmit={handleFormRequest}>
-          {!isDeposit && (
-            <div className="field" style={{ marginBottom: '10px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Give Cash To (Optional)</label>
-              <select className="fi" value={form.entityKey} onChange={e => setForm(f => ({ ...f, entityKey: e.target.value }))}>
-                <option value="">— None (General Expense) —</option>
-                {drivers.length > 0 && <optgroup label="Drivers">
-                  {drivers.map(d => <option key={d.id} value={`driver::${d.id}`}>{d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}</option>)}
-                </optgroup>}
-                {vehicles.length > 0 && <optgroup label="Vehicles">
-                  {vehicles.map(v => <option key={v.truckNo} value={`vehicle::${v.truckNo}`}>{v.truckNo} — {v.ownerName || v.driverName || ''}</option>)}
-                </optgroup>}
-                {staffList.length > 0 && <optgroup label="Staff Members">
-                  {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
-                </optgroup>}
-              </select>
-            </div>
-          )}
-          <div className="fg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '9px', alignItems: 'end' }}>
-            <div className="field"><label>Amount (Rs.)</label><input className="fi" type="number" step="0.01" placeholder="0" required value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
-            <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
-            <div className="field"><label>Remark</label><input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office expenses'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} /></div>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button type="submit" className={`btn ${isDeposit ? 'btn-a' : 'btn-d'}`} disabled={saving} title="Save Entry">{saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />}</button>
-              <button type="button" className="btn btn-g btn-icon" onClick={onCancel} title="Cancel"><X size={14} /></button>
-            </div>
-          </div>
-          {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600, marginTop: '6px' }}>{err}</div>}
-        </form>
-        <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : 'Confirm Cash Out'} message={confirmMsg} isSaving={saving} />
-      </motion.div>
-    );
-  };
 
   const [cbEntries, setCbEntries] = useState([]);
   const [allVouchers, setAllVouchers] = useState([]);
@@ -649,7 +660,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     <div>
       <AnimatePresence>
         {delTarget && (
-          <DelConfirm id={delTarget.id} label={delTarget.label}
+          <DelConfirm id={delTarget.id} label={delTarget.label} apiCb={API_CB}
             onClose={() => setDelTarget(null)}
             onDone={() => { setDelTarget(null); fetchAll(); }} />
         )}
@@ -736,7 +747,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       {/* Entry forms */}
       <AnimatePresence>
         {showForm && (
-          <EntryForm type={showForm} onSave={() => { fetchAll(); setShowForm(null); }} onCancel={() => setShowForm(null)} drivers={drivers} staffList={staffList} vehicles={vehicles} />
+          <EntryForm type={showForm} apiCb={API_CB} onSave={() => { fetchAll(); setShowForm(null); }} onCancel={() => setShowForm(null)} drivers={drivers} staffList={staffList} vehicles={vehicles} />
         )}
       </AnimatePresence>
 
