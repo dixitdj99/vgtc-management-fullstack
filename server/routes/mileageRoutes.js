@@ -176,13 +176,13 @@ router.get('/fuel/:truckNo', async (req, res) => {
 router.post('/fuel', async (req, res) => {
     try {
         if (!req.body.truckNo) return res.status(400).json({ error: 'truckNo is required' });
-        
+
         const payload = {
             ...req.body,
             orgId: req.orgId,
             createdAt: new Date().toISOString()
         };
-        
+
         let docRefId;
         if (!isAvailable()) {
             const doc = localStore.insert('fuel_logs', payload);
@@ -194,6 +194,108 @@ router.post('/fuel', async (req, res) => {
         res.json({ id: docRefId, ...payload });
     } catch (err) {
         console.error('add fuel log error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /api/mileage/settings
+ * Get fuel rate settings (diesel ₹/L, CNG ₹/kg)
+ */
+router.get('/settings', async (req, res) => {
+    try {
+        let doc = null;
+        if (!isAvailable()) {
+            const docs = localStore.getAll('mileage_settings').filter(d => d.orgId === req.orgId);
+            doc = docs[0];
+        } else {
+            const snapshot = await db.collection(getCol('mileage_settings', req))
+                .where('orgId', '==', req.orgId)
+                .limit(1)
+                .get();
+            if (!snapshot.empty) doc = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        }
+
+        const defaults = { dieselPerLitre: 90, cngPerKg: 75 };
+        if (doc) {
+            res.json({
+                id: doc.id,
+                dieselPerLitre: doc.dieselPerLitre || 90,
+                cngPerKg: doc.cngPerKg || 75,
+                updatedAt: doc.updatedAt
+            });
+        } else {
+            res.json(defaults);
+        }
+    } catch (err) {
+        console.error('get mileage settings error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/mileage/settings
+ * Update fuel rate settings
+ */
+router.post('/settings', async (req, res) => {
+    try {
+        console.log('[mileage/settings POST] Received:', req.body, 'orgId:', req.orgId);
+        const { dieselPerLitre, cngPerKg } = req.body;
+
+        if (dieselPerLitre === undefined || cngPerKg === undefined) {
+            console.log('Missing required fields');
+            return res.status(400).json({ error: 'dieselPerLitre and cngPerKg required', received: req.body });
+        }
+
+        const d = parseFloat(dieselPerLitre);
+        const c = parseFloat(cngPerKg);
+        if (isNaN(d) || isNaN(c) || d <= 0 || c <= 0) {
+            console.log('Invalid numeric values:', { d, c });
+            return res.status(400).json({ error: 'Rates must be positive numbers', received: { dieselPerLitre: d, cngPerKg: c } });
+        }
+
+        const payload = {
+            orgId: req.orgId,
+            dieselPerLitre: d,
+            cngPerKg: c,
+            updatedAt: new Date().toISOString()
+        };
+
+        console.log('[mileage/settings] Saving payload:', payload, 'Firebase available:', isAvailable());
+
+        if (!isAvailable()) {
+            const docs = localStore.getAll('mileage_settings').filter(doc => doc.orgId === req.orgId);
+            console.log('[mileage/settings] Found local docs:', docs.length);
+            if (docs.length > 0) {
+                localStore.update('mileage_settings', docs[0].id, payload);
+                console.log('[mileage/settings] Updated doc:', docs[0].id);
+                return res.json({ id: docs[0].id, dieselPerLitre: d, cngPerKg: c, updatedAt: payload.updatedAt });
+            } else {
+                const doc = localStore.insert('mileage_settings', payload);
+                console.log('[mileage/settings] Inserted new doc:', doc.id);
+                return res.json({ id: doc.id, dieselPerLitre: d, cngPerKg: c, updatedAt: payload.updatedAt });
+            }
+        } else {
+            const snapshot = await db.collection(getCol('mileage_settings', req))
+                .where('orgId', '==', req.orgId)
+                .limit(1)
+                .get();
+
+            console.log('[mileage/settings] Firestore docs found:', !snapshot.empty);
+            let docId;
+            if (!snapshot.empty) {
+                docId = snapshot.docs[0].id;
+                await db.collection(getCol('mileage_settings', req)).doc(docId).update(payload);
+                console.log('[mileage/settings] Updated Firestore doc:', docId);
+            } else {
+                const docRef = await db.collection(getCol('mileage_settings', req)).add(payload);
+                docId = docRef.id;
+                console.log('[mileage/settings] Created new Firestore doc:', docId);
+            }
+            return res.json({ id: docId, dieselPerLitre: d, cngPerKg: c, updatedAt: payload.updatedAt });
+        }
+    } catch (err) {
+        console.error('[mileage/settings] Error:', err);
         res.status(500).json({ error: err.message });
     }
 });

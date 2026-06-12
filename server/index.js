@@ -153,7 +153,7 @@ app.get('/', async (req, res) => {
 if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Server is running on port ${PORT}`);
-        
+
         // Schedule weekly backup: every Sunday at 00:00
         cron.schedule('0 0 * * 0', () => {
             console.log('[Cron] Running scheduled weekly backup...');
@@ -161,9 +161,24 @@ if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
         });
 
         // Schedule daily fleet alerts: every day at 09:00 AM
-        cron.schedule('0 9 * * *', () => {
-            console.log('[Cron] Running daily fleet alert checks...');
-            alertService.sendDailyAlertReport('vgtc', getEnvCol('vehicles'));
+        // Fetches all orgs from DB and sends alerts for each
+        cron.schedule('0 9 * * *', async () => {
+            console.log('[Cron] Running daily fleet alert checks for all organizations...');
+            try {
+                const { db } = require('./firebase');
+                const orgsSnapshot = await db.collection('organizations').get();
+                const orgs = orgsSnapshot.docs.map(doc => doc.data());
+
+                for (const org of orgs) {
+                    const orgId = org.id || org.orgId;
+                    if (orgId) {
+                        console.log(`[Cron] Sending alert for org: ${orgId}`);
+                        await alertService.sendDailyAlertReport(orgId, getEnvCol('vehicles'));
+                    }
+                }
+            } catch (err) {
+                console.error('[Cron] Alert scheduling error:', err);
+            }
         });
     });
 }
