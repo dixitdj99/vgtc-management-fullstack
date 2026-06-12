@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X, Search } from 'lucide-react';
 import TruckLoader from './components/TruckLoader';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ax from './api';
@@ -28,6 +28,8 @@ import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import TruckDashboard from './modules/TruckDashboard';
+import DashboardHome from './modules/DashboardHome';
+import CommandPalette from './components/CommandPalette';
 import { processSyncQueue, count as queueCount } from './utils/offlineQueue';
 
 const THEMES = [
@@ -50,8 +52,13 @@ function AppInner() {
   const [active, setActive] = useState(() => {
     let saved = localStorage.getItem('vgtc-active');
     if (saved === 'lr_kosli' || saved === 'lr_jhajjar') { saved = 'lr_dump'; localStorage.setItem('vgtc-active', 'lr_dump'); }
+    // One-time landing on the new Dashboard; afterwards last-used module is respected
+    if (!localStorage.getItem('vgtc-nav-v2')) {
+      localStorage.setItem('vgtc-nav-v2', '1');
+      return 'dashboard';
+    }
     if (saved) return saved;
-    return plant === 'jklakshmi' ? 'lr_jharli' : 'lr_dump';
+    return 'dashboard';
   });
   const [subActive, setSubActive] = useState(() => localStorage.getItem('vgtc-subactive') || '');
   const [expanded, setExpanded] = useState(() => {
@@ -260,7 +267,11 @@ function AppInner() {
             const { active: newActive, subActive: newSubActive, search } = e.detail || {};
             if (newActive) {
                 setActive(newActive);
-                if (newSubActive !== undefined) setSubActive(newSubActive);
+                if (newSubActive !== undefined) {
+                    setSubActive(newSubActive);
+                    // Expand the parent's sub-menu so the sidebar reflects the jump
+                    if (newSubActive) setExpanded(prev => ({ ...prev, [newActive]: true }));
+                }
                 if (search) {
                     // Store search term in localStorage for the target module to pick up
                     localStorage.setItem('vgtc-search-redirect', search);
@@ -274,6 +285,20 @@ function AppInner() {
         window.addEventListener('nav-module', handleNav);
         return () => window.removeEventListener('nav-module', handleNav);
     }, [plant]);
+
+    // Ctrl+K / Cmd+K — command palette (window capture beats form-shortcut hooks)
+    const [paletteOpen, setPaletteOpen] = useState(false);
+    useEffect(() => {
+        const handler = (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+                e.preventDefault();
+                e.stopPropagation();
+                setPaletteOpen(o => !o);
+            }
+        };
+        window.addEventListener('keydown', handler, { capture: true });
+        return () => window.removeEventListener('keydown', handler, { capture: true });
+    }, []);
 
   const cycleTheme = () => {
     const idx = THEMES.findIndex(t => t.id === theme);
@@ -439,6 +464,25 @@ function AppInner() {
     return true;
   });
 
+  // Dashboard — pinned above groups, visible to all roles/plants
+  const DASHBOARD_ITEM = { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard, color: '#6366f1' };
+  const FULL_NAV = [DASHBOARD_ITEM, ...FILTERED_NAV];
+  const filteredNavIds = new Set(FULL_NAV.map(n => n.id));
+
+  // Command palette registry — flattened nav + quick actions
+  const navCommand = (id, subId) =>
+    () => window.dispatchEvent(new CustomEvent('nav-module', { detail: { active: id, subActive: subId ?? '' } }));
+  const COMMANDS = [
+    ...FULL_NAV.flatMap(n => n.sub && n.sub.length
+      ? n.sub.map(s => ({ id: `${n.id}/${s.id}`, label: `${n.label} › ${s.label}`, Icon: n.Icon, color: n.color, group: 'Go to', keywords: n.id, run: navCommand(n.id, s.id) }))
+      : [{ id: n.id, label: n.label, Icon: n.Icon, color: n.color, group: 'Go to', keywords: n.id, run: navCommand(n.id) }]
+    ),
+    ...(filteredNavIds.has(plant === 'jklakshmi' ? 'lr_jharli' : 'lr_dump')
+      ? [{ id: 'qa-new-lr', label: 'New LR Entry', Icon: Receipt, color: '#10b981', group: 'Action', keywords: 'create add loading receipt', run: navCommand(plant === 'jklakshmi' ? 'lr_jharli' : 'lr_dump') }]
+      : []),
+    { id: 'qa-theme', label: 'Toggle theme', Icon: Sun, color: '#f59e0b', group: 'Action', keywords: 'dark light sepia mode', run: () => cycleTheme() },
+  ];
+
 
   const path = window.location.pathname;
   // Move public/auth-independent routes here
@@ -501,70 +545,99 @@ function AppInner() {
               </div>
             );
           })()}
-          {FILTERED_NAV.map(({ id, label, Icon, color, sub }) => (
-            <div key={id}>
-              <button className={`nav-btn${active === id ? ' active' : ''}`}
-                onClick={() => {
-                  if (col) setCol(false);
-                  setShowMobileMenu(false); // Close on click for mobile
-                  if (sub) {
-                    setExpanded(e => ({ ...e, [id]: !e[id] }));
-                    if (active !== id) {
+          {(() => {
+            const renderNavItem = ({ id, label, Icon, color, sub }) => (
+              <div key={id}>
+                <button className={`nav-btn${active === id ? ' active' : ''}`}
+                  onClick={() => {
+                    if (col) setCol(false);
+                    setShowMobileMenu(false); // Close on click for mobile
+                    if (sub) {
+                      setExpanded(e => ({ ...e, [id]: !e[id] }));
+                      if (active !== id) {
+                        setActive(id);
+                        setSubActive(sub[0].id);
+                      }
+                    } else {
                       setActive(id);
-                      setSubActive(sub[0].id);
+                      setSubActive('');
                     }
-                  } else {
-                    setActive(id);
-                    setSubActive('');
-                  }
-                }} 
-                title={col ? label : undefined}
-                style={active === id ? { 
-                  background: sub ? `${color}15` : color, 
-                  color: sub ? color : '#fff', 
-                  borderColor: sub ? `${color}30` : color, 
-                  fontWeight: 800, 
-                  transform: 'translateX(4px)', 
-                  boxShadow: `0 4px 12px ${color}${sub ? '20' : '60'}` 
-                } : {}}
-              >
-                <span className="nav-indicator" style={{ background: sub ? color : '#fff' }} />
-                <Icon size={20} color={active === id ? (sub ? color : '#fff') : 'currentColor'} />
-                {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
-                {!col && sub && (
-                  <ChevronRight size={14} style={{ transition: 'transform 0.2s', transform: expanded[id] ? 'rotate(90deg)' : 'none', opacity: 0.5 }} />
-                )}
-              </button>
-              <AnimatePresence>
-                {!col && sub && expanded[id] && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    style={{ overflow: 'hidden', paddingLeft: '32px', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', marginBottom: '8px' }}
-                  >
-                    {sub.map(s => (
-                      <button key={s.id}
-                        onClick={() => { setActive(id); setSubActive(s.id); setShowMobileMenu(false); }}
-                        style={{
-                          background: active === id && subActive === s.id ? color : 'transparent', 
-                          border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', fontSize: active === id && subActive === s.id ? '12.5px' : '12px', 
-                          fontWeight: active === id && subActive === s.id ? 800 : 600, transition: 'all 0.15s',
-                          color: active === id && subActive === s.id ? '#fff' : 'var(--text-muted)',
-                          transform: active === id && subActive === s.id ? 'translateX(8px)' : 'none',
-                          boxShadow: active === id && subActive === s.id ? `0 4px 12px ${color}60` : 'none'
-                        }}
-                      >
-                        <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', marginRight: '8px', opacity: active === id && subActive === s.id ? 1 : 0.4 }} />
-                        {s.label}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
+                  }}
+                  title={col ? label : undefined}
+                  style={active === id ? {
+                    background: sub ? `${color}15` : color,
+                    color: sub ? color : '#fff',
+                    borderColor: sub ? `${color}30` : color,
+                    fontWeight: 800,
+                    transform: 'translateX(4px)',
+                    boxShadow: `0 4px 12px ${color}${sub ? '20' : '60'}`
+                  } : {}}
+                >
+                  <span className="nav-indicator" style={{ background: sub ? color : '#fff' }} />
+                  <Icon size={20} color={active === id ? (sub ? color : '#fff') : 'currentColor'} />
+                  {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
+                  {!col && sub && (
+                    <ChevronRight size={14} style={{ transition: 'transform 0.2s', transform: expanded[id] ? 'rotate(90deg)' : 'none', opacity: 0.5 }} />
+                  )}
+                </button>
+                <AnimatePresence>
+                  {!col && sub && expanded[id] && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      style={{ overflow: 'hidden', paddingLeft: '32px', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', marginBottom: '8px' }}
+                    >
+                      {sub.map(s => (
+                        <button key={s.id}
+                          onClick={() => { setActive(id); setSubActive(s.id); setShowMobileMenu(false); }}
+                          style={{
+                            background: active === id && subActive === s.id ? color : 'transparent',
+                            border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', fontSize: active === id && subActive === s.id ? '12.5px' : '12px',
+                            fontWeight: active === id && subActive === s.id ? 800 : 600, transition: 'all 0.15s',
+                            color: active === id && subActive === s.id ? '#fff' : 'var(--text-muted)',
+                            transform: active === id && subActive === s.id ? 'translateX(8px)' : 'none',
+                            boxShadow: active === id && subActive === s.id ? `0 4px 12px ${color}60` : 'none'
+                          }}
+                        >
+                          <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', marginRight: '8px', opacity: active === id && subActive === s.id ? 1 : 0.4 }} />
+                          {s.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+
+            // Sidebar groups — module ids map by prefix; unknown ids fall through ungrouped
+            const groupOf = (id) => {
+              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_)/.test(id)) return 'Operations';
+              if (/^(balance_|cashbook_|pay_)/.test(id)) return 'Money';
+              if (/^(vehicles_|truck_dashboard|diesel_|mileage_)/.test(id)) return 'Fleet';
+              return null;
+            };
+            const GROUP_ORDER = ['Operations', 'Money', 'Fleet'];
+            const groupLabelStyle = { padding: '12px 14px 4px', fontSize: '9px', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', opacity: 0.7 };
+
+            return (
+              <>
+                {renderNavItem(DASHBOARD_ITEM)}
+                {GROUP_ORDER.map(g => {
+                  const items = FILTERED_NAV.filter(n => groupOf(n.id) === g);
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={g}>
+                      {!col && <div style={groupLabelStyle}>{g}</div>}
+                      {items.map(renderNavItem)}
+                    </div>
+                  );
+                })}
+                {FILTERED_NAV.filter(n => !groupOf(n.id)).map(renderNavItem)}
+              </>
+            );
+          })()}
         </nav>
         {/* User info + logout at bottom of sidebar */}
         <div style={{ marginTop: 'auto', padding: col ? '12px 8px' : '12px 14px', borderTop: '1px solid var(--border)' }}>
@@ -618,7 +691,7 @@ function AppInner() {
               {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
             </button>
             <div className="app-title" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-              {FILTERED_NAV.find(n => n.id === active)?.label}
+              {FULL_NAV.find(n => n.id === active)?.label}
               {/* Environment banner — visible in local/beta only */}
               {ENV_BANNER && (
                 <span style={{
@@ -650,6 +723,13 @@ function AppInner() {
             </div>
           </div>
           <div className="topbar-right" style={{ position: 'relative', zIndex: 1 }}>
+            {/* Command palette trigger */}
+            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', marginRight: '8px' }}>
+              <Search size={13} color="rgba(255,255,255,0.8)" />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.8)' }}>Search</span>
+              <kbd style={{ fontSize: '9px', fontWeight: 800, color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: '4px', padding: '1px 5px' }}>Ctrl K</kbd>
+            </button>
             {/* Offline/sync indicator */}
             {(pendingSync > 0 || !isOnline) && (
               <div title={isOnline ? `${pendingSync} operations queued offline — syncing` : `Offline — ${pendingSync} operations queued`}
@@ -742,6 +822,8 @@ function AppInner() {
           <AnimatePresence mode="wait">
             <motion.div key={active + subActive} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="page-content">
+              {/* ── Dashboard home ── */}
+              {active === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} />}
               {/* ── VGTC JK Super ── */}
               {active === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : 'kosli'} />}
               {(active === 'lr_jkl' || active === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
@@ -781,6 +863,9 @@ function AppInner() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Ctrl+K command palette */}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={COMMANDS} />
 
       {/* Global Waking Up indicator for inside the app */}
       <AnimatePresence>
