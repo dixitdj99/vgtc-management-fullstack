@@ -30,6 +30,8 @@ import AdminLoginPage from './pages/admin/AdminLoginPage';
 import TruckDashboard from './modules/TruckDashboard';
 import DashboardHome from './modules/DashboardHome';
 import CommandPalette from './components/CommandPalette';
+import useViewport from './hooks/useViewport';
+import MobileApp from './mobile/MobileApp';
 import { processSyncQueue, count as queueCount } from './utils/offlineQueue';
 
 const THEMES = [
@@ -49,6 +51,7 @@ const ENV_BANNER = APP_ENV === 'production' ? null
 
 function AppInner() {
   const { user, logout, ready, plant, godown } = useAuth();
+  const vp = useViewport();
   const [active, setActive] = useState(() => {
     let saved = localStorage.getItem('vgtc-active');
     if (saved === 'lr_kosli' || saved === 'lr_jhajjar') { saved = 'lr_dump'; localStorage.setItem('vgtc-active', 'lr_dump'); }
@@ -520,6 +523,61 @@ function AppInner() {
   const currentTheme = THEMES.find(t => t.id === theme) || THEMES[0];
   const ThemeIcon = currentTheme.Icon;
 
+  // Renders a module by id — shared by the desktop page-area and the mobile More tab.
+  const renderModule = (id, sub = '') => (
+    <>
+      {id === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} />}
+      {id === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : 'kosli'} />}
+      {(id === 'lr_jkl' || id === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
+      {id === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Kosli_Bill'} brand="jksuper" />}
+      {id === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
+      {id === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Kosli_Bill'} brand="jksuper" />}
+      {id === 'balance_jharli' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
+      {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
+      {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
+      {id === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="kosli" />}
+      {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
+      {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
+      {(id === 'vehicles_dump' || id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
+      {id === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
+      {(id === 'diesel_dump' || id === 'diesel_jkl' || id === 'diesel_jharli') && <DieselModule permissions={user.permissions} />}
+      {(id === 'mileage_dump' || id === 'mileage_jkl' || id === 'mileage_jharli') && <MileageModule />}
+      {(id === 'pay_dump' || id === 'pay_jkl' || id === 'pay_jharli') && <PayModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={sub || 'freight'} />}
+      {(id === 'sell_dump' || id === 'sell_jkl' || id === 'sell_jharli') && <SellModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
+      {(id === 'invoice_dump' || id === 'invoice_jharli') && <InvoiceModule brand={id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
+      {(id === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
+      {(id === 'admin_loading_status_dump' || id === 'admin_loading_status_jkl' || id === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
+      {(id === 'party_master_dump' || id === 'party_master_jharli') && <PartyMaster />}
+      {/* ── Generic (non-VGTC orgs) ── */}
+      {id === 'lr_main' && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
+      {id === 'voucher_main' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Bill'} brand="main" />}
+      {id === 'balance_main' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Bill'} brand="main" />}
+      {id === 'stock_main' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="main" />}
+      {id === 'cashbook_main' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="main" />}
+      {id === 'vehicles_main' && <VehicleModule permissions={user.permissions} />}
+      {id === 'diesel_main' && <DieselModule permissions={user.permissions} />}
+      {id === 'mileage_main' && <MileageModule />}
+      {id === 'pay_main' && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
+      {id === 'sell_main' && <SellModule brand="main" role={user.role} permissions={user.permissions} />}
+      {id === 'invoice_main' && <InvoiceModule brand="main" role={user.role} permissions={user.permissions} />}
+      {id === 'realtime_main' && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
+    </>
+  );
+
+  // ── Mobile / tablet: dedicated app-like UI ──
+  if (vp.mode === 'mobile') {
+    return (
+      <MobileApp
+        user={user} plant={plant} godown={godown}
+        theme={theme} cycleTheme={cycleTheme} logout={logout}
+        cols={vp.cols} filteredNavIds={filteredNavIds}
+        FULL_NAV={FULL_NAV} FILTERED_NAV={FILTERED_NAV}
+        weather={weather} isOnline={isOnline} pendingSync={pendingSync}
+        renderModule={renderModule}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <div className={`sidebar-overlay${showMobileMenu ? ' show-mobile' : ''}`} onClick={() => setShowMobileMenu(false)} />
@@ -822,43 +880,7 @@ function AppInner() {
           <AnimatePresence mode="wait">
             <motion.div key={active + subActive} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="page-content">
-              {/* ── Dashboard home ── */}
-              {active === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} />}
-              {/* ── VGTC JK Super ── */}
-              {active === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : 'kosli'} />}
-              {(active === 'lr_jkl' || active === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
-              {active === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Kosli_Bill'} brand="jksuper" />}
-              {active === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand={subActive === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
-              {active === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Kosli_Bill'} brand="jksuper" />}
-              {active === 'balance_jharli' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Dump'} brand={subActive === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
-              {active === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="dump" />}
-              {active === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="jkl" />}
-              {active === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="kosli" />}
-              {active === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jhajjar" />}
-              {(active === 'stock_jkl' || active === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="jkl" />}
-              {(active === 'vehicles_dump' || active === 'vehicles_jkl' || active === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
-              {active === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
-              {(active === 'diesel_dump' || active === 'diesel_jkl' || active === 'diesel_jharli') && <DieselModule permissions={user.permissions} />}
-              {(active === 'mileage_dump' || active === 'mileage_jkl' || active === 'mileage_jharli') && <MileageModule />}
-              {(active === 'pay_dump' || active === 'pay_jkl' || active === 'pay_jharli') && <PayModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={subActive || 'freight'} />}
-              {(active === 'sell_dump' || active === 'sell_jkl' || active === 'sell_jharli') && <SellModule brand={active.includes('jkl') || active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-              {(active === 'invoice_dump' || active === 'invoice_jharli') && <InvoiceModule brand={active.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-              {(active === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
-              {(active === 'admin_loading_status_dump' || active === 'admin_loading_status_jkl' || active === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
-              {(active === 'party_master_dump' || active === 'party_master_jharli') && <PartyMaster />}
-              {/* ── Generic (non-VGTC orgs) ── */}
-              {active === 'lr_main'       && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
-              {active === 'voucher_main'  && <VoucherModule role={user.role} permissions={user.permissions} lockedType={subActive || 'Bill'} brand="main" />}
-              {active === 'balance_main'  && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={subActive || 'Bill'} brand="main" />}
-              {active === 'stock_main'    && <StockModule role={user.role} permissions={user.permissions} initialTab={subActive || 'overview'} brand="main" />}
-              {active === 'cashbook_main' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={subActive || 'ledger'} moduleType="main" />}
-              {active === 'vehicles_main' && <VehicleModule permissions={user.permissions} />}
-              {active === 'diesel_main'   && <DieselModule permissions={user.permissions} />}
-              {active === 'mileage_main'  && <MileageModule />}
-              {active === 'pay_main'      && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
-              {active === 'sell_main'     && <SellModule brand="main" role={user.role} permissions={user.permissions} />}
-              {active === 'invoice_main'  && <InvoiceModule brand="main" role={user.role} permissions={user.permissions} />}
-              {active === 'realtime_main' && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
+              {renderModule(active, subActive)}
             </motion.div>
           </AnimatePresence>
         </div>
