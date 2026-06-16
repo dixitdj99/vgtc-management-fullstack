@@ -64,6 +64,16 @@
 }
 .m-app[data-cols="2"] .m-screen-grid { grid-template-columns: 1fr 1fr; }
 
+/* Tablet: card lists flow into 2 columns automatically */
+.m-app[data-cols="2"] .m-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.m-list { display: flex; flex-direction: column; gap: 10px; }
+/* Constrain very wide tablet content for readability */
+.m-app[data-cols="2"] .m-screen { max-width: 920px; margin: 0 auto; width: 100%; }
+
 /* ── Bottom nav ── */
 .m-bottomnav {
   flex-shrink: 0;

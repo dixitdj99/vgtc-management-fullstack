@@ -1,20 +1,31 @@
 import React from 'react';
 import MobileScreen from '../components/MobileScreen';
 import MoreModuleHost from './MoreModuleHost';
+import MobileVehiclesList from './MobileVehiclesList';
 import { ChevronRight } from 'lucide-react';
 
 /**
- * Launcher for every module not on a core tab. Tapping pushes a screen that
- * renders the existing desktop module via the renderModule() prop from App.jsx.
- * As modules get native mobile screens (later phases), they're removed here and
- * routed to their native screen instead.
+ * Launcher for every module not on a core tab. Modules with a native mobile
+ * screen route there; the rest render the existing desktop module in a
+ * scrollable fallback host so every feature stays reachable.
  */
 const CORE_PREFIXES = /^(dashboard$|lr_|voucher_|cashbook_)/;
 
-export default function MoreTab({ FILTERED_NAV = [], renderModule, nav }) {
+// id-prefix → native mobile screen component (props: { nav, ...appProps })
+const NATIVE = [
+    { test: /^vehicles_/, Screen: MobileVehiclesList },
+];
+
+export default function MoreTab({ FILTERED_NAV = [], renderModule, nav, ...appProps }) {
     const modules = FILTERED_NAV.filter(n => !CORE_PREFIXES.test(n.id));
 
     const open = (item) => {
+        const native = NATIVE.find(n => n.test.test(item.id));
+        if (native) {
+            const Screen = native.Screen;
+            nav.push({ key: item.id, title: item.label, render: () => <Screen nav={nav} {...appProps} /> });
+            return;
+        }
         const subActive = item.sub?.[0]?.id || '';
         nav.push({
             key: item.id,
