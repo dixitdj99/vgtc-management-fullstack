@@ -60,15 +60,15 @@ ax.interceptors.request.use(async (config) => {
     }
 
     // ── GET Cache check ──────────────────────────────────────────────────
+    // Serve fresh cache via a one-shot custom adapter (no request cancellation —
+    // cancellation lost config across axios versions and crashed callers).
     if (config.method === 'get' && !config._skipCache) {
         const key = getCacheKey(config);
         const cached = _cache.get(key);
         if (cached && Date.now() < cached.expiresAt) {
-            // Return cached response without hitting Firestore
-            const cancelSource = axios.CancelToken.source();
-            config.cancelToken = cancelSource.token;
-            config._cachedResponse = { data: cached.data, status: 200, statusText: 'OK (cached)', headers: {}, config };
-            cancelSource.cancel('__cache_hit__');
+            config.adapter = () => Promise.resolve({
+                data: cached.data, status: 200, statusText: 'OK (cached)', headers: {}, config, request: {},
+            });
         }
     }
 
@@ -91,14 +91,11 @@ ax.interceptors.request.use(async (config) => {
         });
         const n = await count();
         window.dispatchEvent(new CustomEvent('offline-queue-changed', { detail: { count: n } }));
-        const syntheticResp = {
+        // Resolve via a one-shot adapter (same robustness as the cache path)
+        config.adapter = () => Promise.resolve({
             data: { _queued: true, queueId: op.queueId, message: 'Saved offline — will sync when reconnected' },
-            status: 202, statusText: 'Queued Offline', headers: {}, config, _queued: true,
-        };
-        const cancelSource = axios.CancelToken.source();
-        config.cancelToken = cancelSource.token;
-        cancelSource.cancel('__offline_queued__');
-        config._offlineResponse = syntheticResp;
+            status: 202, statusText: 'Queued Offline', headers: {}, config, request: {}, _queued: true,
+        });
     }
 
     // Loading indicators
@@ -134,16 +131,6 @@ ax.interceptors.response.use(
         pendingRequests = Math.max(0, pendingRequests - 1);
         emitLoading();
         if (pendingRequests === 0) { clearTimeout(slowRequestTimer); window.dispatchEvent(new CustomEvent('api-fast')); }
-
-        // Serve cache hit as success
-        if (axios.isCancel(error) && error.message === '__cache_hit__') {
-            return Promise.resolve(error.config._cachedResponse);
-        }
-
-        // Resolve offline-queued requests
-        if (axios.isCancel(error) && error.message === '__offline_queued__') {
-            return Promise.resolve(error.config._offlineResponse);
-        }
 
         return Promise.reject(error);
     }

@@ -18,13 +18,17 @@ export default function MobileLRList({ plant, godown, filteredNavIds, nav }) {
     const brand = brandFor(plant, godown);
     const [rows, setRows] = useState(null);
     const [error, setError] = useState(false);
+    const [errMsg, setErrMsg] = useState('');
     const [q, setQ] = useState('');
 
     const load = () => {
-        setError(false); setRows(null);
+        setError(false); setErrMsg(''); setRows(null);
         ax.get(cfg.lrApi)
             .then(r => setRows([...(r.data || [])].sort((a, b) => (b.lrNo || 0) - (a.lrNo || 0))))
-            .catch(() => { setRows([]); setError(true); });
+            .catch(e => {
+                setRows([]); setError(true);
+                setErrMsg(`${cfg.lrApi} → ${e.response?.status || ''} ${e.response?.data?.error || e.message}`);
+            });
     };
     useEffect(load, [cfg.lrApi]);
 
@@ -58,7 +62,7 @@ export default function MobileLRList({ plant, godown, filteredNavIds, nav }) {
                 </div>
 
                 {rows === null ? <SkeletonList count={6} />
-                    : filtered.length === 0 ? <EmptyState icon={Receipt} title={error ? 'Could not load' : 'No loading receipts'} hint={error ? 'Pull data again from the menu.' : q ? 'Try a different search.' : 'Tap + to create one.'} />
+                    : filtered.length === 0 ? <EmptyState icon={Receipt} title={error ? 'Could not load' : 'No loading receipts'} hint={error ? errMsg : q ? 'Try a different search.' : 'Tap + to create one.'} />
                         : (
                             <div className="m-list">
                                 {filtered.map(lr => (

@@ -18,8 +18,10 @@ export function plantConfig(plant, godown) {
     let voucherTypes = ['Kosli_Bill', 'Jajjhar_Bill', 'JK_Super'];
     if (godown === 'kosli') voucherTypes = ['Kosli_Bill'];
     else if (godown === 'jhajjar') voucherTypes = ['Jajjhar_Bill'];
+    // LR is served per-godown for jksuper, matching LRModule's brand routing
+    const lrApi = godown === 'jhajjar' ? '/jhajjar/lr' : '/kosli/lr';
     return {
-        lrApi: '/lr', cashbookApi: '/cashbook',
+        lrApi, cashbookApi: '/cashbook',
         voucherTypes,
         ids: { lr: 'lr_dump', voucher: 'voucher_dump', cashbook: 'cashbook_dump', balance: 'balance_dump', vehicles: 'vehicles_dump' },
     };
