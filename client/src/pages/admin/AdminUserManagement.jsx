@@ -18,6 +18,10 @@ const MODULES = [
   { key: 'bill_jhajjar', label: 'Jhajjar Bill' },
   { key: 'balance_jhajjar', label: 'Balance - Jhajjar' },
   { key: 'stock_jhajjar', label: 'Jhajjar Stock' },
+  { key: 'lr_bahadurgarh', label: 'Bahadurgarh LR' },
+  { key: 'bill_bahadurgarh', label: 'Bahadurgarh Bill' },
+  { key: 'balance_bahadurgarh', label: 'Balance - Bahadurgarh' },
+  { key: 'stock_bahadurgarh', label: 'Bahadurgarh Stock' },
   { key: 'lr_jkl', label: 'JK Lakshmi LR' },
   { key: 'voucher_jkl_dump', label: 'JKL Dump Voucher' },
   { key: 'voucher_jkl', label: 'JK Lakshmi Voucher' },
@@ -60,10 +64,17 @@ const HIERARCHY = [
       { id: 'jhajjar_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] },
     ],
   },
+  {
+    id: 'bahadurgarh', label: 'Bahadurgarh Dump', color: '#d97706', plantKey: 'jksuper', godownKey: 'bahadurgarh',
+    groups: [
+      { id: 'bahadurgarh_plant', label: 'Bahadurgarh Plant Modules', modules: ['lr_bahadurgarh', 'bill_bahadurgarh', 'balance_bahadurgarh', 'stock_bahadurgarh'] },
+      { id: 'bahadurgarh_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] },
+    ],
+  },
 ];
 
-const GODOWN_LABEL = { kosli: 'Kosli', jhajjar: 'Jhajjar', jkl: 'JK Lakshmi', dump: 'Dump' };
-const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#14b8a6', jkl: '#f59e0b', dump: '#f43f5e' };
+const GODOWN_LABEL = { kosli: 'Kosli', jhajjar: 'Jhajjar', bahadurgarh: 'Bahadurgarh', jkl: 'JK Lakshmi', dump: 'Dump' };
+const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#14b8a6', bahadurgarh: '#d97706', jkl: '#f59e0b', dump: '#f43f5e' };
 
 // ── Reusable Components ──────────────────────────────────────
 
@@ -515,7 +526,7 @@ export default function AdminUserManagement() {
                 );
               })}
             </div>
-          </div>}
+          </div>
         </div>
 
         {/* ── RIGHT: Users Table Column ──────────────────── */}

@@ -10,7 +10,7 @@ import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
-const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
+const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 function calcNet(v, vehicle) {
   const gross = v.deliveries?.length > 0
@@ -149,7 +149,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
   const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
   const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
   const out = Math.max(0, net - paid);
-  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
+  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill' || tabName === 'Bahadurgarh_Bill';
   const cols = ['#', 'Date', 'LR No.', ...(isBillType ? ['Bill No.', 'Party Code'] : []), 'Destination', 'Weight', 'Rate', 'Gross', 'Diesel', 'Cash', 'Online', 'Munshi', 'Shortage', 'Net Bal', 'Paid', 'Status'];
   const tbody = rows.map((v, i) => {
     const n = calcNet(v, vehicle), p = parseFloat(v.paidBalance) || 0, o = Math.max(0, n - p);
@@ -452,7 +452,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 
 /* ── Month Section ── */
 function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL, onVerifyDiesel }) {
-  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill';
+  const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill' || tabName === 'Bahadurgarh_Bill';
   const [open, setOpen] = useState(true);
 
   const monthChecked = rows.filter(v => selected.has(v.id));
@@ -666,7 +666,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   // For non-VGTC orgs (brand='main'), always use 'main' type — no sub-tabs
   const isGeneric = brand === 'main';
-  const [tab, setTab] = useState(isGeneric ? 'main' : (lockedType || initialTab || 'Kosli_Bill'));
+  const [tab, setTab] = useState(isGeneric ? 'main' : (lockedType || initialTab || (brand === 'bahadurgarh' ? 'Bahadurgarh_Bill' : 'Kosli_Bill')));
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
   const [vehicles, setVehicles] = useState([]);

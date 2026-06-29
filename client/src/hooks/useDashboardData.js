@@ -15,11 +15,12 @@ export function plantConfig(plant, godown) {
             ids: { lr: 'lr_jharli', voucher: 'voucher_jharli', cashbook: 'cashbook_jharli', balance: 'balance_jharli', vehicles: 'vehicles_jharli' },
         };
     }
-    let voucherTypes = ['Kosli_Bill', 'Jajjhar_Bill', 'JK_Super'];
+    let voucherTypes = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'JK_Super'];
     if (godown === 'kosli') voucherTypes = ['Kosli_Bill'];
     else if (godown === 'jhajjar') voucherTypes = ['Jajjhar_Bill'];
+    else if (godown === 'bahadurgarh') voucherTypes = ['Bahadurgarh_Bill'];
     // LR is served per-godown for jksuper, matching LRModule's brand routing
-    const lrApi = godown === 'jhajjar' ? '/jhajjar/lr' : '/kosli/lr';
+    const lrApi = godown === 'jhajjar' ? '/jhajjar/lr' : (godown === 'bahadurgarh' ? '/bahadurgarh/lr' : '/kosli/lr');
     return {
         lrApi, cashbookApi: '/cashbook',
         voucherTypes,

@@ -10,7 +10,7 @@ import MobileLRDetail from './MobileLRDetail';
 import MobileLRForm from './MobileLRForm';
 
 const brandFor = (plant, godown) =>
-    plant === 'jklakshmi' ? 'jkl' : (godown === 'jhajjar' ? 'jhajjar' : 'kosli');
+    plant === 'jklakshmi' ? 'jkl' : (godown === 'jhajjar' ? 'jhajjar' : godown === 'bahadurgarh' ? 'bahadurgarh' : 'kosli');
 
 export default function MobileLRList({ plant, godown, filteredNavIds, nav }) {
     const { user, hasPermission } = useAuth();
@@ -40,7 +40,7 @@ export default function MobileLRList({ plant, godown, filteredNavIds, nav }) {
             `${lr.lrNo} ${lr.truckNo} ${lr.partyName} ${lr.destination} ${lr.material}`.toLowerCase().includes(s));
     }, [rows, q]);
 
-    const canCreate = hasPermission(cfg.ids.lr, 'edit') || hasPermission('lr_kosli', 'edit') || hasPermission('lr_jhajjar', 'edit') || hasPermission('lr_jkl', 'edit');
+    const canCreate = hasPermission(cfg.ids.lr, 'edit') || hasPermission('lr_kosli', 'edit') || hasPermission('lr_jhajjar', 'edit') || hasPermission('lr_bahadurgarh', 'edit') || hasPermission('lr_jkl', 'edit');
 
     const openCreate = () => nav.openSheet({
         title: 'New Loading Receipt',

@@ -109,7 +109,7 @@ async function generateReceiptPDF(title, data, outputPath) {
  * Used for individual per-creation backups.
  */
 async function generateVoucherPDF(v, outputPath) {
-    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
+    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
 
     // Support multi-delivery vouchers (deliveries array)
     const gross = v.deliveries?.length > 0
@@ -184,7 +184,8 @@ async function generateVoucherPDF(v, outputPath) {
             doc.moveTo(M, y + 15).lineTo(col1, y + 15).stroke();
             doc.text('J.K. Super Cement Ltd.', M + 5, y + 20);
             doc.moveTo(M, y + 30).lineTo(col1, y + 30).stroke();
-            doc.text(v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar', M + 5, y + 35, { align: 'center', width: col1 - M });
+            const consignorBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
+            doc.text(consignorBranch, M + 5, y + 35, { align: 'center', width: col1 - M });
             
             const pName = v.partyName ? v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '') : '';
             doc.text(`M/s.  ${pName}`, col1 + 5, y + 5, { width: 190 });
@@ -200,7 +201,8 @@ async function generateVoucherPDF(v, outputPath) {
             
             doc.text(`Truck No.  ${v.truckNo || ''}`, col2 + 5, y + 5);
             doc.moveTo(col2, y + 15).lineTo(PW - M, y + 15).stroke();
-            doc.text(`From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}`, col2 + 5, y + 18);
+            const fromBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
+            doc.text(`From : ${fromBranch}`, col2 + 5, y + 18);
             doc.moveTo(col2, y + 30).lineTo(PW - M, y + 30).stroke();
             doc.text(`To  ${v.destination || ''}`, col2 + 50, y + 18);
             doc.text(`LR No. ${v.lrNo || ''}`, col2 + 5, y + 35);

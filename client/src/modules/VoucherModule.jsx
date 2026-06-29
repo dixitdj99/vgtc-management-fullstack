@@ -17,7 +17,7 @@ const PAGE_SIZE = 20;
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
 const NONE_PUMP = 'None';
-const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
+const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
 const EMPTY_DELIVERY = { lrNo: '', destination: '', partyName: '', weight: '', bags: '', rate: '' };
 
@@ -36,7 +36,7 @@ const getAllowedPump = (pump, advanceDiesel, pumpOptions = []) => {
     return pump && pump !== NONE_PUMP ? pump : (pumps[0] || NONE_PUMP);
 };
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
-const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill';
+const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill' || type === 'Bahadurgarh_Bill';
 
 const getCalc = (w, r, hasComm) => {
     const wt = parseFloat(w) || 0, rt = parseFloat(r) || 0;
@@ -65,7 +65,7 @@ const getNet = (v) => {
 /* ── Print ── */
 function printVoucher(v, org = {}) {
     const orgName = org.name || 'VIKAS GOODS TRANSPORT CO.';
-    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
+    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
 
     const n = getNet(v);
     const deductionRows = [
@@ -159,7 +159,7 @@ function printVoucher(v, org = {}) {
             <div class="info-col-1">
                 <div>Consignor</div>
                 <div>J.K. Super Cement Ltd.</div>
-                <div>${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}</div>
+                <div>${v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh')}</div>
             </div>
             <div class="info-col-2">
                 <div>M/s. <span style="margin-left: 10px; font-weight: normal; font-size: 13px;">${v.partyName || ''}</span>${v.partyName ? '' : '<div class="line-fill"></div>'}</div>
@@ -169,7 +169,7 @@ function printVoucher(v, org = {}) {
             </div>
             <div class="info-col-3">
                 <div>Truck No. <span style="margin-left: 5px; font-weight: normal;">${v.truckNo || ''}</span>${v.truckNo ? '' : '<div class="dotted-fill"></div>'}</div>
-                <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}</div>
+                <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh')}</div>
                 <div>To <span style="margin-left: 5px; font-weight: normal;">${v.destination || ''}</span>${v.destination ? '' : '<div class="line-fill"></div>'}</div>
                 <div><span>LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal;">Date: ${v.date}</span></div>
             </div>
@@ -427,7 +427,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                                 {partySuggestions.map(name => <option key={name} value={name} />)}
                             </datalist>
                         </div>
-                        {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill') && (
+                        {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill') && (
                             <>
                                 <div className="field"><label>Party Code</label><input className="fi" type="text" value={form.partyCode} onChange={e => S('partyCode', e.target.value)} /></div>
                                 <div className="field"><label>Bill No</label><input className="fi" type="text" value={form.billNo} onChange={e => S('billNo', e.target.value)} required /></div>
@@ -537,7 +537,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         || permissions?.bill_jhajjar === 'edit';
     // For non-VGTC orgs (brand='main'), always use 'main' type — no sub-tabs
     const isGeneric = brand === 'main';
-    const [vType, setVType] = useState(isGeneric ? 'main' : (lockedType || initialTab || getSticky('voucher.type', 'Kosli_Bill')));
+    const [vType, setVType] = useState(isGeneric ? 'main' : (lockedType || initialTab || getSticky('voucher.type', brand === 'bahadurgarh' ? 'Bahadurgarh_Bill' : 'Kosli_Bill')));
 
     useEffect(() => { if (lockedType) setVType(lockedType); }, [lockedType]);
 
@@ -749,6 +749,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         let lrEndpoint;
         if (vType === 'Kosli_Bill') lrEndpoint = '/kosli/lr';
         else if (vType === 'Jajjhar_Bill') lrEndpoint = '/jhajjar/lr';
+        else if (vType === 'Bahadurgarh_Bill') lrEndpoint = '/bahadurgarh/lr';
         else if (brand === 'jklakshmi' || brand === 'jkl') lrEndpoint = '/jkl/lr';
         else lrEndpoint = '/lr';
 
@@ -1023,7 +1024,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </datalist>
                                             </div>
                                             </>}
-                                            {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill') && (
+                                            {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
                                                 <>
                                                     <div className="field">
                                                         <label>Party Code</label>

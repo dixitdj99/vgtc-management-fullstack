@@ -284,8 +284,50 @@ textarea.m-input { height: auto; min-height: 80px; padding: 12px 14px; resize: v
   @keyframes m-wave { 100% { transform: translateX(100%); } }
 }
 
-/* ── Desktop-fallback host (for modules not yet native) ── */
-.m-fallback { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* ── Desktop-fallback host (modules not yet native) ────────────────────────
+   Reflows desktop module layouts so they fit a phone instead of overflowing.
+   Scoped to .m-fallback-fit so desktop is never affected. */
+.m-fallback-fit { width: 100%; }
+
+/* Neutralize the module's own page padding/min-width */
+.m-fallback-fit .page-container,
+.m-fallback-fit .page-content { padding: 0 !important; max-width: 100% !important; }
+
+/* Multi-column grids collapse to a phone-friendly count */
+.m-fallback-fit [style*="grid-template-columns"] {
+  grid-template-columns: 1fr 1fr !important;
+}
+
+/* Flex headers / toolbars wrap instead of overflowing */
+.m-fallback-fit [style*="justify-content: space-between"],
+.m-fallback-fit [style*="justify-content:space-between"] {
+  flex-wrap: wrap !important;
+  gap: 10px;
+}
+
+/* Headings shrink to fit narrow screens */
+.m-fallback-fit h1, .m-fallback-fit h2 { font-size: 18px !important; }
+
+/* Data tables: scroll horizontally so every column stays reachable.
+   Keep the table's natural width (don't let it collapse to the viewport). */
+.m-fallback-fit .tbl-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+.m-fallback-fit .tbl-wrap > table,
+.m-fallback-fit table.tbl {
+  width: auto !important;
+  min-width: max-content;
+}
+.m-fallback-fit .tbl-wrap th,
+.m-fallback-fit .tbl-wrap td { white-space: nowrap; }
+
+/* Stop fixed pixel widths from forcing overflow */
+.m-fallback-fit select,
+.m-fallback-fit input[type="text"],
+.m-fallback-fit input[type="search"] { max-width: 100%; }
+
 .m-fallback-banner {
   font-size: 11px; font-weight: 700; color: var(--text-muted);
   background: var(--bg-th); padding: 8px 12px; border-radius: 10px; margin-bottom: 12px;

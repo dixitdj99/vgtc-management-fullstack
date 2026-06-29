@@ -16,6 +16,8 @@ const kosliLrRoutes = require('./routes/kosliLrRoutes');
 const jhajjarLrRoutes = require('./routes/jhajjarLrRoutes');
 const kosliStockRoutes = require('./routes/kosliStockRoutes');
 const jhajjarStockRoutes = require('./routes/jhajjarStockRoutes');
+const bahadurgarhLrRoutes = require('./routes/bahadurgarhLrRoutes');
+const bahadurgarhStockRoutes = require('./routes/bahadurgarhStockRoutes');
 const stockService = require('./utils/stockService');
 
 // JK Lakshmi specific routes
@@ -71,12 +73,14 @@ const partyRoutes = require('./routes/partyRoutes');
 
 app.use('/api/kosli/lr', requireAuth, kosliLrRoutes);
 app.use('/api/jhajjar/lr', requireAuth, jhajjarLrRoutes);
+app.use('/api/bahadurgarh/lr', requireAuth, bahadurgarhLrRoutes);
 app.use('/api/vouchers', requireAuth, voucherRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/cashbook', requireAuth, cashbookRoutes);
 app.use('/api/kosli/stock', requireAuth, kosliStockRoutes);
 app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
+app.use('/api/bahadurgarh/stock', requireAuth, bahadurgarhStockRoutes);
 app.use('/api/sell', requireAuth, sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);

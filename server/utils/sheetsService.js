@@ -14,6 +14,7 @@ const SPREADSHEETS = {
             'Dump': 'JK Super Dump',
             'Kosli_Bill': 'Kosli Bill',
             'Jajjhar_Bill': 'Jajjhar Bill',
+            'Bahadurgarh_Bill': 'Bahadurgarh Bill',
             'JK_Lakshmi': 'JK Lakshmi Factory', // Fallback, only created for jklakshmi brand
         },
         headers: {
@@ -154,7 +155,7 @@ async function getOrCreateSpreadsheet(moduleKey, brand = 'jksuper') {
     // Compose Tabs based on brand (specifically for Balance Sheet, filter out wrong brands)
     let myTabs = Object.entries(config.tabs);
     if (moduleKey === 'balance') {
-        if (brand === 'jksuper') myTabs = myTabs.filter(([k]) => k === 'JK_Super' || k === 'Dump' || k === 'Kosli_Bill' || k === 'Jajjhar_Bill');
+        if (brand === 'jksuper') myTabs = myTabs.filter(([k]) => k === 'JK_Super' || k === 'Dump' || k === 'Kosli_Bill' || k === 'Jajjhar_Bill' || k === 'Bahadurgarh_Bill');
         if (brand === 'jklakshmi') myTabs = myTabs.filter(([k]) => k === 'JK_Lakshmi' || k === 'Dump');
     }
 

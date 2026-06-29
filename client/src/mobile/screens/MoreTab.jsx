@@ -2,6 +2,7 @@ import React from 'react';
 import MobileScreen from '../components/MobileScreen';
 import MoreModuleHost from './MoreModuleHost';
 import MobileVehiclesList from './MobileVehiclesList';
+import MobileLoadingStatus from './MobileLoadingStatus';
 import { ChevronRight } from 'lucide-react';
 
 /**
@@ -14,6 +15,7 @@ const CORE_PREFIXES = /^(dashboard$|lr_|voucher_|cashbook_)/;
 // id-prefix → native mobile screen component (props: { nav, ...appProps })
 const NATIVE = [
     { test: /^vehicles_/, Screen: MobileVehiclesList },
+    { test: /^admin_loading_status_/, Screen: MobileLoadingStatus },
 ];
 
 export default function MoreTab({ FILTERED_NAV = [], renderModule, nav, ...appProps }) {

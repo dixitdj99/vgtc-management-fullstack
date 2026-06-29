@@ -203,7 +203,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const { user } = useAuth();
   const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   // canEdit: checks brand-specific key first, then generic 'stock' key
-  const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : 'stock_jkl';
+  const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : brand === 'bahadurgarh' ? 'stock_bahadurgarh' : 'stock_jkl';
   const canEdit = role === 'admin' || permissions?.[stockKey] === 'edit' || permissions?.stock === 'edit';
   let API, API_LR;
 
@@ -216,6 +216,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   } else if (brand === 'jhajjar') {
     API = `${BASE_API}/jhajjar/stock`;
     API_LR = `${BASE_API}/jhajjar/lr`;
+  } else if (brand === 'bahadurgarh') {
+    API = `${BASE_API}/bahadurgarh/stock`;
+    API_LR = `${BASE_API}/bahadurgarh/lr`;
   } else {
     API = `${BASE_API}/stock`;
     API_LR = `${BASE_API}/lr`;
@@ -296,6 +299,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const STOCK_LOCATIONS = [
     { key: 'kosli', label: 'Kosli Stock' },
     { key: 'jhajjar', label: 'Jhajjar Stock' },
+    { key: 'bahadurgarh', label: 'Bahadurgarh Stock' },
     { key: 'jkl', label: 'JK Lakshmi Stock' },
   ];
 
@@ -527,10 +531,10 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
            const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
            await ax.patch(`${API_LR}/${lr.id}/billing`, { billing: newBilling });
 
-           let SYNC_API;
            if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
            else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
            else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+           else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
            else SYNC_API = `${BASE_API}/stock/sync-lr`;
 
            let challanBags = parseInt(chalForm.quantity || 0);
@@ -732,7 +736,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* Header */}
       <div className="page-hd">
         <div>
-          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : brand === 'kosli' ? 'Kosli' : brand === 'jhajjar' ? 'Jhajjar' : 'Dump'} Stock</h1>
+          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : brand === 'kosli' ? 'Kosli' : brand === 'jhajjar' ? 'Jhajjar' : brand === 'bahadurgarh' ? 'Bahadurgarh' : 'Dump'} Stock</h1>
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

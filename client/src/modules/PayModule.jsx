@@ -9,7 +9,7 @@ import { useWindowSize } from 'react-use';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = '/vouchers';
-const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill'];
+const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill'];
 
 function calcNet(v, vehicle) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);

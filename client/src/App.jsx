@@ -315,6 +315,7 @@ function AppInner() {
       id: 'voucher_dump', label: 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', sub: [
         { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'bill_kosli' },
         { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'bill_jhajjar' },
+        { id: 'Bahadurgarh_Bill', label: 'Bahadurgarh Bill', permKey: 'bill_bahadurgarh' },
         { id: 'JK_Super', label: 'JK Super Voucher', permKey: 'voucher_jksuper' },
       ]
     },
@@ -322,6 +323,7 @@ function AppInner() {
       id: 'balance_dump', label: 'Balance Sheet', Icon: BarChart3, color: '#6366f1', section: 'jksuper', sub: [
         { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'balance_kosli' },
         { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'balance_jhajjar' },
+        { id: 'Bahadurgarh_Bill', label: 'Bahadurgarh Bill', permKey: 'balance_bahadurgarh' },
         { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
@@ -337,6 +339,16 @@ function AppInner() {
     },
     {
       id: 'stock_jhajjar', label: 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar', sub: [
+        { id: 'overview', label: 'Overview' },
+        { id: 'migo', label: 'MIGO (Stock Entry)' },
+        { id: 'challan', label: 'Create Challan' },
+        { id: 'history', label: 'History' },
+        { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'party_summary', label: 'Party Summary' },
+      ]
+    },
+    {
+      id: 'stock_bahadurgarh', label: 'Bahadurgarh Stock', Icon: Package, color: '#d97706', section: 'jksuper', permKey: 'stock_bahadurgarh', sub: [
         { id: 'overview', label: 'Overview' },
         { id: 'migo', label: 'MIGO (Stock Entry)' },
         { id: 'challan', label: 'Create Challan' },
@@ -428,7 +440,8 @@ function AppInner() {
           const slabel = (s.label || '').toLowerCase();
           if ((sid.includes('kosli') || slabel.includes('kosli')) && godown !== 'kosli') return false;
           if ((sid.includes('jhajjar') || sid.includes('jajjhar') || slabel.includes('jhajjar') || slabel.includes('jajjhar')) && godown !== 'jhajjar') return false;
-          if ((sid === 'jk_super' || slabel.includes('jk super')) && (godown === 'kosli' || godown === 'jhajjar')) return false;
+          if ((sid.includes('bahadurgarh') || slabel.includes('bahadurgarh')) && godown !== 'bahadurgarh') return false;
+          if ((sid === 'jk_super' || slabel.includes('jk super')) && (godown === 'kosli' || godown === 'jhajjar' || godown === 'bahadurgarh')) return false;
         }
 
         if (!pKey || user?.role === 'admin') return true;
@@ -448,6 +461,7 @@ function AppInner() {
       const nid = n.id.toLowerCase();
       if (nid.includes('kosli') && godown !== 'kosli') return false;
       if (nid.includes('jhajjar') && godown !== 'jhajjar') return false;
+      if (nid.includes('bahadurgarh') && godown !== 'bahadurgarh') return false;
     }
     
     if (n.sub && n.sub.length === 0) return false;
@@ -527,16 +541,17 @@ function AppInner() {
   const renderModule = (id, sub = '') => (
     <>
       {id === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} />}
-      {id === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : 'kosli'} />}
+      {id === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : godown === 'bahadurgarh' ? 'bahadurgarh' : 'kosli'} />}
       {(id === 'lr_jkl' || id === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
-      {id === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Kosli_Bill'} brand="jksuper" />}
+      {id === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
       {id === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
-      {id === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Kosli_Bill'} brand="jksuper" />}
+      {id === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
       {id === 'balance_jharli' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
       {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
       {id === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="kosli" />}
       {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
+      {id === 'stock_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="bahadurgarh" />}
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
       {(id === 'vehicles_dump' || id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
       {id === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
@@ -596,6 +611,7 @@ function AppInner() {
             let locColor = '#f59e0b';
             if (plant === 'jksuper' && godown === 'kosli') { locLabel = 'Kosli Dump'; locColor = '#6366f1'; }
             else if (plant === 'jksuper' && godown === 'jhajjar') { locLabel = 'Jajjhar Dump'; locColor = '#14b8a6'; }
+            else if (plant === 'jksuper' && godown === 'bahadurgarh') { locLabel = 'Bahadurgarh Dump'; locColor = '#d97706'; }
             return (
               <div style={{ padding: '8px 14px 6px', fontSize: '9px', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: locColor, opacity: 0.85, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: locColor, display: 'inline-block' }} />

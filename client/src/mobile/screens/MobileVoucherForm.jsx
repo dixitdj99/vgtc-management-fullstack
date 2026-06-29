@@ -31,7 +31,7 @@ export default function MobileVoucherForm({ plant, cfg, defaultType, onDone }) {
     const S = (k, v) => setForm(f => ({ ...f, [k]: v }));
     const setWeight = (v) => setForm(f => ({ ...f, weight: v, bags: v ? String(Math.round(parseFloat(v) * 20)) : '' }));
 
-    const isBill = form.type === 'Kosli_Bill' || form.type === 'Jajjhar_Bill';
+    const isBill = form.type === 'Kosli_Bill' || form.type === 'Jajjhar_Bill' || form.type === 'Bahadurgarh_Bill';
     const wt = parseFloat(form.weight) || 0;
     const munshi = wt > 0 ? (wt < 18 ? 50 : 100) : 0;
     const gross = wt * (parseFloat(form.rate) || 0);

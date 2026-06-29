@@ -187,10 +187,10 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   }, [row.billing, allChallans]);
 
   const MATERIALS = row.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
-  let ENDPOINT;
   if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
   else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
   else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
+  else if (brand === 'bahadurgarh') ENDPOINT = `${BASE_API}/bahadurgarh/stock/challans`;
   else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const executeSave = async () => {
@@ -252,10 +252,10 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       delete payload.usedChallans; // remove UI state
       if (!payload.voiceMessageBase64) payload.voiceMessageBase64 = row.voiceMessageBase64 || "";
       
-      let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
       await ax.post(SYNC_API, {
         oldChallanNos: row.billing,
@@ -464,10 +464,10 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
   // Use brandMats from parent
   const MATERIALS = vehicles[0]?.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
-  let ENDPOINT;
   if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
   else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
   else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
+  else if (brand === 'bahadurgarh') ENDPOINT = `${BASE_API}/bahadurgarh/stock/challans`;
   else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
@@ -723,10 +723,10 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
     setDeleting(true);
     try {
       // Refund stock first
-      let SYNC_API;
       if (apiUrl.includes('/jkl/lr')) SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (apiUrl.includes('/kosli/lr')) SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (apiUrl.includes('/jhajjar/lr')) SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else if (apiUrl.includes('/bahadurgarh/lr')) SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
       if (row.billing) {
         await ax.post(SYNC_API, {
@@ -771,7 +771,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
   // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
-  const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : 'lr_jkl';
+  const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : brand === 'bahadurgarh' ? 'lr_bahadurgarh' : 'lr_jkl';
   const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
 
   let API, API_STOCK;
@@ -784,6 +784,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   } else if (brand === 'jhajjar') {
     API = `${BASE_API}/jhajjar/lr`;
     API_STOCK = `${BASE_API}/jhajjar/stock`;
+  } else if (brand === 'bahadurgarh') {
+    API = `${BASE_API}/bahadurgarh/lr`;
+    API_STOCK = `${BASE_API}/bahadurgarh/stock`;
   } else {
     API = `${BASE_API}/lr`;
     API_STOCK = `${BASE_API}/stock`;
