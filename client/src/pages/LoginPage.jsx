@@ -39,6 +39,18 @@ const LOCATIONS = [
     plant: 'jksuper',
     godown: 'jhajjar',
   },
+  {
+    id: 'bahadurgarh',
+    label: 'Bahadurgarh Dump',
+    desc: 'Bahadurgarh LR · Bill · Balance · Stock',
+    color: '#d97706',
+    glow: 'rgba(217,119,6,0.35)',
+    bg: 'rgba(217,119,6,0.1)',
+    border: 'rgba(217,119,6,0.35)',
+    icon: Building2,
+    plant: 'jksuper',
+    godown: 'bahadurgarh',
+  },
 ];
 
 export default function LoginPage() {
