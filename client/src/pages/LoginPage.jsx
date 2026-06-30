@@ -145,29 +145,28 @@ export default function LoginPage() {
       <div
         id="login-card"
         style={{
-          width: '320px',
-          background: 'rgba(255,255,255,0.92)',
-          backdropFilter: 'blur(8px)',
-          borderRadius: '4px',
-          padding: '32px 28px',
-          boxShadow: '0 4px 30px rgba(0,0,0,0.18)',
+          width: '340px',
+          background: '#f4f4f4',
+          borderRadius: '8px',
+          padding: '36px 30px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
           zIndex: 2,
           position: 'relative',
-          border: '1px solid rgba(255,255,255,0.6)',
+          border: '1px solid #d3d3d3',
         }}
       >
         {/* Brand */}
-        <div style={{ marginBottom: '22px' }}>
+        <div style={{ marginBottom: '24px', textAlign: 'center' }}>
           <div style={{
-            fontSize: '24px', fontWeight: '800', color: '#ff0000',
-            fontStyle: 'italic', letterSpacing: '-0.02em',
-            lineHeight: 1.2,
+            fontSize: '30px', fontWeight: '900', color: '#ff0000',
+            fontStyle: 'normal', letterSpacing: '-0.03em',
+            lineHeight: 1.1,
           }}>
             vikas goods
           </div>
           <div style={{
-            fontSize: '13px', color: '#444', fontWeight: '600', marginTop: '4px',
-            fontStyle: 'italic',
+            fontSize: '14px', color: '#333333', fontWeight: '600', marginTop: '6px',
+            fontStyle: 'normal',
           }}>
             Transforming Logistics
           </div>
@@ -177,9 +176,9 @@ export default function LoginPage() {
           {!otpMode ? (
             <>
               {/* Location Selector */}
-              <div style={{ marginBottom: '14px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <label style={{
-                  fontSize: '12px', fontWeight: '700', color: '#333',
+                  fontSize: '12.5px', fontWeight: '700', color: '#444',
                   display: 'block', marginBottom: '6px',
                 }}>
                   Location
@@ -189,9 +188,9 @@ export default function LoginPage() {
                     onClick={() => setShowLocDropdown(!showLocDropdown)}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      background: '#ffffff', border: `1px solid ${showLocDropdown ? '#ff0000' : '#ccc'}`,
-                      borderRadius: '3px', padding: '7px 10px', cursor: 'pointer',
-                      fontSize: '12px', minHeight: '34px',
+                      background: '#ffffff', border: `1px solid ${showLocDropdown ? '#ff0000' : '#cccccc'}`,
+                      borderRadius: '4px', padding: '8px 12px', cursor: 'pointer',
+                      fontSize: '13px', minHeight: '36px',
                     }}
                   >
                     {selectedLocation ? (
@@ -199,7 +198,7 @@ export default function LoginPage() {
                         {selectedLocation.label}
                       </span>
                     ) : (
-                      <span style={{ color: '#aaa' }}>Choose location...</span>
+                      <span style={{ color: '#aaaaaa' }}>Choose location...</span>
                     )}
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                       style={{ transform: showLocDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
@@ -242,9 +241,9 @@ export default function LoginPage() {
               </div>
 
               {/* Username */}
-              <div style={{ marginBottom: '14px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <label style={{
-                  fontSize: '12px', fontWeight: '700', color: '#333',
+                  fontSize: '12.5px', fontWeight: '700', color: '#444',
                   display: 'block', marginBottom: '6px',
                 }}>
                   Username
@@ -259,8 +258,8 @@ export default function LoginPage() {
                   required
                   style={{
                     width: '100%', background: '#ffffff',
-                    border: `1px solid ${usernameFocus ? '#ff0000' : '#d0d0d0'}`,
-                    borderRadius: '3px', padding: '9px 12px', color: '#111',
+                    border: `1px solid ${usernameFocus ? '#ff0000' : '#cccccc'}`,
+                    borderRadius: '4px', padding: '9px 12px', color: '#111',
                     fontSize: '13px', outline: 'none', boxSizing: 'border-box',
                   }}
                   onFocus={() => setUsernameFocus(true)}
@@ -269,9 +268,9 @@ export default function LoginPage() {
               </div>
 
               {/* Password */}
-              <div style={{ marginBottom: '18px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <label style={{
-                  fontSize: '12px', fontWeight: '700', color: '#333',
+                  fontSize: '12.5px', fontWeight: '700', color: '#444',
                   display: 'block', marginBottom: '6px',
                 }}>
                   Password
@@ -286,8 +285,8 @@ export default function LoginPage() {
                     required
                     style={{
                       width: '100%', background: '#ffffff',
-                      border: `1px solid ${passwordFocus ? '#ff0000' : '#d0d0d0'}`,
-                      borderRadius: '3px', padding: '9px 32px 9px 12px', color: '#111',
+                      border: `1px solid ${passwordFocus ? '#ff0000' : '#cccccc'}`,
+                      borderRadius: '4px', padding: '9px 32px 9px 12px', color: '#111',
                       fontSize: '13px', outline: 'none', boxSizing: 'border-box',
                     }}
                     onFocus={() => setPasswordFocus(true)}
@@ -309,7 +308,7 @@ export default function LoginPage() {
             </>
           ) : (
             /* OTP Input */
-            <div style={{ marginBottom: '18px' }}>
+            <div style={{ marginBottom: '20px' }}>
               <label style={{
                 fontSize: '11px', fontWeight: '700', color: '#555',
                 display: 'block', marginBottom: '5px',
@@ -328,7 +327,7 @@ export default function LoginPage() {
                   maxLength={6}
                   style={{
                     width: '100%', background: '#ffffff', border: '1px solid #ff0000',
-                    borderRadius: '3px', padding: '7px 10px', color: '#111',
+                    borderRadius: '4px', padding: '7px 10px', color: '#111',
                     fontSize: '18px', fontWeight: '700', letterSpacing: '0.15em',
                     outline: 'none', boxSizing: 'border-box',
                   }}
@@ -351,7 +350,7 @@ export default function LoginPage() {
             <div style={{
               background: error.includes('sent') ? 'rgba(0,150,136,0.05)' : 'rgba(255,0,0,0.05)',
               border: `1px solid ${error.includes('sent') ? 'rgba(0,150,136,0.2)' : 'rgba(255,0,0,0.2)'}`,
-              borderRadius: '3px', padding: '8px 10px', fontSize: '11.5px',
+              borderRadius: '4px', padding: '8px 10px', fontSize: '11.5px',
               color: error.includes('sent') ? '#009688' : '#ff0000',
               fontWeight: '600', marginBottom: '12px',
             }}>
@@ -365,7 +364,7 @@ export default function LoginPage() {
             type="submit"
             disabled={loading || (!otpMode && !locationId)}
             style={{
-              width: '100%', padding: '10px', borderRadius: '3px', border: 'none',
+              width: '100%', padding: '11px', borderRadius: '4px', border: 'none',
               background: (!otpMode && !locationId) ? '#eaeaea' : '#ff0000',
               color: (!otpMode && !locationId) ? '#999' : '#ffffff',
               fontSize: '14px', fontWeight: '700',
@@ -388,18 +387,6 @@ export default function LoginPage() {
               }}>
                 {resending ? 'Sending...' : "Didn't receive code? Resend"}
               </button>
-            </div>
-          )}
-
-          {/* Forgot Password hint */}
-          {!otpMode && (
-            <div style={{ marginTop: '14px', textAlign: 'left' }}>
-              <span style={{
-                fontSize: '12px', color: '#0000ff', fontWeight: '600',
-                cursor: 'pointer', textDecoration: 'none',
-              }}>
-                Forgot Password ?
-              </span>
             </div>
           )}
         </form>
