@@ -5,6 +5,10 @@
     "client",
     "server"
   ],
+  "scripts": {
+    "build": "npm run build -w vgtc-client",
+    "start": "node server/index.js"
+  },
   "dependencies": {
     "axios": "^1.6.8",
     "bcryptjs": "^3.0.3",

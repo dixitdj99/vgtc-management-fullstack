@@ -154,7 +154,7 @@ app.get('/', async (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
+if (!process.env.NETLIFY) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Server is running on port ${PORT}`);
 
@@ -186,5 +186,14 @@ if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
         });
     });
 }
+
+// Serve static files from Vite build in production/App Hosting
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// Catch-all route to serve the React SPA index.html for client-side routing
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
 
 module.exports = app;

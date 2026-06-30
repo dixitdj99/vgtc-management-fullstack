@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { User, Lock, LogIn, Truck, MapPin, KeyRound, ArrowLeft, Building2, Factory } from 'lucide-react';
+import { User, Lock, LogIn, Truck, MapPin, KeyRound, ArrowLeft, Building2, Factory, Eye, EyeOff } from 'lucide-react';
 
 const LOCATIONS = [
   {
     id: 'jharli',
     label: 'Jharli Dump & Plant',
     desc: 'JK Lakshmi Dump · Factory · JK Super Factory',
-    color: '#f59e0b',
-    glow: 'rgba(245,158,11,0.35)',
-    bg: 'rgba(245,158,11,0.1)',
-    border: 'rgba(245,158,11,0.35)',
+    color: '#e53935',
+    glow: 'rgba(229,57,53,0.35)',
+    bg: 'rgba(229,57,53,0.08)',
+    border: 'rgba(229,57,53,0.35)',
     icon: Factory,
     plant: 'jklakshmi',
     godown: '',
@@ -19,10 +19,10 @@ const LOCATIONS = [
     id: 'kosli',
     label: 'Kosli Dump',
     desc: 'Kosli LR · Bill · Balance · Stock',
-    color: '#6366f1',
-    glow: 'rgba(99,102,241,0.35)',
-    bg: 'rgba(99,102,241,0.1)',
-    border: 'rgba(99,102,241,0.35)',
+    color: '#1565c0',
+    glow: 'rgba(21,101,192,0.35)',
+    bg: 'rgba(21,101,192,0.08)',
+    border: 'rgba(21,101,192,0.35)',
     icon: Truck,
     plant: 'jksuper',
     godown: 'kosli',
@@ -31,10 +31,10 @@ const LOCATIONS = [
     id: 'jhajjar',
     label: 'Jajjhar Dump',
     desc: 'Jhajjar LR · Bill · Balance · Stock',
-    color: '#14b8a6',
-    glow: 'rgba(20,184,166,0.35)',
-    bg: 'rgba(20,184,166,0.1)',
-    border: 'rgba(20,184,166,0.35)',
+    color: '#00897b',
+    glow: 'rgba(0,137,123,0.35)',
+    bg: 'rgba(0,137,123,0.08)',
+    border: 'rgba(0,137,123,0.35)',
     icon: Building2,
     plant: 'jksuper',
     godown: 'jhajjar',
@@ -45,7 +45,7 @@ const LOCATIONS = [
     desc: 'Bahadurgarh LR · Bill · Balance · Stock',
     color: '#d97706',
     glow: 'rgba(217,119,6,0.35)',
-    bg: 'rgba(217,119,6,0.1)',
+    bg: 'rgba(217,119,6,0.08)',
     border: 'rgba(217,119,6,0.35)',
     icon: Building2,
     plant: 'jksuper',
@@ -58,6 +58,7 @@ export default function LoginPage() {
   const [locationId, setLocationId] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -68,8 +69,11 @@ export default function LoginPage() {
   const [userEmail, setUserEmail] = useState('');
   const [resending, setResending] = useState(false);
   const [showLocDropdown, setShowLocDropdown] = useState(false);
+  const [usernameFocus, setUsernameFocus] = useState(false);
+  const [passwordFocus, setPasswordFocus] = useState(false);
 
   const selectedLocation = LOCATIONS.find(l => l.id === locationId);
+  const accentColor = '#e53935'; // Red accent like autoplant
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -92,7 +96,7 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -112,86 +116,94 @@ export default function LoginPage() {
     }
   };
 
-  const accentColor = selectedLocation?.color || '#6366f1';
-  const accentGlow = selectedLocation?.glow || 'rgba(99,102,241,0.35)';
-
-
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--bg)', fontFamily: '"Plus Jakarta Sans", sans-serif',
-    }}>
-      {/* Background glow */}
-      <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
-        <div style={{
-          position: 'absolute', top: '-20%', left: '30%', width: '600px', height: '600px',
-          background: `radial-gradient(circle, ${accentGlow.replace('0.35', '0.12').replace('59', '1e')} 0%, transparent 65%)`,
-          filter: 'blur(40px)', transition: 'background 0.4s'
-        }} />
-        <div style={{
-          position: 'absolute', bottom: '-10%', right: '20%', width: '400px', height: '400px',
-          background: 'radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 65%)', filter: 'blur(40px)'
-        }} />
-      </div>
+    <div
+      id="login-container"
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        paddingLeft: '6%',
+        backgroundImage: 'url(/truck_highway_bg.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Semi-transparent dark overlay for background contrast */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(0,0,0,0.15)',
+        zIndex: 1,
+      }} />
 
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '480px', padding: '0 20px' }}>
+      {/* Floating White Login Card */}
+      <div
+        id="login-card"
+        style={{
+          width: '340px',
+          background: '#ffffff',
+          borderRadius: '4px',
+          padding: '30px 24px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+          zIndex: 2,
+          position: 'relative',
+          border: '1px solid #eaeaea',
+        }}
+      >
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{
-            width: '64px', height: '64px', borderRadius: '18px',
-            background: `linear-gradient(135deg,${accentColor},${accentColor}cc)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
-            boxShadow: `0 8px 32px ${accentGlow}`, transition: 'all 0.4s'
+            fontSize: '26px', fontWeight: '800', color: '#ff0000',
+            letterSpacing: '-0.03em', textTransform: 'lowercase',
+            lineHeight: 1.1,
           }}>
-            <Truck size={30} color="white" />
+            vikas goods
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.03em' }}>
-            Vikas Goods
-          </div>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '4px' }}>
-            Transport Management System
+          <div style={{
+            fontSize: '11.5px', color: '#666', fontWeight: '500', marginTop: '4px',
+          }}>
+            Transforming Logistics
           </div>
         </div>
 
-        {/* Card */}
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px',
-          padding: '28px 28px 32px', boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
-          overflow: 'hidden'
-        }}>
-
-          {!otpMode && (
+        <form onSubmit={handleSubmit}>
+          {!otpMode ? (
             <>
-              {/* Location selection — custom dropdown */}
-              <div style={{ marginBottom: '22px' }}>
+              {/* Location Selector */}
+              <div style={{ marginBottom: '14px' }}>
                 <label style={{
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-                  textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center',
-                  gap: '6px', marginBottom: '8px'
+                  fontSize: '11px', fontWeight: '700', color: '#555',
+                  display: 'block', marginBottom: '5px',
                 }}>
-                  <MapPin size={12} /> Select Location
+                  Location
                 </label>
-                <div style={{ position: 'relative', width: '100%' }}>
-                  <div onClick={() => setShowLocDropdown(!showLocDropdown)}
+                <div style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => setShowLocDropdown(!showLocDropdown)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
-                      background: 'var(--bg-input)', border: `1px solid ${showLocDropdown ? accentColor + '80' : 'var(--border)'}`,
-                      borderRadius: '10px', padding: '10px 14px', cursor: 'pointer', transition: 'all 0.15s',
-                    }}>
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      background: '#ffffff', border: `1px solid ${showLocDropdown ? '#ff0000' : '#ccc'}`,
+                      borderRadius: '3px', padding: '7px 10px', cursor: 'pointer',
+                      fontSize: '12px', minHeight: '34px',
+                    }}
+                  >
                     {selectedLocation ? (
-                      <>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: selectedLocation.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <selectedLocation.icon size={14} color="white" />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{selectedLocation.label}</div>
-                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{selectedLocation.desc}</div>
-                        </div>
-                      </>
+                      <span style={{ fontWeight: '600', color: '#111' }}>
+                        {selectedLocation.label}
+                      </span>
                     ) : (
-                      <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>Choose your location...</span>
+                      <span style={{ color: '#aaa' }}>Choose location...</span>
                     )}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: showLocDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                      style={{ transform: showLocDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                   </div>
 
                   {showLocDropdown && (
@@ -199,30 +211,26 @@ export default function LoginPage() {
                       <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setShowLocDropdown(false)} />
                       <div style={{
                         position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 11,
-                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.15)', overflow: 'hidden',
+                        background: '#fff', border: '1.5px solid #ddd', borderRadius: '8px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden',
                       }}>
                         {LOCATIONS.map(loc => {
-                          const Icon = loc.icon;
                           const active = locationId === loc.id;
                           return (
-                            <div key={loc.id} onClick={() => { setLocationId(loc.id); setShowLocDropdown(false); setError(''); }}
+                            <div key={loc.id}
+                              onClick={() => { setLocationId(loc.id); setShowLocDropdown(false); setError(''); }}
                               style={{
-                                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px',
-                                cursor: 'pointer', transition: 'background 0.1s',
-                                background: active ? loc.bg : 'transparent',
-                                borderLeft: active ? `3px solid ${loc.color}` : '3px solid transparent',
+                                padding: '8px 10px', cursor: 'pointer',
+                                fontSize: '12px',
+                                background: active ? '#f0f0f0' : 'transparent',
+                                color: active ? '#ff0000' : '#111',
+                                fontWeight: active ? '700' : '500',
+                                borderBottom: '1px solid #f5f5f5',
                               }}
-                              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-th)'; }}
-                              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}>
-                              <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: active ? loc.color : 'var(--bg-th)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                <Icon size={14} color={active ? 'white' : 'var(--text-muted)'} />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '13px', fontWeight: 700, color: active ? loc.color : 'var(--text)' }}>{loc.label}</div>
-                                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{loc.desc}</div>
-                              </div>
-                              {active && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={loc.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                              onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f7f7f7'; }}
+                              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {loc.label}
                             </div>
                           );
                         })}
@@ -232,164 +240,189 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div style={{ borderTop: '1px solid var(--border)', marginBottom: '20px' }} />
-            </>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>
-                {otpMode ? 'Enter Security Code' : `Sign in${selectedLocation ? ` — ${selectedLocation.label}` : ''}`}
-              </div>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                {otpMode ? `Authentication code sent to ${userEmail.replace(/(.{3})(.*)(@.*)/, '$1***$3')}` : 'Enter your credentials to continue'}
-              </div>
-            </div>
-            {otpMode && (
-              <button onClick={() => setOtpMode(false)} style={{
-                background: 'none', border: 'none', color: accentColor, fontSize: '11.5px', fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0'
-              }}>
-                <ArrowLeft size={12} /> Back
-              </button>
-            )}
-          </div>
-
-          <form onSubmit={handleSubmit}>
-            {!otpMode ? (
-              <>
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={{
-                    fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-                    textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
-                  }}>
-                    Username
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <User size={14} style={{
-                      position: 'absolute', left: '12px', top: '50%',
-                      transform: 'translateY(-50%)', color: 'var(--text-muted)'
-                    }} />
-                    <input
-                      id="login-username"
-                      type="text" value={username} onChange={e => setUsername(e.target.value)}
-                      placeholder="e.g. admin" autoFocus required
-                      style={{
-                        width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
-                        fontSize: '13.5px', outline: 'none', transition: 'border 0.18s',
-                        fontFamily: 'inherit', boxSizing: 'border-box'
-                      }}
-                      onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{
-                    fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-                    textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
-                  }}>
-                    Password
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <Lock size={14} style={{
-                      position: 'absolute', left: '12px', top: '50%',
-                      transform: 'translateY(-50%)', color: 'var(--text-muted)'
-                    }} />
-                    <input
-                      id="login-password"
-                      type="password" value={password} onChange={e => setPassword(e.target.value)}
-                      placeholder="••••••••" required
-                      style={{
-                        width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
-                        fontSize: '13.5px', outline: 'none', transition: 'border 0.18s',
-                        fontFamily: 'inherit', boxSizing: 'border-box'
-                      }}
-                      onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ marginBottom: '20px' }}>
+              {/* Username */}
+              <div style={{ marginBottom: '14px' }}>
                 <label style={{
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-                  textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: '6px'
+                  fontSize: '11px', fontWeight: '700', color: '#555',
+                  display: 'block', marginBottom: '5px',
                 }}>
-                  6-Digit OTP
+                  Username
+                </label>
+                <input
+                  id="login-username"
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  placeholder="Enter Username"
+                  autoFocus
+                  required
+                  style={{
+                    width: '100%', background: '#ffffff',
+                    border: `1px solid ${usernameFocus ? '#ff0000' : '#ccc'}`,
+                    borderRadius: '3px', padding: '7px 10px', color: '#111',
+                    fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+                  }}
+                  onFocus={() => setUsernameFocus(true)}
+                  onBlur={() => setUsernameFocus(false)}
+                />
+              </div>
+
+              {/* Password */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{
+                  fontSize: '11px', fontWeight: '700', color: '#555',
+                  display: 'block', marginBottom: '5px',
+                }}>
+                  Password
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <KeyRound size={14} style={{
-                    position: 'absolute', left: '12px', top: '50%',
-                    transform: 'translateY(-50%)', color: 'var(--text-muted)'
-                  }} />
                   <input
-                    id="login-otp"
-                    type="text" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="123456" autoFocus required maxLength={6}
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Enter Password"
+                    required
                     style={{
-                      width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      borderRadius: '10px', padding: '11px 12px 11px 36px', color: 'var(--text)',
-                      fontSize: '18px', fontWeight: 800, letterSpacing: '0.2em', outline: 'none',
-                      transition: 'border 0.18s', fontFamily: 'inherit', boxSizing: 'border-box'
+                      width: '100%', background: '#ffffff',
+                      border: `1px solid ${passwordFocus ? '#ff0000' : '#ccc'}`,
+                      borderRadius: '3px', padding: '7px 30px 7px 10px', color: '#111',
+                      fontSize: '13px', outline: 'none', boxSizing: 'border-box',
                     }}
-                    onFocus={e => e.target.style.borderColor = accentColor + '80'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    onFocus={() => setPasswordFocus(true)}
+                    onBlur={() => setPasswordFocus(false)}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute', right: '8px', top: '50%',
+                      transform: 'translateY(-50%)', background: 'none', border: 'none',
+                      cursor: 'pointer', padding: '2px', color: '#888', display: 'flex',
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
                 </div>
               </div>
-            )}
-
-            {error && (
-              <div style={{
-                background: error.includes('sent') ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)',
-                border: `1px solid ${error.includes('sent') ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`,
-                borderRadius: '10px', padding: '10px 14px', fontSize: '12.5px',
-                color: error.includes('sent') ? '#10b981' : 'var(--danger)',
-                fontWeight: 600, marginBottom: '16px'
+            </>
+          ) : (
+            /* OTP Input */
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{
+                fontSize: '11px', fontWeight: '700', color: '#555',
+                display: 'block', marginBottom: '5px',
               }}>
-                {error}
+                6-Digit OTP
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="login-otp"
+                  type="text"
+                  value={otp}
+                  onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="123456"
+                  autoFocus
+                  required
+                  maxLength={6}
+                  style={{
+                    width: '100%', background: '#ffffff', border: '1px solid #ff0000',
+                    borderRadius: '3px', padding: '7px 10px', color: '#111',
+                    fontSize: '18px', fontWeight: '700', letterSpacing: '0.15em',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
               </div>
-            )}
-
-            <button
-              id="login-submit"
-              type="submit"
-              disabled={loading || !locationId}
-              style={{
-                width: '100%', padding: '13px', borderRadius: '12px', border: 'none',
-                background: locationId ? `linear-gradient(135deg,${accentColor},${accentColor}dd)` : 'var(--bg-input)',
-                color: locationId ? 'white' : 'var(--text-muted)',
-                fontSize: '14px', fontWeight: 800,
-                cursor: locationId ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                boxShadow: locationId ? `0 4px 20px ${accentGlow}` : 'none',
-                opacity: loading ? 0.7 : 1, transition: 'all 0.3s',
-                fontFamily: 'inherit',
-              }}
-            >
-              {loading ? (otpMode ? 'Verifying…' : 'Signing in…') : (
-                <>{otpMode ? <><KeyRound size={16} /> Verify OTP</> : <><LogIn size={16} /> Sign In</>}</>
-              )}
-            </button>
-
-            {otpMode && (
-              <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                <button type="button" onClick={handleResendOtp} disabled={resending} style={{
-                  background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px',
-                  fontWeight: 600, cursor: resending ? 'not-allowed' : 'pointer', textDecoration: 'underline'
+              <div style={{ textAlign: 'right', marginTop: '6px' }}>
+                <button type="button" onClick={() => setOtpMode(false)} style={{
+                  background: 'none', border: 'none', color: '#ff0000',
+                  fontSize: '11px', fontWeight: '600', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: '3px',
                 }}>
-                  {resending ? 'Sending...' : "Didn't receive code? Resend"}
+                  <ArrowLeft size={10} /> Back to Login
                 </button>
               </div>
-            )}
-          </form>
-        </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div style={{
+              background: error.includes('sent') ? 'rgba(0,150,136,0.05)' : 'rgba(255,0,0,0.05)',
+              border: `1px solid ${error.includes('sent') ? 'rgba(0,150,136,0.2)' : 'rgba(255,0,0,0.2)'}`,
+              borderRadius: '3px', padding: '8px 10px', fontSize: '11.5px',
+              color: error.includes('sent') ? '#009688' : '#ff0000',
+              fontWeight: '600', marginBottom: '12px',
+            }}>
+              {error}
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            id="login-submit"
+            type="submit"
+            disabled={loading || (!otpMode && !locationId)}
+            style={{
+              width: '100%', padding: '9px', borderRadius: '3px', border: 'none',
+              background: (!otpMode && !locationId) ? '#eaeaea' : '#ff0000',
+              color: (!otpMode && !locationId) ? '#999' : '#ffffff',
+              fontSize: '13px', fontWeight: '700',
+              cursor: (!otpMode && !locationId) ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              opacity: loading ? 0.8 : 1,
+              transition: 'background 0.2s',
+            }}
+          >
+            {loading ? 'Processing…' : 'Login'}
+          </button>
+
+          {/* Resend OTP */}
+          {otpMode && (
+            <div style={{ textAlign: 'center', marginTop: '12px' }}>
+              <button type="button" onClick={handleResendOtp} disabled={resending} style={{
+                background: 'none', border: 'none', color: '#ff0000', fontSize: '11px',
+                fontWeight: '600', cursor: resending ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline',
+              }}>
+                {resending ? 'Sending...' : "Didn't receive code? Resend"}
+              </button>
+            </div>
+          )}
+
+          {/* Forgot Password hint */}
+          {!otpMode && (
+            <div style={{ marginTop: '12px', textAlign: 'left' }}>
+              <span style={{
+                fontSize: '11px', color: '#0000ff', fontWeight: '600',
+                cursor: 'pointer', textDecoration: 'none',
+              }}>
+                Forgot Password ?
+              </span>
+            </div>
+          )}
+        </form>
       </div>
+
+      {/* Responsive styles injected */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+        @media (max-width: 600px) {
+          #login-container {
+            justify-content: center !important;
+            padding-left: 20px !important;
+            padding-right: 20px !important;
+          }
+          #login-card {
+            width: 100% !important;
+          }
+        }
+
+        input::placeholder { color: #aaa !important; }
+        input:focus { outline: none; }
+        * { box-sizing: border-box; }
+      `}</style>
     </div>
   );
 }
