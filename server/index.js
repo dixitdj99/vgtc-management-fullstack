@@ -60,8 +60,12 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
     : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
 app.use(cors({
     origin: (origin, cb) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        return cb(new Error('CORS: origin not allowed'), false);
+        if (!origin) return cb(null, true);
+        const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
+            origin.endsWith('.hosted.app') || 
+            origin.includes('vgtc-management');
+        if (isAllowed) return cb(null, true);
+        return cb(new Error(`CORS: origin ${origin} not allowed`), false);
     },
     credentials: true,
 }));
