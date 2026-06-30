@@ -63,7 +63,8 @@ app.use(cors({
         if (!origin) return cb(null, true);
         const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
             origin.endsWith('.hosted.app') || 
-            origin.includes('vgtc-management');
+            origin.includes('vgtc-management') ||
+            origin.endsWith('vgtc.site');
         if (isAllowed) return cb(null, true);
         return cb(new Error(`CORS: origin ${origin} not allowed`), false);
     },
@@ -101,6 +102,7 @@ app.get('/api/debug-files', (req, res) => {
         const pathsToCheck = [
             path.join(__dirname, '../client/dist'),
             path.join(__dirname, '../client/dist/index.html'),
+            path.join(__dirname, '../client/dist/assets'),
             __dirname,
             path.join(__dirname, '..')
         ];

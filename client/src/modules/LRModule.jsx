@@ -20,6 +20,131 @@ const MATS_JKL_FALLBACK = ['PPC', 'OPC43', 'Pro+'];
 
 // validateTruckNo and cleanTruckNo imported from ../utils/vehicleUtils
 
+/* ── Autocomplete / Suggestion Dropdown ── */
+function AutocompleteInput({ value, onChange, suggestions = [], placeholder, required = false, className = "fi" }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+
+  const filtered = useMemo(() => {
+    if (!suggestions) return [];
+    if (!value) return suggestions.slice(0, 50);
+    const search = value.toLowerCase();
+    return suggestions.filter(item => {
+      const str = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+      return str.toLowerCase().includes(search);
+    }).slice(0, 50);
+  }, [value, suggestions]);
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [filtered]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      setIsOpen(false);
+      return;
+    }
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        setIsOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev + 1) % filtered.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+    } else if (e.key === 'Enter') {
+      if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+        e.preventDefault();
+        const item = filtered[highlightedIndex];
+        const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+        onChange({ target: { value: displayVal } });
+        setIsOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+      <input
+        type="text"
+        className={className}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required={required}
+        onFocus={() => setIsOpen(true)}
+        onKeyDown={handleKeyDown}
+      />
+      {isOpen && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          boxShadow: 'var(--shadow)',
+          maxHeight: '200px',
+          overflowY: 'auto',
+          marginTop: '4px'
+        }}>
+          {filtered.map((item, idx) => {
+            const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+            const keyVal = typeof item === 'string' ? item : (item.id || item.truckNo || idx);
+            return (
+              <div
+                key={keyVal}
+                onClick={() => {
+                  onChange({ target: { value: displayVal } });
+                  setIsOpen(false);
+                }}
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  borderBottom: '1px solid var(--border-row)',
+                  background: idx === highlightedIndex ? 'var(--bg-row-hover)' : 'transparent',
+                  transition: 'background 0.1s'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = 'var(--bg-row-hover)';
+                  setHighlightedIndex(idx);
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'transparent';
+                }}
+              >
+                {displayVal}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Print helper ── */
 function printReceipt(allRows, lrNo, allChallans = []) {
   const rows = allRows.filter(r => r.lrNo === lrNo);
@@ -187,6 +312,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   }, [row.billing, allChallans]);
 
   const MATERIALS = row.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
+  let ENDPOINT;
   if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
   else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
   else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
@@ -251,7 +377,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       const payload = { ...form, partyName: resolvePartyName(form.partyName, resolvedPartySuggestions), billing: finalBilling };
       delete payload.usedChallans; // remove UI state
       if (!payload.voiceMessageBase64) payload.voiceMessageBase64 = row.voiceMessageBase64 || "";
-      
+      let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
@@ -307,17 +433,21 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
             <div className="field">
               <label>Truck No.</label>
-              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`lr-edit-truck-list-${row.id}`} />
-              <datalist id={`lr-edit-truck-list-${row.id}`}>
-                {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-              </datalist>
+              <AutocompleteInput
+                value={form.truckNo}
+                onChange={e => S('truckNo', cleanTruckNo(e.target.value))}
+                suggestions={vehicles}
+                placeholder="Enter truck number"
+              />
             </div>
             <div className="field">
               <label><User size={11} /> Party Name</label>
-              <input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, resolvedPartySuggestions))} list={`lr-edit-party-list-${row.id}`} />
-              <datalist id={`lr-edit-party-list-${row.id}`}>
-                {resolvedPartySuggestions.map(name => <option key={name} value={name} />)}
-              </datalist>
+              <AutocompleteInput
+                value={form.partyName}
+                onChange={e => S('partyName', resolvePartyName(e.target.value, resolvedPartySuggestions))}
+                suggestions={resolvedPartySuggestions}
+                placeholder="Enter party name"
+              />
             </div>
             <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
           </div>
@@ -464,6 +594,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
   // Use brandMats from parent
   const MATERIALS = vehicles[0]?.brandMats || (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
+  let ENDPOINT;
   if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
   else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
   else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
@@ -637,10 +768,13 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label>Truck No. *</label>
-                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} required list="chal-truck-list" />
-                      <datalist id="chal-truck-list">
-                        {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-                      </datalist>
+                      <AutocompleteInput
+                        value={chalForm.truckNo}
+                        onChange={e => S('truckNo', cleanTruckNo(e.target.value))}
+                        suggestions={vehicles}
+                        placeholder="GJ01AB1234"
+                        required={true}
+                      />
                       {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</div>}
                     </div>
                     <div className="field">
@@ -664,10 +798,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label><User size={11} /> Party Name</label>
-                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, partySuggestions))} list="lr-challan-party-list" />
-                      <datalist id="lr-challan-party-list">
-                        {partySuggestions.map(name => <option key={name} value={name} />)}
-                      </datalist>
+                      <AutocompleteInput
+                        value={chalForm.partyName}
+                        onChange={e => S('partyName', resolvePartyName(e.target.value, partySuggestions))}
+                        suggestions={partySuggestions}
+                        placeholder="Customer name"
+                      />
                     </div>
                     <div className="field">
                       <label>Destination</label>
@@ -723,6 +859,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
     setDeleting(true);
     try {
       // Refund stock first
+      let SYNC_API;
       if (apiUrl.includes('/jkl/lr')) SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (apiUrl.includes('/kosli/lr')) SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (apiUrl.includes('/jhajjar/lr')) SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
@@ -1412,25 +1549,30 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <div className="field"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field">
                     <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
-                    <input className="fi" type="text" placeholder="Enter truck number e.g. HR47G1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
-                    <datalist id="truck-list">
-                      {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-                    </datalist>
+                    <AutocompleteInput
+                      value={form.truckNo}
+                      onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })}
+                      suggestions={vehicles}
+                      placeholder="Enter truck number e.g. HR47G1234"
+                      required={true}
+                    />
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
                   </div>
                   <div className="field">
                     <label><User size={11} /> Party Name {!form.materials.some(m => m.partyName) && <span style={{color:'var(--danger)'}}>*</span>}</label>
-                    <input className="fi" type="text" placeholder="Enter party name (applies to all materials)" value={form.partyName} onChange={e => {
-                      const name = resolvePartyName(e.target.value, partySuggestions);
-                      setForm(f => ({
-                        ...f,
-                        partyName: name,
-                        materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
-                      }));
-                    }} list="lr-party-list" />
-                    <datalist id="lr-party-list">
-                      {partySuggestions.map(name => <option key={name} value={name} />)}
-                    </datalist>
+                    <AutocompleteInput
+                      value={form.partyName}
+                      onChange={e => {
+                        const name = resolvePartyName(e.target.value, partySuggestions);
+                        setForm(f => ({
+                          ...f,
+                          partyName: name,
+                          materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
+                        }));
+                      }}
+                      suggestions={partySuggestions}
+                      placeholder="Enter party name (applies to all materials)"
+                    />
                     {(() => {
                       const matParties = [...new Set(form.materials.map(m => m.partyName).filter(Boolean))];
                       return matParties.length > 1 ? (

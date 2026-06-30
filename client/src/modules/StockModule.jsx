@@ -531,7 +531,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
            const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
            await ax.patch(`${API_LR}/${lr.id}/billing`, { billing: newBilling });
 
-           if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+           let SYNC_API; if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
            else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
            else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
            else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
@@ -1431,3 +1431,4 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     </div>
   );
 }
+
