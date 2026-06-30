@@ -142,31 +142,32 @@ export default function LoginPage() {
         zIndex: 1,
       }} />
 
-      {/* Floating White Login Card */}
       <div
         id="login-card"
         style={{
-          width: '340px',
-          background: '#ffffff',
+          width: '320px',
+          background: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(8px)',
           borderRadius: '4px',
-          padding: '30px 24px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+          padding: '32px 28px',
+          boxShadow: '0 4px 30px rgba(0,0,0,0.18)',
           zIndex: 2,
           position: 'relative',
-          border: '1px solid #eaeaea',
+          border: '1px solid rgba(255,255,255,0.6)',
         }}
       >
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+        <div style={{ marginBottom: '22px' }}>
           <div style={{
-            fontSize: '26px', fontWeight: '800', color: '#ff0000',
-            letterSpacing: '-0.03em', textTransform: 'lowercase',
-            lineHeight: 1.1,
+            fontSize: '24px', fontWeight: '800', color: '#ff0000',
+            fontStyle: 'italic', letterSpacing: '-0.02em',
+            lineHeight: 1.2,
           }}>
             vikas goods
           </div>
           <div style={{
-            fontSize: '11.5px', color: '#666', fontWeight: '500', marginTop: '4px',
+            fontSize: '13px', color: '#444', fontWeight: '600', marginTop: '4px',
+            fontStyle: 'italic',
           }}>
             Transforming Logistics
           </div>
@@ -178,8 +179,8 @@ export default function LoginPage() {
               {/* Location Selector */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={{
-                  fontSize: '11px', fontWeight: '700', color: '#555',
-                  display: 'block', marginBottom: '5px',
+                  fontSize: '12px', fontWeight: '700', color: '#333',
+                  display: 'block', marginBottom: '6px',
                 }}>
                   Location
                 </label>
@@ -243,8 +244,8 @@ export default function LoginPage() {
               {/* Username */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={{
-                  fontSize: '11px', fontWeight: '700', color: '#555',
-                  display: 'block', marginBottom: '5px',
+                  fontSize: '12px', fontWeight: '700', color: '#333',
+                  display: 'block', marginBottom: '6px',
                 }}>
                   Username
                 </label>
@@ -258,8 +259,8 @@ export default function LoginPage() {
                   required
                   style={{
                     width: '100%', background: '#ffffff',
-                    border: `1px solid ${usernameFocus ? '#ff0000' : '#ccc'}`,
-                    borderRadius: '3px', padding: '7px 10px', color: '#111',
+                    border: `1px solid ${usernameFocus ? '#ff0000' : '#d0d0d0'}`,
+                    borderRadius: '3px', padding: '9px 12px', color: '#111',
                     fontSize: '13px', outline: 'none', boxSizing: 'border-box',
                   }}
                   onFocus={() => setUsernameFocus(true)}
@@ -270,8 +271,8 @@ export default function LoginPage() {
               {/* Password */}
               <div style={{ marginBottom: '18px' }}>
                 <label style={{
-                  fontSize: '11px', fontWeight: '700', color: '#555',
-                  display: 'block', marginBottom: '5px',
+                  fontSize: '12px', fontWeight: '700', color: '#333',
+                  display: 'block', marginBottom: '6px',
                 }}>
                   Password
                 </label>
@@ -285,8 +286,8 @@ export default function LoginPage() {
                     required
                     style={{
                       width: '100%', background: '#ffffff',
-                      border: `1px solid ${passwordFocus ? '#ff0000' : '#ccc'}`,
-                      borderRadius: '3px', padding: '7px 30px 7px 10px', color: '#111',
+                      border: `1px solid ${passwordFocus ? '#ff0000' : '#d0d0d0'}`,
+                      borderRadius: '3px', padding: '9px 32px 9px 12px', color: '#111',
                       fontSize: '13px', outline: 'none', boxSizing: 'border-box',
                     }}
                     onFocus={() => setPasswordFocus(true)}
@@ -364,10 +365,10 @@ export default function LoginPage() {
             type="submit"
             disabled={loading || (!otpMode && !locationId)}
             style={{
-              width: '100%', padding: '9px', borderRadius: '3px', border: 'none',
+              width: '100%', padding: '10px', borderRadius: '3px', border: 'none',
               background: (!otpMode && !locationId) ? '#eaeaea' : '#ff0000',
               color: (!otpMode && !locationId) ? '#999' : '#ffffff',
-              fontSize: '13px', fontWeight: '700',
+              fontSize: '14px', fontWeight: '700',
               cursor: (!otpMode && !locationId) ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
               opacity: loading ? 0.8 : 1,
@@ -392,9 +393,9 @@ export default function LoginPage() {
 
           {/* Forgot Password hint */}
           {!otpMode && (
-            <div style={{ marginTop: '12px', textAlign: 'left' }}>
+            <div style={{ marginTop: '14px', textAlign: 'left' }}>
               <span style={{
-                fontSize: '11px', color: '#0000ff', fontWeight: '600',
+                fontSize: '12px', color: '#0000ff', fontWeight: '600',
                 cursor: 'pointer', textDecoration: 'none',
               }}>
                 Forgot Password ?
