@@ -120,9 +120,13 @@ const PORT = process.env.PORT || 5000;
 
 const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
-app.get('/', async (req, res) => {
+app.get('/', async (req, res, next) => {
     const code = req.query.code;
     const error = req.query.error;
+
+    if (!code && !error) {
+        return next();
+    }
 
     if (error) {
         const safeError = escapeHtml(error);
