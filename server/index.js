@@ -89,6 +89,30 @@ app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
 app.use('/api/audit', auditRoutes);
 
+// Temporary deployment debug route
+app.get('/api/debug-files', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+        const pathsToCheck = [
+            path.join(__dirname, '../client/dist'),
+            path.join(__dirname, '../client/dist/index.html'),
+            __dirname,
+            path.join(__dirname, '..')
+        ];
+        const results = {};
+        for (const p of pathsToCheck) {
+            results[p] = {
+                exists: fs.existsSync(p),
+                files: fs.existsSync(p) && fs.statSync(p).isDirectory() ? fs.readdirSync(p) : null
+            };
+        }
+        res.json(results);
+    } catch (e) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {
   try {
