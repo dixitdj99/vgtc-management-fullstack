@@ -59,11 +59,11 @@ const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 const TH = {
-  padding: '8px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)',
+  padding: '10px 14px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
   textTransform: 'uppercase', letterSpacing: '0.07em', background: 'var(--bg-th)',
   borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap'
 };
-const TD = { padding: '7px 9px', fontSize: '12px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
+const TD = { padding: '9px 12px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
 const TDF = { ...TD, fontWeight: 800, color: 'var(--text)', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' };
 
 /* ── Monthly P&L Report ── */
@@ -351,11 +351,11 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Extra</span>{FI('extraCash', '55px')}</div>
           </div>
         ) : hasVehicleExp ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            {(parseFloat(v.commission) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Com: {Math.round(parseFloat(v.commission))}</div>}
-            {(parseFloat(v.tyrePuncture) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Pnc: {Math.round(parseFloat(v.tyrePuncture))}</div>}
-            {((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0)) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>G&A: {Math.round((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0))}</div>}
-            {(parseFloat(v.extraCash) || 0) > 0 && <div style={{ fontSize: '10px', color: '#f59e0b' }}>Ext: {Math.round(parseFloat(v.extraCash))}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {(parseFloat(v.commission) || 0) > 0 && <div style={{ fontSize: '11px', color: '#f59e0b' }}>Com: {Math.round(parseFloat(v.commission))}</div>}
+            {(parseFloat(v.tyrePuncture) || 0) > 0 && <div style={{ fontSize: '11px', color: '#f59e0b' }}>Pnc: {Math.round(parseFloat(v.tyrePuncture))}</div>}
+            {((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0)) > 0 && <div style={{ fontSize: '11px', color: '#f59e0b' }}>G&A: {Math.round((parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0))}</div>}
+            {(parseFloat(v.extraCash) || 0) > 0 && <div style={{ fontSize: '11px', color: '#f59e0b' }}>Ext: {Math.round(parseFloat(v.extraCash))}</div>}
           </div>
         ) : '—'}
       </td>
@@ -368,18 +368,18 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('paidBalance') : (paid ? fmtRs(paid) : '—')}</td>
       <td style={{ ...TD, textAlign: 'center' }}>
         {net < 0
-          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '11px', fontWeight: 700 }}>Adjusted</span>
-            <span style={{ fontSize: '9px', color: '#6366f1', fontWeight: 700 }}>{fmtRs(Math.abs(net))}</span>
+          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '12px', fontWeight: 700 }}>Adjusted</span>
+            <span style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700 }}>{fmtRs(Math.abs(net))}</span>
           </div>
           : cleared
-            ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '11px', fontWeight: 700 }}><Check size={10} /> Paid</span>
-              {v.paymentClearedDate && <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>{fmtDate(v.paymentClearedDate)}</span>}
+            ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}><Check size={11} /> Paid</span>
+              {v.paymentClearedDate && <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{fmtDate(v.paymentClearedDate)}</span>}
             </div>
-            : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '11px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>
-              {days > 15 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '9px', fontWeight: 800, color: overdueColor }}><Clock size={8} />{days}d overdue</span>}
+            : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '12px', fontWeight: 700 }}>{fmtRs(outstanding)}</span>
+              {days > 15 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10px', fontWeight: 800, color: overdueColor }}><Clock size={9} />{days}d overdue</span>}
             </div>}
       </td>
       {showPnL && (() => {
@@ -511,51 +511,63 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
     <div className="card" style={{ marginBottom: '14px', overflow: 'hidden' }}>
       {/* Month header */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '11px 16px', borderBottom: open ? '1px solid var(--border)' : 'none',
-        background: 'var(--bg-card)', flexWrap: 'wrap', gap: '8px'
+        padding: '14px 18px', borderBottom: open ? '1px solid var(--border)' : 'none',
+        background: 'var(--bg-card)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
-          <div style={{
-            width: '32px', height: '32px', borderRadius: '9px', background: 'rgba(245,158,11,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-          }}>
-            {open ? <ChevronUp size={15} color="#f59e0b" /> : <ChevronDown size={15} color="#f59e0b" />}
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{monthLabel(ym)}</div>
-            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '1px' }}>
-              {rows.length} trips · Net {fmtRs(totals.net)} · Paid {fmtRs(totals.paid)}{totals.adjusted > 0 ? ` · Adjusted ${fmtRs(totals.adjusted)}` : ''}
+        {/* Row 1: Title + Status */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: '8px', marginBottom: '10px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+            <div style={{
+              width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(245,158,11,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              {open ? <ChevronUp size={16} color="#f59e0b" /> : <ChevronDown size={16} color="#f59e0b" />}
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text)' }}>{monthLabel(ym)}</div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '2px' }}>
+                {rows.length} trips · Net {fmtRs(totals.net)} · Paid {fmtRs(totals.paid)}{totals.adjusted > 0 ? ` · Adjusted ${fmtRs(totals.adjusted)}` : ''}
+              </div>
             </div>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {totals.out > 0
+              ? <span style={{ fontSize: '13px', color: 'var(--warn)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={14} />{fmtRs(totals.out)} due</span>
+              : <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={14} />Cleared</span>}
+            {totals.adjusted > 0 && <span style={{ fontSize: '11.5px', color: '#6366f1', fontWeight: 700 }}>({fmtRs(totals.adjusted)} adjusted)</span>}
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
-          {totals.out > 0
-            ? <span style={{ fontSize: '12px', color: 'var(--warn)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={13} />{fmtRs(totals.out)} due</span>
-            : <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} />Cleared</span>}
-          {totals.adjusted > 0 && <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: 700 }}>({fmtRs(totals.adjusted)} adjusted)</span>}
-          {/* Mark all in month */}
+        {/* Row 2: Action Buttons */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          paddingTop: '8px', borderTop: '1px solid var(--border)'
+        }}>
+          {/* Mark paid buttons */}
           {(role === 'admin' || permissions?.balance === 'edit') && (
             <button className="btn btn-g btn-sm" onClick={() => triggerMarkPaid(rows)} disabled={marking} title="Mark all rows in this month as Paid">
               {marking ? <Loader2 size={12} className="spin" /> : <><CheckCircle2 size={12} /> Mark Month Paid</>}
             </button>
           )}
-          {/* Mark selected in month */}
           {monthChecked.length > 0 && (role === 'admin' || permissions?.balance === 'edit') && (
             <button className="btn btn-p btn-sm" onClick={() => triggerMarkPaid(monthChecked)}>
               <CheckCircle2 size={12} /> Mark {monthChecked.length} Paid
             </button>
           )}
-          {/* Print month */}
+          <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
+          {/* Print buttons */}
           <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName, orgName, vehicle)}>
             <Printer size={12} /> Print Month
           </button>
-          {/* Print selected in month */}
           {monthChecked.length > 0 && (
             <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName, orgName, vehicle)}>
               <Printer size={12} /> Print {monthChecked.length} Selected
             </button>
           )}
+          <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
+          {/* Export buttons */}
           <button className="btn btn-g btn-sm" onClick={() => exportToExcel(rows.map(v => ({ Date: v.date, LR: v.lrNo, Dest: v.destination || v.partyName, Weight: v.weight, Rate: v.rate, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0), Diesel: v.advanceDiesel, Cash: v.advanceCash, Online: v.advanceOnline, Munshi: v.munshi, Shortage: v.shortage, Net: calcNet(v, vehicle), Paid: v.paidBalance, Status: Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)) <= 0 ? 'Paid' : 'Pending', 'Payment Date': v.paymentClearedDate || '—' })), `Balance_${selTruck}_${ym}`)}><Download size={12} /> Excel</button>
           <button className="btn btn-g btn-sm" onClick={() => exportToPDF(rows, `Balance Sheet: ${selTruck} (${monthLabel(ym)})`, ['date', 'lrNo', 'destination', 'weight', 'rate', 'total', 'advanceDiesel', 'advanceCash', 'advanceOnline', 'munshi', 'shortage', 'Net', 'paidBalance', 'paymentClearedDate'])}><Printer size={12} /> PDF</button>
         </div>
@@ -563,7 +575,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
 
       {open && (
         <div className="tbl-wrap">
-          <table style={{ minWidth: showPnL ? '1620px' : '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <table style={{ minWidth: showPnL ? '1720px' : '1500px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <thead>
               <tr>
                 <th style={{ ...TH, textAlign: 'center', padding: '7px 8px' }}>
@@ -991,10 +1003,10 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             })().map(({ label, val, color }) => (
               <div key={label} style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
-                padding: '11px 18px', display: 'inline-flex', flexDirection: 'column', gap: '4px', minWidth: '130px'
+                padding: '14px 22px', display: 'inline-flex', flexDirection: 'column', gap: '5px', minWidth: '145px'
               }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
-                <span style={{ fontSize: '17px', fontWeight: 900, color, lineHeight: 1 }}>{val}</span>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
+                <span style={{ fontSize: '20px', fontWeight: 900, color, lineHeight: 1 }}>{val}</span>
               </div>
             ))}
           </div>
@@ -1058,7 +1070,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
 
                   {/* Advance Transactions Table */}
                   <div className="tbl-wrap">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                       <thead>
                         <tr>
                           <th style={TH}>#</th>
@@ -1139,18 +1151,18 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
           {allVisibleRows.length > 0 && (
             <div style={{
               background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
-              padding: '10px 16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
+              padding: '12px 18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap'
             }}>
               <input type="checkbox" checked={allVis} ref={el => { if (el) el.indeterminate = someSelected; }}
                 onChange={() => onCheckAll(allVisibleRows, !allVis)}
-                style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
-              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)' }}>
                 {selected.size === 0 ? 'Select entries to mark/print' : 'Selected: ' + selected.size + ' of ' + allVisibleRows.length}
               </span>
               {selected.size > 0 && (<>
-                <div style={{ height: '18px', width: '1px', background: 'var(--border)' }} />
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Net: {fmtRs(selNet)}</span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)' }}>Paid: {fmtRs(selPaid)}</span>
+                <div style={{ height: '20px', width: '1px', background: 'var(--border)' }} />
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Net: {fmtRs(selNet)}</span>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)' }}>Paid: {fmtRs(selPaid)}</span>
                 <span style={{ fontSize: '12px', fontWeight: 800, color: selOut > 0 ? 'var(--warn)' : 'var(--accent)' }}>
                   Due: {selOut > 0 ? fmtRs(selOut) : 'Cleared ✓'}
                 </span>
@@ -1350,9 +1362,9 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                     onClick={() => setSelTruck(truck)}>
                     <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                     <td style={{ ...TD }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Truck size={14} color="#f59e0b" /></div>
-                        <span style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13px' }}>{truck}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Truck size={15} color="#f59e0b" /></div>
+                        <span style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13.5px' }}>{truck}</span>
                       </div>
                     </td>
                     <td style={{ ...TD, textAlign: 'center' }}>
