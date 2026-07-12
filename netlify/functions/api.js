@@ -37,6 +37,8 @@ const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
 const tollRoutes = require('../../server/routes/tollRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
 const orgRoutes = require('../../server/routes/orgRoutes');
+const auditRoutes = require('../../server/routes/auditRoutes');
+const invoiceRoutes = require('../../server/routes/invoiceRoutes');
 
 const app = express();
 
@@ -81,6 +83,8 @@ apiRouter.use('/org', requireAuth, orgRoutes);
 apiRouter.use('/parties', requireAuth, partyRoutes);
 apiRouter.use('/maintenance', requireAuth, maintenanceRoutes);
 apiRouter.use('/tolls', requireAuth, tollRoutes);
+apiRouter.use('/audit', auditRoutes);
+apiRouter.use('/invoices', invoiceRoutes);
 apiRouter.use('/profiles', requireAuth, profileRoutes);
 apiRouter.use('/payments', requireAuth, paymentRoutes);
 apiRouter.use('/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
