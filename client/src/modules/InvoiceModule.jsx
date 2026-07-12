@@ -883,14 +883,15 @@ export default function InvoiceModule({ brand = 'dump' }) {
                       <th style={{ ...TH, textAlign: 'center' }}>GST</th>
                       <th style={{ ...TH, textAlign: 'right' }}>Total</th>
                       <th style={TH}>Created</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Status</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {historyLoading ? (
-                      <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</td></tr>
+                      <tr><td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</td></tr>
                     ) : historyList.length === 0 ? (
-                      <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No invoices generated yet</td></tr>
+                      <tr><td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No invoices generated yet</td></tr>
                     ) : historyList.map((inv, i) => (
                       <tr key={inv.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                         <td style={{ ...TD, fontWeight: 800 }}>#{inv.billNo}</td>
@@ -904,6 +905,35 @@ export default function InvoiceModule({ brand = 'dump' }) {
                         <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{fmtINR(inv.totalWithGST)}</td>
                         <td style={{ ...TD, fontSize: '10px' }}>
                           {inv.createdAt?.seconds ? new Date(inv.createdAt.seconds * 1000).toLocaleDateString('en-IN') : '—'}
+                        </td>
+                        <td style={{ ...TD, textAlign: 'center' }}>
+                          <select
+                            value={inv.status || 'generated'}
+                            onChange={async (e) => {
+                              const nextStatus = e.target.value;
+                              try {
+                                await ax.put(`/invoices/${inv.id}`, { status: nextStatus });
+                                alert(`Bill #${inv.billNo} status updated to ${nextStatus.toUpperCase()}`);
+                                fetchHistory();
+                              } catch (err) {
+                                alert('Failed to update status: ' + err.message);
+                              }
+                            }}
+                            style={{
+                              fontSize: '11px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: 'var(--bg-input)',
+                              color: inv.status === 'paid' ? '#10b981' : inv.status === 'passed' ? '#3b82f6' : 'var(--text-muted)',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="generated" style={{ color: 'var(--text-muted)' }}>Generated</option>
+                            <option value="passed" style={{ color: '#3b82f6' }}>Passed</option>
+                            <option value="paid" style={{ color: '#10b981' }}>Paid</option>
+                          </select>
                         </td>
                         <td style={{ ...TD, textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>

@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
 import VehicleRegistryCard from '../components/VehicleRegistryCard';
+import EmiScheduleTracker from '../components/EmiScheduleTracker';
 
 const API = `/vehicles`;
 
@@ -30,7 +31,7 @@ const getEmptyForm = () => ({
     docNumbers: JSON.stringify({ rcNo: '', insuranceNo: '', pollutionNo: '', permitNo: '', fitnessNo: '', taxNo: '' }),
     bankDetails: JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
     gpsType: 'none',
-    emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [] }),
+    emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [], emiDay: '', schedule: [] }),
     docs: JSON.stringify({ rc: '', pollution: '', permit: '', insurance: '', fitness: '', tax: '' }),
     fastag: '',
     targetMileage: 0
@@ -658,6 +659,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [tyreTarget, setTyreTarget] = useState(null); // { truckNo }
     const [tyreHistory, setTyreHistory] = useState([]);
     const [tyreLoading, setTyreLoading] = useState(false);
+    const [emiTrackerTarget, setEmiTrackerTarget] = useState(null);
 
     const openTyreLog = async (truckNo) => {
         setTyreTarget({ truckNo });
@@ -1028,6 +1030,26 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 {maintenanceTarget && <MaintenanceTracker truckNo={maintenanceTarget.truckNo} onClose={() => setMaintenanceTarget(null)} />}
             </AnimatePresence>
 
+            <AnimatePresence>
+                {emiTrackerTarget && (
+                    <EmiScheduleTracker
+                        vehicle={emiTrackerTarget}
+                        onClose={() => setEmiTrackerTarget(null)}
+                        onUpdate={async () => {
+                            await fetchVehicleData();
+                            try {
+                                const res = await ax.get(API);
+                                const updatedList = res.data || [];
+                                const updatedVeh = updatedList.find(v => v.id === emiTrackerTarget.id);
+                                if (updatedVeh) setEmiTrackerTarget(updatedVeh);
+                            } catch (e) {
+                                console.error('Emi Tracker refresh error:', e);
+                            }
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Tyre & Expense Log Modal */}
             <AnimatePresence>
                 {tyreTarget && (
@@ -1255,6 +1277,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <div className="field"><label>EMI End Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).endDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.endDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                     <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                     <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending || ''} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>EMI Due Day (1-31)</label><input className="fi" type="number" min="1" max="31" placeholder="e.g. 5" value={parseJson(form.emiDetails).emiDay || ''} onChange={e => { const d = parseJson(form.emiDetails); d.emiDay = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                 </div>
                             </div>
                         )}
@@ -1455,26 +1478,59 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
                                                             {parseJson(v.emiDetails).loanNo && (() => {
                                                                 const emi = parseJson(v.emiDetails);
-                                                                const paidCount = (emi.paidEmis || []).length;
+                                                                const schedule = emi.schedule || [];
+                                                                const todayStr = new Date().toISOString().slice(0, 10);
+                                                                
+                                                                // Calculate elapsed months since start date
+                                                                const getElapsedMonths = (startStr, dayVal) => {
+                                                                    if (!startStr) return 0;
+                                                                    const start = new Date(startStr);
+                                                                    if (isNaN(start.getTime())) return 0;
+                                                                    const today = new Date();
+                                                                    let m = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
+                                                                    const dVal = parseInt(dayVal) || start.getDate();
+                                                                    if (today.getDate() < dVal) m--;
+                                                                    return Math.max(0, m);
+                                                                };
+                                                                
+                                                                const elapsed = getElapsedMonths(emi.startDate, emi.emiDay);
+                                                                const manualPaid = schedule.filter(item => item.status === 'paid').length;
+                                                                const schedulePaid = schedule.filter(item => item.status === 'paid' || item.dueDate <= todayStr).length;
+                                                                
+                                                                const paidCount = schedule.length > 0
+                                                                    ? schedulePaid
+                                                                    : Math.max(elapsed, (emi.paidEmis || []).length);
                                                                 const totalTenure = parseInt(emi.tenure) || 0;
-                                                                const pendingEmis = totalTenure - paidCount;
+                                                                const pendingEmis = Math.max(0, totalTenure - paidCount);
                                                                 return (
                                                                     <div style={{ padding: '12px', background: 'linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.03))', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.12)', marginBottom: '10px' }}>
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                                                             <div>
                                                                                 <div style={{ fontWeight: 800, color: '#3b82f6', fontSize: '12px' }}>{emi.bankName || 'BANK'}</div>
-                                                                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo}</div>
+                                                                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo || 'N/A'}</div>
                                                                             </div>
-                                                                            <button onClick={() => handleMarkPaid(v)} style={{ fontSize: '9px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}>Mark Paid</button>
+                                                                            <button onClick={() => setEmiTrackerTarget(v)} style={{ fontSize: '9px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}>Track EMI</button>
                                                                         </div>
-                                                                        <div style={{ textAlign: 'center', padding: '6px', background: 'rgba(59,130,246,0.04)', borderRadius: '8px', marginBottom: '8px' }}>
-                                                                            <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
-                                                                            <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</div>
+                                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', textAlign: 'center', margin: '8px 0' }}>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>MONTHLY EMI</div>
+                                                                                <strong style={{ fontSize: '11px', color: '#3b82f6' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</strong>
+                                                                            </div>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>OUTSTANDING</div>
+                                                                                <strong style={{ fontSize: '11px', color: '#ef4444' }}>₹{(pendingEmis * (parseFloat(emi.due) || 0)).toLocaleString()}</strong>
+                                                                            </div>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>TENURE</div>
+                                                                                <strong style={{ fontSize: '11px', color: 'var(--text)' }}>{totalTenure} EMI</strong>
+                                                                            </div>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>REMAINING</div>
+                                                                                <strong style={{ fontSize: '11px', color: pendingEmis > 0 ? '#ef4444' : '#10b981' }}>{pendingEmis} EMI</strong>
+                                                                            </div>
                                                                         </div>
-                                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '10px', textAlign: 'center' }}>
-                                                                            <div style={{ padding: '4px', background: 'rgba(16,185,129,0.06)', borderRadius: '6px' }}><div style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Paid</div><strong style={{ color: '#10b981' }}>{paidCount}</strong></div>
-                                                                            <div style={{ padding: '4px', background: 'rgba(239,68,68,0.06)', borderRadius: '6px' }}><div style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Left</div><strong style={{ color: '#ef4444' }}>{pendingEmis}</strong></div>
-                                                                            <div style={{ padding: '4px', background: 'rgba(59,130,246,0.06)', borderRadius: '6px' }}><div style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Rate</div><strong style={{ color: '#3b82f6' }}>{emi.interestRate}%</strong></div>
+                                                                        <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 600 }}>
+                                                                            Progress: {paidCount} Paid / {pendingEmis} EMI Left
                                                                         </div>
                                                                     </div>
                                                                 );

@@ -313,18 +313,26 @@ router.get('/:id/pdf', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         if (!isAvailable()) return res.status(500).json({ error: 'DB not available' });
-        const { items, billDate, type, gstRate } = req.body;
+        const { items, billDate, type, gstRate, status } = req.body;
         const docRef = db.collection(getCol(COL_INVOICES)).doc(req.params.id);
         const doc = await docRef.get();
         if (!doc.exists) return res.status(404).json({ error: 'Invoice not found' });
 
-        const totalFreight = (items || []).reduce((s, it) =>
-            s + (parseFloat(it.billedQty) || 0) * (parseFloat(it.ratePMT) || 0), 0);
-        const rate = gstRate || doc.data().gstRate || 6;
-        const totalGST = parseFloat((totalFreight * rate * 2 / 100).toFixed(2));
+        const updateObj = {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
 
-        await docRef.update({
-            items: (items || []).map(it => ({
+        if (billDate !== undefined) updateObj.billDate = billDate;
+        if (type !== undefined) updateObj.type = type;
+        if (status !== undefined) updateObj.status = status;
+
+        if (items !== undefined) {
+            const totalFreight = (items || []).reduce((s, it) =>
+                s + (parseFloat(it.billedQty) || 0) * (parseFloat(it.ratePMT) || 0), 0);
+            const rate = gstRate || doc.data().gstRate || 6;
+            const totalGST = parseFloat((totalFreight * rate * 2 / 100).toFixed(2));
+
+            updateObj.items = (items || []).map(it => ({
                 consigneeName: it.consigneeName, destination: it.destination,
                 truckNo: it.truckNo, lrNo: it.lrNo, invoiceNo: it.invoiceNo,
                 invoiceDate: it.invoiceDate,
@@ -332,16 +340,23 @@ router.put('/:id', async (req, res) => {
                 recQty: parseFloat(it.recQty) || 0,
                 ratePMT: parseFloat(it.ratePMT) || 0,
                 shortQty: parseFloat(it.shortQty) || 0,
-            })),
-            billDate: billDate || doc.data().billDate,
-            type: type || doc.data().type,
-            gstRate: rate,
-            itemCount: (items || []).length,
-            totalFreight: Math.round(totalFreight),
-            totalWithGST: parseFloat((totalFreight + totalGST).toFixed(2)),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+            }));
+            updateObj.gstRate = rate;
+            updateObj.itemCount = (items || []).length;
+            updateObj.totalFreight = Math.round(totalFreight);
+            updateObj.totalWithGST = parseFloat((totalFreight + totalGST).toFixed(2));
+        } else if (gstRate !== undefined) {
+            const existingItems = doc.data().items || [];
+            const totalFreight = existingItems.reduce((s, it) =>
+                s + (parseFloat(it.billedQty) || 0) * (parseFloat(it.ratePMT) || 0), 0);
+            const rate = gstRate;
+            const totalGST = parseFloat((totalFreight * rate * 2 / 100).toFixed(2));
 
+            updateObj.gstRate = rate;
+            updateObj.totalWithGST = parseFloat((totalFreight + totalGST).toFixed(2));
+        }
+
+        await docRef.update(updateObj);
         res.json({ updated: true });
     } catch (e) {
         res.status(500).json({ error: e.message });

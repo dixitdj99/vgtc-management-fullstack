@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel, UserCircle } from 'lucide-react';
+import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel, UserCircle, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import AdminUserManagement from './AdminUserManagement';
@@ -8,6 +8,7 @@ import AdminModule from '../../modules/AdminModule';
 import PartyMaster from '../../modules/PartyMaster';
 import FuelStationManager from './FuelStationManager';
 import StaffProfileModule from '../../modules/StaffProfileModule';
+import ProfitLossSheet from './ProfitLossSheet';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -30,6 +31,7 @@ export default function AdminLayout() {
 
   const NAV = [
     { id: 'dashboard', label: 'Overview', Icon: LayoutDashboard },
+    { id: 'pl_sheet', label: 'Profit & Loss', Icon: TrendingUp },
     { id: 'users', label: 'User Management', Icon: Users },
     { id: 'parties', label: 'Party Master', Icon: Building2 },
     { id: 'profiles', label: 'Staff Profiles', Icon: UserCircle },
@@ -222,6 +224,7 @@ export default function AdminLayout() {
             <AnimatePresence mode="wait">
               <motion.div key={active} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
                 {active === 'dashboard' && <AdminDashboard />}
+                {active === 'pl_sheet' && <ProfitLossSheet />}
                 {active === 'users' && <AdminUserManagement />}
                 {active === 'parties' && <PartyMaster />}
                 {active === 'profiles' && <StaffProfileModule role="admin" />}
