@@ -59,10 +59,20 @@ router.post('/deduct-gps', async (req, res) => {
     }
 });
 
-// Trigger Alert Report (Email Intent)
+// Trigger fleet-wide alert report
 router.get('/alerts/report', async (req, res) => {
     try {
         const result = await alertService.sendDailyAlertReport(req.orgId, getCol(BASE_COL, req));
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Trigger alert for a single vehicle
+router.get('/alerts/vehicle/:id', async (req, res) => {
+    try {
+        const result = await alertService.sendVehicleAlert(req.orgId, req.params.id, getCol(BASE_COL, req));
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -100,6 +110,93 @@ router.delete('/:id', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// ── Vehicle Firm Registry ─────────────────────────────────────────────────────
+const REG_COL = 'vehicle_registry';
+
+router.get('/registry', async (req, res) => {
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        if (isAvailable()) {
+            const snap = await db.collection(getCol(REG_COL, req)).where('orgId', '==', req.orgId).get();
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return res.json(docs);
+        }
+        return res.json(localStore.getAll(getCol(REG_COL, req)).filter(x => x.orgId === req.orgId));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/registry', async (req, res) => {
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        const payload = { ...req.body, orgId: req.orgId, createdAt: new Date().toISOString() };
+        if (isAvailable()) {
+            const ref = db.collection(getCol(REG_COL, req)).doc();
+            await ref.set({ ...payload, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            return res.status(201).json({ id: ref.id, ...payload });
+        }
+        return res.status(201).json(localStore.insert(getCol(REG_COL, req), payload));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/registry/:id', async (req, res) => {
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        if (isAvailable()) {
+            await db.collection(getCol(REG_COL, req)).doc(req.params.id).update({ ...req.body, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        } else {
+            localStore.update(getCol(REG_COL, req), req.params.id, req.body);
+        }
+        res.json({ message: 'Updated' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Tyre & vehicle expense history for a truck (aggregated from vouchers)
+router.get('/tyre-history/:truckNo', async (req, res) => {
+    try {
+        const { db, isAvailable } = require('../firebase');
+        const { getCol: _getCol } = require('../utils/collectionUtils');
+        if (!isAvailable()) return res.json([]);
+        const voucherCol = _getCol('vouchers', req);
+        const snapshot = await db.collection(voucherCol)
+            .where('orgId', '==', req.orgId)
+            .where('truckNo', '==', req.params.truckNo)
+            .get();
+        const history = [];
+        snapshot.docs.forEach(doc => {
+            const v = { id: doc.id, ...doc.data() };
+            const pnc = parseFloat(v.tyrePuncture) || 0;
+            if (pnc > 0) history.push({ id: v.id + '_pnc', date: v.date, lrNo: v.lrNo, type: 'Tyre Puncture', amount: pnc });
+            const gre = (parseFloat(v.tyreGreasingAir)||0) + (parseFloat(v.tyreGreasing)||0) + (parseFloat(v.tyreAir)||0);
+            if (gre > 0) history.push({ id: v.id + '_gre', date: v.date, lrNo: v.lrNo, type: 'Tyre Greasing & Air', amount: gre });
+            const ext = parseFloat(v.extraCash) || 0;
+            if (ext > 0) history.push({ id: v.id + '_ext', date: v.date, lrNo: v.lrNo, type: `Extra Cash${v.extraCashRemark ? ' ('+v.extraCashRemark+')' : ''}`, amount: ext });
+        });
+        history.sort((a, b) => (b.date||'').localeCompare(a.date||''));
+        // add running total
+        let total = 0;
+        const withTotal = history.map(e => { total += e.amount; return { ...e, runningTotal: total }; });
+        res.json(withTotal);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/registry/:id', async (req, res) => {
+    try {
+        const { db, isAvailable } = require('../firebase');
+        const localStore = require('../utils/localStore');
+        if (isAvailable()) {
+            await db.collection(getCol(REG_COL, req)).doc(req.params.id).delete();
+        } else {
+            localStore.delete(getCol(REG_COL, req), req.params.id);
+        }
+        res.json({ message: 'Deleted' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

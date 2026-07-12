@@ -1,0 +1,38 @@
+# apphosting.yaml
+runConfig:
+  cpu: 1
+  memoryMiB: 256
+  concurrency: 80
+  minInstances: 0
+  maxInstances: 2
+
+env:
+  - variable: APP_ENV
+    value: "production"
+    availability:
+      - RUNTIME
+  - variable: BLOCK_PROD_WRITES
+    value: "false"
+    availability:
+      - RUNTIME
+  - variable: SMTP_HOST
+    value: "smtp.gmail.com"
+    availability:
+      - RUNTIME
+  - variable: SMTP_PORT
+    value: "587"
+    availability:
+      - RUNTIME
+  - variable: SMTP_SECURE
+    value: "false"
+    availability:
+      - RUNTIME
+  - variable: SMTP_USER
+    value: "your-email@gmail.com"
+    availability:
+      - RUNTIME
+  # Reference secure variables stored in Cloud Secret Manager
+  - variable: JWT_SECRET
+    secret: JWT_SECRET
+  - variable: SMTP_PASS
+    secret: SMTP_PASS

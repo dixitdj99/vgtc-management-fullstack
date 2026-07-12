@@ -21,53 +21,52 @@ router.post('/', async (req, res) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
-        // Real-time backup — runs whenever Google Drive is authorized
-        const authorized = await driveService.isAuthorized();
-        console.log(`[Backup-Hook] Drive authorized: ${authorized}`);
-        if (authorized) {
-            (async () => {
-                try {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const { generateVoucherPDF } = require('../utils/pdfService');
-                    const sheetsService = require('../utils/sheetsService');
-                    const { PLANTS } = require('../utils/backupService');
-
-                    const voucherData = { ...req.body, ...result };
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
-                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-                    const dateStr = (voucherData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
-                    const fileName = `Voucher_LR${voucherData.lrNo || 'N-A'}_${dateStr}.pdf`;
-                    const localPath = path.join(TEMP_DIR, fileName);
-
-                    console.log(`[Backup-Hook] Generating voucher PDF: ${fileName}`);
-                    await generateVoucherPDF(voucherData, localPath);
-
-                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    // Route to exact Plant folders instead of global 'Dump'
-                    const plantLabel = (req.body.brand === 'jklakshmi' || voucherData.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
-                    const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
-                    const finalFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
-                    await driveService.uploadFile(localPath, fileName, finalFolder);
-                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-                    // Upsert row in Google Sheet - send exact brand!
-                    await sheetsService.upsertVoucherRow(voucherData, req.body.type || 'Dump', req.body.brand);
-
-                    await driveService.logActivity('Voucher_Create', 'success', `Backed up: ${fileName}`);
-                    console.log(`[Backup-Hook] Voucher backed up successfully: ${fileName}`);
-                } catch (e) {
-                    console.error('[Backup-Hook] Voucher create FAILED:', e.message);
-                    console.error(e.stack);
-                    await driveService.logActivity('Voucher_Create', 'error', 'Backup failed', e).catch(() => {});
-                }
-            })();
-        } else {
-            console.log('[Backup-Hook] Skipping voucher backup — Drive not authorized');
-        }
-
+        // Real-time backup — fire and forget, never blocks response
+        const savedResult = result;
+        const savedBody = { ...req.body };
         res.status(201).json(result);
+
+        (async () => {
+            try {
+                if (!await driveService.isAuthorized()) {
+                    console.log('[Backup-Hook] Skipping voucher backup — Drive not authorized');
+                    return;
+                }
+                const fs = require('fs');
+                const path = require('path');
+                const { generateVoucherPDF } = require('../utils/pdfService');
+                const sheetsService = require('../utils/sheetsService');
+
+                const voucherData = { ...savedBody, ...savedResult };
+                const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
+                if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+
+                const dateStr = (voucherData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
+                const fileName = `Voucher_LR${voucherData.lrNo || 'N-A'}_${dateStr}.pdf`;
+                const localPath = path.join(TEMP_DIR, fileName);
+
+                console.log(`[Backup-Hook] Generating voucher PDF: ${fileName}`);
+                await generateVoucherPDF(voucherData, localPath);
+
+                const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
+                const plantLabel = (savedBody.brand === 'jklakshmi' || voucherData.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
+                const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
+                const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
+                const monthStr = new Date(voucherData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
+                await driveService.uploadFile(localPath, fileName, finalFolder);
+                if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+
+                await sheetsService.upsertVoucherRow(voucherData, savedBody.type || 'Dump', savedBody.brand);
+
+                await driveService.logActivity('Voucher_Create', 'success', `Backed up: ${fileName}`);
+                console.log(`[Backup-Hook] Voucher backed up successfully: ${fileName}`);
+            } catch (e) {
+                console.error('[Backup-Hook] Voucher create FAILED:', e.message);
+                console.error(e.stack);
+                await driveService.logActivity('Voucher_Create', 'error', 'Backup failed', e).catch(() => {});
+            }
+        })();
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -104,32 +103,89 @@ router.patch('/:id', async (req, res) => {
             });
         }
 
-        // Sync updated row to Google Sheet — runs whenever Drive is authorized
+        res.json({ message: 'Voucher updated' });
+
+        // Sync updated row + re-upload PDF — runs in background after response
+        if (await driveService.isAuthorized()) {
+            (async () => {
+                try {
+                    const fs = require('fs');
+                    const path = require('path');
+                    const { generateVoucherPDF } = require('../utils/pdfService');
+                    const sheetsService = require('../utils/sheetsService');
+
+                    const updated = await voucherService.getVoucherById(req.params.id, col);
+                    if (!updated || !updated.type) return;
+
+                    // 1. Sync to Google Sheets
+                    await sheetsService.upsertVoucherRow(updated, updated.type, updated.brand);
+                    if (parseFloat(updated.paidBalance) > 0) {
+                        await sheetsService.upsertPayHistory(updated, updated.brand);
+                    } else {
+                        await sheetsService.deletePayHistory(updated.id, updated.brand);
+                    }
+
+                    // 2. Re-generate and re-upload PDF to Drive
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
+                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+                    const dateStr = (updated.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
+                    const fileName = `Voucher_LR${updated.lrNo || 'N-A'}_${dateStr}.pdf`;
+                    const localPath = path.join(TEMP_DIR, fileName);
+
+                    await generateVoucherPDF(updated, localPath);
+                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
+                    const plantLabel = (updated.brand === 'jklakshmi' || updated.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
+                    const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
+                    const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
+                    const monthStr = new Date(updated.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                    const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
+                    await driveService.uploadFile(localPath, fileName, finalFolder);
+                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+
+                    await driveService.logActivity('Voucher_Update', 'success', `Synced: ${fileName}`);
+                    console.log(`[Backup-Hook] Voucher update synced: ${fileName}`);
+                } catch (e) {
+                    console.error('[Backup-Hook] Voucher update sync failed:', e.message);
+                    await driveService.logActivity('Voucher_Update', 'error', 'Sync failed', e).catch(() => {});
+                }
+            })();
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── Diesel Verification ─────────────────────────────────────────────────────
+router.patch('/:id/verify-diesel', async (req, res) => {
+    const { dieselActualLitres, dieselPumpName } = req.body;
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const col = getCol(BASE_COL, req);
+        const update = {
+            isDieselVerified: true,
+            dieselActualLitres: parseFloat(dieselActualLitres) || 0,
+            dieselPumpName: dieselPumpName || '',
+            dieselVerifiedAt: new Date().toISOString(),
+            dieselVerifiedBy: req.user?.name || 'system',
+        };
+        if (isAvailable()) {
+            await db.collection(col).doc(req.params.id).update({
+                ...update,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+        res.json({ message: 'Diesel verified', ...update });
+
+        // Sync verification to Google Sheets in background
         if (await driveService.isAuthorized()) {
             (async () => {
                 try {
                     const sheetsService = require('../utils/sheetsService');
-                    // Fetch the full updated voucher so we have the type + all current fields
-                    const updated = await voucherService.getVoucherById(req.params.id, col);
-                    if (updated && updated.type) {
-                        await sheetsService.upsertVoucherRow(updated, updated.type, updated.brand);
-                        
-                        // Pay Vehicles Hook
-                        if (parseFloat(updated.paidBalance) > 0) {
-                            await sheetsService.upsertPayHistory(updated, updated.brand);
-                        } else {
-                            await sheetsService.deletePayHistory(updated.id, updated.brand);
-                        }
-
-                        console.log(`[Sheets] Synced update for voucher ${req.params.id}`);
-                    }
-                } catch (e) {
-                    console.error('[Sheets-Hook] Voucher update sync failed:', e.message);
-                }
+                    const updated = await voucherService.getVoucherById(req.params.id, getCol(BASE_COL, req));
+                    if (updated) await sheetsService.upsertVoucherRow(updated, updated.type, updated.brand);
+                } catch (e) { console.error('[Sheets] Diesel verify sync failed:', e.message); }
             })();
         }
-
-        res.json({ message: 'Voucher updated' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

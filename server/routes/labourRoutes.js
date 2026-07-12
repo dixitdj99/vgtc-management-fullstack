@@ -112,12 +112,15 @@ router.get('/today', requireLabourAuth, async (req, res) => {
         if (isAvailable()) {
             const snap = await db.collection(fullCol)
                 .where('orgId', '==', req.orgId)
-                .where('date', '>=', targetDate)
-                .where('date', '<=', targetDate + '\uf8ff')
                 .get();
+            // Filter by date in JS to avoid composite index requirement
+            const filteredDocs = snap.docs.filter(doc => {
+                const d = doc.data();
+                return (d.date || '').startsWith(targetDate);
+            });
             // Deduplicate by lrNo
             const map = new Map();
-            snap.docs.forEach(doc => {
+            filteredDocs.forEach(doc => {
                 const d = { id: doc.id, ...doc.data() };
                 if (!map.has(d.lrNo)) {
                     map.set(d.lrNo, {

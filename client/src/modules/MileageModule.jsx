@@ -10,8 +10,6 @@ import Pagination from '../components/Pagination';
 
 const PAGE_SIZE = 20;
 
-const DIESEL_PRICE_PER_LITRE = 90; // estimated ₹ per litre for mileage calculation
-
 function getMileageColor(kmPerL) {
     if (!kmPerL || kmPerL <= 0) return 'var(--text-muted)';
     if (kmPerL >= 4) return '#10b981'; // green — good
@@ -19,7 +17,7 @@ function getMileageColor(kmPerL) {
     return '#f43f5e'; // red — poor
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }) {
+function StatCard({ icon: Icon, label, value, sub, color, orgName }) {
     return (
         <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
@@ -39,7 +37,7 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
 }
 
 /* ── Per-Vehicle Detail View ── */
-function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
+function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre = 90, cngPerKg = 75 }) {
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -61,7 +59,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const litres = (parseFloat(fuelForm.amount) || 0) / DIESEL_PRICE_PER_LITRE;
+            const litres = (parseFloat(fuelForm.amount) || 0) / dieselPerLitre;
             await ax.post('/mileage/fuel', {
                 truckNo,
                 date: fuelForm.date,
@@ -86,7 +84,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
 
     const processedTrips = useMemo(() => {
         const ASSUMED_MILEAGE = vehicleType === 'Canter' ? 4.7 : 3.0;
-        
+
         let sortedTrips = [...trips].sort((a, b) => {
             const aTime = a.createdAt?.seconds || 0;
             const bTime = b.createdAt?.seconds || 0;
@@ -97,7 +95,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
         let lastEndKm = null;
         let currentBalance = 0;
         const tripBalances = {};
-        
+
         sortedTrips.forEach(t => {
             let dist = null;
             if (t.endKm) {
@@ -110,7 +108,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
             t.calculatedDistance = dist;
 
             const dieselRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
-            const addedLitres = dieselRs / DIESEL_PRICE_PER_LITRE;
+            const addedLitres = dieselRs / dieselPerLitre;
             const consumed = (dist || 0) / ASSUMED_MILEAGE;
             currentBalance = currentBalance + addedLitres - consumed;
             tripBalances[t.id] = currentBalance;
@@ -124,7 +122,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
                 tankBalance: tripBalances[t.id]
             };
         });
-    }, [trips, vehicleType]);
+    }, [trips, vehicleType, dieselPerLitre]);
 
     const stats = useMemo(() => {
         const ASSUMED_MILEAGE = vehicleType === 'Canter' ? 4.7 : 3.0;
@@ -143,23 +141,23 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
             const d = parseFloat(t.advanceDiesel) || parseFloat(t.amount);
             return s + (isNaN(d) ? 0 : d);
         }, 0);
-        
-        const totalVoucherLitres = totalDieselRs / DIESEL_PRICE_PER_LITRE;
+
+        const totalVoucherLitres = totalDieselRs / dieselPerLitre;
         const fuelConsumed = totalKm / ASSUMED_MILEAGE;
         const fuelBalance = totalVoucherLitres - fuelConsumed;
         const avgKmPerL = totalVoucherLitres > 0 ? (totalKm / totalVoucherLitres) : 0;
-        
-        return { 
-            totalKm: totalKm.toFixed(0), 
-            totalDieselRs, 
-            avgKmPerL: avgKmPerL.toFixed(2), 
+
+        return {
+            totalKm: totalKm.toFixed(0),
+            totalDieselRs,
+            avgKmPerL: avgKmPerL.toFixed(2),
             mileageTripCount: validTripsCount,
             totalVoucherLitres: totalVoucherLitres.toFixed(1),
             fuelConsumed: fuelConsumed.toFixed(1),
             fuelBalance: fuelBalance.toFixed(1),
             assumedMileage: ASSUMED_MILEAGE
         };
-    }, [processedTrips, vehicleType]);
+    }, [processedTrips, vehicleType, dieselPerLitre]);
 
     const paginatedTrips = useMemo(() => {
         const start = (currentPage - 1) * PAGE_SIZE;
@@ -268,7 +266,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName }) {
                             ) : paginatedTrips.map((t, i) => {
                                 const dist = t.calculatedDistance;
                                 const dieselRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
-                                const litres = dieselRs / DIESEL_PRICE_PER_LITRE;
+                                const litres = dieselRs / dieselPerLitre;
                                 const kmPerL = (dist != null && dist > 0 && litres > 0) ? dist / litres : null;
                                 const mColor = getMileageColor(kmPerL);
                                 const tBal = t.tankBalance != null ? t.tankBalance.toFixed(1) : '—';
@@ -370,12 +368,18 @@ export default function MileageModule() {
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState(null);
     const [search, setSearch] = useState('');
+    const [dieselPerLitre, setDieselPerLitre] = useState(90);
+    const [cngPerKg, setCngPerKg] = useState(75);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [settingsForm, setSettingsForm] = useState({ dieselPerLitre: 90, cngPerKg: 75 });
+    const [savingSettings, setSavingSettings] = useState(false);
 
     const loadData = () => {
         Promise.all([
             ax.get('/vehicles'),
             ax.get('/mileage/all-vehicles'),
-        ]).then(([vRes, mRes]) => {
+            ax.get('/mileage/settings')
+        ]).then(([vRes, mRes, sRes]) => {
             // Track Self Vehicles + VGTC (Vikas Goods Transport) owned vehicles
             const vgtcVehicles = vRes.data.filter(v =>
                 v.ownershipType === 'self' ||
@@ -383,8 +387,53 @@ export default function MileageModule() {
             );
             setVehicles(vgtcVehicles);
             setSummaries(mRes.data);
+            const settings = sRes.data || { dieselPerLitre: 90, cngPerKg: 75 };
+            const d = parseFloat(settings.dieselPerLitre) || 90;
+            const c = parseFloat(settings.cngPerKg) || 75;
+            setDieselPerLitre(d);
+            setCngPerKg(c);
+            setSettingsForm({ dieselPerLitre: d, cngPerKg: c });
         }).catch(console.error)
             .finally(() => setLoading(false));
+    };
+
+    const handleSettingsSave = async (e) => {
+        e.preventDefault();
+        setSavingSettings(true);
+        try {
+            const payload = {
+                dieselPerLitre: parseFloat(settingsForm.dieselPerLitre),
+                cngPerKg: parseFloat(settingsForm.cngPerKg)
+            };
+            console.log('Sending fuel rates:', payload);
+            const res = await ax.post('/mileage/settings', payload);
+            console.log('Response:', res.data);
+            setDieselPerLitre(res.data.dieselPerLitre);
+            setCngPerKg(res.data.cngPerKg);
+            setShowSettingsModal(false);
+            alert('✅ Fuel rates saved successfully');
+        } catch (err) {
+            const status = err.response?.status;
+            const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
+
+            let displayError = `[${status}] ${errorMsg}`;
+
+            if (status === 401) {
+                displayError = 'Session expired. Please login again.';
+            } else if (status === 400) {
+                displayError = `Invalid input: ${errorMsg}`;
+            } else if (status === 500) {
+                displayError = `Server error: ${errorMsg}`;
+            } else if (!status) {
+                displayError = `Network error: ${errorMsg}`;
+            }
+
+            console.error('Error saving fuel rates:', displayError);
+            console.error('Full error:', { status, error: err.response?.data, message: err.message });
+            alert(`❌ Failed to save fuel rates:\n\n${displayError}`);
+        } finally {
+            setSavingSettings(false);
+        }
     };
 
     useEffect(() => { loadData(); }, []);
@@ -406,7 +455,14 @@ export default function MileageModule() {
         const selectedVehicle = vehicles.find(v => v.truckNo === selected);
         return (
             <div className="page-container">
-                <VehicleDetail truckNo={selected} vehicleType={selectedVehicle?.vehicleType} onBack={() => setSelected(null)} />
+                <VehicleDetail
+                    truckNo={selected}
+                    vehicleType={selectedVehicle?.vehicleType}
+                    onBack={() => setSelected(null)}
+                    orgName={orgName}
+                    dieselPerLitre={dieselPerLitre}
+                    cngPerKg={cngPerKg}
+                />
             </div>
         );
     }
@@ -419,6 +475,9 @@ export default function MileageModule() {
                     <h1><Gauge size={20} color="#f59e0b" /> Diesel Mileage Tracker</h1>
                     <p>Per-vehicle km/litre analytics — {orgName}</p>
                 </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowSettingsModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚙️ Fuel Rates
+                </button>
             </div>
 
             <div className="card">
@@ -453,7 +512,7 @@ export default function MileageModule() {
                         {filtered.map(v => {
                             const s = summaryMap[v.truckNo];
                             const kmPerL = s && parseFloat(s.totalKm) > 0 && s.totalDieselRs > 0
-                                ? (parseFloat(s.totalKm) / (s.totalDieselRs / DIESEL_PRICE_PER_LITRE))
+                                ? (parseFloat(s.totalKm) / (s.totalDieselRs / dieselPerLitre))
                                 : null;
                             const mColor = getMileageColor(kmPerL);
                             return (
@@ -522,6 +581,59 @@ export default function MileageModule() {
                     </div>
                 )}
             </div>
+
+            {/* Fuel Rates Settings Modal */}
+            <AnimatePresence>
+                {showSettingsModal && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            style={{ background: 'var(--bg)', borderRadius: '12px', width: '400px', maxWidth: '90%', border: '1px solid var(--border)', overflow: 'hidden' }}
+                        >
+                            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontWeight: 800 }}>⚙️ Update Fuel Rates</div>
+                                <button className="btn" onClick={() => setShowSettingsModal(false)} style={{ padding: '4px', background: 'transparent' }}>X</button>
+                            </div>
+                            <form onSubmit={handleSettingsSave} style={{ padding: '20px' }}>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>DIESEL RATE (₹/LITRE)</label>
+                                    <input
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        className="fi"
+                                        value={settingsForm.dieselPerLitre || ''}
+                                        onChange={e => setSettingsForm({ ...settingsForm, dieselPerLitre: e.target.value ? parseFloat(e.target.value) : 90 })}
+                                        required
+                                    />
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Current: ₹{dieselPerLitre}/L (used for all mileage calculations)</div>
+                                </div>
+                                <div style={{ marginBottom: '20px' }}>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>CNG RATE (₹/KG)</label>
+                                    <input
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        className="fi"
+                                        value={settingsForm.cngPerKg || ''}
+                                        onChange={e => setSettingsForm({ ...settingsForm, cngPerKg: e.target.value ? parseFloat(e.target.value) : 75 })}
+                                        required
+                                    />
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Current: ₹{cngPerKg}/kg</div>
+                                </div>
+                                <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', padding: '10px', marginBottom: '20px', fontSize: '11px', color: '#92400e' }}>
+                                    💡 Rates are applied to convert diesel expense to liters in mileage calculations. Update whenever fuel prices change.
+                                </div>
+                                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={savingSettings}>
+                                    {savingSettings ? 'Saving...' : 'Save Fuel Rates'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

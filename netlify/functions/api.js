@@ -17,6 +17,8 @@ const kosliLrRoutes = require('../../server/routes/kosliLrRoutes');
 const jhajjarLrRoutes = require('../../server/routes/jhajjarLrRoutes');
 const kosliStockRoutes = require('../../server/routes/kosliStockRoutes');
 const jhajjarStockRoutes = require('../../server/routes/jhajjarStockRoutes');
+const bahadurgarhLrRoutes = require('../../server/routes/bahadurgarhLrRoutes');
+const bahadurgarhStockRoutes = require('../../server/routes/bahadurgarhStockRoutes');
 const jklLrRoutes = require('../../server/routes/jklLrRoutes');
 const jklStockRoutes = require('../../server/routes/jklStockRoutes');
 const jklCashbookRoutes = require('../../server/routes/jklCashbookRoutes');
@@ -32,24 +34,43 @@ const stockTransferRoutes = require('../../server/routes/stockTransferRoutes');
 const profileRoutes = require('../../server/routes/profileRoutes');
 const paymentRoutes = require('../../server/routes/paymentRoutes');
 const maintenanceRoutes = require('../../server/routes/maintenanceRoutes');
+const tollRoutes = require('../../server/routes/tollRoutes');
 const { requireAuth } = require('../../server/middleware/auth');
 const orgRoutes = require('../../server/routes/orgRoutes');
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+
+// CORS — open on Netlify (same-domain app; JWT provides auth security)
+// Configure ALLOWED_ORIGINS env var to restrict if needed
+app.use(cors({
+    origin: (origin, cb) => {
+        // Allow no origin (same-origin requests, server-to-server)
+        if (!origin) return cb(null, true);
+        // If ALLOWED_ORIGINS is set, enforce it
+        if (process.env.ALLOWED_ORIGINS) {
+            const allowed = process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim());
+            return allowed.includes(origin) ? cb(null, true) : cb(new Error('CORS: origin not allowed'));
+        }
+        // Default: allow all (this is an internal app protected by JWT)
+        return cb(null, true);
+    },
+    credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
 
 // Main router to handle various possible prefixes
 const apiRouter = express.Router();
 
 apiRouter.use('/kosli/lr', requireAuth, kosliLrRoutes);
 apiRouter.use('/jhajjar/lr', requireAuth, jhajjarLrRoutes);
+apiRouter.use('/bahadurgarh/lr', requireAuth, bahadurgarhLrRoutes);
 apiRouter.use('/vouchers', requireAuth, voucherRoutes);
 apiRouter.use('/auth', authRoutes);
 apiRouter.use('/users', userRoutes);
 apiRouter.use('/cashbook', requireAuth, cashbookRoutes);
 apiRouter.use('/kosli/stock', requireAuth, kosliStockRoutes);
 apiRouter.use('/jhajjar/stock', requireAuth, jhajjarStockRoutes);
+apiRouter.use('/bahadurgarh/stock', requireAuth, bahadurgarhStockRoutes);
 apiRouter.use('/sell', requireAuth, sellRoutes);
 apiRouter.use('/backup', backupRoutes);
 apiRouter.use('/public', publicRoutes);
@@ -59,6 +80,7 @@ apiRouter.use('/stock', requireAuth, stockRoutes); // Legacy
 apiRouter.use('/org', requireAuth, orgRoutes);
 apiRouter.use('/parties', requireAuth, partyRoutes);
 apiRouter.use('/maintenance', requireAuth, maintenanceRoutes);
+apiRouter.use('/tolls', requireAuth, tollRoutes);
 apiRouter.use('/profiles', requireAuth, profileRoutes);
 apiRouter.use('/payments', requireAuth, paymentRoutes);
 apiRouter.use('/vehicle-advances', requireAuth, vehicleAdvanceRoutes);

@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const svc = require('../utils/stockService');
 const { getCol } = require('../utils/collectionUtils');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+
+router.use(tenancyMiddleware);
 
 /* JK Lakshmi Collection Overrides */
 const SCOL = 'jkl_stock_additions';
@@ -22,12 +25,12 @@ const sheetsService = require('../utils/sheetsService');
 
 /* ── Stock Additions ── */
 router.get('/additions', async (req, res) => {
-    try { res.json(await svc.getHistory(getCol(SCOL, req))); }
+    try { res.json(await svc.getAllAdditions(req.orgId, getCol(SCOL, req))); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/additions', async (req, res) => {
     try { 
-        const doc = await svc.addStock(req.body, getCol(SCOL, req), JKL_MATERIALS);
+        const doc = await svc.addStock(req.orgId, req.body, getCol(SCOL, req), JKL_MATERIALS);
         sheetsService.upsertStockMigo(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] MIGO upsert failed:', err.message));
         res.status(201).json(doc);
     }
@@ -44,12 +47,12 @@ router.delete('/additions/:id', async (req, res) => {
 
 /* ── Challans ── */
 router.get('/challans', async (req, res) => {
-    try { res.json(await svc.getAllChallans(getCol(CCOL, req))); }
+    try { res.json(await svc.getAllChallans(req.orgId, getCol(CCOL, req))); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/challans', async (req, res) => {
     try { 
-        const doc = await svc.createChallan(req.body, getCol(CCOL, req), JKL_MATERIALS);
+        const doc = await svc.createChallan(req.orgId, req.body, getCol(CCOL, req), JKL_MATERIALS);
         sheetsService.upsertStockChallan(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] Challan upsert failed:', err.message));
         res.status(201).json(doc);
     }
@@ -79,7 +82,7 @@ router.put('/challans/:id', async (req, res) => {
 router.patch('/challans/:id/status', async (req, res) => {
     try { 
         await svc.updateChallanStatus(req.params.id, req.body.status, getCol(CCOL, req));
-        const all = await svc.getAllChallans(getCol(CCOL, req));
+        const all = await svc.getAllChallans(req.orgId, getCol(CCOL, req));
         const doc = all.find(c => c.id === req.params.id);
         if (doc) {
             sheetsService.upsertStockChallan(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] Challan status upsert failed:', err.message));
@@ -99,11 +102,11 @@ router.delete('/challans/:id', async (req, res) => {
 
 /* ── Meta & Materials ── */
 router.get('/materials/list', async (req, res) => {
-    try { res.json(await svc.getMaterialsList(getCol(MCOL, req))); }
+    try { res.json(await svc.getMaterialsList(req.orgId, getCol(MCOL, req))); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/materials', async (req, res) => {
-    try { res.status(201).json(await svc.addMaterial(req.body.name, getCol(MCOL, req))); }
+    try { res.status(201).json(await svc.addMaterial(req.orgId, req.body.name, getCol(MCOL, req))); }
     catch (e) { res.status(400).json({ error: e.message }); }
 });
 router.delete('/materials/:id', async (req, res) => {
@@ -114,7 +117,7 @@ router.delete('/materials/:id', async (req, res) => {
 router.post('/sync-lr', async (req, res) => {
     try {
         const { oldChallanNos, newChallanNos, material, quantity } = req.body;
-        await svc.syncLRWithChallans(oldChallanNos, newChallanNos, material, quantity, getCol(CCOL, req));
+        await svc.syncLRWithChallans(req.orgId, oldChallanNos, newChallanNos, material, quantity, getCol(CCOL, req));
         res.json({ ok: true });
     } catch (e) { res.status(400).json({ error: e.message }); }
 });

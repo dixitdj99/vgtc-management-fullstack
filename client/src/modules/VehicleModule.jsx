@@ -2,10 +2,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
+import { fmtRs, fmtDate } from '../utils/format';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Banknote, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X } from 'lucide-react';
+import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X, Loader2, Receipt, Upload, Calendar, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
+import VehicleRegistryCard from '../components/VehicleRegistryCard';
+import EmiScheduleTracker from '../components/EmiScheduleTracker';
 
 const API = `/vehicles`;
 
@@ -27,7 +31,7 @@ const getEmptyForm = () => ({
     docNumbers: JSON.stringify({ rcNo: '', insuranceNo: '', pollutionNo: '', permitNo: '', fitnessNo: '', taxNo: '' }),
     bankDetails: JSON.stringify({ name: '', bank: '', account: '', ifsc: '' }),
     gpsType: 'none',
-    emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [] }),
+    emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [], emiDay: '', schedule: [] }),
     docs: JSON.stringify({ rc: '', pollution: '', permit: '', insurance: '', fitness: '', tax: '' }),
     fastag: '',
     targetMileage: 0
@@ -223,6 +227,418 @@ function OwnerDeleteConfirm({ owner, onClose, onConfirm }) {
     );
 }
 
+/* ─── Toll Tab ────────────────────────────────────────────────────────────── */
+const TH2 = { padding: '8px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
+const TD2 = { padding: '8px 10px', fontSize: '12px', color: 'var(--text-sub)', verticalAlign: 'middle', borderBottom: '1px solid var(--border-row)', whiteSpace: 'nowrap' };
+
+function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setTollTo, tollForm, setTollForm, tollSaving, setTollSaving, tollImporting, setTollImporting, tollImportPreview, setTollImportPreview, tollSearch, setTollSearch, vehicleNumbers, onRefresh, truckBalanceMap }) {
+
+    const fmtRsL = (n) => 'Rs.' + Math.round(n).toLocaleString('en-IN');
+    const fmtDateL = (s) => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+    // Active trucks from Balance Sheet for the selected date range
+    const [activeTrucks, setActiveTrucks] = useState(new Set()); // trucks that have vouchers in range
+    const [rangeLoading, setRangeLoading] = useState(false);
+
+    // When date range is applied, fetch vouchers to determine active trucks
+    const loadActiveTrucksForRange = async (from, to) => {
+        if (!from || !to) { setActiveTrucks(new Set()); return; }
+        setRangeLoading(true);
+        try {
+            const res = await ax.get('/vouchers');
+            const vouchers = res.data || [];
+            const trucks = new Set(
+                vouchers
+                    .filter(v => v.date >= from && v.date <= to)
+                    .map(v => (v.truckNo || '').toUpperCase().replace(/\s/g, ''))
+                    .filter(Boolean)
+            );
+            setActiveTrucks(trucks);
+            console.log(`[Toll] Active trucks in ${from}→${to}: ${[...trucks].join(', ')}`);
+        } catch { setActiveTrucks(new Set()); }
+        finally { setRangeLoading(false); }
+    };
+
+    // Filter displayed records
+    const filtered = useMemo(() => {
+        const q = tollSearch.toLowerCase();
+        return tollRecords.filter(r =>
+            !q || (r.truckNo || '').toLowerCase().includes(q) || (r.route || '').toLowerCase().includes(q) || (r.remark || '').toLowerCase().includes(q)
+        );
+    }, [tollRecords, tollSearch]);
+
+    // Per-truck toll summary
+    const truckSummary = useMemo(() => {
+        const map = {};
+        filtered.forEach(r => {
+            const t = r.truckNo || 'Unknown';
+            if (!map[t]) map[t] = { truckNo: t, totalToll: 0, count: 0 };
+            map[t].totalToll += parseFloat(r.amount) || 0;
+            map[t].count++;
+        });
+        return Object.values(map).sort((a, b) => b.totalToll - a.totalToll);
+    }, [filtered]);
+
+    const totalToll = filtered.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+    // Parse DD/MM/YYYY or DD/MM/YYYY HH:MM:SS → YYYY-MM-DD
+    const parseIndianDate = (raw) => {
+        if (!raw) return '';
+        const s = String(raw).trim();
+        // DD/MM/YYYY HH:MM:SS  or  DD/MM/YYYY
+        const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+        if (m) {
+            const [, dd, mm, yy] = m;
+            const yyyy = yy.length === 2 ? '20' + yy : yy;
+            return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        }
+        const d = new Date(s);
+        if (!isNaN(d)) return d.toISOString().slice(0, 10);
+        return s.slice(0, 10);
+    };
+
+    // Excel import handler — supports NETC/FASTag (Kotak) format + generic formats
+    const handleExcelImport = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setTollImporting(true);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const wb = XLSX.read(ev.target.result, { type: 'binary', cellDates: false });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+
+                // Use raw rows (header: false) to find where Transaction Details actually start
+                const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                // ── Detect NETC/FASTag format ───────────────────────────────
+                // Look for the "Transaction Details" header row or a row with "VRN" column
+                let txnHeaderIdx = -1;
+                for (let i = 0; i < allRows.length; i++) {
+                    const row = allRows[i].map(c => String(c).trim().toLowerCase());
+                    if (row.includes('vrn') || (row.includes('debit amt') && row.includes('transaction date'))) {
+                        txnHeaderIdx = i;
+                        break;
+                    }
+                }
+
+                let parsed = [];
+
+                if (txnHeaderIdx >= 0) {
+                    // ── NETC/FASTag (Kotak) format ──────────────────────────
+                    const headers = allRows[txnHeaderIdx].map(c => String(c).trim());
+                    const col = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+
+                    const iVRN        = col('VRN');
+                    const iTxnDate    = col('Transaction Date');
+                    const iDebitAmt   = col('Debit Amt');
+                    const iDesc       = col('Transaction Description');
+                    const iTxnType    = col('Type of Transaction');
+
+                    for (let i = txnHeaderIdx + 1; i < allRows.length; i++) {
+                        const row = allRows[i];
+                        if (!row || row.every(c => !c)) continue; // skip empty rows
+
+                        const txnType = String(row[iTxnType] || '').trim();
+                        if (txnType && txnType.toLowerCase() !== 'toll txn') continue; // only toll transactions
+
+                        const truck  = String(row[iVRN] || '').trim().replace(/\s/g, '').toUpperCase();
+                        const date   = parseIndianDate(String(row[iTxnDate] || ''));
+                        const amount = parseFloat(String(row[iDebitAmt] || '0').replace(/[^0-9.]/g, '')) || 0;
+
+                        // Extract plaza name from "Plaza Name: Kitlana" → "Kitlana"
+                        const desc   = String(row[iDesc] || '');
+                        const route  = desc.replace(/^plaza\s*name\s*:\s*/i, '').trim() || desc;
+
+                        if (!truck || amount <= 0) continue;
+                        parsed.push({ truckNo: truck, date, amount, route, remark: 'FASTag' });
+                    }
+                } else {
+                    // ── Generic format fallback ─────────────────────────────
+                    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                    rows.forEach(row => {
+                        const k = Object.keys(row);
+                        const find = (...names) => { for (const n of names) { const m = k.find(c => c.toLowerCase().replace(/[\s_-]/g,'').includes(n.toLowerCase().replace(/[\s_-]/g,''))); if (m) return String(row[m] ?? '').trim(); } return ''; };
+                        const truck  = find('truck','vrn','vehicle','truckno','vehicleno','regno').replace(/\s/g,'').toUpperCase();
+                        const date   = parseIndianDate(find('transactiondate','date','txndate'));
+                        const amount = parseFloat(find('debitamt','amount','toll','debit','fee','charge').replace(/[^0-9.]/g,'')) || 0;
+                        const route  = find('description','plaza','route','location').replace(/^plaza\s*name\s*:\s*/i,'').trim();
+                        const remark = find('remark','note','narration','type') || '';
+                        if (!truck || amount <= 0) return;
+                        parsed.push({ truckNo: truck, date, amount, route, remark });
+                    });
+                }
+
+                if (parsed.length === 0) {
+                    alert('No toll transactions found in the file.\nMake sure it has "VRN", "Transaction Date", and "Debit Amt" columns (NETC/FASTag format).');
+                    return;
+                }
+
+                // Filter by date range and active trucks from Balance Sheet
+                let filtered = parsed;
+                let skippedDate = 0, skippedTruck = 0;
+
+                if (tollFrom && tollTo) {
+                    const before = filtered.length;
+                    filtered = filtered.filter(r => r.date >= tollFrom && r.date <= tollTo);
+                    skippedDate = before - filtered.length;
+                }
+
+                if (activeTrucks.size > 0) {
+                    const before = filtered.length;
+                    filtered = filtered.filter(r => activeTrucks.has(r.truckNo));
+                    skippedTruck = before - filtered.length;
+                }
+
+                if (filtered.length === 0) {
+                    alert(`No matching records after filtering:\n- Skipped ${skippedDate} records outside date range (${tollFrom} → ${tollTo})\n- Skipped ${skippedTruck} records for trucks not in Balance Sheet\n\nCheck the date range and make sure the trucks have vouchers in that period.`);
+                    return;
+                }
+
+                setTollImportPreview({ rows: filtered, fileName: file.name, totalInFile: parsed.length, skippedDate, skippedTruck });
+            } catch (err) { alert('Failed to parse Excel: ' + err.message); }
+            finally { setTollImporting(false); }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+    };
+
+    const handleImportConfirm = async () => {
+        if (!tollImportPreview?.rows?.length) return;
+        setTollImporting(true);
+        try {
+            await ax.post('/tolls/bulk', tollImportPreview.rows);
+            setTollImportPreview(null);
+            onRefresh();
+        } catch (err) { alert('Import failed: ' + (err.response?.data?.error || err.message)); }
+        finally { setTollImporting(false); }
+    };
+
+    const handleManualSave = async (e) => {
+        e.preventDefault();
+        if (!tollForm.truckNo || !tollForm.amount || parseFloat(tollForm.amount) <= 0) {
+            alert('Truck No and Amount are required');
+            return;
+        }
+        setTollSaving(true);
+        try {
+            await ax.post('/tolls', tollForm);
+            setTollForm({ truckNo: '', date: new Date().toISOString().slice(0, 10), amount: '', route: '', remark: '' });
+            onRefresh();
+        } catch (err) { alert('Save failed'); }
+        finally { setTollSaving(false); }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Delete this toll record?')) return;
+        try { await ax.delete('/tolls/' + id); onRefresh(); }
+        catch { alert('Delete failed'); }
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Header + date filter */}
+            <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}><Receipt size={17} color="#f59e0b" /> Toll Records</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Upload Excel or add manually. Filter by date range.</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                        <div className="field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: '10px', fontWeight: 700 }}>From</label>
+                            <input className="fi" type="date" value={tollFrom} onChange={e => setTollFrom(e.target.value)} style={{ height: '32px' }} />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: '10px', fontWeight: 700 }}>To</label>
+                            <input className="fi" type="date" value={tollTo} onChange={e => setTollTo(e.target.value)} style={{ height: '32px' }} />
+                        </div>
+                        <button className="btn btn-p btn-sm" disabled={!tollFrom || !tollTo || rangeLoading}
+                            onClick={() => { onRefresh(tollFrom, tollTo); loadActiveTrucksForRange(tollFrom, tollTo); }}>
+                            {rangeLoading ? <Loader2 size={12} className="spin" /> : <><Calendar size={13} /> Apply</>}
+                        </button>
+                        <button className="btn btn-g btn-sm" onClick={() => { setTollFrom(''); setTollTo(''); setActiveTrucks(new Set()); onRefresh('', ''); }}>Clear</button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Active trucks status */}
+            {tollFrom && tollTo && activeTrucks.size > 0 && (
+                <div style={{ padding: '10px 16px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <Check size={15} color="#10b981" style={{ marginTop: '1px', flexShrink: 0 }} />
+                    <div>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>
+                            {activeTrucks.size} active truck{activeTrucks.size !== 1 ? 's' : ''} found in Balance Sheet for {fmtDateL(tollFrom)} → {fmtDateL(tollTo)}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {[...activeTrucks].join(' · ')}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#10b981', marginTop: '3px', fontWeight: 700 }}>
+                            Excel import will only include toll records for these trucks within this date range.
+                        </div>
+                    </div>
+                </div>
+            )}
+            {tollFrom && tollTo && !rangeLoading && activeTrucks.size === 0 && (
+                <div style={{ padding: '10px 16px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <AlertTriangle size={14} color="#f59e0b" />
+                    <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 700 }}>No voucher entries found in Balance Sheet for this date range. Click Apply first to load active trucks.</span>
+                </div>
+            )}
+
+            {/* Excel import */}
+            <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <Upload size={15} color="#6366f1" />
+                    <span style={{ fontSize: '13px', fontWeight: 700 }}>Import from Excel</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {activeTrucks.size > 0
+                            ? `Will import only: date ${tollFrom} → ${tollTo} + ${activeTrucks.size} active trucks`
+                            : 'Set date range and click Apply first to validate against Balance Sheet'}
+                    </span>
+                    <label className={`btn btn-sm ${activeTrucks.size > 0 ? 'btn-p' : 'btn-g'}`} style={{ cursor: 'pointer', margin: 0 }}>
+                        <Upload size={12} /> {tollImporting ? 'Reading…' : 'Choose Excel File'}
+                        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} style={{ display: 'none' }} disabled={tollImporting} />
+                    </label>
+                </div>
+
+                {/* Import preview */}
+                {tollImportPreview && (
+                    <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                        <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <span style={{ fontSize: '12px', fontWeight: 700 }}>{tollImportPreview.rows.length} records from <em>{tollImportPreview.fileName}</em> — preview (first 10)</span>
+                                {(tollImportPreview.skippedDate > 0 || tollImportPreview.skippedTruck > 0) && (
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                        {tollImportPreview.totalInFile} total in file
+                                        {tollImportPreview.skippedDate > 0 && ` · ${tollImportPreview.skippedDate} skipped (outside date range)`}
+                                        {tollImportPreview.skippedTruck > 0 && ` · ${tollImportPreview.skippedTruck} skipped (truck not in Balance Sheet)`}
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn btn-g btn-sm" onClick={() => setTollImportPreview(null)}>Cancel</button>
+                                <button className="btn btn-p btn-sm" onClick={handleImportConfirm} disabled={tollImporting}>
+                                    {tollImporting ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Import {tollImportPreview.rows.length} Records</>}
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                                <thead><tr>{['Truck No.', 'Date', 'Amount', 'Route/Plaza', 'Remark'].map(h => <th key={h} style={TH2}>{h}</th>)}</tr></thead>
+                                <tbody>
+                                    {tollImportPreview.rows.slice(0, 10).map((r, i) => (
+                                        <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                            <td style={{ ...TD2, fontWeight: 800 }}>{r.truckNo}</td>
+                                            <td style={TD2}>{r.date}</td>
+                                            <td style={{ ...TD2, color: '#f43f5e', fontWeight: 700 }}>Rs.{parseFloat(r.amount).toLocaleString('en-IN')}</td>
+                                            <td style={TD2}>{r.route || '—'}</td>
+                                            <td style={TD2}>{r.remark || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Manual entry form */}
+            <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}><Plus size={13} /> Add Toll Entry Manually</div>
+                <form onSubmit={handleManualSave} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+                    <div className="field" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Truck No. *</label>
+                        <input className="fi" type="text" placeholder="HR47G3246" value={tollForm.truckNo} onChange={e => setTollForm(f => ({ ...f, truckNo: e.target.value }))} list="toll-truck-list" required />
+                        <datalist id="toll-truck-list">{vehicleNumbers.map(n => <option key={n} value={n} />)}</datalist>
+                    </div>
+                    <div className="field" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Date *</label>
+                        <input className="fi" type="date" value={tollForm.date} onChange={e => setTollForm(f => ({ ...f, date: e.target.value }))} required />
+                    </div>
+                    <div className="field" style={{ flex: '1', minWidth: '100px' }}>
+                        <label>Amount (Rs.) *</label>
+                        <input className="fi" type="number" step="any" min="1" placeholder="0" value={tollForm.amount} onChange={e => setTollForm(f => ({ ...f, amount: e.target.value }))} required />
+                    </div>
+                    <div className="field" style={{ flex: '2', minWidth: '140px' }}>
+                        <label>Route / Plaza</label>
+                        <input className="fi" type="text" placeholder="e.g. Delhi–Jaipur NH48" value={tollForm.route} onChange={e => setTollForm(f => ({ ...f, route: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Remark</label>
+                        <input className="fi" type="text" placeholder="Optional" value={tollForm.remark} onChange={e => setTollForm(f => ({ ...f, remark: e.target.value }))} />
+                    </div>
+                    <button type="submit" className="btn btn-p" disabled={tollSaving} style={{ height: '38px' }}>
+                        {tollSaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Save</>}
+                    </button>
+                </form>
+            </div>
+
+            {/* Summary cards */}
+            {truckSummary.length > 0 && (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '11px 18px', minWidth: '130px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Toll</div>
+                        <div style={{ fontSize: '18px', fontWeight: 900, color: '#f43f5e' }}>{fmtRsL(totalToll)}</div>
+                    </div>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '11px 18px', minWidth: '130px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Records</div>
+                        <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>{filtered.length}</div>
+                    </div>
+                    {truckSummary.slice(0, 4).map(t => (
+                        <div key={t.truckNo} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '11px 18px', minWidth: '130px' }}>
+                            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t.truckNo} ({t.count} trips)</div>
+                            <div style={{ fontSize: '16px', fontWeight: 900, color: '#f43f5e' }}>{fmtRsL(t.totalToll)}</div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Records table */}
+            <div className="card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <Search size={13} color="var(--text-muted)" />
+                    <input className="fi" placeholder="Search truck, route, remark…" value={tollSearch} onChange={e => setTollSearch(e.target.value)} style={{ flex: 1, height: '30px' }} />
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{filtered.length} records</span>
+                </div>
+                <div className="tbl-wrap">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                        <thead>
+                            <tr>{['#', 'Date', 'Truck No.', 'Amount', 'Route / Plaza', 'Remark', 'Del'].map(h => <th key={h} style={TH2}>{h}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                            {tollLoading && <tr><td colSpan={7} style={{ ...TD2, textAlign: 'center', padding: '30px' }}><Loader2 size={18} className="spin" /></td></tr>}
+                            {!tollLoading && filtered.length === 0 && <tr><td colSpan={7} style={{ ...TD2, textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No toll records. Upload Excel or add manually.</td></tr>}
+                            {!tollLoading && filtered.map((r, i) => (
+                                <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                    <td style={{ ...TD2, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                    <td style={TD2}>{fmtDateL(r.date)}</td>
+                                    <td style={{ ...TD2, fontWeight: 800, color: 'var(--primary)' }}>{r.truckNo}</td>
+                                    <td style={{ ...TD2, textAlign: 'right', fontWeight: 800, color: '#f43f5e' }}>{fmtRsL(parseFloat(r.amount) || 0)}</td>
+                                    <td style={TD2}>{r.route || '—'}</td>
+                                    <td style={TD2}>{r.remark || '—'}</td>
+                                    <td style={{ ...TD2, textAlign: 'center' }}>
+                                        <button className="btn btn-d btn-icon btn-sm" onClick={() => handleDelete(r.id)} title="Delete"><Trash2 size={12} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        {filtered.length > 0 && (
+                            <tfoot>
+                                <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                                    <td colSpan={3} style={{ ...TD2, fontWeight: 800, fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total ({filtered.length} records)</td>
+                                    <td style={{ ...TD2, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: '#f43f5e' }}>{fmtRsL(totalToll)}</td>
+                                    <td colSpan={3} style={TD2} />
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [vehicles, setVehicles] = useState([]);
     const [parties, setParties] = useState([]);
@@ -230,7 +646,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [saving, setSaving] = useState(false);
 
     // UI State
-    const [tab, setTab] = useState('list'); 
+    const [tab, setTab] = useState('list'); // add new 'registry' option
+    // Add tab button in UI rendering section (approx line 600) 
     const [ownershipFilter, setOwnershipFilter] = useState('all'); 
     const [fSearch, setFSearch] = useState('');
     const [expandedOwners, setExpandedOwners] = useState({});
@@ -239,18 +656,79 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [ownerDeleteTarget, setOwnerDeleteTarget] = useState(null);
     const [maintenanceTarget, setMaintenanceTarget] = useState(null);
+    const [tyreTarget, setTyreTarget] = useState(null); // { truckNo }
+    const [tyreHistory, setTyreHistory] = useState([]);
+    const [tyreLoading, setTyreLoading] = useState(false);
+    const [emiTrackerTarget, setEmiTrackerTarget] = useState(null);
+
+    const openTyreLog = async (truckNo) => {
+        setTyreTarget({ truckNo });
+        setTyreLoading(true);
+        try {
+            const res = await ax.get(`/vehicles/tyre-history/${encodeURIComponent(truckNo)}`);
+            setTyreHistory(res.data || []);
+        } catch { setTyreHistory([]); }
+        finally { setTyreLoading(false); }
+    };
     
+    // ── Toll state ──────────────────────────────────────────────────────────
+    const [tollRecords, setTollRecords] = useState([]);
+    const [tollLoading, setTollLoading] = useState(false);
+    const [tollFrom, setTollFrom] = useState('');
+    const [tollTo, setTollTo] = useState('');
+    const [tollForm, setTollForm] = useState({ truckNo: '', date: new Date().toISOString().slice(0, 10), amount: '', route: '', remark: '' });
+    const [tollSaving, setTollSaving] = useState(false);
+    const [tollImporting, setTollImporting] = useState(false);
+    const [tollImportPreview, setTollImportPreview] = useState(null); // { rows, fileName }
+    const [tollSearch, setTollSearch] = useState('');
+
+    const fetchTolls = useCallback(async (from = tollFrom, to = tollTo) => {
+        setTollLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (from) params.set('from', from);
+            if (to) params.set('to', to);
+            const res = await ax.get(`/tolls?${params}`);
+            setTollRecords(res.data || []);
+        } catch { setTollRecords([]); }
+        finally { setTollLoading(false); }
+    }, [tollFrom, tollTo]);
+
+    const [registryEntries, setRegistryEntries] = useState([]);
+    const [allVouchers, setAllVouchers] = useState([]);
+    const [allTolls, setAllTolls] = useState([]);
+    const fetchRegistry = useCallback(async () => {
+        try {
+            const res = await ax.get(`${API}/registry`);
+            setRegistryEntries(res.data || []);
+        } catch (e) { console.error('Registry fetch error', e); }
+    }, []);
+
+    useEffect(() => {
+        if (tab === 'registry') fetchRegistry();
+        if (tab === 'toll') fetchTolls();
+    }, [tab, fetchRegistry, fetchTolls]);
+
     const fetchVehicleData = useCallback(async () => {
         setLoading(true);
         try {
-            const [vRes, pRes, prRes] = await Promise.all([
+            // Vouchers + tolls fetched lazily (cache in api.js serves repeat calls for free)
+            const [vRes, pRes, prRes, vocRes, tollRes] = await Promise.all([
                 ax.get(API),
                 ax.get('/parties').catch(() => ({ data: [] })),
-                ax.get('/profiles').catch(() => ({ data: [] }))
+                ax.get('/profiles').catch(() => ({ data: [] })),
+                ax.get('/vouchers').catch(() => ({ data: [] })),
+                ax.get('/tolls').catch(() => ({ data: [] }))
             ]);
             setVehicles(vRes.data || []);
             setParties(pRes.data || []);
             setProfiles(prRes.data || []);
+            const vouchers = vocRes.data || [];
+            setAllVouchers(vouchers);
+            setAllTolls(tollRes.data || []);
+            // Debug: log unique truck numbers found in vouchers (visible in browser console)
+            const vTrucks = [...new Set(vouchers.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))];
+            console.log(`[VehicleModule] Loaded ${vouchers.length} vouchers for ${vTrucks.length} trucks:`, vTrucks.join(', '));
 
             // Check for search redirect from other modules
             const redirectSearch = localStorage.getItem('vgtc-search-redirect');
@@ -340,6 +818,21 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         }
     };
 
+    const pendingFromVouchers = useMemo(() => {
+        const systemTrucks = new Set(vehicles.map(v => cleanTruckNo(v.truckNo)));
+        const registryTrucks = new Set(registryEntries.map(e => cleanTruckNo(e.truckNo)));
+        const voucherTrucks = [...new Set(allVouchers.map(v => cleanTruckNo(v.truckNo)))].filter(Boolean);
+        
+        return voucherTrucks
+            .filter(t => !systemTrucks.has(t) && !registryTrucks.has(t))
+            .map(t => ({
+                id: `pending-${t}`,
+                truckNo: t,
+                isPending: true,
+                createdAt: new Date().toISOString()
+            }));
+    }, [allVouchers, vehicles, registryEntries]);
+
     const executeSave = async () => {
         setSaving(true); setIsConfirmingSave(false);
         try {
@@ -420,17 +913,37 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
     const handleSendAlerts = async () => {
         const email = "VIKASKUMAR909040@GMAIL.COM";
-        
         try {
             const res = await ax.get('/vehicles/alerts/report');
             if (res.data.success) {
-                alert(`Alerts Processed! Email report sent to ${email} (Check your Inbox/Spam).`);
+                const { count = 0, total = 0 } = res.data;
+                const summary = count > 0
+                    ? `${count} of ${total} vehicle(s) have issues.`
+                    : `All ${total} vehicles OK.`;
+                alert(`Fleet status report sent to ${email}.\n${summary}\nCheck your Inbox/Spam.`);
             } else {
-                alert(`Email skip: ${res.data.message || 'No alerts to send today.'}`);
+                alert(`Failed: ${res.data.message || res.data.error || 'No data found.'}`);
             }
         } catch (err) {
             console.error('Email trigger failed:', err);
             alert('Failed to send email alert. Check server connection.');
+        }
+    };
+
+    const handleSendVehicleAlert = async (vehicleId, truckNo) => {
+        const email = "VIKASKUMAR909040@GMAIL.COM";
+        try {
+            const res = await ax.get(`/vehicles/alerts/vehicle/${vehicleId}`);
+            if (res.data.success) {
+                const { count = 0 } = res.data;
+                const summary = count > 0 ? `${count} issue(s) found.` : 'No issues — all OK.';
+                alert(`Alert report for ${truckNo} sent to ${email}.\n${summary}`);
+            } else {
+                alert(`Failed: ${res.data.message || res.data.error || 'Unknown error.'}`);
+            }
+        } catch (err) {
+            console.error('Vehicle alert failed:', err);
+            alert(`Failed to send alert for ${truckNo}.`);
         }
     };
 
@@ -439,6 +952,43 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setEditId(null);
         setTab('add');
     };
+
+    // Compute outstanding balance per truck from real voucher + toll data
+    const truckBalanceMap = useMemo(() => {
+        const map = {};
+        (allVouchers || []).forEach(voucher => {
+            const truck = cleanTruckNo(voucher.truckNo);
+            if (!truck) return;
+            if (!map[truck]) map[truck] = { net: 0, paid: 0, toll: 0 };
+            const gross = voucher.deliveries?.length > 0
+                ? voucher.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+                : (parseFloat(voucher.weight) || 0) * (parseFloat(voucher.rate) || 0);
+            const diesel = voucher.advanceDiesel === 'FULL' ? 4000 : (parseFloat(voucher.advanceDiesel) || 0);
+            const cash = parseFloat(voucher.advanceCash) || 0;
+            const online = parseFloat(voucher.advanceOnline) || 0;
+            const weight = parseFloat(voucher.weight) || 0;
+            const munshi = parseFloat(voucher.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+            const commission = parseFloat(voucher.commission) || 0;
+            const shortage = parseFloat(voucher.shortage) || 0;
+            const tyres = (parseFloat(voucher.tyrePuncture) || 0) + (parseFloat(voucher.tyreGreasingAir) || 0) + (parseFloat(voucher.tyreGreasing) || 0) + (parseFloat(voucher.tyreAir) || 0) + (parseFloat(voucher.extraCash) || 0);
+            const net = gross - diesel - cash - online - munshi - commission - shortage - tyres;
+            map[truck].net += net;
+            map[truck].paid += parseFloat(voucher.paidBalance) || 0;
+        });
+        // Add toll deductions per truck
+        (allTolls || []).forEach(t => {
+            const truck = cleanTruckNo(t.truckNo);
+            if (!truck) return;
+            if (!map[truck]) map[truck] = { net: 0, paid: 0, toll: 0 };
+            map[truck].toll = (map[truck].toll || 0) + (parseFloat(t.amount) || 0);
+        });
+        // outstanding = max(0, net - toll - paid) per truck
+        Object.keys(map).forEach(t => {
+            const r = map[t];
+            r.outstanding = Math.max(0, r.net - (r.toll || 0) - r.paid);
+        });
+        return map;
+    }, [allVouchers, allTolls]);
 
     const owners = useMemo(() => {
         const map = Object.create(null);
@@ -451,14 +1001,20 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             }
             const oName = v.ownerName || 'Unknown Owner';
             const party = parties.find(p => String(p.name || '').toUpperCase() === String(oName || '').toUpperCase());
-            if (!map[oName]) map[oName] = { name: oName, ownerId: v.ownerId || null, partyId: v.ownerId || party?.id || null, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '' };
+            if (!map[oName]) map[oName] = { name: oName, ownerId: v.ownerId || null, partyId: v.ownerId || party?.id || null, vehicles: [], bankDetails: v.bankDetails || '', contact: v.ownerContact || '', balance: 0 };
             if (!map[oName].ownerId && v.ownerId) map[oName].ownerId = v.ownerId;
             if (!map[oName].partyId && (v.ownerId || party?.id)) map[oName].partyId = v.ownerId || party.id;
             if (!map[oName].bankDetails && v.bankDetails) map[oName].bankDetails = v.bankDetails;
+
+            // Use real voucher-based outstanding balance for this truck
+            const truck = cleanTruckNo(v.truckNo);
+            const tb = truckBalanceMap[truck];
+            map[oName].balance += tb ? tb.outstanding : 0;
+
             map[oName].vehicles.push(v);
         });
         return Object.values(map).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    }, [vehicles, parties, fSearch, ownershipFilter]);
+    }, [vehicles, parties, fSearch, ownershipFilter, truckBalanceMap]);
 
     const uniqueOwners = [...new Set([...parties.filter(p => p.type === 'supplier' || p.type === 'transporter').map(p => p.name), ...vehicles.map(v => v.ownerName)])].filter(Boolean).sort();
     const uniqueTruckNos = [...new Set(vehicles.map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
@@ -472,6 +1028,85 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
             <AnimatePresence>
                 {maintenanceTarget && <MaintenanceTracker truckNo={maintenanceTarget.truckNo} onClose={() => setMaintenanceTarget(null)} />}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {emiTrackerTarget && (
+                    <EmiScheduleTracker
+                        vehicle={emiTrackerTarget}
+                        onClose={() => setEmiTrackerTarget(null)}
+                        onUpdate={async () => {
+                            await fetchVehicleData();
+                            try {
+                                const res = await ax.get(API);
+                                const updatedList = res.data || [];
+                                const updatedVeh = updatedList.find(v => v.id === emiTrackerTarget.id);
+                                if (updatedVeh) setEmiTrackerTarget(updatedVeh);
+                            } catch (e) {
+                                console.error('Emi Tracker refresh error:', e);
+                            }
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+
+            {/* Tyre & Expense Log Modal */}
+            <AnimatePresence>
+                {tyreTarget && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+                        <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                            style={{ width: '95%', maxWidth: '680px', maxHeight: '85vh', background: 'var(--bg-card)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div>
+                                    <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>🛞 Tyre & Vehicle Expenses</div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{tyreTarget.truckNo} — from voucher history</div>
+                                </div>
+                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setTyreTarget(null)}><X size={18} /></button>
+                            </div>
+                            <div style={{ flex: 1, overflow: 'auto', padding: '0' }}>
+                                {tyreLoading ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: 'var(--text-muted)' }}><Loader2 size={20} className="spin" style={{ marginRight: '8px' }} /> Loading...</div>
+                                ) : tyreHistory.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)', fontSize: '13px' }}>No tyre or vehicle expenses found for this truck.</div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                                        <thead>
+                                            <tr style={{ background: 'var(--bg-th)' }}>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>#</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>LR No.</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Type</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'right', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Amount</th>
+                                                <th style={{ padding: '8px 16px', textAlign: 'right', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Running Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {tyreHistory.map((e, i) => (
+                                                <tr key={e.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                                                    <td style={{ padding: '7px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                                    <td style={{ padding: '7px 16px' }}>{e.date || '—'}</td>
+                                                    <td style={{ padding: '7px 16px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>#{e.lrNo}</td>
+                                                    <td style={{ padding: '7px 16px' }}>
+                                                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 700, background: e.type.includes('Puncture') ? 'rgba(244,63,94,0.1)' : e.type.includes('Grease') ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)', color: e.type.includes('Puncture') ? '#f43f5e' : e.type.includes('Grease') ? '#f59e0b' : '#6366f1' }}>{e.type}</span>
+                                                    </td>
+                                                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>Rs.{Math.round(e.amount).toLocaleString('en-IN')}</td>
+                                                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--warn)' }}>Rs.{Math.round(e.runningTotal).toLocaleString('en-IN')}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                                                <td colSpan={4} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total ({tyreHistory.length} entries)</td>
+                                                <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--danger)' }}>Rs.{Math.round(tyreHistory.reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}</td>
+                                                <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 900, color: 'var(--warn)' }}>Rs.{Math.round(tyreHistory[tyreHistory.length - 1]?.runningTotal || 0).toLocaleString('en-IN')}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
             </AnimatePresence>
 
             <ConfirmSaveModal isOpen={isConfirmingSave} onClose={() => setIsConfirmingSave(false)} onConfirm={executeSave} title={editId ? "Update Vehicle" : "Add Vehicle"} message={`Save changes for ${form.truckNo}?`} isSaving={saving} />
@@ -489,6 +1124,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Briefcase size={14} /> Asset List</button>
+                    <button className={`tab-btn${tab === 'toll' ? ' tab-amber' : ''}`} onClick={() => setTab('toll')}><Receipt size={14} /> Toll Records</button>
+                    <button className={`tab-btn${tab === 'registry' ? ' tab-amber' : ''}`} onClick={() => setTab('registry')}><Check size={14} /> Firm Registry</button>
                     <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Update Record</> : <><Plus size={14} /> New Vehicle Profile</>}</button>
                 </div>
                 {tab === 'list' && (
@@ -542,6 +1179,15 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <option value="market">Market Vehicle</option>
                                     <option value="self">Self Vehicle</option>
                                     <option value="other">Other Vehicle</option>
+                                </select>
+                            </div>
+                            <div className="field">
+                                <label>GPS Type</label>
+                                <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })}>
+                                    <option value="none">None</option>
+                                    <option value="jkl">JK Lakshmi</option>
+                                    <option value="jksuper">JK Super</option>
+                                    <option value="both">Both</option>
                                 </select>
                             </div>
                         </div>
@@ -631,6 +1277,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <div className="field"><label>EMI End Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).endDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.endDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                     <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                     <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending || ''} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field"><label>EMI Due Day (1-31)</label><input className="fi" type="number" min="1" max="31" placeholder="e.g. 5" value={parseJson(form.emiDetails).emiDay || ''} onChange={e => { const d = parseJson(form.emiDetails); d.emiDay = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                 </div>
                             </div>
                         )}
@@ -674,6 +1321,48 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 </motion.div>
             )}
 
+            {tab === 'toll' && (
+                <TollTab
+                    tollRecords={tollRecords}
+                    tollLoading={tollLoading}
+                    tollFrom={tollFrom} setTollFrom={setTollFrom}
+                    tollTo={tollTo} setTollTo={setTollTo}
+                    tollForm={tollForm} setTollForm={setTollForm}
+                    tollSaving={tollSaving} setTollSaving={setTollSaving}
+                    tollImporting={tollImporting} setTollImporting={setTollImporting}
+                    tollImportPreview={tollImportPreview} setTollImportPreview={setTollImportPreview}
+                    tollSearch={tollSearch} setTollSearch={setTollSearch}
+                    vehicleNumbers={uniqueTruckNos}
+                    onRefresh={async (f, t) => { await fetchTolls(f, t); fetchVehicleData(); }}
+                    truckBalanceMap={truckBalanceMap}
+                />
+            )}
+
+            {tab === 'registry' && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="card" style={{ padding: '20px', background: 'var(--bg-th)' }}>
+                        <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}><Check size={18} color="var(--primary)" /> Vehicle Firm Registry</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Manage vehicle approvals and market vehicle records</p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
+                        {[...pendingFromVouchers, ...registryEntries].length === 0 && (
+                            <div className="card" style={{ padding: '40px', textAlign: 'center', gridColumn: '1 / -1' }}>
+                                <Info size={40} color="var(--text-muted)" style={{ marginBottom: '12px' }} />
+                                <p style={{ color: 'var(--text-muted)' }}>No vehicles in registry. New vehicles from vouchers will appear here.</p>
+                            </div>
+                        )}
+                        {[...pendingFromVouchers, ...registryEntries].map(entry => (
+                            <VehicleRegistryCard 
+                                key={entry.id} 
+                                entry={entry} 
+                                onApproved={() => { fetchRegistry(); fetchVehicleData(); }} 
+                            />
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+
             {tab === 'list' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ padding: '16px' }}>
@@ -696,8 +1385,11 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{owner.vehicles.length} Vehicles • {owner.contact || 'No Contact'}</div>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}><CreditCard size={12} /> Bank Details Linked</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 800 }}>COMBINED BALANCE</div>
+                                        <div style={{ fontSize: '15px', fontWeight: 900, color: owner.balance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(owner.balance)}</div>
+                                    </div>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setOwnerDeleteTarget(owner); }}
                                         title="Delete owner with all vehicles"
@@ -712,97 +1404,152 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 {expandedOwners[owner.name] && (
                                     <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
                                         <div style={{ padding: '20px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-                                            {owner.vehicles.map(v => (
-                                                <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: isNearExpiry(v) ? 'rgba(239,68,68,0.02)' : 'var(--bg-card)' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                                        <div>
-                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '18px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.5px', cursor: 'pointer' }} title="Click to open full vehicle profile">
-                                                                <Truck size={18} style={{ color: '#3b82f6' }} /> {v.truckNo}
-                                                                <span style={{ fontSize: '9px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Open Profile</span>
+                                            {owner.vehicles.map(v => {
+                                                const tb = truckBalanceMap[cleanTruckNo(v.truckNo)];
+                                                const vBalance = tb ? tb.outstanding : 0;
+                                                return (
+                                                <div key={v.id} style={{ border: isNearExpiry(v) ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)', borderRadius: '14px', padding: '0', background: 'var(--bg-card)', overflow: 'hidden', transition: 'box-shadow 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+                                                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'}
+                                                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'}>
+                                                    {/* Header */}
+                                                    <div style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '16px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} title="Open vehicle profile">
+                                                                <Truck size={16} style={{ color: '#3b82f6', flexShrink: 0 }} /> {v.truckNo}
                                                             </div>
-                                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', marginBottom: '8px' }}>
-                                                                <span style={{ fontSize: '11px', fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}</span>
-                                                                {v.model && <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--bg-th)', color: 'var(--text)', padding: '2px 8px', borderRadius: '4px' }}>{v.model}</span>}
-                                                            </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '10px' }}>
-
-                                                                <span>• Age: {calculateAge(v.regDate)}</span>
-                                                                {v.grossWeight > 0 && <span>• {(parseFloat(v.grossWeight) || 0).toLocaleString()} KG</span>}
+                                                            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                                                <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}{v.model ? ` ${v.model}` : ''}</span>
+                                                                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>Age: {calculateAge(v.regDate)}</span>
                                                             </div>
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
                                                             {v.ownershipType === 'self' && (
-                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'rgba(245,158,11,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Wrench size={14} /></button>
+                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Wrench size={13} /></button>
                                                             )}
-                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'rgba(59,130,246,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Edit3 size={14} /></button>
-                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'rgba(244,63,94,0.08)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}><Trash2 size={14} /></button>
+                                                            <button onClick={() => openTyreLog(v.truckNo)} title="Tyre & Expense Log" style={{ color: '#10b981', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center', fontSize: '10px', fontWeight: 700 }}>🛞</button>
+                                                            <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert" style={{ color: '#8b5cf6', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Bell size={13} /></button>
+                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Edit3 size={13} /></button>
+                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>
                                                         </div>
                                                     </div>
-                                                    
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-                                                        {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
-                                                        {v.nationalPermitDate && getDocIcon('National Permit', v.nationalPermitDate)}
-                                                    </div>
 
-                                                    {v.ownershipType === 'self' && parseJson(v.emiDetails).loanNo && (() => {
-                                                        const emi = parseJson(v.emiDetails);
-                                                        const paidCount = (emi.paidEmis || []).length;
-                                                        const totalTenure = parseInt(emi.tenure) || 0;
-                                                        const pendingEmis = totalTenure - paidCount;
-                                                        return (
-                                                            <div style={{ padding: '14px', background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05))', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.15)', marginBottom: '12px' }}>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                                    <div>
-                                                                        <div style={{ fontWeight: 900, color: '#3b82f6', fontSize: '14px', letterSpacing: '0.5px' }}>🏦 {emi.bankName || 'BANK'}</div>
-                                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo}</div>
-                                                                    </div>
-                                                                    <button 
-                                                                        onClick={() => handleMarkPaid(v)}
-                                                                        style={{ fontSize: '10px', fontWeight: 800, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer' }}
-                                                                    >
-                                                                        Mark Paid
-                                                                    </button>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px', padding: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '10px' }}>
-                                                                    <div style={{ textAlign: 'center' }}>
-                                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>MONTHLY EMI</div>
-                                                                        <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</div>
-                                                                        {emi.dueDate && <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>Due: {emi.dueDate}</div>}
-                                                                    </div>
-                                                                </div>
-                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px', textAlign: 'center' }}>
-                                                                    <div style={{ padding: '6px', background: 'rgba(16,185,129,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Paid</div><strong style={{ color: '#10b981', fontSize: '14px' }}>{paidCount}</strong></div>
-                                                                    <div style={{ padding: '6px', background: 'rgba(239,68,68,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Pending</div><strong style={{ color: '#ef4444', fontSize: '14px' }}>{pendingEmis}</strong></div>
-                                                                    <div style={{ padding: '6px', background: 'rgba(59,130,246,0.06)', borderRadius: '8px' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Rate</div><strong style={{ color: '#3b82f6', fontSize: '14px' }}>{emi.interestRate}%</strong></div>
-                                                                </div>
-                                                                {emi.pending && (
-                                                                    <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(59,130,246,0.2)', fontSize: '11px', color: 'var(--text-sub)', textAlign: 'center' }}>
-                                                                        Outstanding: <strong style={{ fontSize: '14px', color: '#ef4444' }}>₹{(parseFloat(emi.pending) || 0).toLocaleString()}</strong>
+                                                    {/* Info Row */}
+                                                    {v.ownershipType !== 'self' && (
+                                                        <div style={{ padding: '0 16px 12px' }}>
+                                                            <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><CreditCard size={11} /> GPS: {(v.gpsType || 'NONE').toUpperCase()}</span>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Banknote size={11} /> {parseJson(v.bankDetails).bank || 'No Bank'}</span>
+                                                            </div>
+                                                            {/* Balance bar */}
+                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px' }}>
+                                                                {tb?.toll > 0 && (
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>🚧 Toll Deducted</span>
+                                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b' }}>− {fmtRs(tb.toll)}</span>
                                                                     </div>
                                                                 )}
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Outstanding Balance</span>
+                                                                    <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</strong>
+                                                                </div>
                                                             </div>
-                                                        );
-                                                    })()}
-
-                                                    {/* RC Quick Info */}
-                                                    {v.rcDetails && parseJson(v.rcDetails).engineNo && (
-                                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                                                            <div>E: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).engineNo}</span></div>
-                                                            <div>C: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{parseJson(v.rcDetails).chassisNo}</span></div>
                                                         </div>
                                                     )}
 
-                                                    {/* Maintenance Quick Button */}
-                                                    <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '8px', background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03))', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '10px' }}>
-                                                        <Wrench size={12} /> Open Maintenance Tracker
-                                                    </button>
+                                                    {v.ownershipType === 'self' && (
+                                                        <div style={{ padding: '0 16px' }}>
+                                                            {/* Balance bar for self vehicles */}
+                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', marginBottom: '10px' }}>
+                                                                {tb?.toll > 0 && (
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>🚧 Toll Deducted</span>
+                                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b' }}>− {fmtRs(tb.toll)}</span>
+                                                                    </div>
+                                                                )}
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Outstanding Balance</span>
+                                                                    <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance > 0 ? '#10b981' : vBalance < 0 ? '#f43f5e' : 'var(--text-muted)' }}>{fmtRs(vBalance)}</strong>
+                                                                </div>
+                                                            </div>
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
+                                                                {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
+                                                                {v.nationalPermitDate && getDocIcon('NP', v.nationalPermitDate)}
+                                                            </div>
 
-                                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', color: 'var(--text-sub)' }}>
-                                                        <span><User size={12} /> {v.driverName || 'No Driver'}</span>
-                                                        {v.fastag && <span><CreditCard size={12} /> {v.fastag}</span>}
+                                                            {parseJson(v.emiDetails).loanNo && (() => {
+                                                                const emi = parseJson(v.emiDetails);
+                                                                const schedule = emi.schedule || [];
+                                                                const todayStr = new Date().toISOString().slice(0, 10);
+                                                                
+                                                                // Calculate elapsed months since start date
+                                                                const getElapsedMonths = (startStr, dayVal) => {
+                                                                    if (!startStr) return 0;
+                                                                    const start = new Date(startStr);
+                                                                    if (isNaN(start.getTime())) return 0;
+                                                                    const today = new Date();
+                                                                    let m = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
+                                                                    const dVal = parseInt(dayVal) || start.getDate();
+                                                                    if (today.getDate() < dVal) m--;
+                                                                    return Math.max(0, m);
+                                                                };
+                                                                
+                                                                const elapsed = getElapsedMonths(emi.startDate, emi.emiDay);
+                                                                const manualPaid = schedule.filter(item => item.status === 'paid').length;
+                                                                const schedulePaid = schedule.filter(item => item.status === 'paid' || item.dueDate <= todayStr).length;
+                                                                
+                                                                const paidCount = schedule.length > 0
+                                                                    ? schedulePaid
+                                                                    : Math.max(elapsed, (emi.paidEmis || []).length);
+                                                                const totalTenure = parseInt(emi.tenure) || 0;
+                                                                const pendingEmis = Math.max(0, totalTenure - paidCount);
+                                                                return (
+                                                                    <div style={{ padding: '12px', background: 'linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.03))', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.12)', marginBottom: '10px' }}>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                                            <div>
+                                                                                <div style={{ fontWeight: 800, color: '#3b82f6', fontSize: '12px' }}>{emi.bankName || 'BANK'}</div>
+                                                                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo || 'N/A'}</div>
+                                                                            </div>
+                                                                            <button onClick={() => setEmiTrackerTarget(v)} style={{ fontSize: '9px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}>Track EMI</button>
+                                                                        </div>
+                                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', textAlign: 'center', margin: '8px 0' }}>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>MONTHLY EMI</div>
+                                                                                <strong style={{ fontSize: '11px', color: '#3b82f6' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</strong>
+                                                                            </div>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>OUTSTANDING</div>
+                                                                                <strong style={{ fontSize: '11px', color: '#ef4444' }}>₹{(pendingEmis * (parseFloat(emi.due) || 0)).toLocaleString()}</strong>
+                                                                            </div>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>TENURE</div>
+                                                                                <strong style={{ fontSize: '11px', color: 'var(--text)' }}>{totalTenure} EMI</strong>
+                                                                            </div>
+                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>REMAINING</div>
+                                                                                <strong style={{ fontSize: '11px', color: pendingEmis > 0 ? '#ef4444' : '#10b981' }}>{pendingEmis} EMI</strong>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 600 }}>
+                                                                            Progress: {paidCount} Paid / {pendingEmis} EMI Left
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+
+                                                            <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '7px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '8px' }}>
+                                                                <Wrench size={12} /> Maintenance Tracker
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Footer */}
+                                                    <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: '11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', background: 'var(--bg)' }}>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><User size={11} /> {v.driverName || 'No Driver'}</span>
+                                                        <span style={{ fontSize: '10px' }}>{fmtDate(v.createdAt)}</span>
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </motion.div>
                                 )}

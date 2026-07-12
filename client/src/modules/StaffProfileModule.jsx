@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Building2, User, Phone, MapPin, Banknote, Calendar, Shield, Truck, Settings } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Building2, User, Phone, MapPin, Banknote, Calendar, Shield, Truck, Settings, Route, Loader2, X as XIcon } from 'lucide-react';
 import ax from '../api';
 
 const PUMP_BRANDS = ['Jio', 'Nayara', 'Indian Oil', 'HP', 'Bharat'];
@@ -11,9 +11,9 @@ const BRAND_LOGOS = {
     'Bharat': 'https://upload.wikimedia.org/wikipedia/en/thumb/c/c5/Bharat_Petroleum_Logo.svg/1200px-Bharat_Petroleum_Logo.svg.png'
 };
 
-const PROFILE_TYPES = ['Driver', 'Office Staff', 'Pump', 'Tyre', 'Manual'];
+const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour', 'Tyre', 'Manual'];
 // Vendor-type profiles: no salary formula, no leaves
-const VENDOR_TYPES = ['Pump', 'Tyre', 'Manual'];
+const VENDOR_TYPES = ['Tyre', 'Manual'];
 const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver'];
 
 const calculateMonthsAndDays = (joined, exit) => {
@@ -43,6 +43,20 @@ const StaffProfileModule = ({ role }) => {
     const [editingId, setEditingId] = useState(null);
     const [filterType, setFilterType] = useState('All');
     const [showLedger, setShowLedger] = useState(null);
+    const [driverTripTarget, setDriverTripTarget] = useState(null);
+    const [driverTrips, setDriverTrips] = useState(null);
+    const [driverTripsLoading, setDriverTripsLoading] = useState(false);
+
+    const openDriverTrips = async (profile) => {
+        setDriverTripTarget(profile);
+        setDriverTrips(null);
+        setDriverTripsLoading(true);
+        try {
+            const res = await ax.get(`/profiles/${profile.id}/trips`);
+            setDriverTrips(res.data);
+        } catch { setDriverTrips({ trips: [], stats: {} }); }
+        finally { setDriverTripsLoading(false); }
+    };
     const [ledgerTimeFilter, setLedgerTimeFilter] = useState('all');
     const [showManualEntry, setShowManualEntry] = useState(false);
     const [manualEntry, setManualEntry] = useState({ date: new Date().toISOString().split('T')[0], desc: '', amount: '', type: 'debit' });
@@ -284,9 +298,11 @@ const StaffProfileModule = ({ role }) => {
     };
 
     const filtered = profiles.filter(p => {
+        // Exclude pump profiles — managed in Fuel Stations
+        if ((p.type || '').toLowerCase() === 'pump') return false;
         if (filterType !== 'All' && p.type !== filterType) return false;
         const s = searchTerm.toLowerCase();
-        return (p.name || '').toLowerCase().includes(s) || 
+        return (p.name || '').toLowerCase().includes(s) ||
                (p.department || '').toLowerCase().includes(s) ||
                (p.mobileNumbers || []).join(' ').includes(s);
     });
@@ -340,21 +356,18 @@ const StaffProfileModule = ({ role }) => {
                         <div style={{ padding: '20px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                                 <div>
-                                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px 0' }}>{p.type === 'Pump' ? p.name : p.name}</h3>
+                                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px 0' }}>{p.name}</h3>
                                     <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        {p.type === 'Driver' ? <Truck size={14} /> : p.type === 'Pump' ? <Building2 size={14} /> : <User size={14} />}
-                                        {p.type} {p.type !== 'Pump' && `• ${p.department}`}
-                                        {p.type === 'Pump' && p.pumpBrand && (
-                                            <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--bg)', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>{p.pumpBrand}</span>
-                                        )}
+                                        {p.type === 'Driver' ? <Truck size={14} /> : <User size={14} />}
+                                        {p.type} {p.department ? `• ${p.department}` : ''}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    {p.type === 'Pump' && BRAND_LOGOS[p.pumpBrand] && (
-                                        <img src={BRAND_LOGOS[p.pumpBrand]} alt={p.pumpBrand} style={{ height: '24px', objectFit: 'contain' }} />
-                                    )}
                                     {role === 'admin' && (
                                         <div style={{ display: 'flex', gap: '8px' }}>
+                                            {p.type === 'Driver' && (
+                                                <button onClick={() => openDriverTrips(p)} title="View Trip History" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Route size={16} /></button>
+                                            )}
                                             <button onClick={() => setShowLedger(p)} style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="View Ledger"><Banknote size={16} /></button>
                                             <button onClick={() => openModal(p)} style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit2 size={16} /></button>
                                             <button onClick={() => handleDelete(p.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={16} /></button>
@@ -364,21 +377,13 @@ const StaffProfileModule = ({ role }) => {
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {p.type !== 'Pump' && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-                                        <Shield size={16} color="var(--text-muted)" />
-                                        <span><span style={{ color: 'var(--text-muted)' }}>Father:</span> {p.fatherName || 'N/A'}</span>
-                                    </div>
-                                )}
-                                {p.type === 'Pump' && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-                                        <User size={16} color="var(--text-muted)" />
-                                        <span><span style={{ color: 'var(--text-muted)' }}>Owner:</span> {p.pumpOwnerName || 'N/A'}</span>
-                                    </div>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                                    <Shield size={16} color="var(--text-muted)" />
+                                    <span><span style={{ color: 'var(--text-muted)' }}>Father:</span> {p.fatherName || 'N/A'}</span>
+                                </div>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px' }}>
                                     <MapPin size={16} color="var(--text-muted)" style={{ marginTop: '2px' }} />
-                                    <span style={{ flex: 1 }}>{p.type === 'Pump' ? p.pumpLocation : p.address || 'N/A'}</span>
+                                    <span style={{ flex: 1 }}>{p.address || 'N/A'}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
                                     <Phone size={16} color="var(--text-muted)" />
@@ -516,7 +521,7 @@ const StaffProfileModule = ({ role }) => {
                                 )}
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>{form.type === 'Pump' ? 'Pump Name' : 'Full Name'}</label>
+                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Full Name</label>
                                     <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
                                 </div>
 
@@ -534,27 +539,8 @@ const StaffProfileModule = ({ role }) => {
                                     </div>
                                 )}
 
-                                {form.type === 'Pump' && (
-                                    <>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Pump Owner Name</label>
-                                            <input value={form.pumpOwnerName} onChange={e => setForm({...form, pumpOwnerName: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Pump Brand</label>
-                                            <select value={form.pumpBrand} onChange={e => setForm({...form, pumpBrand: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}>
-                                                {PUMP_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-                                            </select>
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Pump Location</label>
-                                            <input value={form.pumpLocation} onChange={e => setForm({...form, pumpLocation: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
-                                        </div>
-                                    </>
-                                )}
-
                                 <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>{form.type === 'Pump' ? 'Pump Address' : 'Address'}</label>
+                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Address</label>
                                     <textarea value={form.address} onChange={e => setForm({...form, address: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minHeight: '60px', resize: 'vertical' }} />
                                 </div>
 
@@ -986,6 +972,67 @@ const StaffProfileModule = ({ role }) => {
             )}
 
             {/* Manual Entry Modal */}
+            {/* Driver Trip History Modal */}
+            {driverTripTarget && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', zIndex: 1050, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'var(--bg-card)', borderRadius: '20px', width: '100%', maxWidth: '780px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', border: '1px solid rgba(245,158,11,0.25)', boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}>
+                        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)' }}>🚛 {driverTripTarget.name} — Trip History</div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Vehicle: {driverTripTarget.vehicleNo || '—'} · Trips from voucher records</div>
+                            </div>
+                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setDriverTripTarget(null)}><XIcon size={20} /></button>
+                        </div>
+                        {driverTripsLoading ? (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)', padding: '60px' }}><Loader2 size={18} className="spin" /> Loading trips...</div>
+                        ) : driverTrips ? (
+                            <>
+                                {/* Stats */}
+                                <div style={{ padding: '14px 24px', display: 'flex', gap: '10px', flexWrap: 'wrap', borderBottom: '1px solid var(--border)' }}>
+                                    {[
+                                        { label: 'Total Trips', val: driverTrips.stats.tripCount || 0, color: 'var(--primary)' },
+                                        { label: 'Total Weight (MT)', val: driverTrips.stats.totalWeight || '0', color: 'var(--text)' },
+                                        { label: 'Total Net', val: 'Rs.' + Math.round(driverTrips.stats.totalNet || 0).toLocaleString('en-IN'), color: 'var(--accent)' },
+                                        { label: 'Avg Net/Trip', val: 'Rs.' + Math.round(driverTrips.stats.avgNet || 0).toLocaleString('en-IN'), color: '#f59e0b' },
+                                        { label: 'Last Trip', val: driverTrips.stats.lastTrip || '—', color: 'var(--text-muted)' },
+                                    ].map(({ label, val, color }) => (
+                                        <div key={label} style={{ background: 'var(--bg-input)', borderRadius: '10px', padding: '8px 14px', minWidth: '110px' }}>
+                                            <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</div>
+                                            <div style={{ fontSize: '15px', fontWeight: 900, color, lineHeight: 1.2, marginTop: '2px' }}>{val}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {/* Trips table */}
+                                <div style={{ flex: 1, overflow: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                                        <thead><tr style={{ background: 'var(--bg-th)' }}>
+                                            {['#', 'Date', 'LR No.', 'Truck', 'Destination', 'Weight (MT)', 'Net Balance'].map(h => (
+                                                <th key={h} style={{ padding: '7px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                                            ))}
+                                        </tr></thead>
+                                        <tbody>
+                                            {driverTrips.trips.length === 0 ? (
+                                                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No trips found. Make sure vouchers use this driver's exact name.</td></tr>
+                                            ) : driverTrips.trips.map((t, i) => (
+                                                <tr key={t.id} style={{ background: i%2===0?'var(--bg-row-even)':'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                                                    <td style={{ padding: '7px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{i+1}</td>
+                                                    <td style={{ padding: '7px 16px' }}>{t.date || '—'}</td>
+                                                    <td style={{ padding: '7px 16px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{t.lrNo}</td>
+                                                    <td style={{ padding: '7px 16px', fontWeight: 700 }}>{t.truckNo}</td>
+                                                    <td style={{ padding: '7px 16px' }}>{t.destination || '—'}</td>
+                                                    <td style={{ padding: '7px 16px', textAlign: 'right' }}>{t.weight}</td>
+                                                    <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--accent)' }}>Rs.{Math.round(t.net).toLocaleString('en-IN')}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        ) : null}
+                    </div>
+                </div>
+            )}
+
             {showManualEntry && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ background: 'white', padding: '24px', borderRadius: '12px', width: '320px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>

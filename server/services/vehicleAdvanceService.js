@@ -20,9 +20,9 @@ const firestoreCreate = async (orgId, data, col) => {
 const firestoreGetAll = async (orgId, col) => {
     const snapshot = await db.collection(col)
         .where('orgId', '==', orgId)
-        .orderBy('createdAt', 'desc')
         .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 };
 
 const firestoreGetByTruck = async (orgId, truckNo, col) => {
@@ -47,7 +47,7 @@ const firestoreDelete = async (id, col) => {
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 const createAdvance = async (orgId, data, col = COLLECTION) => {
-    const { truckNo, type, amount, date, remark } = data;
+    const { truckNo, type, amount, date, remark, cashbookEntryId } = data;
     if (!truckNo) throw new Error('Truck number required');
     if (!type || !['credit', 'debit'].includes(type)) throw new Error('Type must be credit or debit');
     const amt = parseFloat(amount);
@@ -59,7 +59,8 @@ const createAdvance = async (orgId, data, col = COLLECTION) => {
         orgId,
         amount: amt,
         date: date || new Date().toISOString().slice(0, 10),
-        remark: remark || ''
+        remark: remark || '',
+        ...(cashbookEntryId ? { cashbookEntryId } : {}),
     };
 
     if (firebaseAvailable()) return await firestoreCreate(orgId, payload, col);

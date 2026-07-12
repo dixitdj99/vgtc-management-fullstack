@@ -97,32 +97,62 @@ function printChallan(c, orgName) {
   `).join('');
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Challan #${c.challanNo}</title>
-  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;padding:10mm}
-  h1{font-size:16px;font-weight:900;text-align:center;letter-spacing:1px}
-  .sub{text-align:center;font-size:10px;color:#555;margin:2px 0 10px}
-  .meta{display:flex;justify-content:space-between;margin-bottom:10px;padding:8px 12px;background:#f5f5f5;border-radius:4px}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px}th{padding:6px 8px;background:#333;color:#fff;font-size:10px;text-align:left}
-  td{padding:5px 8px;border-bottom:1px solid #e5e5e5}
-  .sig{display:flex;justify-content:space-between;margin-top:40px}
-  .sl{min-width:120px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:10px}
-  @media print{body{padding:0}}</style></head><body>
-  <h1>${orgName}</h1>
-  <div class="sub">Challan Print</div>
-  <div class="meta">
-    <span><b>Challan No:</b> ${c.challanNo || '—'}</span>
-    <span><b>Date:</b> ${new Date(c.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-    <span><b>Truck:</b> ${c.truckNo || '—'}</span>
+  <style>
+    @page{size:105mm 148mm;margin:6mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;width:100%;max-width:93mm;margin:0 auto;color:#000;font-size:13px;line-height:1.4;padding:8px}
+
+    .header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}
+    .header .h1{font-size:20px;font-weight:900;letter-spacing:0.5px}
+    .header .h2{font-size:17px;font-weight:800;margin-top:3px}
+    .header .addr{font-size:12px;font-weight:400;color:#444;margin-top:4px}
+
+    .ch-wrap{text-align:center;margin-bottom:16px}
+    .ch-no{font-size:18px;font-weight:900;border:2px solid #000;display:inline-block;padding:4px 20px;letter-spacing:1px}
+
+    .info-section{margin-bottom:14px;border:1px solid #ccc;border-radius:4px;overflow:hidden}
+    .info-row{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #ddd;font-size:14px}
+    .info-row:last-child{border-bottom:none}
+    .info-row .lbl{font-weight:800;font-size:13px;color:#333;text-transform:uppercase;letter-spacing:0.5px}
+    .info-row .val{font-weight:600;font-size:15px;text-align:right}
+
+    table{width:100%;border-collapse:collapse;margin-bottom:14px}
+    th{font-size:13px;font-weight:800;text-transform:uppercase;padding:8px 10px;border:1px solid #999;background:#e8e8e8;text-align:left;letter-spacing:0.5px}
+    td{font-size:14px;font-weight:600;padding:7px 10px;border:1px solid #bbb}
+    .tot td{font-weight:900;font-size:15px;background:#e8e8e8;border-top:2px solid #000}
+
+    .remark{font-size:13px;margin-bottom:14px;padding:8px 14px;border:1px solid #ddd;border-radius:4px;background:#fafafa}
+    .remark b{font-weight:800}
+
+    .sig{display:flex;justify-content:space-between;margin-top:40px}
+    .sig-box{text-align:center;font-size:12px;font-weight:800;min-width:100px;border-top:1.5px solid #000;padding-top:6px;text-transform:uppercase;letter-spacing:0.5px}
+    @media print{.no-print{display:none}}
+  </style></head><body>
+  <div class="header">
+    <div class="h1">JK Lakshmi Depo Loading Receipt</div>
+    <div class="h2">Vikas Goods Transport Company</div>
+    <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar</div>
   </div>
-  <div class="meta" style="background:#fff;border:1px solid #e5e5e5">
-    <span><b>Party:</b> ${c.partyName || '—'}</span>
-    <span><b>Status:</b> ${c.status ? c.status.toUpperCase() : 'OPEN'}</span>
+  <div class="ch-wrap"><div class="ch-no">Challan # ${c.challanNo}</div></div>
+
+  <div class="info-section">
+    <div class="info-row"><span class="lbl">Date</span><span class="val">${new Date(c.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
+    <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${c.truckNo || '—'}</span></div>
+    <div class="info-row"><span class="lbl">Party Name</span><span class="val">${c.partyName || '—'}</span></div>
+    <div class="info-row"><span class="lbl">Status</span><span class="val">${c.status ? c.status.toUpperCase() : 'OPEN'}</span></div>
   </div>
+
   <table>
-    <thead><tr><th>Material</th><th style="text-align:right">Total Bags</th><th style="text-align:right">Weight (MT)</th></tr></thead>
+    <thead><tr><th>Material</th><th style="text-align:right">Bags</th><th style="text-align:right">Weight (MT)</th></tr></thead>
     <tbody>${materialsHtml}</tbody>
   </table>
-  <div style="font-size:10px;color:#444"><b>Remark:</b> ${c.remark || 'N/A'}</div>
-  <div class="sig"><div class="sl">Driver</div><div class="sl">Authorised Sign</div></div>
+  ${c.remark ? `<div class="remark"><b>Remark:</b> ${c.remark}</div>` : ''}
+
+  <div class="sig">
+    <div class="sig-box">Driver Sign</div>
+    <div class="sig-box">Receiver Sign</div>
+    <div class="sig-box">Authorised Sign</div>
+  </div>
   <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   const w = window.open('', '_blank', 'width=800,height=600');
@@ -173,7 +203,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const { user } = useAuth();
   const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
   // canEdit: checks brand-specific key first, then generic 'stock' key
-  const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : 'stock_jkl';
+  const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : brand === 'bahadurgarh' ? 'stock_bahadurgarh' : 'stock_jkl';
   const canEdit = role === 'admin' || permissions?.[stockKey] === 'edit' || permissions?.stock === 'edit';
   let API, API_LR;
 
@@ -186,6 +216,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   } else if (brand === 'jhajjar') {
     API = `${BASE_API}/jhajjar/stock`;
     API_LR = `${BASE_API}/jhajjar/lr`;
+  } else if (brand === 'bahadurgarh') {
+    API = `${BASE_API}/bahadurgarh/stock`;
+    API_LR = `${BASE_API}/bahadurgarh/lr`;
   } else {
     API = `${BASE_API}/stock`;
     API_LR = `${BASE_API}/lr`;
@@ -219,7 +252,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
   /* form helper */
-  const fi = (label, el) => (<div className="field" style={{ flex: 1, minWidth: '140px' }}><label>{label}</label>{el}</div>);
+  const fi = (label, el, span) => (<div className="field" style={{ gridColumn: span ? `span ${span}` : undefined }}><label>{label}</label>{el}</div>);
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
@@ -245,9 +278,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     setLoading(true);
     try {
       const [ad, ch, lr, vh, sl, matsRaw] = await Promise.all([
-        ax.get(API + '/additions').then(r => r.data),
-        ax.get(API + '/challans').then(r => r.data),
-        ax.get(API_LR).then(r => r.data),
+        ax.get(API + '/additions').then(r => r.data).catch(() => []),
+        ax.get(API + '/challans').then(r => r.data).catch(() => []),
+        ax.get(API_LR).then(r => r.data).catch(() => []),
         ax.get(`/vehicles`).then(r => r.data).catch(() => []),
         ax.get(`/sell?brand=${brand}`).then(r => r.data).catch(() => []),
         ax.get(`${API}/materials/list`).then(r => r.data).catch(() => [])
@@ -266,6 +299,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const STOCK_LOCATIONS = [
     { key: 'kosli', label: 'Kosli Stock' },
     { key: 'jhajjar', label: 'Jhajjar Stock' },
+    { key: 'bahadurgarh', label: 'Bahadurgarh Stock' },
     { key: 'jkl', label: 'JK Lakshmi Stock' },
   ];
 
@@ -497,10 +531,10 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
            const newBilling = existingBilling ? `${existingBilling}, ${newChNo}` : newChNo;
            await ax.patch(`${API_LR}/${lr.id}/billing`, { billing: newBilling });
 
-           let SYNC_API;
-           if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
+           let SYNC_API; if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
            else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
            else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+           else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
            else SYNC_API = `${BASE_API}/stock/sync-lr`;
 
            let challanBags = parseInt(chalForm.quantity || 0);
@@ -533,9 +567,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         }
       }
 
-      setChalForm(getEmptyChal()); fetchAll(); 
+      setChalForm(getEmptyChal()); fetchAll();
     }
-    catch (er) { setErr(er.response?.data?.error || 'Error'); } finally { setSaving(false); }
+    catch (er) {
+      console.error('Challan error:', er);
+      setErr(er.response?.data?.error || er.message || 'Challan creation failed');
+    } finally { setSaving(false); }
   };
 
   const updateStatus = async (id, status) => {
@@ -699,7 +736,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* Header */}
       <div className="page-hd">
         <div>
-          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : brand === 'kosli' ? 'Kosli' : brand === 'jhajjar' ? 'Jhajjar' : 'Dump'} Stock</h1>
+          <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : brand === 'kosli' ? 'Kosli' : brand === 'jhajjar' ? 'Jhajjar' : brand === 'bahadurgarh' ? 'Bahadurgarh' : 'Dump'} Stock</h1>
           <p>Material inventory & challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -865,10 +902,10 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent)' }}><Plus size={17} /></div>
               <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi MIGO (Stock Entry)' : 'MIGO — Stock Entry'}</h3><p>Record new material delivery into inventory</p></div>
             </div></div>
-            <form onSubmit={triggerMigo} style={{ padding: '14px 18px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
-                {fi('Truck Number', <>
-                  <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="migo-truck-list"
+            <form onSubmit={triggerMigo} style={{ padding: '18px 20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '14px', alignItems: 'end' }}>
+                {fi('Truck Number *', <>
+                  <input className="fi" type="text" placeholder="Enter truck number" required list="migo-truck-list"
                     value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
                   <datalist id="migo-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
@@ -876,19 +913,21 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Material', <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (bags)', <>
-                  <input className="fi" type="number" step="1" min="1" required placeholder="e.g. 500"
+                {fi('Quantity (Bags) *', <div style={{ position: 'relative' }}>
+                  <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity in bags" style={{ paddingRight: migoForm.quantity ? '70px' : '12px' }}
                     value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />
-                  {migoForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--accent)', marginTop: '4px' }}>= {(migoForm.quantity * 0.05).toFixed(2)} MT</div>}
-                </>)}
+                  {migoForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', pointerEvents: 'none' }}>{(migoForm.quantity * 0.05).toFixed(2)} MT</span>}
+                </div>)}
                 {fi('Date', <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />)}
                 {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
                   value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-a" disabled={saving || !canEdit} style={{ height: '38px', alignSelf: 'flex-end', fontWeight: 800 }}>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                {err ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div> : <div />}
+                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px' }}>
                   {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
                 </button>
               </div>
-              {err && <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '7px', fontWeight: 600 }}>{err}</div>}
             </form>
           </div>
           <ConfirmSaveModal
@@ -961,17 +1000,17 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}><Tag size={17} /></div>
               <div className="card-title-text"><h3>Dispatch New Challan</h3><p>Assign stock to a vehicle (Challan Created status)</p></div>
             </div></div>
-            <form onSubmit={triggerChallan} style={{ padding: '14px 18px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
-                {fi('LR Number', <>
-                  <input className="fi" type="text" placeholder="e.g. 1234" required list="stock-lr-list"
+            <form onSubmit={triggerChallan} style={{ padding: '18px 20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', alignItems: 'end' }}>
+                {fi('LR Number *', <>
+                  <input className="fi" type="text" placeholder="Enter LR number" required list="stock-lr-list"
                     value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
                   <datalist id="stock-lr-list">
                     {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
                   </datalist>
                 </>)}
-                {fi('Truck No. (Auto-suggests)', <>
-                  <input className="fi" type="text" placeholder="e.g. GJ01AB1234" required list="stock-truck-list"
+                {fi('Truck Number *', <>
+                  <input className="fi" type="text" placeholder="Enter truck number" required list="stock-truck-list"
                     value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
                   <datalist id="stock-truck-list">
                     {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
@@ -979,13 +1018,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </>)}
                 {fi('Material', <select className="fi" value={chalForm.material} onChange={e => setChalForm(f => ({ ...f, material: e.target.value }))}>
                   {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (bags)', <>
-                  <input className="fi" type="number" step="1" min="1" required placeholder="bags"
+                {fi('Quantity (Bags) *', <div style={{ position: 'relative' }}>
+                  <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity" style={{ paddingRight: chalForm.quantity ? '70px' : '12px' }}
                     value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
-                  {chalForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--warn)', marginTop: '4px' }}>= {(chalForm.quantity * 0.05).toFixed(2)} MT</div>}
-                </>)}
+                  {chalForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--warn)', pointerEvents: 'none' }}>{(chalForm.quantity * 0.05).toFixed(2)} MT</span>}
+                </div>)}
                 {fi('Party Name', <>
-                  <input className="fi" type="text" placeholder="Customer / party" list="stock-party-list"
+                  <input className="fi" type="text" placeholder="Enter customer or party name" list="stock-party-list"
                     value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
                   <datalist id="stock-party-list">
                     {partySuggestions.map(name => <option key={name} value={name} />)}
@@ -996,18 +1035,25 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 {fi('Bill No', <input className="fi" type="text" placeholder="Optional bill number"
                   value={chalForm.billNo} onChange={e => setChalForm(f => ({ ...f, billNo: e.target.value }))} />)}
                 {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
-                {fi('Remark', <input className="fi" type="text" placeholder="Notes"
-                  value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ height: '38px', alignSelf: 'flex-end' }}>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
+                  <div className="field" style={{ flex: 1, maxWidth: '300px' }}>
+                    <label>Remark</label>
+                    <input className="fi" type="text" placeholder="Notes"
+                      value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />
+                  </div>
+                  {chalForm.material && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, padding: '4px 12px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      📦 {chalForm.material}: <strong style={{ color: 'var(--text)' }}>{(stockMap[chalForm.material]?.available || 0).toLocaleString()}</strong> bags available
+                    </div>
+                  )}
+                  {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div>}
+                </div>
+                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px' }}>
                   {saving ? '…' : <><Tag size={14} /> Create Challan</>}
                 </button>
               </div>
-              {chalForm.material && (
-                <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  📦 {chalForm.material} available: <strong style={{ color: 'var(--text)' }}>{(stockMap[chalForm.material]?.available || 0).toLocaleString()} bags</strong>
-                </div>
-              )}
-              {err && <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '7px', fontWeight: 600 }}>{err}</div>}
             </form>
           </div>
           <ConfirmSaveModal
@@ -1385,3 +1431,4 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     </div>
   );
 }
+

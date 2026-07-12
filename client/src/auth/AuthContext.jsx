@@ -16,10 +16,11 @@ export function AuthProvider({ children }) {
     if (token) {
       setAuthToken(token);
       ax.get(`/auth/me`)
-        .then(r => { 
+        .then(r => {
           const userData = r.data;
-          setUser(userData); 
-          setCurrentUser(userData); 
+          setUser(userData);
+          setCurrentUser(userData);
+          // SW prefetch disabled — reduces Firestore reads (cache in api.js handles repeat fetches)
         })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
@@ -41,8 +42,8 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = async (username, password, selectedPlant, selectedGodown) => {
-    const res = await ax.post(`/auth/login`, { username, password, plant: selectedPlant, godown: selectedGodown });
+  const login = async (username, password, selectedPlant, selectedGodown, orgId) => {
+    const res = await ax.post(`/auth/login`, { username, password, plant: selectedPlant, godown: selectedGodown, orgId });
     
     // Check if OTP is required
     if (res.data.requireOtp) {
@@ -69,8 +70,8 @@ export function AuthProvider({ children }) {
     return u;
   };
 
-  const verifyOtp = async (userId, code, selectedPlant, selectedGodown) => {
-    const res = await ax.post(`/auth/verify-otp`, { userId, code, plant: selectedPlant, godown: selectedGodown });
+  const verifyOtp = async (userId, code, selectedPlant, selectedGodown, orgId) => {
+    const res = await ax.post(`/auth/verify-otp`, { userId, code, plant: selectedPlant, godown: selectedGodown, orgId });
     const { token: t, user: u } = res.data;
     
     localStorage.setItem('vgtc-token', t);
@@ -96,6 +97,16 @@ export function AuthProvider({ children }) {
     await ax.post(`/auth/resend-otp`, { userId });
   };
 
+  const refreshUser = async () => {
+    if (!token) return null;
+    setAuthToken(token);
+    const res = await ax.get('/auth/me');
+    const userData = res.data;
+    setUser(userData);
+    setCurrentUser(userData);
+    return userData;
+  };
+
   const logout = () => {
     localStorage.removeItem('vgtc-token');
     localStorage.removeItem('vgtc-plant');
@@ -108,8 +119,20 @@ export function AuthProvider({ children }) {
     setGodownState('');
   };
 
+  const hasPermission = (permKey, action = 'view') => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    const perm = user.permissions?.[permKey];
+    if (!perm) return false;
+    if (action === 'view') return true; // any permission level allows view
+    if (action === 'edit') return perm === 'edit' || perm === 'delete';
+    if (action === 'delete') return perm === 'delete';
+    if (action === 'export') return perm === 'edit' || perm === 'delete';
+    return false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, logout, ready }}>
+    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, refreshUser, logout, ready, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

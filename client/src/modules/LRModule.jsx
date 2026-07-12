@@ -3,12 +3,14 @@ import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
+import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
+import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 
 const PAGE_SIZE = 20;
 
@@ -18,54 +20,144 @@ const MATS_JKL_FALLBACK = ['PPC', 'OPC43', 'Pro+'];
 
 // validateTruckNo and cleanTruckNo imported from ../utils/vehicleUtils
 
+/* ── Autocomplete / Suggestion Dropdown ── */
+function AutocompleteInput({ value, onChange, suggestions = [], placeholder, required = false, className = "fi" }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+
+  const filtered = useMemo(() => {
+    if (!suggestions) return [];
+    if (!value) return suggestions.slice(0, 50);
+    const search = value.toLowerCase();
+    return suggestions.filter(item => {
+      const str = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+      return str.toLowerCase().includes(search);
+    }).slice(0, 50);
+  }, [value, suggestions]);
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [filtered]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      setIsOpen(false);
+      return;
+    }
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        setIsOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev + 1) % filtered.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+    } else if (e.key === 'Enter') {
+      if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+        e.preventDefault();
+        const item = filtered[highlightedIndex];
+        const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+        onChange({ target: { value: displayVal } });
+        setIsOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+      <input
+        type="text"
+        className={className}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required={required}
+        onFocus={() => setIsOpen(true)}
+        onKeyDown={handleKeyDown}
+      />
+      {isOpen && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          boxShadow: 'var(--shadow)',
+          maxHeight: '200px',
+          overflowY: 'auto',
+          marginTop: '4px'
+        }}>
+          {filtered.map((item, idx) => {
+            const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+            const keyVal = typeof item === 'string' ? item : (item.id || item.truckNo || idx);
+            return (
+              <div
+                key={keyVal}
+                onClick={() => {
+                  onChange({ target: { value: displayVal } });
+                  setIsOpen(false);
+                }}
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  borderBottom: '1px solid var(--border-row)',
+                  background: idx === highlightedIndex ? 'var(--bg-row-hover)' : 'transparent',
+                  transition: 'background 0.1s'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = 'var(--bg-row-hover)';
+                  setHighlightedIndex(idx);
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'transparent';
+                }}
+              >
+                {displayVal}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Print helper ── */
 function printReceipt(allRows, lrNo, allChallans = []) {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
-  const materialsHtml = rows.map(m => `
-    <tr>
-      <td style="padding:5px 10px;border:1px solid #ccc;">${m.material}</td>
-      <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">
-        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;
-          background:${m.loadingType === 'Crossing' ? '#fef3c7' : '#dcfce7'};
-          color:${m.loadingType === 'Crossing' ? '#92400e' : '#166534'};
-          border:1px solid ${m.loadingType === 'Crossing' ? '#fcd34d' : '#86efac'}">
-          ${m.loadingType || 'From Godown'}
-        </span>
-      </td>
-      <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">${m.totalBags}</td>
-      <td style="padding:5px 10px;border:1px solid #ccc;text-align:center;">${Number(m.weight).toFixed(2)} MT</td>
-    </tr>
-  `).join('');
-
   const totalBags = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
+  const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
+  const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  let challanLine = '';
-  if (base.billing) {
-    const challanNos = base.billing.split(',').map(s => s.trim());
-    const challanDetails = challanNos.map(cNo => {
-      const ch = allChallans.find(c => c.challanNo === cNo);
-      let dateStr = '';
-      if (ch && ch.date) {
-        dateStr = ` (Dated: ${new Date(ch.date).toLocaleDateString('en-IN')})`;
-      }
-      if (ch && ch.materials) {
-        const mats = ch.materials.map(m => `${m.type}: ${m.totalBags - (m.loadedBags || 0)} left`).join(', ');
-        return `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${cNo}${dateStr} — Bal: ${mats}</div>`;
-      } else if (ch) {
-        return `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${cNo}${dateStr} — Bal: ${ch.material} (${ch.quantity} bags)</div>`;
-      }
-      return `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${cNo}</div>`;
-    }).join('');
-
-    challanLine = `<div class="row" style="grid-column: 1 / -1; display: block;">
-         <span class="lbl">Attached Challans</span>
-         <span class="val" style="display:block; margin-bottom: 6px;">${base.billing}</span>
-         ${challanDetails}
-      </div>`;
-  }
+  const materialLines = rows.map(m =>
+    `<div class="line"><span class="lbl">${m.material}</span><span class="val">${m.totalBags} bags · ${Number(m.weight).toFixed(2)} MT${m.loadingType && m.loadingType !== 'Godown' ? ` · ${m.loadingType}` : ''}</span></div>`
+  ).join('');
 
   const html = `<!DOCTYPE html>
   <html>
@@ -73,45 +165,54 @@ function printReceipt(allRows, lrNo, allChallans = []) {
       <meta charset="UTF-8">
       <title>LR #${lrNo}</title>
       <style>
-        body { font-family: 'Inter', system-ui, sans-serif; padding: 30px; color: #1e293b; max-width: 800px; margin: 0 auto; }
-        .hd { border-bottom: 3px solid #6366f1; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
-        .hd h1 { margin: 0; color: #6366f1; font-size: 26px; font-weight: 900; letter-spacing: -0.5px; }
-        .hd .lr-no { font-size: 20px; font-weight: 800; color: #0f172a; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
-        .row { display: flex; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
-        .lbl { color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; display: block; margin-bottom: 2px; }
-        .val { font-size: 14px; font-weight: 700; color: #1e293b; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }
-        th { background: #f1f5f9; padding: 10px; text-align: left; border: 1px solid #cbd5e1; color: #475569; font-weight: 700; }
-        td { padding: 8px 10px; border: 1px solid #cbd5e1; }
-        .tot { font-weight: 800; background: #f8fafc; }
-        .btn-print { display: block; width: 100%; padding: 12px; background: #10b981; color: white; text-align: center; font-weight: 800; border: none; border-radius: 8px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; }
-        @media print { .btn-print { display: none; } body { padding: 0; } }
+        @page { size: 105mm 148mm; margin: 5mm; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; width: 95mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.3; }
+        .hd { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 6px; }
+        .hd .co { font-size: 13px; font-weight: 900; }
+        .hd .sub { font-size: 9px; margin-top: 2px; }
+        .lr { text-align: center; font-size: 16px; font-weight: 900; border: 1.5px solid #000; display: inline-block; padding: 2px 16px; margin: 4px auto 8px; letter-spacing: 1px; }
+        .lr-wrap { text-align: center; }
+        .sec { border: 1px solid #000; border-radius: 3px; margin-bottom: 6px; }
+        .line { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 0.5px solid #ccc; font-size: 11px; }
+        .line:last-child { border-bottom: none; }
+        .lbl { font-weight: 800; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .val { font-weight: 600; text-align: right; }
+        .tot { background: #eee; font-weight: 900; font-size: 12px; border-top: 1.5px solid #000; }
+        .sig { display: flex; justify-content: space-between; margin-top: 20px; }
+        .sig-box { text-align: center; font-size: 9px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; min-width: 60px; text-transform: uppercase; }
+        .no-print { display: block; width: 100%; padding: 10px; background: #10b981; color: #fff; text-align: center; font-weight: 800; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; margin-top: 12px; }
+        @media print { .no-print { display: none; } }
       </style>
     </head>
     <body>
       <div class="hd">
-        <h1>Loading Receipt</h1>
-        <div class="lr-no">LR #${lrNo}</div>
+        <div class="co">Vikas Goods Transport Company</div>
+        <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar</div>
       </div>
-      <div class="grid">
-        <div class="row"><div><span class="lbl">Date</span><span class="val">${new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div></div>
-        <div class="row"><div><span class="lbl">Truck No.</span><span class="val">${base.truckNo}</span></div></div>
-        <div class="row" style="grid-column: 1 / -1;"><div><span class="lbl">Party Name</span><span class="val">${base.partyName}</span></div></div>
+
+      <div class="lr-wrap"><div class="lr">LR # ${lrNo}</div></div>
+
+      <div class="sec">
+        <div class="line"><span class="lbl">Date</span><span class="val">${fmtDate}</span></div>
+        <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13px;font-weight:900;">${base.truckNo}</span></div>
+        <div class="line"><span class="lbl">Party</span><span class="val">${parties}</span></div>
+        ${base.billing ? `<div class="line"><span class="lbl">Challans</span><span class="val">${base.billing}</span></div>` : ''}
       </div>
-      ${challanLine}
-      <table>
-        <thead><tr><th>Material</th><th style="text-align:center;">Loading Type</th><th style="text-align:center;">Bags</th><th style="text-align:center;">Weight (MT)</th></tr></thead>
-        <tbody>
-          ${materialsHtml}
-          <tr class="tot">
-            <td colspan="2" style="text-align:right;">Total</td>
-            <td style="text-align:center;">${totalBags}</td>
-            <td style="text-align:center;">${totalWeight} MT</td>
-          </tr>
-        </tbody>
-      </table>
-      <button class="btn-print" onclick="window.print()">Print Receipt</button>
+
+      <div class="sec">
+        <div class="line" style="background:#eee;"><span class="lbl">Material</span><span class="lbl">Details</span></div>
+        ${materialLines}
+        <div class="line tot"><span class="lbl">Total</span><span class="val">${totalBags} bags · ${totalWeight} MT</span></div>
+      </div>
+
+      <div class="sig">
+        <div class="sig-box">Driver</div>
+        <div class="sig-box">Receiver</div>
+        <div class="sig-box">Authorised</div>
+      </div>
+
+      <button class="no-print" onclick="window.print()">Print</button>
       <script>setTimeout(() => window.print(), 500);</script>
     </body>
   </html>`;
@@ -139,6 +240,11 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   const [loading, setLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showChalPopup, setShowChalPopup] = useState(false);
+  const modalRef = useFormShortcuts({
+    onSave: () => setIsConfirming(true),
+    onCancel: onClose,
+    enabled: !isConfirming && !showChalPopup,
+  });
   const resolvedPartySuggestions = useMemo(() => buildPartySuggestions(
     partySuggestions,
     row.partyName,
@@ -210,6 +316,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
   else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
   else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
+  else if (brand === 'bahadurgarh') ENDPOINT = `${BASE_API}/bahadurgarh/stock/challans`;
   else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const executeSave = async () => {
@@ -270,11 +377,11 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       const payload = { ...form, partyName: resolvePartyName(form.partyName, resolvedPartySuggestions), billing: finalBilling };
       delete payload.usedChallans; // remove UI state
       if (!payload.voiceMessageBase64) payload.voiceMessageBase64 = row.voiceMessageBase64 || "";
-      
       let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
       await ax.post(SYNC_API, {
         oldChallanNos: row.billing,
@@ -299,21 +406,22 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)'
     }}>
       <motion.div
+        ref={modalRef}
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '520px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden' }}
+        style={{ width: '94%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}
       >
         {/* Modal header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Pencil size={16} color="#6366f1" />
             </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: '#f1f5f9' }}>Edit Receipt</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>ID: {row.id.slice(0, 10)}...</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Receipt</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>ID: {row.id.slice(0, 10)}...</div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
             <X size={18} />
           </button>
         </div>
@@ -325,17 +433,21 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
             <div className="field">
               <label>Truck No.</label>
-              <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`lr-edit-truck-list-${row.id}`} />
-              <datalist id={`lr-edit-truck-list-${row.id}`}>
-                {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-              </datalist>
+              <AutocompleteInput
+                value={form.truckNo}
+                onChange={e => S('truckNo', cleanTruckNo(e.target.value))}
+                suggestions={vehicles}
+                placeholder="Enter truck number"
+              />
             </div>
             <div className="field">
               <label><User size={11} /> Party Name</label>
-              <input className="fi" type="text" value={form.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, resolvedPartySuggestions))} list={`lr-edit-party-list-${row.id}`} />
-              <datalist id={`lr-edit-party-list-${row.id}`}>
-                {resolvedPartySuggestions.map(name => <option key={name} value={name} />)}
-              </datalist>
+              <AutocompleteInput
+                value={form.partyName}
+                onChange={e => S('partyName', resolvePartyName(e.target.value, resolvedPartySuggestions))}
+                suggestions={resolvedPartySuggestions}
+                placeholder="Enter party name"
+              />
             </div>
             <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
           </div>
@@ -377,7 +489,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           <div className="field">
             <label><Tag size={11} /> Challan Selection</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#f1f5f9', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                    <Tag size={14} color="#f59e0b" />
                    {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
@@ -429,7 +541,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
         </div>
 
         {/* Modal footer */}
-        <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid rgba(255,255,255,0.07)', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
           <button className="btn btn-g" onClick={onClose} disabled={loading}>Cancel</button>
           <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading}>
             {loading ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}
@@ -463,6 +575,17 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 /* ── Challan Popup Modal ── */
 function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [] }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
+  const [challanSearch, setChallanSearch] = useState('');
+
+  const filteredChallans = challanSearch
+    ? openChallans.filter(c => {
+        const s = challanSearch.toLowerCase();
+        return (c.challanNo || '').toLowerCase().includes(s) ||
+               (c.truckNo || '').toLowerCase().includes(s) ||
+               (c.partyName || '').toLowerCase().includes(s) ||
+               (c.destination || '').toLowerCase().includes(s);
+      })
+    : openChallans;
 
   // For 'create' tab
   const [saving, setSaving] = useState(false);
@@ -475,6 +598,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   if (brand === 'jkl') ENDPOINT = `${BASE_API}/jkl/stock/challans`;
   else if (brand === 'kosli') ENDPOINT = `${BASE_API}/kosli/stock/challans`;
   else if (brand === 'jhajjar') ENDPOINT = `${BASE_API}/jhajjar/stock/challans`;
+  else if (brand === 'bahadurgarh') ENDPOINT = `${BASE_API}/bahadurgarh/stock/challans`;
   else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
@@ -535,60 +659,68 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '560px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+        style={{ width: '94%', maxWidth: '560px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Tag size={16} color="#f59e0b" />
             </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: '#f1f5f9' }}>Select or Create Challan</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>Loading Receipt Attachment</div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Select or Create Challan</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>Loading Receipt Attachment</div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
             <X size={18} />
           </button>
         </div>
 
-        <div style={{ display: 'flex', padding: '0 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', padding: '0 22px', borderBottom: '1px solid var(--border)' }}>
           <button style={{
             background: 'transparent', border: 'none', padding: '12px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-            color: tab === 'select' ? '#f59e0b' : '#94a3b8', borderBottom: tab === 'select' ? '2px solid #f59e0b' : '2px solid transparent'
+            color: tab === 'select' ? 'var(--primary)' : 'var(--text-muted)', borderBottom: tab === 'select' ? '2px solid var(--primary)' : '2px solid transparent'
           }} onClick={() => setTab('select')}>Select Existing</button>
 
           <button style={{
             background: 'transparent', border: 'none', padding: '12px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-            color: tab === 'create' ? '#f59e0b' : '#94a3b8', borderBottom: tab === 'create' ? '2px solid #f59e0b' : '2px solid transparent'
+            color: tab === 'create' ? 'var(--primary)' : 'var(--text-muted)', borderBottom: tab === 'create' ? '2px solid var(--primary)' : '2px solid transparent'
           }} onClick={() => setTab('create')}>Create New</button>
         </div>
 
-        <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1 }}>
           <AnimatePresence mode="wait">
             {tab === 'select' && (
               <motion.div key="select" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Open Challans ({openChallans.length})</div>
+                {/* Search */}
+                <div style={{ position: 'relative', marginBottom: '12px' }}>
+                  <input className="fi" type="text" placeholder="Search by challan no, truck, party..."
+                    value={challanSearch} onChange={e => setChallanSearch(e.target.value)}
+                    style={{ width: '100%', paddingLeft: '32px', fontSize: '12px' }} />
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                </div>
 
-                {openChallans.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '13px' }}>No open challans available. Create a new one.</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Open Challans ({filteredChallans.length})</div>
+
+                {filteredChallans.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '13px' }}>No challans found.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {openChallans.map(c => {
+                    {filteredChallans.map(c => {
                       const isSelected = selectedChallans.find(sc => sc.challanNo === c.challanNo);
                       return (
                         <div
                           key={c.id}
                           onClick={() => onToggleSelect(c)}
-                          style={{ padding: '14px', background: isSelected ? 'rgba(245,158,11,0.05)' : 'var(--bg-card)', border: isSelected ? '1px solid rgba(245,158,11,0.5)' : '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          style={{ padding: '12px', background: isSelected ? 'rgba(99,102,241,0.06)' : 'var(--bg)', border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s' }}
                         >
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                              <span style={{ fontWeight: 800, color: '#f59e0b', fontFamily: 'monospace' }}>{c.challanNo}</span>
-                              <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 700 }}>{c.truckNo}</span>
-                              {isSelected && <span style={{ padding: '2px 6px', background: '#f59e0b', color: '#000', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
+                              <span style={{ fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{c.challanNo}</span>
+                              <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 700 }}>{c.truckNo}</span>
+                              {isSelected && <span style={{ padding: '2px 6px', background: 'var(--primary)', color: 'white', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
                             </div>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                               {c.partyName || 'No Party'} {c.destination ? ` · ${c.destination}` : ''} · {new Date(c.date).toLocaleDateString('en-IN')}
                             </div>
                           </div>
@@ -596,23 +728,22 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                             {c.materials ? (
                               c.materials.map((m, idx) => (
                                 <div key={idx} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#818cf8', fontSize: '10px', fontWeight: 700 }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#6366f1', fontSize: '10px', fontWeight: 700 }}>
                                     <Package size={10} /> {m.type}
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700 }}>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 700 }}>
                                     {m.totalBags - m.loadedBags} bags <span style={{ opacity: 0.7 }}>({((m.totalBags - m.loadedBags) * 0.05).toFixed(2)} MT)</span> left
                                   </div>
                                 </div>
                               ))
                             ) : (
-                              // legacy fallback rendering
                               <>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '4px 8px', borderRadius: '6px', color: '#818cf8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.1)', padding: '4px 8px', borderRadius: '6px', color: '#6366f1', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
                                   <Package size={12} /> {c.material}
                                 </div>
-                                 <div style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 700 }}>
-                                   {c.quantity} bags <span style={{ opacity: 0.7 }}>({(c.quantity * 0.05).toFixed(2)} MT)</span>
-                                 </div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-sub)', fontWeight: 700 }}>
+                                  {c.quantity} bags <span style={{ opacity: 0.7 }}>({(c.quantity * 0.05).toFixed(2)} MT)</span>
+                                </div>
                               </>
                             )}
                           </div>
@@ -637,10 +768,13 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label>Truck No. *</label>
-                      <input className="fi" type="text" placeholder="GJ01AB1234" value={chalForm.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} required list="chal-truck-list" />
-                      <datalist id="chal-truck-list">
-                        {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-                      </datalist>
+                      <AutocompleteInput
+                        value={chalForm.truckNo}
+                        onChange={e => S('truckNo', cleanTruckNo(e.target.value))}
+                        suggestions={vehicles}
+                        placeholder="GJ01AB1234"
+                        required={true}
+                      />
                       {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</div>}
                     </div>
                     <div className="field">
@@ -664,10 +798,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <div className="fg fg-2">
                     <div className="field">
                       <label><User size={11} /> Party Name</label>
-                      <input className="fi" type="text" placeholder="Customer name" value={chalForm.partyName} onChange={e => S('partyName', resolvePartyName(e.target.value, partySuggestions))} list="lr-challan-party-list" />
-                      <datalist id="lr-challan-party-list">
-                        {partySuggestions.map(name => <option key={name} value={name} />)}
-                      </datalist>
+                      <AutocompleteInput
+                        value={chalForm.partyName}
+                        onChange={e => S('partyName', resolvePartyName(e.target.value, partySuggestions))}
+                        suggestions={partySuggestions}
+                        placeholder="Customer name"
+                      />
                     </div>
                     <div className="field">
                       <label>Destination</label>
@@ -727,6 +863,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
       if (apiUrl.includes('/jkl/lr')) SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (apiUrl.includes('/kosli/lr')) SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (apiUrl.includes('/jhajjar/lr')) SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else if (apiUrl.includes('/bahadurgarh/lr')) SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
       if (row.billing) {
         await ax.post(SYNC_API, {
@@ -747,16 +884,16 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0 }}
-        style={{ width: '90%', maxWidth: '380px', background: '#0f172a', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', padding: '28px 24px', textAlign: 'center' }}
+        style={{ width: '90%', maxWidth: '380px', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.35)', padding: '28px 24px', textAlign: 'center' }}
       >
         <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <AlertTriangle size={26} color="#f43f5e" />
         </div>
-        <div style={{ fontSize: '16px', fontWeight: 800, color: '#f1f5f9', marginBottom: '8px' }}>Delete Entry?</div>
-        <div style={{ fontSize: '12.5px', color: '#94a3b8', marginBottom: '6px' }}>
-          LR <strong style={{ color: '#f1f5f9' }}>#{row.lrNo}</strong> · {row.material} · {row.truckNo}
+        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Entry?</div>
+        <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', marginBottom: '6px' }}>
+          LR <strong style={{ color: 'var(--text)' }}>#{row.lrNo}</strong> · {row.material} · {row.truckNo}
         </div>
-        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '22px' }}>This action cannot be undone.</div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This action cannot be undone.</div>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
           <button className="btn btn-g" onClick={onClose}>Cancel</button>
           <button className="btn btn-d" onClick={handleDelete} disabled={deleting} title="Confirm Delete">
@@ -771,7 +908,7 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
   // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
-  const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : 'lr_jkl';
+  const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : brand === 'bahadurgarh' ? 'lr_bahadurgarh' : 'lr_jkl';
   const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
 
   let API, API_STOCK;
@@ -784,6 +921,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   } else if (brand === 'jhajjar') {
     API = `${BASE_API}/jhajjar/lr`;
     API_STOCK = `${BASE_API}/jhajjar/stock`;
+  } else if (brand === 'bahadurgarh') {
+    API = `${BASE_API}/bahadurgarh/lr`;
+    API_STOCK = `${BASE_API}/bahadurgarh/stock`;
   } else {
     API = `${BASE_API}/lr`;
     API_STOCK = `${BASE_API}/stock`;
@@ -794,6 +934,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
   const [receipts, setReceipts] = useState([]);
+  const [tableLoading, setTableLoading] = useState(true);
   const [parties, setParties] = useState([]);
   const [allVouchers, setAllVouchers] = useState([]);
   const [openChallans, setOpenChallans] = useState([]);
@@ -808,8 +949,24 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [chalPreFill, setChalPreFill] = useState(null);
   const [linkingLrId, setLinkingLrId] = useState(null);
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
+  const [statusTarget, setStatusTarget] = useState(null); // { lr, nextStatus }
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  const LR_STATUS_FLOW = ['Created', 'Loaded', 'In Transit', 'Delivered', 'Billed'];
+  const LR_STATUS_COLOR = { 'Created': '#6366f1', 'Loaded': '#f59e0b', 'In Transit': '#3b82f6', 'Delivered': '#10b981', 'Billed': '#059669' };
+
+  const advanceLRStatus = async () => {
+    if (!statusTarget) return;
+    setStatusSaving(true);
+    try {
+      await ax.patch(`${API}/${statusTarget.lr.id}/status`, { status: statusTarget.nextStatus });
+      setStatusTarget(null);
+      fetchData();
+    } catch { alert('Status update failed'); }
+    finally { setStatusSaving(false); }
+  };
   const [form, setForm] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: getSticky('lr.date', new Date().toISOString().split('T')[0]),
     truckNo: '', partyName: '',
     destination: '',
     note: '',
@@ -885,6 +1042,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     setForm(f => ({ ...f, voiceMessageBase64: '' }));
   };
 
+  /* Fuel Stations */
+  const [fuelStations, setFuelStations] = useState([]);
+  const fetchFuelStations = async () => {
+    try {
+      const all = (await ax.get('/profiles')).data;
+      setFuelStations(all.filter(p => p.type === 'pump').map(p => p.name));
+    } catch { }
+  };
+
   /* Excel-style filters */
   const [filters, setFilters] = useState({});
   const handleFilterChange = (key, val) => {
@@ -905,6 +1071,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
          setAllVouchers(vRes.data || []);
       } catch(e) { console.error('Failed to fetch vouchers', e); }
     } catch { }
+    finally { setTableLoading(false); }
   };
 
   const fetchChallans = async () => {
@@ -925,20 +1092,20 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const fetchAdditions = async () => {
     try {
       const data = (await ax.get(`${API_STOCK}/additions`)).data;
-      setAdditions(data);
-    } catch { }
+      setAdditions(Array.isArray(data) ? data : []);
+    } catch (e) { console.error('fetchAdditions failed:', e.message); setAdditions([]); }
   };
 
   const fetchMaterials = async () => {
     try {
        const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
        if (data && data.length > 0) setMaterialObjs(data);
-    } catch { }
+    } catch (e) { console.error('fetchMaterials failed:', e.message); }
   };
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchLRData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials()]).finally(() => setLoading(false));
+    Promise.all([fetchLRData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials(), fetchFuelStations()]).finally(() => setLoading(false));
     setCurrentPage(1);
   }, [brand]);
 
@@ -988,8 +1155,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
   const removeMat = idx => setForm({ ...form, materials: form.materials.filter((_, i) => i !== idx) });
 
-  const handleFormRequest = e => {
-    e.preventDefault();
+  const requestCreateSave = () => {
+    if (markInvalidFields(createFormRef.current)) return;
     if (!validateTruckNo(form.truckNo)) {
       alert('Invalid truck number format. Please enter in GJ01AB1234 format (No spaces).');
       return;
@@ -1006,6 +1173,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     }
     setIsConfirmingSave(true);
   };
+  const handleFormRequest = e => { e.preventDefault(); requestCreateSave(); };
+
+  // Tally-style keyboard entry on the creation form. Inline card form — no Esc-close.
+  // Disabled while any stacked layer (confirm modal, challan popup, edit/delete modal) is open.
+  const createFormRef = useFormShortcuts({
+    onSave: requestCreateSave,
+    enabled: !isConfirmingSave && !showChalPopup && !editRow && !deleteRow && !statusTarget,
+    autoFocus: false, // table view loads with the form on-page; don't yank scroll on mount
+  });
 
   const handleChallanCreatedFromLR = async (newChNo, challanQty) => {
     if (!linkingLrId) return;
@@ -1103,9 +1279,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
     setLoading(true);
     try {
+      // For each material, ensure partyName is set (fallback to global)
+      const globalParty = resolvePartyName(form.partyName, partySuggestions);
+      const materialsWithParty = form.materials.map(m => ({
+        ...m,
+        partyName: m.partyName ? resolvePartyName(m.partyName, partySuggestions) : globalParty
+      }));
+
+      // Validate: at least one party name must exist
+      const hasAnyParty = globalParty || materialsWithParty.some(m => m.partyName);
+      if (!hasAnyParty) {
+        alert('Please enter a party name (global or per material)');
+        setLoading(false);
+        return;
+      }
+
       const payload = {
         ...form,
-        partyName: resolvePartyName(form.partyName, partySuggestions),
+        materials: materialsWithParty,
+        partyName: globalParty || materialsWithParty[0]?.partyName || '',
         billing: form.usedChallans.map(c => c.challanNo).join(', ')
       };
 
@@ -1130,7 +1322,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       alert('Receipt #' + res.data.lrNo + ' created!');
       fetchLRData(); fetchChallans();
       clearVoice();
-      setForm({ date: new Date().toISOString().split('T')[0], truckNo: '', partyName: '', destination: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+      rememberSticky('lr.date', form.date);
+      setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -1305,6 +1498,30 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         )}
       </AnimatePresence>
 
+      {/* Status Advance Modal */}
+      <AnimatePresence>
+        {statusTarget && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              style={{ width: '90%', maxWidth: '360px', background: 'var(--bg-card)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Advance Trip Status?</div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', marginBottom: '6px' }}>LR <strong>#{statusTarget.lr.lrNo}</strong> · {statusTarget.lr.truckNo}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '16px 0' }}>
+                <span style={{ padding: '4px 12px', borderRadius: '8px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontWeight: 800, fontSize: '12px' }}>{statusTarget.lr.status || 'Created'}</span>
+                <ArrowRight size={14} color="var(--text-muted)" />
+                <span style={{ padding: '4px 12px', borderRadius: '8px', background: (LR_STATUS_COLOR[statusTarget.nextStatus] || '#6366f1') + '1a', color: LR_STATUS_COLOR[statusTarget.nextStatus] || '#6366f1', fontWeight: 800, fontSize: '12px', border: '1px solid ' + (LR_STATUS_COLOR[statusTarget.nextStatus] || '#6366f1') + '33' }}>{statusTarget.nextStatus}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button className="btn btn-g" onClick={() => setStatusTarget(null)} disabled={statusSaving}>Cancel</button>
+                <button className="btn btn-p" onClick={advanceLRStatus} disabled={statusSaving}>
+                  {statusSaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Confirm</>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div>
         <div className="page-hd">
           <div>
@@ -1327,25 +1544,47 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </div>
             </div>
             <div className="card-body">
-              <form onSubmit={handleFormRequest}>
+              <form onSubmit={handleFormRequest} ref={createFormRef}>
                 <div className="fg fg-2">
-                  <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
+                  <div className="field"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field">
-                    <label>Truck No. (Auto-suggests from Vehicles)</label>
-                    <input className="fi" type="text" placeholder="e.g. RJ07GA1234" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
-                    <datalist id="truck-list">
-                      {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-                    </datalist>
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</span>}
+                    <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
+                    <AutocompleteInput
+                      value={form.truckNo}
+                      onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })}
+                      suggestions={vehicles}
+                      placeholder="Enter truck number e.g. HR47G1234"
+                      required={true}
+                    />
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
                   </div>
                   <div className="field">
-                    <label><User size={11} /> Party Name</label>
-                    <input className="fi" type="text" placeholder="Client name" value={form.partyName} onChange={e => setForm({ ...form, partyName: resolvePartyName(e.target.value, partySuggestions) })} required list="lr-party-list" />
-                    <datalist id="lr-party-list">
-                      {partySuggestions.map(name => <option key={name} value={name} />)}
-                    </datalist>
+                    <label><User size={11} /> Party Name {!form.materials.some(m => m.partyName) && <span style={{color:'var(--danger)'}}>*</span>}</label>
+                    <AutocompleteInput
+                      value={form.partyName}
+                      onChange={e => {
+                        const name = resolvePartyName(e.target.value, partySuggestions);
+                        setForm(f => ({
+                          ...f,
+                          partyName: name,
+                          materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
+                        }));
+                      }}
+                      suggestions={partySuggestions}
+                      placeholder="Enter party name (applies to all materials)"
+                    />
+                    {(() => {
+                      const matParties = [...new Set(form.materials.map(m => m.partyName).filter(Boolean))];
+                      return matParties.length > 1 ? (
+                        <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {matParties.map(p => (
+                            <span key={p} style={{ fontSize: '9px', fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{p}</span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
-                  <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Delivery city" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
+                  <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
                   <div className="field">
                     <label><Tag size={11} /> Challan Selection</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1395,13 +1634,18 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         Material #{i + 1}
                         {m.billing && m.billing !== 'No' && (
                           <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                            Challan: {m.billing} • {m.partyName || '—'}
+                            CH: {m.billing}
+                          </span>
+                        )}
+                        {m.partyName && (
+                          <span style={{ color: '#6366f1', marginLeft: '6px', fontSize: '9px', textTransform: 'none', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            {m.partyName}
                           </span>
                         )}
                       </span>
                       {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
                     </div>
-                    <div className="fg" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', display: 'grid', gap: '14px' }}>
+                    <div className="fg" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', display: 'grid', gap: '12px' }}>
                       <div className="field"><label>Type</label>
                         <select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
@@ -1415,23 +1659,24 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         </select>
                       </div>
                       <div className="field">
-                        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>Bags</span>
-                          {m.type && (
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                               <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>
-                                 STOCK: {stockMap[m.type]?.physical || 0} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
-                               </span>
-                               <span style={{ color: '#f59e0b', fontSize: '9px', fontWeight: 800 }}>
-                                 CHALLAN PENDING: {stockMap[m.type]?.pendingChallan || 0} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
-                               </span>
-                            </div>
-                          )}
-                        </label>
+                        <label>Bags</label>
                         <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
                       </div>
                       <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
+                      <div className="field"><label>Party</label>
+                        <input className="fi" type="text" placeholder={form.partyName || 'Party name'} value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
+                      </div>
                     </div>
+                    {m.type && (
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981', padding: '3px 8px', background: 'rgba(16,185,129,0.08)', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                          Stock: {(stockMap[m.type]?.physical || 0).toLocaleString()} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#f59e0b', padding: '3px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                          Challan Pending: {(stockMap[m.type]?.pendingChallan || 0).toLocaleString()} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
+                        </span>
+                      </div>
+                    )}
                   </motion.div>
                 ))}
                 <hr className="sep" style={{ margin: '8px 0' }} />
@@ -1517,12 +1762,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th className="c" style={{ padding: '8px 12px' }}>Voucher Status</th>
+                  <th className="c" style={{ padding: '8px 12px' }}>Trip Status</th>
                   {role === 'admin' && <th style={{ padding: '8px 12px' }}>Created By</th>}
                   {role === 'admin' && <th style={{ padding: '8px 12px' }}>Updated By</th>}
                   <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
+                  {tableLoading && filteredReceipts.length === 0 ? (
+                    [1, 2, 3, 4, 5].map(i => (
+                      <tr key={`sk-${i}`} className="skeleton-row">
+                        {Array.from({ length: role === 'admin' ? 8 : 6 }).map((_, j) => (
+                          <td key={j}><span className="skeleton skeleton-text" /></td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
                         <td><span className="t-lr">#{lr.lrNo}</span></td>
@@ -1632,6 +1886,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                                     </div>
                                  ))}
                                </div>
+                            );
+                          })()}
+                        </td>
+                        <td className="c">
+                          {(() => {
+                            const status = lr.status || 'Created';
+                            const idx = LR_STATUS_FLOW.indexOf(status);
+                            const nextStatus = idx < LR_STATUS_FLOW.length - 1 ? LR_STATUS_FLOW[idx + 1] : null;
+                            const color = LR_STATUS_COLOR[status] || '#6366f1';
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 8px', borderRadius: '6px', background: color + '1a', color, fontSize: '10px', fontWeight: 800, border: '1px solid ' + color + '33' }}>{status}</span>
+                                {nextStatus && (
+                                  <button style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}
+                                    onClick={() => setStatusTarget({ lr, nextStatus })}>
+                                    <ArrowRight size={9} /> {nextStatus}
+                                  </button>
+                                )}
+                              </div>
                             );
                           })()}
                         </td>

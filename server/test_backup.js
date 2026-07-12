@@ -7,7 +7,7 @@ const driveService = require('./utils/driveService');
 async function test() {
     try {
         console.log('Testing Drive Auth:', await driveService.isAuthorized());
-        const TEMP_DIR = path.join(__dirname, 'temp_backups');
+        const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
         if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
         const testData = { lrNo: '998', date: '2026-04-03', truckNo: 'RJ14-1234', destination: 'Delhi', weight: 30, rate: 1000, type: 'Dump' };

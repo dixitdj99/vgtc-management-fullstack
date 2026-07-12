@@ -102,10 +102,27 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   };
 
   const categories = {};
+  const isLeyland = vehicle?.make?.toLowerCase().includes('leyland');
+  const isTata = vehicle?.make?.toLowerCase().includes('tata');
+
   Object.entries(catalog).forEach(([id, part]) => {
+    // Filter out parts of other brands
+    if (isLeyland && part.vehicleModel?.toLowerCase().includes('tata')) {
+      return;
+    }
+    if (isTata && part.vehicleModel?.toLowerCase().includes('leyland')) {
+      return;
+    }
+    // If the vehicle brand is neither Tata nor Leyland, exclude brand-specific parts
+    if (!isLeyland && !isTata && part.vehicleModel) {
+      return;
+    }
+
     if (!categories[part.category]) categories[part.category] = [];
     categories[part.category].push({ id, ...part });
   });
+
+  const selectedPart = form.partId && catalog ? catalog[form.partId] : null;
 
   const totalCost = records.reduce((s, r) => s + (r.cost || 0) + (r.labourCost || 0), 0);
   const warrantyClaims = records.filter(r => r.warrantyClaimed).length;
@@ -209,6 +226,26 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                       </button>
                     </div>
                   </div>
+                  {selectedPart && (selectedPart.partCode || selectedPart.vehicleModel || selectedPart.errorCodes) && (
+                    <div style={{ gridColumn: 'span 3', background: 'rgba(59, 130, 246, 0.06)', border: '1px solid rgba(59, 130, 246, 0.15)', borderRadius: '10px', padding: '12px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        {selectedPart.vehicleModel && <div><strong>Vehicle Model:</strong> <span style={{ color: '#3b82f6', fontWeight: 800 }}>{selectedPart.vehicleModel}</span></div>}
+                        {selectedPart.partCode && <div><strong>Genuine Part Code:</strong> <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', fontWeight: 800 }}>{selectedPart.partCode}</code></div>}
+                      </div>
+                      {selectedPart.errorCodes && selectedPart.errorCodes.length > 0 && (
+                        <div style={{ marginTop: '4px' }}>
+                          <strong>Associated Diagnostic Trouble Codes (DTC):</strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                            {selectedPart.errorCodes.map((err, idx) => (
+                              <span key={idx} title={err.desc} style={{ background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '3px 8px', borderRadius: '6px', fontSize: '9.5px', fontWeight: 700 }}>
+                                ⚠️ {err.code} — {err.desc}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
                   <div className="field"><label>KM (Odometer)</label><input className="fi" type="number" placeholder="Reading" value={form.kmAtChange} onChange={e => setForm({ ...form, kmAtChange: e.target.value })} /></div>
                   <div className="field"><label>Part Cost ₹</label><input className="fi" type="number" placeholder="Part amount" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
@@ -260,13 +297,26 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                             const d = summary[p.id];
                             return (
                               <div key={p.id} onClick={() => handlePartClick(p.id)}
-                                style={{ padding: '10px', borderRadius: '10px', border: `1px solid ${d?.recurring ? 'rgba(239,68,68,0.4)' : d ? (d.status === 'overdue' ? 'rgba(239,68,68,0.3)' : 'var(--border)') : 'var(--border)'}`, cursor: 'pointer', background: d?.recurring ? 'rgba(239,68,68,0.03)' : 'var(--bg-card)', fontSize: '11px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                  <span style={{ fontWeight: 700 }}>{p.name}</span>
+                                style={{ padding: '10px', borderRadius: '10px', border: `1px solid ${d?.recurring ? 'rgba(239,68,68,0.4)' : d ? (d.status === 'overdue' ? 'rgba(239,68,68,0.3)' : 'var(--border)') : 'var(--border)'}`, cursor: 'pointer', background: d?.recurring ? 'rgba(239,68,68,0.03)' : 'var(--bg-card)', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                  <div>
+                                    <span style={{ fontWeight: 700 }}>{p.name}</span>
+                                    {p.partCode && <div style={{ fontSize: '8.5px', color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: '1px' }}>Code: {p.partCode}</div>}
+                                    {p.vehicleModel && <div style={{ fontSize: '8.5px', color: '#3b82f6', fontWeight: 700, marginTop: '1px' }}>{p.vehicleModel}</div>}
+                                  </div>
                                   {d ? statusBadge(d.status, d.recurring) : <span style={{ fontSize: '8px', color: '#475569' }}>—</span>}
                                 </div>
+                                {p.errorCodes && p.errorCodes.length > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '2px' }}>
+                                    {p.errorCodes.map((err, idx) => (
+                                      <span key={idx} title={err.desc} style={{ fontSize: '8.5px', background: 'rgba(239,68,68,0.06)', color: '#ef4444', padding: '1px 4px', borderRadius: '4px', fontWeight: 600 }}>
+                                        ⚠️ {err.code}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                                 {d && (
-                                  <div style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'grid', gap: '1px' }}>
+                                  <div style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'grid', gap: '1px', borderTop: '1px dashed var(--border)', paddingTop: '4px', marginTop: '2px' }}>
                                     <span>{d.lastServiceDate} {d.lastServiceKm > 0 ? `• ${d.lastServiceKm.toLocaleString()} KM` : ''}</span>
                                     {(d.cost > 0 || d.labourCost > 0) && <span style={{ color: '#10b981' }}>₹{d.cost.toLocaleString()}{d.labourCost > 0 ? ` + ₹${d.labourCost.toLocaleString()} labour` : ''}</span>}
                                     {d.warrantyClaimed && <span style={{ color: '#06b6d4' }}>🛡️ Warranty Claimed</span>}

@@ -30,7 +30,7 @@ router.post('/', async (req, res) => {
                     const path = require('path');
                     const { generateLoadingReceiptPDF } = require('../utils/pdfService');
 
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
                     const fullData = { ...req.body, ...result };
@@ -42,12 +42,11 @@ router.post('/', async (req, res) => {
                     await generateLoadingReceiptPDF(fullData, localPath);
 
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    
                     const brand = req.body.brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
                     const plantFolder = await driveService.getOrCreateFolder(brand, rootId);
-                    
-                    // Match requested architecture
-                    const finalFolder = await driveService.getOrCreateFolder('Loading Receipt Individual', plantFolder);
+                    const lrFolder = await driveService.getOrCreateFolder('Loading Receipts', plantFolder);
+                    const monthStr = new Date(fullData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                    const finalFolder = await driveService.getOrCreateFolder(monthStr, lrFolder);
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 
@@ -141,34 +140,68 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// Bulk Invoice Generation
+// Update LR status with history tracking
+router.patch('/:id/status', async (req, res) => {
+    const { status, updatedBy } = req.body;
+    const VALID = ['Created', 'Loaded', 'In Transit', 'Delivered', 'Billed'];
+    if (!VALID.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    try {
+        const { db, admin, isAvailable } = require('../firebase');
+        const col = getCol(BASE_COL, req);
+        const entry = { status, timestamp: new Date().toISOString(), updatedBy: updatedBy || 'system' };
+        if (isAvailable()) {
+            await db.collection(col).doc(req.params.id).update({
+                status,
+                statusHistory: admin.firestore.FieldValue.arrayUnion(entry),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+        res.json({ message: 'Status updated', status, entry });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Bulk Invoice Generation — returns PDF buffer
 router.post('/invoice/generate', async (req, res) => {
     try {
-        const { ids, invoiceNumber, invoiceDate, partyName, items, brand } = req.body;
-        await lrService.generateBulkInvoice(ids, invoiceNumber, invoiceDate, getCol(BASE_COL, req));
-        
+        const { ids, billNo, billDate, plantKey, items, brand } = req.body;
+        const invoiceNumber = billNo || req.body.invoiceNumber;
+        const invoiceDate = billDate || req.body.invoiceDate;
+
+        // Mark LRs as invoiced in database
+        if (ids && ids.length > 0) {
+            try {
+                await lrService.generateBulkInvoice(ids, invoiceNumber, invoiceDate, getCol(BASE_COL, req));
+            } catch (dbErr) {
+                console.warn('[Invoice] LR update failed (non-fatal):', dbErr.message);
+            }
+        }
+
+        // Generate PDF buffer
+        const { generateInvoicePDF } = require('../utils/pdfService');
+        const pdfBuffer = await generateInvoicePDF({ plantKey, billNo: invoiceNumber, billDate: invoiceDate, items }, null);
+
         // Background backup to Google Drive
         if (await driveService.isAuthorized()) {
             (async () => {
                 try {
                     const fs = require('fs');
                     const path = require('path');
-                    const { generateInvoicePDF } = require('../utils/pdfService');
-
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
                     const safeInvoiceNo = (invoiceNumber || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
                     const fileName = `Invoice_${safeInvoiceNo}_${Date.now()}.pdf`;
                     const localPath = path.join(TEMP_DIR, fileName);
 
-                    await generateInvoicePDF({ invoiceNumber, invoiceDate, partyName, items }, localPath);
+                    require('fs').writeFileSync(localPath, pdfBuffer);
 
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
                     const plantName = brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
                     const plantFolder = await driveService.getOrCreateFolder(plantName, rootId);
                     const finalFolder = await driveService.getOrCreateFolder('Invoices', plantFolder);
-                    
+
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
                     console.log(`[Backup-Hook] Invoice backed up: ${fileName}`);
@@ -178,7 +211,13 @@ router.post('/invoice/generate', async (req, res) => {
             })();
         }
 
-        res.json({ message: 'Invoice generated and LRs updated successfully' });
+        // Return PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="Invoice_${invoiceNumber || 'draft'}.pdf"`,
+            'Content-Length': pdfBuffer.length,
+        });
+        res.send(pdfBuffer);
     } catch (error) {
         console.error('Invoice generation failed:', error);
         res.status(500).json({ error: error.message });

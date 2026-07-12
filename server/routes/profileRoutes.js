@@ -16,9 +16,13 @@ router.get('/', async (req, res) => {
             docs = docs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         } else {
             const snapshot = await db.collection(getCol(PROFILE_COL, req))
-                .orderBy('createdAt', 'desc')
                 .get();
             docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            docs.sort((a, b) => {
+                const aT = a.createdAt?.seconds || new Date(a.createdAt || 0).getTime() / 1000;
+                const bT = b.createdAt?.seconds || new Date(b.createdAt || 0).getTime() / 1000;
+                return bT - aT;
+            });
         }
         res.json(docs);
     } catch (err) {
@@ -64,6 +68,37 @@ router.put('/:id', async (req, res) => {
         res.json({ id: req.params.id, ...payload });
     } catch (err) {
         console.error('update profile error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET driver trip history — GET /profiles/:id/trips
+router.get('/:id/trips', async (req, res) => {
+    try {
+        if (!isAvailable()) return res.json({ trips: [], stats: {} });
+        const profileDoc = await db.collection(getCol(PROFILE_COL, req)).doc(req.params.id).get();
+        if (!profileDoc.exists) return res.status(404).json({ error: 'Profile not found' });
+        const profile = profileDoc.data();
+        const driverName = (profile.name || '').toLowerCase().trim();
+        if (!driverName) return res.json({ trips: [], stats: {} });
+
+        const vCol = getCol('vouchers', req);
+        const snapshot = await db.collection(vCol).get();
+        const trips = snapshot.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(v => (v.driverName || '').toLowerCase().trim() === driverName)
+            .sort((a, b) => (b.date||'').localeCompare(a.date||''));
+
+        const calcNet = (v) => {
+            const g = (parseFloat(v.weight)||0) * (parseFloat(v.rate)||0);
+            const d = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel)||0);
+            return g - d - (parseFloat(v.advanceCash)||0) - (parseFloat(v.advanceOnline)||0) - (parseFloat(v.munshi)||0) - (parseFloat(v.shortage)||0) - (parseFloat(v.commission)||0);
+        };
+        const totalNet = trips.reduce((s, v) => s + calcNet(v), 0);
+        const totalWeight = trips.reduce((s, v) => s + (parseFloat(v.weight)||0), 0);
+        const stats = { tripCount: trips.length, totalNet, totalWeight: totalWeight.toFixed(2), avgNet: trips.length > 0 ? totalNet / trips.length : 0, lastTrip: trips[0]?.date || null };
+        res.json({ trips: trips.map(v => ({ id: v.id, date: v.date, lrNo: v.lrNo, truckNo: v.truckNo, destination: v.destination, weight: v.weight, net: calcNet(v) })), stats });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });

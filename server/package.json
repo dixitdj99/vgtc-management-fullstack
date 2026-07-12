@@ -18,6 +18,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.2",
     "nodemon": "^3.1.0",
+    "pdf-parse": "^2.4.5",
     "pdfkit": "^0.18.0",
     "pdfkit-table": "^0.1.99",
     "serverless-http": "^4.0.0",

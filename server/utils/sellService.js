@@ -8,9 +8,9 @@ const getAll = async (orgId, collection = DEFAULT_COLLECTION) => {
     if (firebaseAvailable()) {
         const snapshot = await db.collection(collection)
             .where('orgId', '==', orgId)
-            .orderBy('date', 'desc')
             .get();
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     }
     return localStore.getAll(collection)
         .filter(e => e.orgId === orgId)

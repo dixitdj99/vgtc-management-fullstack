@@ -9,7 +9,7 @@ const voucherService = require('../services/voucherService');
 const cashbookService = require('./cashbookService');
 const lrService = require('../services/lrService');
 
-const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
 
 const PLANTS = {
     SUPER: 'JK_Super',
@@ -32,7 +32,7 @@ async function runWeeklyBackup() {
         const plantOptions = [
             { id: PLANTS.SUPER,   name: 'JK Super',   saleBrand: 'dump',  voucherType: ['JK_Super'],   lrCol: 'loading_receipts' },
             { id: PLANTS.LAKSHMI, name: 'JK Lakshmi', saleBrand: 'jkl',   voucherType: ['JK_Lakshmi', 'Dump'], lrCol: 'jkl_loading_receipts' },
-            { id: PLANTS.DUMP,    name: 'Dump Bills', saleBrand: null,    voucherType: ['Kosli_Bill', 'Jajjhar_Bill', 'Dump'], lrCol: null },
+            { id: PLANTS.DUMP,    name: 'Dump Bills', saleBrand: null,    voucherType: ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump'], lrCol: null },
         ];
 
         // calculate LR range label helper

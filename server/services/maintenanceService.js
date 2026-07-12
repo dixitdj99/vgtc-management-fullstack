@@ -7,10 +7,16 @@ const COLLECTION = 'vehicle_maintenance';
 const PARTS_CATALOG = {
 
   // ── FLUIDS ──
+  engine_oil:        { name: 'Engine Oil', category: 'fluids', defaultKmInterval: 40000, defaultDayInterval: 180 },
   coolant:           { name: 'Coolant / Antifreeze', category: 'fluids', defaultKmInterval: 40000, defaultDayInterval: 365 },
   urea_def:          { name: 'Urea / DEF Fluid', category: 'fluids', defaultKmInterval: 5000, defaultDayInterval: 30 },
   brake_fluid:       { name: 'Brake Fluid', category: 'fluids', defaultKmInterval: 50000, defaultDayInterval: 365 },
   power_steering_fluid: { name: 'Power Steering Fluid', category: 'fluids', defaultKmInterval: 60000, defaultDayInterval: 730 },
+  clutch_oil:        { name: 'Clutch Oil', category: 'fluids', defaultKmInterval: 40000, defaultDayInterval: 365 },
+  tata_engine_oil:   { name: 'Engine Oil CK-4 15W-40 (Tata 1916)', category: 'fluids', partCode: 'TGP-2527091101', vehicleModel: 'Tata 1916', defaultKmInterval: 40000, defaultDayInterval: 180 },
+  tata_def_fluid:    { name: 'Genuine DEF / AdBlue (Tata 1916)', category: 'fluids', partCode: 'TGP-DEF-020L', vehicleModel: 'Tata 1916', defaultKmInterval: 10000, defaultDayInterval: 90, errorCodes: [{ code: 'P203F', desc: 'Reductant Level Too Low' }] },
+  leyland_engine_oil: { name: 'Engine Oil CK-4 15W-40 Leypower (Leyland 5525)', category: 'fluids', partCode: 'AL-4527091101', vehicleModel: 'Leyland 5525', defaultKmInterval: 40000, defaultDayInterval: 180 },
+  leyland_def_fluid:  { name: 'Leyblue DEF / AdBlue Fluid (Leyland 5525)', category: 'fluids', partCode: 'AL-DEF-026L', vehicleModel: 'Leyland 5525', defaultKmInterval: 10000, defaultDayInterval: 90, errorCodes: [{ code: 'P203F', desc: 'Reductant Level Low' }] },
 
   // ── TRANSMISSION & DRIVETRAIN ──
   gear_oil:          { name: 'Gear Oil (Gearbox)', category: 'transmission', defaultKmInterval: 40000, defaultDayInterval: 180 },
@@ -21,6 +27,23 @@ const PARTS_CATALOG = {
   crown_wheel:       { name: 'Crown Wheel', category: 'transmission', defaultKmInterval: 200000, defaultDayInterval: 1460 },
   pinion:            { name: 'Pinion', category: 'transmission', defaultKmInterval: 200000, defaultDayInterval: 1460 },
   main_shaft:        { name: 'Main Shaft', category: 'transmission', defaultKmInterval: 0, defaultDayInterval: 1460 },
+  tata_gear_oil:     { name: 'Gearbox Oil SAE 80W-90 (Tata 1916)', category: 'transmission', partCode: 'TGP-2527091202', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 365 },
+  tata_diff_oil:     { name: 'Differential Oil SAE 85W-140 (Tata 1916)', category: 'transmission', partCode: 'TGP-2527091203', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 365 },
+  leyland_gear_oil:  { name: 'Gearbox Oil SAE 80W-90 (Leyland 5525)', category: 'transmission', partCode: 'AL-4527091202', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 365 },
+  leyland_diff_oil:  { name: 'Differential Oil SAE 85W-140 (Leyland 5525)', category: 'transmission', partCode: 'AL-4527091203', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 365 },
+
+  // ── ENGINE & FILTERS ──
+  air_filter:        { name: 'Air Filter (Generic)', category: 'engine', defaultKmInterval: 40000, defaultDayInterval: 365 },
+  tata_oil_filter:   { name: 'Engine Oil Filter (Tata 1916)', category: 'engine', partCode: 'TGP-5412180302', vehicleModel: 'Tata 1916', defaultKmInterval: 40000, defaultDayInterval: 180, errorCodes: [{ code: 'P0196', desc: 'Engine Oil Temp Sensor Range/Performance' }] },
+  tata_fuel_filter_primary: { name: 'Primary Fuel Filter (Water Separator) (Tata 1916)', category: 'engine', partCode: 'TGP-2773091301', vehicleModel: 'Tata 1916', defaultKmInterval: 40000, defaultDayInterval: 180, errorCodes: [{ code: 'P0087', desc: 'Fuel Rail Pressure Too Low' }] },
+  tata_fuel_filter_secondary: { name: 'Secondary Fuel Filter (Fine) (Tata 1916)', category: 'engine', partCode: 'TGP-2773091302', vehicleModel: 'Tata 1916', defaultKmInterval: 40000, defaultDayInterval: 180, errorCodes: [{ code: 'P0088', desc: 'Fuel Rail Pressure Too High' }] },
+  tata_air_filter:   { name: 'Air Filter Kit (Primary & Secondary) (Tata 1916)', category: 'engine', partCode: 'TGP-2773091901', vehicleModel: 'Tata 1916', defaultKmInterval: 40000, defaultDayInterval: 365, errorCodes: [{ code: 'P0101', desc: 'MAF Sensor Circuit Range/Performance' }] },
+  tata_dpf_filter:   { name: 'DPF Filter Assembly (Tata 1916)', category: 'engine', partCode: 'TGP-5847490201', vehicleModel: 'Tata 1916', defaultKmInterval: 120000, defaultDayInterval: 730, errorCodes: [{ code: 'P2002', desc: 'DPF Efficiency Below Threshold' }, { code: 'P2463', desc: 'DPF Soot Accumulation' }] },
+  leyland_oil_filter: { name: 'Engine Oil Filter (Leyland 5525)', category: 'engine', partCode: 'AL-5412180402', vehicleModel: 'Leyland 5525', defaultKmInterval: 40000, defaultDayInterval: 180, errorCodes: [{ code: 'P0196', desc: 'Engine Oil Temp Sensor Range/Performance' }] },
+  leyland_fuel_filter_primary: { name: 'Primary Fuel Filter (Separator) (Leyland 5525)', category: 'engine', partCode: 'AL-2773091401', vehicleModel: 'Leyland 5525', defaultKmInterval: 40000, defaultDayInterval: 180, errorCodes: [{ code: 'P0087', desc: 'Fuel Rail Pressure Too Low' }] },
+  leyland_fuel_filter_secondary: { name: 'Secondary Fuel Filter (Leyland 5525)', category: 'engine', partCode: 'AL-2773091402', vehicleModel: 'Leyland 5525', defaultKmInterval: 40000, defaultDayInterval: 180, errorCodes: [{ code: 'P0088', desc: 'Fuel Rail Pressure Too High' }] },
+  leyland_air_filter: { name: 'Air Filter Kit Dual-Stage (Leyland 5525)', category: 'engine', partCode: 'AL-2773091902', vehicleModel: 'Leyland 5525', defaultKmInterval: 40000, defaultDayInterval: 365, errorCodes: [{ code: 'P0101', desc: 'MAF Sensor Circuit Range/Performance' }] },
+  leyland_dpf_filter: { name: 'DPF Muffler Filter Assembly (Leyland 5525)', category: 'engine', partCode: 'AL-5847490202', vehicleModel: 'Leyland 5525', defaultKmInterval: 120000, defaultDayInterval: 730, errorCodes: [{ code: 'P2002', desc: 'DPF Efficiency Below Threshold' }, { code: 'P2463', desc: 'DPF Soot Accumulation' }] },
 
   // ── AXLE & HUBS ──
   front_hub_left:    { name: 'Front Hub - Left', category: 'axle_hubs', defaultKmInterval: 80000, defaultDayInterval: 365 },
@@ -71,6 +94,9 @@ const PARTS_CATALOG = {
 
   // ── ELECTRICAL & SENSORS ──
   battery:           { name: 'Battery', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 730 },
+  parking_lights:    { name: 'Parking Lights', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 365 },
+  alternator:        { name: 'Alternator', category: 'electrical', defaultKmInterval: 100000, defaultDayInterval: 730 },
+  self_motor:        { name: 'Self Motor / Starter Motor', category: 'electrical', defaultKmInterval: 100000, defaultDayInterval: 730 },
   headlight_left:    { name: 'Headlight - Left', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 365 },
   headlight_right:   { name: 'Headlight - Right', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 365 },
   fog_light_left:    { name: 'Fog Light - Left', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 365 },
@@ -84,6 +110,26 @@ const PARTS_CATALOG = {
   sensor_urea:       { name: 'Urea / NOx Sensor', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 365 },
   sensor_exhaust:    { name: 'Exhaust Temp Sensor', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 730 },
   urea_fault:        { name: 'Urea System Fault Repair', category: 'electrical', defaultKmInterval: 0, defaultDayInterval: 0 },
+  
+  // BS6 Electrical Engine Sensors & Errors (Tata 1916)
+  tata_sensor_maf:   { name: 'Mass Air Flow (MAF) Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020301', vehicleModel: 'Tata 1916', defaultKmInterval: 60000, defaultDayInterval: 365, errorCodes: [{ code: 'P0100', desc: 'MAF Sensor Circuit Malfunction' }, { code: 'P0101', desc: 'MAF Sensor Circuit Range/Performance' }] },
+  tata_sensor_nox_upstream: { name: 'Upstream NOx Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020401', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P2200', desc: 'NOx Sensor Circuit Bank 1' }, { code: 'P220A', desc: 'NOx Sensor Supply Voltage Bank 1' }] },
+  tata_sensor_nox_downstream: { name: 'Downstream NOx Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020402', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P2201', desc: 'NOx Sensor Range/Performance Bank 1' }, { code: 'P229F', desc: 'NOx Sensor 2 Circuit Range/Performance' }] },
+  tata_sensor_dpf_pressure: { name: 'DPF Differential Pressure Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020501', vehicleModel: 'Tata 1916', defaultKmInterval: 60000, defaultDayInterval: 365, errorCodes: [{ code: 'P2452', desc: 'DPF Pressure Sensor A Circuit' }, { code: 'P2453', desc: 'DPF Pressure Sensor A Circuit Range/Performance' }] },
+  tata_sensor_egt:   { name: 'Exhaust Gas Temp (EGT) Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020601', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P0544', desc: 'EGT Sensor Circuit Bank 1 Sensor 1' }, { code: 'P0546', desc: 'EGT Sensor Circuit High Bank 1 Sensor 1' }] },
+  tata_sensor_rail_pressure: { name: 'Fuel Rail Pressure Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020701', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P0190', desc: 'Fuel Rail Pressure Sensor Circuit' }, { code: 'P0191', desc: 'Fuel Rail Pressure Sensor Range/Performance' }] },
+  tata_sensor_coolant_temp: { name: 'Coolant Temp Sensor (ECT) (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020801', vehicleModel: 'Tata 1916', defaultKmInterval: 60000, defaultDayInterval: 365, errorCodes: [{ code: 'P0117', desc: 'ECT Sensor Circuit Low Input' }, { code: 'P0118', desc: 'ECT Sensor Circuit High Input' }] },
+  tata_sensor_crank_position: { name: 'Crankshaft Position Sensor (Tata 1916)', category: 'electrical', partCode: 'TGP-5749020901', vehicleModel: 'Tata 1916', defaultKmInterval: 80000, defaultDayInterval: 730, errorCodes: [{ code: 'P0335', desc: 'Crankshaft Position Sensor A Circuit Malfunction' }, { code: 'P0336', desc: 'Crankshaft Position Sensor A Circuit Range/Performance' }] },
+
+  // BS6 Electrical Engine Sensors & Errors (Ashok Leyland 5525)
+  leyland_sensor_oil_pressure: { name: 'Oil Pressure & Temp Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-FPV00400', vehicleModel: 'Leyland 5525', defaultKmInterval: 60000, defaultDayInterval: 365, errorCodes: [{ code: 'P0196', desc: 'Engine Oil Temperature Sensor Range' }, { code: 'P0198', desc: 'Engine Oil Temperature Sensor Circuit High' }] },
+  leyland_sensor_nox_upstream: { name: 'Upstream NOx Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020411', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P2200', desc: 'NOx Sensor Circuit Bank 1 Sensor 1' }, { code: 'P2202', desc: 'NOx Sensor Circuit Low Bank 1 Sensor 1' }] },
+  leyland_sensor_nox_downstream: { name: 'Downstream NOx Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020412', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P2201', desc: 'NOx Sensor Circuit Range/Performance Bank 1' }, { code: 'P229E', desc: 'NOx Sensor 2 Circuit Bank 1 Sensor 2' }] },
+  leyland_sensor_dpf_pressure: { name: 'DPF Differential Pressure Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020511', vehicleModel: 'Leyland 5525', defaultKmInterval: 60000, defaultDayInterval: 365, errorCodes: [{ code: 'P2452', desc: 'DPF Differential Pressure Sensor Circuit' }, { code: 'P2454', desc: 'DPF Differential Pressure Sensor Circuit Low' }] },
+  leyland_sensor_egt: { name: 'Exhaust Gas Temp (EGT) Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020611', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P0544', desc: 'Exhaust Gas Temperature Sensor Circuit Bank 1 Sensor 1' }, { code: 'P0545', desc: 'Exhaust Gas Temperature Sensor Circuit Low Bank 1' }] },
+  leyland_sensor_rail_pressure: { name: 'Fuel Rail Pressure Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020711', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 365, errorCodes: [{ code: 'P0190', desc: 'Fuel Rail Pressure Sensor Circuit Malfunction' }, { code: 'P0193', desc: 'Fuel Rail Pressure Sensor Circuit High Input' }] },
+  leyland_sensor_coolant_temp: { name: 'Coolant Temp Sensor (ECT) (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020811', vehicleModel: 'Leyland 5525', defaultKmInterval: 60000, defaultDayInterval: 365, errorCodes: [{ code: 'P0117', desc: 'Engine Coolant Temperature Sensor Circuit Low' }, { code: 'P0118', desc: 'Engine Coolant Temperature Sensor Circuit High' }] },
+  leyland_sensor_crank_position: { name: 'Crankshaft Position Sensor (Leyland 5525)', category: 'electrical', partCode: 'AL-5749020911', vehicleModel: 'Leyland 5525', defaultKmInterval: 80000, defaultDayInterval: 730, errorCodes: [{ code: 'P0335', desc: 'Crankshaft Position Sensor Circuit Malfunction' }, { code: 'P0339', desc: 'Crankshaft Position Sensor Circuit Intermittent' }] },
 
   // ── BODY & GLASS ──
   windshield:        { name: 'Windshield Glass', category: 'body', defaultKmInterval: 0, defaultDayInterval: 1460 },
@@ -97,6 +143,8 @@ const PARTS_CATALOG = {
   mirror_left:       { name: 'Side Mirror - Left', category: 'body', defaultKmInterval: 0, defaultDayInterval: 730 },
   mirror_right:      { name: 'Side Mirror - Right', category: 'body', defaultKmInterval: 0, defaultDayInterval: 730 },
   cabin_damage:      { name: 'Cabin Body Damage', category: 'body', defaultKmInterval: 0, defaultDayInterval: 0 },
+  tata_ac_filter:    { name: 'AC Cabin Filter (Tata 1916)', category: 'body', partCode: 'TGP-2873830201', vehicleModel: 'Tata 1916', defaultKmInterval: 20000, defaultDayInterval: 180 },
+  leyland_ac_filter: { name: 'AC Cabin Filter (Leyland 5525)', category: 'body', partCode: 'AL-2873830202', vehicleModel: 'Leyland 5525', defaultKmInterval: 20000, defaultDayInterval: 180 },
 
   // ── TRAILER / CARGO ──
   coupling_pin:      { name: 'Coupling Pin', category: 'trailer', defaultKmInterval: 0, defaultDayInterval: 365 },
@@ -243,7 +291,7 @@ const getMaintenanceAlerts = async (orgId) => {
     const key = `${r.truckNo}_${r.partId}`;
     if (!alerts[key]) {
       const partInfo = PARTS_CATALOG[r.partId];
-      if (!partInfo) return;
+      if (!partInfo) continue;
 
       // Check for custom intervals in the latest record
       const kmInterval = r.customIntervalKm !== undefined && r.customIntervalKm !== null 

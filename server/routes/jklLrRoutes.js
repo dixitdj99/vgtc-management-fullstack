@@ -25,7 +25,7 @@ router.post('/', async (req, res) => {
                     const path = require('path');
                     const { generateLoadingReceiptPDF } = require('../utils/pdfService');
 
-                    const TEMP_DIR = path.join(__dirname, '..', 'temp_backups');
+                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
                     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
                     const fullData = { ...req.body, ...result };
@@ -38,7 +38,9 @@ router.post('/', async (req, res) => {
 
                     const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
                     const plantFolder = await driveService.getOrCreateFolder('JK_Lakshmi', rootId);
-                    const finalFolder = await driveService.getOrCreateFolder('Loading Receipt Individual', plantFolder);
+                    const lrFolder = await driveService.getOrCreateFolder('Loading Receipts', plantFolder);
+                    const monthStr = new Date(fullData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
+                    const finalFolder = await driveService.getOrCreateFolder(monthStr, lrFolder);
                     await driveService.uploadFile(localPath, fileName, finalFolder);
                     if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 
@@ -75,7 +77,7 @@ router.get('/', async (req, res) => {
 // Update billing only
 router.patch('/:id/billing', async (req, res) => {
     try {
-        await lrService.updateBillingStatus(req.orgId, req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
+        await lrService.updateBillingStatus(req.params.id, req.body.billing, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -92,7 +94,7 @@ router.patch('/:id/billing', async (req, res) => {
 // Update full LR (Support both PUT and PATCH)
 router.put('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(JKL_LR_COL, req));
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -107,7 +109,7 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
     try {
-        await lrService.updateLoadingReceipt(req.orgId, req.params.id, req.body, getCol(JKL_LR_COL, req));
+        await lrService.updateLoadingReceipt(req.params.id, req.body, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');
@@ -123,7 +125,7 @@ router.patch('/:id', async (req, res) => {
 // Delete
 router.delete('/:id', async (req, res) => {
     try {
-        await lrService.deleteLoadingReceipt(req.orgId, req.params.id, getCol(JKL_LR_COL, req));
+        await lrService.deleteLoadingReceipt(req.params.id, getCol(JKL_LR_COL, req));
         const driveService = require('../utils/driveService');
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');

@@ -4,7 +4,19 @@ let db;
 let isFirebaseInitialized = false;
 
 try {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    if (process.env.FIREBASE_CONFIG || process.env.FUNCTIONS_EMULATOR || (!process.env.FIREBASE_SERVICE_ACCOUNT && process.env.NODE_ENV === 'production')) {
+        // Load using Default Application Credentials (GCP, App Hosting, Cloud Functions)
+        try {
+            console.log('[Firebase] Initializing via GCP Default Credentials...');
+            admin.initializeApp();
+            db = admin.firestore();
+            isFirebaseInitialized = true;
+            console.log('[Firebase] Success: Connected to Firestore via Default Credentials');
+        } catch (e) {
+            console.error('[Firebase] Critical: Failed to initialize via default credentials.');
+            throw e;
+        }
+    } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         // Load from environment variable (Netlify)
         try {
             console.log('[Firebase] Attempting initialization via environment variable...');

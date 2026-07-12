@@ -14,6 +14,7 @@ const SPREADSHEETS = {
             'Dump': 'JK Super Dump',
             'Kosli_Bill': 'Kosli Bill',
             'Jajjhar_Bill': 'Jajjhar Bill',
+            'Bahadurgarh_Bill': 'Bahadurgarh Bill',
             'JK_Lakshmi': 'JK Lakshmi Factory', // Fallback, only created for jklakshmi brand
         },
         headers: {
@@ -22,15 +23,16 @@ const SPREADSHEETS = {
                 'Weight (MT)', 'Rate (Rs/MT)', 'Gross Total (Rs)',
                 'Diesel Advance', 'Cash Advance', 'Online Advance',
                 'Munshi', 'Shortage', 'Commission',
+                'Tyre Puncture', 'Tyre Greasing & Air', 'Extra Cash', 'Extra Cash Remark',
                 'Net Balance (Rs)', 'Paid Balance (Rs)', 'Outstanding (Rs)',
                 'Payment Status', 'Payment Cleared Date',
-                'Pump', 'Bags', 'Diesel Verified', 'Created At',
+                'Pump', 'Bags', 'Diesel Verified', 'Diesel Actual Litres', 'Diesel Pump', 'Created At',
                 'Voucher ID',
                 'Party Name', 'Party Code', 'Bill No.', 'Materials'
             ]
         },
-        idColIndex: 23, // W
-        idColLetter: 'W:W'
+        idColIndex: 29, // AC (was W=23, now shifted by 6 new columns)
+        idColLetter: 'AC:AC'
     },
     lr_receipts: {
         folder: 'LR_Receipts',
@@ -153,7 +155,7 @@ async function getOrCreateSpreadsheet(moduleKey, brand = 'jksuper') {
     // Compose Tabs based on brand (specifically for Balance Sheet, filter out wrong brands)
     let myTabs = Object.entries(config.tabs);
     if (moduleKey === 'balance') {
-        if (brand === 'jksuper') myTabs = myTabs.filter(([k]) => k === 'JK_Super' || k === 'Dump' || k === 'Kosli_Bill' || k === 'Jajjhar_Bill');
+        if (brand === 'jksuper') myTabs = myTabs.filter(([k]) => k === 'JK_Super' || k === 'Dump' || k === 'Kosli_Bill' || k === 'Jajjhar_Bill' || k === 'Bahadurgarh_Bill');
         if (brand === 'jklakshmi') myTabs = myTabs.filter(([k]) => k === 'JK_Lakshmi' || k === 'Dump');
     }
 
@@ -333,15 +335,22 @@ async function deleteRow(moduleKey, tabKey, brand, rowId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function voucherToRow(v) {
-    const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+    // Support multi-delivery vouchers
+    const gross = v.deliveries?.length > 0
+        ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+        : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+
     const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
-    const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
-    const cash = parseFloat(v.advanceCash) || 0;
-    const online = parseFloat(v.advanceOnline) || 0;
-    const munshi = parseFloat(v.munshi) || 0;
-    const shortage = parseFloat(v.shortage) || 0;
+    const diesel   = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
+    const cash     = parseFloat(v.advanceCash) || 0;
+    const online   = parseFloat(v.advanceOnline) || 0;
+    const munshi   = parseFloat(v.munshi) || 0;
+    const shortage  = parseFloat(v.shortage) || 0;
     const commission = parseFloat(v.commission) || 0;
-    const net = gross - (diesel + cash + online + munshi + shortage + commission);
+    const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+    const tyreGreasing = (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
+    const extraCash  = parseFloat(v.extraCash) || 0;
+    const net = gross - (diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash);
     const paid = parseFloat(v.paidBalance) || 0;
     const outstanding = Math.max(0, net - paid);
 
@@ -351,18 +360,31 @@ function voucherToRow(v) {
         createdAtStr = d.toLocaleDateString('en-IN');
     }
 
-    const materialBreakdown = v.materials && v.materials.length > 0 
-        ? v.materials.map(m => m.type).join(', ') 
+    // LR numbers — include delivery LRs for multi-delivery vouchers
+    const lrDisplay = v.deliveries?.length > 0
+        ? v.deliveries.map(d => d.lrNo).filter(Boolean).join(', ')
+        : (v.lrNo || '');
+    const destDisplay = v.deliveries?.length > 0
+        ? v.deliveries.map(d => [d.destination, d.partyName].filter(Boolean).join('/')).join(' | ')
+        : (v.destination || '');
+
+    const materialBreakdown = v.materials?.length > 0
+        ? v.materials.map(m => m.type).join(', ')
         : (v.materialName || 'CEMENT');
 
     return [
-        v.lrNo || '', v.date || '', v.truckNo || '', v.destination || '',
+        lrDisplay, v.date || '', v.truckNo || '', destDisplay,
         v.weight || '', v.rate || '', Math.round(gross),
         dieselPending ? 'FULL (Pending)' : (v.advanceDiesel || ''),
-        v.advanceCash || '', v.advanceOnline || '', v.munshi || '', v.shortage || '', v.commission || '',
+        v.advanceCash || '', v.advanceOnline || '',
+        v.munshi || '', v.shortage || '', v.commission || '',
+        tyrePuncture || '', tyreGreasing || '', extraCash || '', v.extraCashRemark || '',
         Math.round(net), Math.round(paid), Math.round(outstanding),
         outstanding <= 0 ? 'Cleared' : 'Pending', v.paymentClearedDate || '',
-        v.pump || '', v.bags || '', v.isDieselVerified ? 'Yes' : 'No', createdAtStr, v.id || '',
+        v.pump || '', v.bags || '',
+        v.isDieselVerified ? 'Yes' : 'No',
+        v.dieselActualLitres || '', v.dieselPumpName || '',
+        createdAtStr, v.id || '',
         v.partyName || '', v.partyCode || '', v.billNo || '', materialBreakdown
     ];
 }

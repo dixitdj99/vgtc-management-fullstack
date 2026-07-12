@@ -16,6 +16,8 @@ const kosliLrRoutes = require('./routes/kosliLrRoutes');
 const jhajjarLrRoutes = require('./routes/jhajjarLrRoutes');
 const kosliStockRoutes = require('./routes/kosliStockRoutes');
 const jhajjarStockRoutes = require('./routes/jhajjarStockRoutes');
+const bahadurgarhLrRoutes = require('./routes/bahadurgarhLrRoutes');
+const bahadurgarhStockRoutes = require('./routes/bahadurgarhStockRoutes');
 const stockService = require('./utils/stockService');
 
 // JK Lakshmi specific routes
@@ -34,37 +36,88 @@ const profileRoutes = require('./routes/profileRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const { requireAuth } = require('./middleware/auth');
-const orgRoutes = require('./routes/orgRoutes');
-const { seedDefaultOrg } = require('./services/orgService');
+const auditRoutes = require('./routes/auditRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
+const { getEnvCol } = require('./utils/collectionUtils');
 
 // Run migrations on startup (local only — Netlify filesystem is read-only)
 if (!process.env.NETLIFY) {
     stockService.init();
 }
 
+const helmet = require('helmet');
 const app = express();
-app.use(express.json({ limit: '50mb' }));
+
+// Security headers
+app.use(helmet({
+    contentSecurityPolicy: false, // disabled — frontend handles CSP via meta tags
+    crossOriginEmbedderPolicy: false,
+}));
+
+// CORS — restrict to known origins in production
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
+            origin.endsWith('.hosted.app') || 
+            origin.includes('vgtc-management') ||
+            origin.endsWith('vgtc.site');
+        if (isAllowed) return cb(null, true);
+        return cb(new Error(`CORS: origin ${origin} not allowed`), false);
+    },
+    credentials: true,
+}));
+
+// Reduced payload limit (was 50mb — unnecessary for this app)
+app.use(express.json({ limit: '10mb' }));
 
 const partyRoutes = require('./routes/partyRoutes');
 
 app.use('/api/kosli/lr', requireAuth, kosliLrRoutes);
 app.use('/api/jhajjar/lr', requireAuth, jhajjarLrRoutes);
+app.use('/api/bahadurgarh/lr', requireAuth, bahadurgarhLrRoutes);
 app.use('/api/vouchers', requireAuth, voucherRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/cashbook', requireAuth, cashbookRoutes);
 app.use('/api/kosli/stock', requireAuth, kosliStockRoutes);
 app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
+app.use('/api/bahadurgarh/stock', requireAuth, bahadurgarhStockRoutes);
 app.use('/api/sell', requireAuth, sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/lr', requireAuth, lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
-app.use('/api/org', requireAuth, orgRoutes);
+app.use('/api/audit', auditRoutes);
 
-// Seed default org
-seedDefaultOrg().catch(console.error);
+// Temporary deployment debug route
+app.get('/api/debug-files', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+        const pathsToCheck = [
+            path.join(__dirname, '../client/dist'),
+            path.join(__dirname, '../client/dist/index.html'),
+            path.join(__dirname, '../client/dist/assets'),
+            __dirname,
+            path.join(__dirname, '..')
+        ];
+        const results = {};
+        for (const p of pathsToCheck) {
+            results[p] = {
+                exists: fs.existsSync(p),
+                files: fs.existsSync(p) && fs.statSync(p).isDirectory() ? fs.readdirSync(p) : null
+            };
+        }
+        res.json(results);
+    } catch (e) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
 
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {
@@ -90,17 +143,26 @@ app.use('/api/mileage', requireAuth, mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);
 app.use('/api/payments', requireAuth, paymentRoutes);
 app.use('/api/maintenance', requireAuth, maintenanceRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/tolls', requireAuth, require('./routes/tollRoutes'));
 
 const PORT = process.env.PORT || 5000;
 
-app.get('/', async (req, res) => {
+const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+
+app.get('/', async (req, res, next) => {
     const code = req.query.code;
     const error = req.query.error;
 
+    if (!code && !error) {
+        return next();
+    }
+
     if (error) {
+        const safeError = escapeHtml(error);
         return res.send(`<html><body><script>
-            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: '${error}' }, '*'); window.close(); }
-        </script><p>Authorization failed: ${error}</p></body></html>`);
+            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Authorization failed' }, '*'); window.close(); }
+        </script><p>Authorization failed: ${safeError}</p></body></html>`);
     }
 
     if (code) {
@@ -119,17 +181,17 @@ app.get('/', async (req, res) => {
         } catch (e) {
             return res.send(`<html><body><script>
                 if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Token exchange failed' }, '*'); window.close(); }
-            </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#f43f5e">&#x274c; Authorization failed: ${e.message}</p></body></html>`);
+            </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#f43f5e">&#x274c; Authorization failed.</p></body></html>`);
         }
     }
 
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
+if (!process.env.NETLIFY) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Server is running on port ${PORT}`);
-        
+
         // Schedule weekly backup: every Sunday at 00:00
         cron.schedule('0 0 * * 0', () => {
             console.log('[Cron] Running scheduled weekly backup...');
@@ -137,11 +199,35 @@ if (process.env.NODE_ENV !== 'production' && !process.env.NETLIFY) {
         });
 
         // Schedule daily fleet alerts: every day at 09:00 AM
-        cron.schedule('0 9 * * *', () => {
-            console.log('[Cron] Running daily fleet alert checks...');
-            alertService.sendDailyAlertReport('vgtc', 'vehicles'); 
+        // Fetches all orgs from DB and sends alerts for each
+        cron.schedule('0 9 * * *', async () => {
+            console.log('[Cron] Running daily fleet alert checks for all organizations...');
+            try {
+                const { db } = require('./firebase');
+                const orgsSnapshot = await db.collection('organizations').get();
+                const orgs = orgsSnapshot.docs.map(doc => doc.data());
+
+                for (const org of orgs) {
+                    const orgId = org.id || org.orgId;
+                    if (orgId) {
+                        console.log(`[Cron] Sending alert for org: ${orgId}`);
+                        await alertService.sendDailyAlertReport(orgId, getEnvCol('vehicles'));
+                    }
+                }
+            } catch (err) {
+                console.error('[Cron] Alert scheduling error:', err);
+            }
         });
     });
 }
+
+// Serve static files from Vite build in production/App Hosting
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// Catch-all route to serve the React SPA index.html for client-side routing
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
 
 module.exports = app;

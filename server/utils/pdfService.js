@@ -109,24 +109,38 @@ async function generateReceiptPDF(title, data, outputPath) {
  * Used for individual per-creation backups.
  */
 async function generateVoucherPDF(v, outputPath) {
-    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill';
-    
-    const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+
+    // Support multi-delivery vouchers (deliveries array)
+    const gross = v.deliveries?.length > 0
+        ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+        : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+
     const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
-    const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
-    const cash = parseFloat(v.advanceCash) || 0;
-    const online = parseFloat(v.advanceOnline) || 0;
-    const munshi = parseFloat(v.munshi) || 0;
+    const diesel   = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
+    const cash     = parseFloat(v.advanceCash) || 0;
+    const online   = parseFloat(v.advanceOnline) || 0;
+    const weight   = parseFloat(v.weight) || 0;
+    const munshi   = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+    const shortage  = parseFloat(v.shortage) || 0;
     const commission = parseFloat(v.commission) || 0;
-    const totalDeductions = diesel + cash + online + munshi + commission;
+    const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+    const tyreGreasing = (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
+    const extraCash  = parseFloat(v.extraCash) || 0;
+    const totalDeductions = diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash;
     const net = gross - totalDeductions;
 
+    // Match exact same deduction list as browser printVoucher function
     const deductions = [
-        { label: 'Diesel Advance', value: diesel, isPending: dieselPending },
-        { label: 'Cash Advance', value: cash },
-        { label: 'Online Advance', value: online },
-        { label: 'Munshi', value: munshi },
-        { label: 'Commission', value: commission },
+        { label: 'Diesel Advance',    value: diesel,    isPending: dieselPending },
+        { label: 'Cash Advance',      value: cash },
+        { label: 'Online Advance',    value: online },
+        { label: 'Munshi',            value: munshi },
+        { label: 'Shortage',          value: shortage },
+        { label: 'Commission',        value: commission },
+        { label: 'Tyre Puncture',     value: tyrePuncture },
+        { label: 'Tyre Greasing & Air', value: tyreGreasing },
+        { label: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, value: extraCash },
     ].filter(d => d.value > 0 || d.isPending);
 
     return new Promise((resolve, reject) => {
@@ -170,7 +184,8 @@ async function generateVoucherPDF(v, outputPath) {
             doc.moveTo(M, y + 15).lineTo(col1, y + 15).stroke();
             doc.text('J.K. Super Cement Ltd.', M + 5, y + 20);
             doc.moveTo(M, y + 30).lineTo(col1, y + 30).stroke();
-            doc.text(v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar', M + 5, y + 35, { align: 'center', width: col1 - M });
+            const consignorBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
+            doc.text(consignorBranch, M + 5, y + 35, { align: 'center', width: col1 - M });
             
             const pName = v.partyName ? v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '') : '';
             doc.text(`M/s.  ${pName}`, col1 + 5, y + 5, { width: 190 });
@@ -186,7 +201,8 @@ async function generateVoucherPDF(v, outputPath) {
             
             doc.text(`Truck No.  ${v.truckNo || ''}`, col2 + 5, y + 5);
             doc.moveTo(col2, y + 15).lineTo(PW - M, y + 15).stroke();
-            doc.text(`From : ${v.type === 'Kosli_Bill' ? 'Kosli' : 'Jhajjar'}`, col2 + 5, y + 18);
+            const fromBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
+            doc.text(`From : ${fromBranch}`, col2 + 5, y + 18);
             doc.moveTo(col2, y + 30).lineTo(PW - M, y + 30).stroke();
             doc.text(`To  ${v.destination || ''}`, col2 + 50, y + 18);
             doc.text(`LR No. ${v.lrNo || ''}`, col2 + 5, y + 35);
@@ -278,138 +294,130 @@ async function generateVoucherPDF(v, outputPath) {
             return;
         }
 
-        // PW=467 (approx 165mm), PH depends on content, we will use a tall fixed height
-        const PW = 467, PH = 550, M = 28, CW = PW - M * 2;
-        const doc = new PDFDocument({ margin: 0, size: [PW, PH] });
+        const doc = new PDFDocument({ margin: 30, size: 'A6' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
-
-        // Draw outer thick black border (like the physical slip)
-        doc.rect(M - 10, M - 10, CW + 20, PH - (M * 2) + 20).strokeColor('#000').lineWidth(2).stroke();
-
+        const PW = doc.page.width, M = 30, CW = PW - M * 2;
         let y = M;
 
-        function dashedLine(dy) {
-            doc.moveTo(M, dy).lineTo(PW - M, dy).strokeColor('#000').dash(4, { space: 4 }).lineWidth(0.5).stroke();
-            doc.undash();
-        }
-
-        doc.fontSize(16).font('Helvetica-Bold').fillColor('#000').text('VIKAS GOODS TRANSPORT', { align: 'center', characterSpacing: 1.5 });
-        doc.fontSize(10).font('Helvetica').fillColor('#555')
-            .text(`${v.type ? v.type.replace('_', ' ') : 'Dump'} Voucher`, { align: 'center' });
-        y += 24;
-
-        dashedLine(y); y += 8;
-
-        // LR + Date
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('LR No.:', M, y);
-        doc.font('Helvetica').text(`#${v.lrNo}`, M + 45, y);
-        doc.font('Helvetica-Bold').text('Date:', PW / 2, y);
-        doc.font('Helvetica').text(v.date || '—', PW / 2 + 35, y);
-        y += 18;
-
-        // Truck + Destination
-        doc.font('Helvetica-Bold').text('Truck:', M, y);
-        doc.font('Helvetica').text(v.truckNo || '—', M + 42, y);
-        doc.font('Helvetica-Bold').text('Destination:', PW / 2, y);
-        doc.font('Helvetica').text(v.destination || '—', PW / 2 + 70, y);
+        // Header — matches browser print
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
         y += 16;
-        
-        doc.font('Helvetica-Bold').text('Party:', M, y);
-        const pText = v.partyName ? `${v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '')} ${v.partyCode ? `(${v.partyCode})` : ''}` : '—';
-        doc.font('Helvetica').text(pText, M + 42, y, { width: CW - 42 });
+        doc.fontSize(10).font('Helvetica-Bold').text('Voucher', M, y, { align: 'center', width: CW });
+        y += 12;
+        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
+        y += 12;
+        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
+        y += 10;
+
+        // LR badge — show all delivery LRs if multi-delivery
+        const hasDeliveries = v.deliveries && v.deliveries.length > 0;
+        const lrDisplay = hasDeliveries
+            ? `LRs: ${v.deliveries.map(d => d.lrNo).filter(Boolean).join(', ')}`
+            : `LR # ${v.lrNo}`;
+        const bw = Math.min(doc.widthOfString(lrDisplay) + 20, CW);
+        doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
+        doc.fontSize(hasDeliveries ? 8 : 12).font('Helvetica-Bold').text(lrDisplay, M, y + (hasDeliveries ? 5 : 4), { align: 'center', width: CW });
+        y += 22;
+        doc.fontSize(8).font('Helvetica').fillColor('#000').text(v.type ? v.type.replace(/_/g, ' ') : '', M, y, { align: 'center', width: CW });
         y += 14;
 
-        dashedLine(y); y += 10;
-
-        // 2x2 grid: Weight, Bags, Rate, Pump
-        const CELLW = (CW - 6) / 2, CELLH = 34;
-        const drawCell = (label, value, cx, cy) => {
-            doc.rect(cx, cy, CELLW, CELLH).strokeColor('#ccc').lineWidth(0.5).stroke();
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text(label.toUpperCase(), cx + 8, cy + 6, { width: CELLW - 10 });
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text(String(value || '—'), cx + 8, cy + 18, { width: CELLW - 10 });
+        // Info rows
+        const drawInfoRow = (label, value) => {
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), M, y);
+            doc.font('Helvetica').text(String(value || '—'), M + CW * 0.4, y, { width: CW * 0.6, align: 'right' });
+            y += 14;
+            doc.moveTo(M, y - 2).lineTo(PW - M, y - 2).strokeColor('#000').lineWidth(0.3).stroke();
         };
-        drawCell('Weight', `${v.weight} MT`, M, y);
-        drawCell('Bags', v.bags || '—', M + CELLW + 6, y);
-        y += CELLH + 6;
-        drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
-        drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 6, y);
-        y += CELLH + 12;
+        drawInfoRow('Date', v.date);
+        drawInfoRow('Truck No.', v.truckNo);
 
-        if (v.materials && v.materials.length > 0) {
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('MATERIALS', M, y);
-            y += 12;
-            doc.moveTo(M, y-2).lineTo(PW - M, y-2).strokeColor('#eee').stroke();
-            v.materials.forEach(m => {
-                doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(m.type || m.material || 'Cement', M, y);
-                doc.font('Helvetica').text(m.bags + ' Bags', M + 140, y);
-                doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, PW - M - 80, y, { align: 'right', width: 80 });
-                y += 16;
+        if (hasDeliveries) {
+            // Multi-delivery: show each destination inline
+            v.deliveries.forEach(d => {
+                drawInfoRow(`${d.lrNo ? '#'+d.lrNo+' ' : ''}Dest`, `${d.destination || '—'} ${d.partyName ? '('+d.partyName+')' : ''}`);
             });
-            y += 8;
-        } else if (v.materialName) {
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('MATERIAL', M, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(v.materialName, M + 60, y);
-            y += 18;
+        } else {
+            drawInfoRow('Destination', v.destination || '—');
+        }
+        y += 4;
+
+        // Data grid — show totals
+        const totalWeight = hasDeliveries
+            ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
+            : (parseFloat(v.weight) || 0);
+        const totalBags = hasDeliveries
+            ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
+            : (parseInt(v.bags) || 0);
+
+        const CELLW = (CW - 4) / 2, CELLH = 28;
+        const drawCell = (label, value, cx, cy) => {
+            doc.rect(cx, cy, CELLW, CELLH).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), cx + 6, cy + 4);
+            doc.fontSize(11).font('Helvetica-Bold').text(String(value || '—'), cx + 6, cy + 14);
+        };
+        drawCell('Weight', `${totalWeight.toFixed(2)} MT`, M, y);
+        drawCell('Bags', String(totalBags), M + CELLW + 4, y);
+        y += CELLH + 4;
+        if (!hasDeliveries) {
+            drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
+            drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 4, y);
+            y += CELLH + 8;
+        } else {
+            drawCell('Pump', getPumpDisplay(v.pump), M, y);
+            drawCell('Gross', `Rs.${Math.round(gross).toLocaleString()}`, M + CELLW + 4, y);
+            y += CELLH + 8;
         }
 
         // Calc box
-        const calcH = 46 + deductions.length * 16 + (deductions.length > 0 && !dieselPending ? 20 : 0);
-        doc.rect(M, y, CW, calcH).fill('#fafafa').strokeColor('#ccc').lineWidth(0.5).stroke();
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#666').text('PAYMENT CALCULATION', M + 10, y + 8, { characterSpacing: 0.5 });
+        doc.rect(M, y, CW, 16).fill('#e8e8e8');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text('PAYMENT CALCULATION', M + 6, y + 4);
+        y += 18;
 
-        const calcY = y + 22;
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#000').text('Gross Total', M + 10, calcY);
-        doc.text(`Rs.${Math.round(gross).toLocaleString()}`, M + 10, calcY, { width: CW - 20, align: 'right' });
-        doc.moveTo(M + 10, calcY + 16).lineTo(PW - M - 10, calcY + 16).strokeColor('#ddd').lineWidth(1).stroke();
-        doc.fontSize(8).font('Helvetica').fillColor('#666').text(`${v.weight} MT × Rs.${v.rate}/MT`, M + 10, calcY + 18);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Gross Total', M + 6, y);
+        doc.text(`Rs.${Math.round(gross).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
+        y += 14;
+        const grossDetail = hasDeliveries
+            ? `${v.deliveries.length} destinations`
+            : `${v.weight} MT x Rs.${v.rate}/MT`;
+        doc.fontSize(7).font('Helvetica').text(grossDetail, M + 6, y);
+        y += 12;
 
-        let dy = calcY + 34;
         deductions.forEach(d => {
-            doc.fontSize(11).font('Helvetica').fillColor('#444').text(d.label, M + 10, dy);
-            if (d.isPending) {
-                doc.fillColor('#92400e').text('FULL (Pending)', M + 10, dy, { width: CW - 20, align: 'right' });
-            } else {
-                doc.fillColor('#c0392b').text(`- Rs.${d.value.toLocaleString()}`, M + 10, dy, { width: CW - 20, align: 'right' });
-            }
-            dy += 16;
+            doc.fontSize(9).font('Helvetica').fillColor('#000').text(d.label, M + 6, y);
+            doc.font('Helvetica-Bold').text(d.isPending ? 'FULL (Pending)' : `- Rs.${d.value.toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
+            y += 13;
         });
 
         if (deductions.length > 0 && !dieselPending) {
-            doc.moveTo(M + 10, dy - 2).lineTo(PW - M - 10, dy - 2).strokeColor('#bbb').lineWidth(0.5).stroke();
-            doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text('Total Deductions', M + 10, dy + 2);
-            doc.fillColor('#c0392b').text(`- Rs.${Math.round(totalDeductions).toLocaleString()}`, M + 10, dy + 2, { width: CW - 20, align: 'right' });
+            doc.moveTo(M + 6, y).lineTo(PW - M - 6, y).strokeColor('#000').lineWidth(0.5).stroke();
+            y += 4;
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text('Total Deductions', M + 6, y);
+            doc.text(`- Rs.${Math.round(totalDeductions).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
+            y += 14;
         }
-        y += calcH + 10;
 
-        // NET PAYABLE box
+        // NET PAYABLE
+        y += 4;
         if (dieselPending) {
-            doc.rect(M, y, CW, 36).fill('#92400e');
-            doc.fontSize(13).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 12, y + 12);
-            doc.fontSize(10).text('⏳ DIESEL PENDING', M + 12, y + 13, { width: CW - 24, align: 'right' });
-            y += 44;
-            
-            doc.rect(M, y, CW, 30).fill('#fffbeb').strokeColor('#fcd34d').lineWidth(1).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#92400e')
-                .text('⚠ Diesel advance is FULL TANK — actual amount not entered yet.', M + 8, y + 8, { width: CW - 16 });
-            y += 40;
+            doc.rect(M, y, CW, 24).fill('#000');
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 8, y + 6);
+            doc.fontSize(9).text('DIESEL PENDING', M + 8, y + 7, { width: CW - 16, align: 'right' });
+            y += 30;
         } else {
-            doc.rect(M, y, CW, 36).fill('#000');
-            doc.fontSize(14).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 12, y + 11);
-            doc.text(`Rs.${Math.round(net).toLocaleString()}`, M + 12, y + 11, { width: CW - 24, align: 'right' });
-            y += 44;
+            doc.rect(M, y, CW, 24).fill('#000');
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 8, y + 6);
+            doc.text(`Rs.${Math.round(net).toLocaleString()}`, M + 8, y + 6, { width: CW - 16, align: 'right' });
+            y += 30;
         }
-
-        y += 8;
-        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(0.5).stroke();
-        y += 18;
 
         // Signatures
+        y = Math.max(y + 10, doc.page.height - 50);
         const sigW = CW / 3;
-        ['Driver', 'Accountant', 'Authorised'].forEach((lbl, i) => {
+        ['Driver Sign', 'Accountant', 'Authorised Sign'].forEach((lbl, i) => {
             const sx = M + i * sigW;
-            doc.moveTo(sx + 10, y).lineTo(sx + sigW - 15, y).strokeColor('#000').lineWidth(0.5).stroke();
-            doc.fontSize(10).font('Helvetica').fillColor('#000').text(lbl, sx, y + 6, { width: sigW, align: 'center' });
+            doc.moveTo(sx + 5, y).lineTo(sx + sigW - 5, y).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(lbl, sx, y + 4, { width: sigW, align: 'center' });
         });
 
         doc.end();
@@ -430,88 +438,77 @@ async function generateLoadingReceiptPDF(data, outputPath) {
     const totalWeight = materials.reduce((s, m) => s + (parseFloat(m.weight) || 0), 0);
 
     return new Promise((resolve, reject) => {
-        const PW = 595, PH = 500, M = 30, CW = PW - M * 2;
-        const doc = new PDFDocument({ margin: 0, size: [PW, PH] });
+        const doc = new PDFDocument({ margin: 30, size: 'A6' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
+        const PW = doc.page.width, M = 30, CW = PW - M * 2;
         let y = M;
 
-        doc.moveTo(M, y + 30).lineTo(PW - M, y + 30).strokeColor('#6366f1').lineWidth(3).stroke();
-        doc.fontSize(20).font('Helvetica-Bold').fillColor('#6366f1').text('Loading Receipt', M, y);
-        doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
-            .text(`LR #${data.lrNo}`, PW - M - 120, y, { width: 120, align: 'right' });
-        y += 42;
+        // Header — matches browser print
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('JK Lakshmi Depo Loading Receipt', M, y, { align: 'center', width: CW });
+        y += 16;
+        doc.fontSize(12).font('Helvetica-Bold').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
+        y += 14;
+        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
+        y += 12;
+        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
+        y += 10;
 
-        const infoW = (CW - 15) / 2;
-        const drawInfo = (label, value, ix, iy) => {
-            doc.rect(ix, iy, infoW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(label.toUpperCase(), ix + 10, iy + 7);
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(String(value || '—'), ix + 10, iy + 20);
-        };
-        drawInfo('Date', data.date, M, y);
-        drawInfo('Truck No.', data.truckNo, M + infoW + 15, y);
-        y += 42;
-
-        doc.rect(M, y, CW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('PARTY NAME', M + 10, y + 7);
-        const partyText = data.partyName ? `${data.partyName} ${data.partyCode ? `(${data.partyCode})` : ''}` : '—';
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(partyText, M + 10, y + 20);
-        y += 44;
-
-        if (data.destination) {
-            doc.rect(M, y, CW, 38).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('DESTINATION', M + 10, y + 7);
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text(data.destination, M + 10, y + 20);
-            y += 44;
-        }
-
-        if (data.billing && data.billing !== 'No') {
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('ATTACHED CHALLANS', M, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(data.billing, M + 130, y);
-            y += 16;
-        }
-
-        const C1 = M, C2 = M + CW * 0.4, C3 = M + CW * 0.65, C4 = M + CW * 0.85;
-        doc.rect(M, y, CW, 22).fill('#f1f5f9');
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text('MATERIAL', C1 + 8, y + 7);
-        doc.text('LOADING TYPE', C2 + 8, y + 7);
-        doc.text('BAGS', C3 + 8, y + 7);
-        doc.text('WEIGHT (MT)', C4 + 8, y + 7);
-        y += 22;
-
-        materials.forEach((m, i) => {
-            const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-            doc.rect(M, y, CW, 24).fill(rowBg).strokeColor('#cbd5e1').lineWidth(0.3).stroke();
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(m.type || m.material || '—', C1 + 8, y + 8);
-            
-            // Simulating the colored tag background for loadingType
-            const lType = m.loadingType || data.loadingType || 'From Godown';
-            doc.fontSize(9).font('Helvetica-Bold').fillColor(lType === 'Crossing' ? '#92400e' : '#166534').text(lType, C2 + 8, y + 8);
-
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(String(m.bags || m.totalBags || 0), C3 + 8, y + 8);
-            doc.text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, C4 + 8, y + 8);
-            y += 24;
-        });
-
-        doc.rect(M, y, CW, 22).fill('#f8fafc').strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('TOTAL', C1 + 8, y + 7, { width: C3 - C1 - 10, align: 'right' });
-        doc.text(String(totalBags), C3 + 8, y + 7);
-        doc.text(`${totalWeight.toFixed(2)} MT`, C4 + 8, y + 7);
+        // LR badge
+        const badge = `LR # ${data.lrNo}`;
+        const bw = doc.widthOfString(badge) + 20;
+        doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
+        doc.fontSize(12).font('Helvetica-Bold').text(badge, M, y + 4, { align: 'center', width: CW });
         y += 26;
 
-        if (data.note) {
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('NOTES / REMARKS', M, y);
-            doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(data.note, M, y + 15, { width: CW });
-            y += 35;
-        }
+        // Info rows
+        const drawInfoRow = (label, value) => {
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), M, y);
+            doc.font('Helvetica').text(String(value || '—'), M + CW * 0.4, y, { width: CW * 0.6, align: 'right' });
+            y += 14;
+            doc.moveTo(M, y - 2).lineTo(PW - M, y - 2).strokeColor('#ccc').lineWidth(0.5).stroke();
+        };
+        drawInfoRow('Date', data.date);
+        drawInfoRow('Truck No.', data.truckNo);
+        drawInfoRow('Party Name', data.partyName);
+        if (data.billing && data.billing !== 'No') drawInfoRow('Challans', data.billing);
+        y += 6;
 
-        if (data.voiceMessageBase64) {
-            doc.fontSize(10).font('Helvetica-Oblique').fillColor('#6366f1').text('🎙 Voice message attached to this receipt (available in app).', M, y);
-            y += 20;
-        }
+        // Table
+        const cols = [M, M + CW * 0.35, M + CW * 0.6, M + CW * 0.8];
+        doc.rect(M, y, CW, 16).fill('#e8e8e8');
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000');
+        doc.text('MATERIAL', cols[0] + 4, y + 4);
+        doc.text('TYPE', cols[1] + 4, y + 4);
+        doc.text('BAGS', cols[2] + 4, y + 4);
+        doc.text('WT (MT)', cols[3] + 4, y + 4);
+        y += 16;
 
-        doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-            .text(`System Backup | LR #${data.lrNo} | Generated: ${new Date().toLocaleString('en-IN')}`, M, y + 10, { width: CW, align: 'center' });
+        materials.forEach(m => {
+            doc.rect(M, y, CW, 16).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(9).font('Helvetica').fillColor('#000');
+            doc.text(m.type || m.material || '—', cols[0] + 4, y + 4);
+            doc.font('Helvetica-Bold').text(m.loadingType || data.loadingType || 'Godown', cols[1] + 4, y + 4);
+            doc.font('Helvetica').text(String(m.bags || m.totalBags || 0), cols[2] + 4, y + 4);
+            doc.text(`${parseFloat(m.weight || 0).toFixed(2)}`, cols[3] + 4, y + 4);
+            y += 16;
+        });
+
+        doc.rect(M, y, CW, 16).fill('#e8e8e8').strokeColor('#000').lineWidth(1).stroke();
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
+        doc.text('TOTAL', cols[0] + 4, y + 4, { width: cols[2] - cols[0] - 8, align: 'right' });
+        doc.text(String(totalBags), cols[2] + 4, y + 4);
+        doc.text(`${totalWeight.toFixed(2)} MT`, cols[3] + 4, y + 4);
+        y += 24;
+
+        // Signatures
+        y = Math.max(y, doc.page.height - 50);
+        const sigW = CW / 3;
+        ['Driver Sign', 'Receiver Sign', 'Authorised Sign'].forEach((lbl, i) => {
+            const sx = M + i * sigW;
+            doc.moveTo(sx + 5, y).lineTo(sx + sigW - 5, y).strokeColor('#000').lineWidth(0.5).stroke();
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(lbl, sx, y + 4, { width: sigW, align: 'center' });
+        });
 
         doc.end();
         stream.on('finish', () => resolve(outputPath));
@@ -650,90 +647,306 @@ async function generateVoucherListPDF(plantName, vouchers, outputPath) {
 }
 
 /**
- * Generates a formal Tax Invoice PDF for multiple Loading Receipts.
- * Includes Header, Invoice Details, Party Info, and a detailed table of LRs.
+ * Generates a formal Transportation Freight Bill / Tax Invoice PDF.
+ * Dynamically fits rows — no fixed per-page limit. Adds pages as needed.
+ * Includes amount in words, GST, signature, declaration.
  */
 async function generateInvoicePDF(invoiceData, outputPath) {
-    const { 
-        invoiceNumber, 
-        invoiceDate, 
-        partyName, 
-        items, // Array of LRs
-        billingEntity = 'VIKAS GOODS TRANSPORT',
-        address = 'Jharli, Jhajjar, Haryana',
-        contact = '+91 9999999999'
+    const { VGTC_INFO, PLANT_CONFIGS } = require('../config/plantConfig');
+    const {
+        plantKey = 'jksuper_jharli',
+        billNo = '',
+        billDate = '',
+        items = [],
+        gstRate: gstRateOverride,
     } = invoiceData;
 
-    const totalWeight = items.reduce((s, v) => s + (parseFloat(v.weight) || 0), 0);
-    const totalBags = items.reduce((s, v) => s + (parseInt(v.totalBags || v.bags) || 0), 0);
-    const totalAmount = items.reduce((s, v) => s + (parseFloat(v.totalAmount || v.amount || 0)), 0);
+    const plant = PLANT_CONFIGS[plantKey] || PLANT_CONFIGS.jksuper_jharli;
+    const co = VGTC_INFO;
+
+    // GST rate: override > plant config > default 6
+    const gstRate = gstRateOverride || plant.gstRate || 6;
+    const igstRate = gstRate * 2;
+
+    // Auto-derive financial year from billDate
+    const getFY = (dateStr) => {
+        let d;
+        if (dateStr && dateStr.includes('-')) d = new Date(dateStr);
+        else if (dateStr && dateStr.includes('.')) {
+            const [dd, mm, yy] = dateStr.split('.');
+            d = new Date(`${yy}-${mm}-${dd}`);
+        } else d = new Date();
+        if (isNaN(d.getTime())) d = new Date();
+        const yr = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+        return `${yr}-${String(yr + 1).slice(2)}`;
+    };
+    const financialYear = getFY(billDate);
+
+    // Auto-calculate totals per item
+    const enriched = items.map(it => {
+        const billed = parseFloat(it.billedQty) || 0;
+        const rec = parseFloat(it.recQty) || 0;
+        const rate = parseFloat(it.ratePMT) || 0;
+        const short = parseFloat(it.shortQty) || 0;
+        const freight = billed * rate;
+        return { ...it, billed, rec, rate, short, freight };
+    });
+
+    const grandBilled = enriched.reduce((s, v) => s + v.billed, 0);
+    const grandRec = enriched.reduce((s, v) => s + v.rec, 0);
+    const grandFreight = enriched.reduce((s, v) => s + v.freight, 0);
+    const grandShort = enriched.reduce((s, v) => s + v.short, 0);
+    const cgst = parseFloat((grandFreight * gstRate / 100).toFixed(2));
+    const sgst = parseFloat((grandFreight * gstRate / 100).toFixed(2));
+    const grandTotal = parseFloat((grandFreight + cgst + sgst).toFixed(2));
+
+    // Indian number format
+    const fmtNum = (n) => {
+        if (n === 0) return '0';
+        return Math.abs(n).toLocaleString('en-IN') * (n < 0 ? -1 : 1) || n.toLocaleString('en-IN');
+    };
+    const fmtD2 = (n) => {
+        const fixed = Math.abs(n).toFixed(2);
+        const [int, dec] = fixed.split('.');
+        return (n < 0 ? '-' : '') + parseInt(int).toLocaleString('en-IN') + '.' + dec;
+    };
+    const fmtD3 = (n) => {
+        const fixed = Math.abs(n).toFixed(3);
+        const [int, dec] = fixed.split('.');
+        return (n < 0 ? '-' : '') + parseInt(int).toLocaleString('en-IN') + '.' + dec;
+    };
+
+    // Amount in words
+    const numberToWords = (num) => {
+        const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+            'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+        const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+        if (num === 0) return 'ZERO';
+        const convert = (n) => {
+            if (n < 20) return ones[n];
+            if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+            if (n < 1000) return ones[Math.floor(n / 100)] + ' HUNDRED' + (n % 100 ? ' ' + convert(n % 100) : '');
+            if (n < 100000) return convert(Math.floor(n / 1000)) + ' THOUSAND' + (n % 1000 ? ' ' + convert(n % 1000) : '');
+            if (n < 10000000) return convert(Math.floor(n / 100000)) + ' LAKH' + (n % 100000 ? ' ' + convert(n % 100000) : '');
+            return convert(Math.floor(n / 10000000)) + ' CRORE' + (n % 10000000 ? ' ' + convert(n % 10000000) : '');
+        };
+        const rupees = Math.floor(Math.abs(num));
+        const paise = Math.round((Math.abs(num) - rupees) * 100);
+        let words = convert(rupees) + ' RUPEES';
+        if (paise > 0) words += ' AND ' + convert(paise) + ' PAISE';
+        return words + ' ONLY';
+    };
+
+    // Landscape A4 — spacious rows, header+footer on every page
+    const ROW_H = 20;
+    const TOTAL_ROW_H = 14;
+    const HEADER_HEIGHT = 195;
+    const FOOTER_HEIGHT = 150;
 
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 30, size: 'A4' });
-        const stream = fs.createWriteStream(outputPath);
-        doc.pipe(stream);
+        const doc = new PDFDocument({ margin: 12, size: 'A4', layout: 'landscape' });
+        let stream, chunks;
+        if (outputPath) {
+            stream = fs.createWriteStream(outputPath);
+            doc.pipe(stream);
+        } else {
+            chunks = [];
+            doc.on('data', c => chunks.push(c));
+        }
 
-        // ── Header ───────────────────────────────────────────────
-        doc.rect(30, 30, doc.page.width - 60, 60).fill('#1e293b');
-        doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text(billingEntity, 40, 45);
-        doc.fontSize(10).font('Helvetica').text('TAX INVOICE', 40, 72);
-        doc.fontSize(10).text(`${address} | ${contact}`, 30, 45, { align: 'right', width: doc.page.width - 70 });
-        
-        let y = 110;
+        const PW = doc.page.width;
+        const PH = doc.page.height;
+        const M = 12;
+        const W = PW - M * 2;
 
-        // ── Invoice Details ──────────────────────────────────────
-        doc.fillColor('#000').fontSize(10).font('Helvetica-Bold').text('INVOICE TO:', 30, y);
-        doc.fontSize(14).text(partyName || '—', 30, y + 14);
-        
-        doc.fontSize(10).font('Helvetica-Bold').text('INVOICE NO:', 400, y);
-        doc.font('Helvetica').text(invoiceNumber || '—', 480, y);
-        doc.font('Helvetica-Bold').text('DATE:', 400, y + 14);
-        doc.font('Helvetica').text(invoiceDate || '—', 480, y + 14);
-        
-        y += 60;
+        // ── Helper: draw bordered cell ──
+        function cell(x, y, w, h, text, opts = {}) {
+            const { bg, align = 'left', font = 'Helvetica-BoldOblique', size = 9, color = '#000', noBorderLeft, noBorderRight, noBorderTop, noBorderBottom, padding = 3, clip } = opts;
+            if (bg) doc.save().rect(x, y, w, h).fill(bg).restore();
+            doc.save();
+            doc.lineWidth(0.5);
+            if (!noBorderTop) doc.moveTo(x, y).lineTo(x + w, y).stroke('#000');
+            if (!noBorderBottom) doc.moveTo(x, y + h).lineTo(x + w, y + h).stroke('#000');
+            if (!noBorderLeft) doc.moveTo(x, y).lineTo(x, y + h).stroke('#000');
+            if (!noBorderRight) doc.moveTo(x + w, y).lineTo(x + w, y + h).stroke('#000');
+            doc.restore();
+            if (text !== undefined && text !== null && String(text).length > 0) {
+                doc.save();
+                if (clip) doc.rect(x, y, w, h).clip();
+                doc.font(font).fontSize(size).fillColor(color);
+                const tw = w - padding * 2;
+                doc.text(String(text), x + padding, y + padding, { width: tw, height: h - padding, align, lineBreak: !clip, ellipsis: clip });
+                doc.restore();
+            }
+        }
 
-        // ── Table ────────────────────────────────────────────────
-        const table = {
-            title: 'Loading Receipts Detail',
-            headers: [
-                { label: 'Date', property: 'date', width: 60 },
-                { label: 'LR No.', property: 'lrNo', width: 50 },
-                { label: 'Truck', property: 'truckNo', width: 70 },
-                { label: 'Destination', property: 'destination', width: 100 },
-                { label: 'Material', property: 'material', width: 100 },
-                { label: 'Bags', property: 'totalBags', width: 50 },
-                { label: 'Weight(MT)', property: 'weight', width: 60 },
-            ],
-            rows: items.map(v => [
-                v.date || '—',
-                `#${v.lrNo}`,
-                v.truckNo || '—',
-                v.destination || '—',
-                v.material || '—',
-                String(v.totalBags || 0),
-                `${parseFloat(v.weight || 0).toFixed(2)} MT`
-            ])
-        };
+        // Column widths — landscape gives ~820pt usable width
+        const colPcts = [3, 18, 11, 8, 8, 8, 8, 6.5, 6.5, 4.5, 7, 3.5];
+        const cols = colPcts.map(p => Math.round(W * p / 100));
+        cols[cols.length - 1] += W - cols.reduce((s, c) => s + c, 0);
+        function colX(idx) { return M + cols.slice(0, idx).reduce((s, c) => s + c, 0); }
 
-        doc.table(table, {
-            prepareHeader: () => doc.font('Helvetica-Bold').fontSize(9).fillColor('#1e293b'),
-            prepareRow: (row, indexColumn, indexRow, rectRow, rectCell) => {
-                doc.font('Helvetica').fontSize(9).fillColor('#000');
-            },
-        });
+        // Single page per invoice — all entries on one page
+        // Row height auto-adjusts if many entries to fit on one page
+        const maxRowsAtCurrentSize = Math.floor((PH - M * 2 - HEADER_HEIGHT - FOOTER_HEIGHT - TOTAL_ROW_H) / ROW_H);
+        const actualRowH = enriched.length > maxRowsAtCurrentSize
+            ? Math.floor((PH - M * 2 - HEADER_HEIGHT - FOOTER_HEIGHT - TOTAL_ROW_H) / enriched.length)
+            : ROW_H;
+        const pages = [enriched]; // always single page
 
-        // ── Totals ───────────────────────────────────────────────
-        y = doc.y + 20;
-        doc.rect(30, y, doc.page.width - 60, 40).fill('#f8fafc');
-        doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold').text('GRAND TOTALS', 40, y + 15);
-        doc.text(`Bags: ${totalBags} | Weight: ${totalWeight.toFixed(2)} MT`, 250, y + 15, { align: 'right', width: doc.page.width - 290 });
+        // ══════════════════════════════════════════════════════════
+        function drawPage(pageItems, pageIdx, isLastPage) {
+            if (pageIdx > 0) doc.addPage();
+            let y = M;
 
-        // ── Footer ───────────────────────────────────────────────
-        doc.fontSize(8).fillColor('#94a3b8').text('This is a computer generated invoice and does not require a physical signature.', 30, doc.page.height - 50, { align: 'center' });
+            // ── Header Section ──
+            const halfW = Math.round(W / 2);
+            const qW = Math.round(W / 4);
+            const dh = 14;
+
+            // Company name
+            cell(M, y, W, 18, co.company, { align: 'center', font: 'Helvetica-Bold', size: 13, noBorderLeft: true, noBorderRight: true, noBorderTop: true, padding: 3 });
+            y += 18;
+            // Address
+            cell(M, y, W, 13, `${co.address} ,E-Mail : ${co.email},Contact : ${co.contact}`, { align: 'center', size: 8, noBorderLeft: true, noBorderRight: true, padding: 2 });
+            y += 13;
+            // Yellow banner
+            cell(M, y, W, 14, 'TRANSPORTATION FREIGHT BILL ( Primary/Grey)', { bg: '#ffff00', align: 'center', size: 10, noBorderLeft: true, noBorderRight: true, padding: 2 });
+            y += 14;
+            // Tax Invoice
+            cell(M, y, W, 14, 'TAX INVOICE (Loose/Bag/STO) - Cement/Clinker', { align: 'center', size: 10, noBorderLeft: true, noBorderRight: true, padding: 2 });
+            y += 14;
+
+            // Details grid
+            function detailRow(yy, ll, lv, rl, rv) {
+                cell(M, yy, qW, dh, ll, { size: 9, noBorderLeft: true });
+                cell(M + qW, yy, qW, dh, lv, { size: 9 });
+                if (rl !== null) {
+                    cell(M + halfW, yy, qW, dh, rl, { size: 9 });
+                    cell(M + halfW + qW, yy, qW, dh, rv, { size: 9, noBorderRight: true });
+                } else {
+                    cell(M + halfW, yy, halfW, dh, '', { noBorderRight: true });
+                }
+            }
+            detailRow(y, 'Sap Code :', plant.sapCode, 'Bill No. :', billNo); y += dh;
+            detailRow(y, 'Consignor / Bill To', plant.consignor, 'Date :', billDate); y += dh;
+            detailRow(y, 'GSTI :', plant.consignorGSTIN, 'PAN No.:', co.pan); y += dh;
+            detailRow(y, 'SAC Code :', co.sacCode, 'GSTIN No.:', co.gstin); y += dh;
+            detailRow(y, 'Plant Code :', plant.plantCode, 'Status', plant.status || 'Propriter'); y += dh;
+            cell(M, y, halfW, dh, '', { noBorderLeft: true, noBorderTop: true, noBorderBottom: true });
+            cell(M + halfW, y, qW, dh, 'Transport Mode', { size: 9 });
+            cell(M + halfW + qW, y, qW, dh, co.transportMode, { size: 9, noBorderRight: true }); y += dh;
+            cell(M, y, halfW, dh, '', { noBorderLeft: true, noBorderTop: true, noBorderBottom: true });
+            cell(M + halfW, y, qW, dh, 'RST on forward Charge', { size: 9 });
+            cell(M + halfW + qW, y, qW, dh, co.rstForwardCharge, { size: 9, noBorderRight: true }); y += dh;
+            cell(M, y, qW, dh, 'Place of Supply', { align: 'center', size: 9, noBorderLeft: true });
+            cell(M + qW, y, qW, dh, 'State Name', { align: 'center', size: 9 });
+            cell(M + halfW, y, qW, dh, 'State Code', { size: 9 });
+            cell(M + halfW + qW, y, qW, dh, plant.stateCode, { size: 9, noBorderRight: true }); y += dh;
+
+            // ── Table Header ──
+            const th = 20;
+            const hdrs = ['S NO', 'Consignee Name', 'Destination', 'Truck No', 'LR No', 'InvoiceNo', 'Invoice Date', 'Billed Qty (LD)', 'Rec. Qty\n(UL)', 'Rate\nPMT', 'Total Freight', 'Short\nQty'];
+            for (let i = 0; i < hdrs.length; i++) {
+                cell(colX(i), y, cols[i], th, hdrs[i], {
+                    bg: '#eaedf2', align: 'center', size: 7, padding: 2,
+                    noBorderLeft: i === 0, noBorderRight: i === hdrs.length - 1,
+                });
+            }
+            y += th;
+
+            // ── Data Rows — full size, no clipping ──
+            const startNum = pages.slice(0, pageIdx).reduce((s, p) => s + p.length, 0);
+            for (let r = 0; r < pageItems.length; r++) {
+                const it = pageItems[r];
+                const vals = [
+                    startNum + r + 1, it.consigneeName || '', it.destination || '',
+                    it.truckNo || '', it.lrNo || '', it.invoiceNo || '', it.invoiceDate || '',
+                    it.billed, it.rec, it.rate, it.freight, it.short || ''
+                ];
+                const aligns = ['center', 'center', 'center', 'center', 'center', 'center', 'center', 'center', 'center', 'center', 'right', 'center'];
+                const rh = actualRowH || ROW_H;
+                const rFont = rh < 16 ? 7 : rh < 18 ? 8 : 9;
+                const rPad = rh < 16 ? 2 : rh < 18 ? 3 : 4;
+                for (let c = 0; c < vals.length; c++) {
+                    cell(colX(c), y, cols[c], rh, vals[c], {
+                        align: aligns[c], size: rFont, clip: true, padding: rPad,
+                        noBorderLeft: c === 0, noBorderRight: c === vals.length - 1,
+                    });
+                }
+                y += rh;
+            }
+
+            // ── Grand Total ──
+            const mergedW = cols.slice(0, 7).reduce((s, c) => s + c, 0);
+            cell(colX(0), y, mergedW, TOTAL_ROW_H, '', { noBorderLeft: true });
+            const totVals = [fmtD3(grandBilled), fmtD3(grandRec), '', fmtD2(grandFreight), fmtD3(grandShort)];
+            for (let c = 7; c < cols.length; c++) {
+                cell(colX(c), y, cols[c], TOTAL_ROW_H, totVals[c - 7], {
+                    align: 'right', size: 8, padding: 3, noBorderRight: c === cols.length - 1,
+                });
+            }
+            y += TOTAL_ROW_H;
+
+            // ── Footer — only on last page ──
+            if (isLastPage) {
+                // GST section: 3 columns — Label | Tag | Amount
+                const gstX = colX(8);
+                const gC1 = cols[8];            // label: "Inter State" / "Intra State"
+                const gC2 = cols[9];            // tag: "IGST 18%"
+                const gC3 = cols[10] + cols[11]; // amount (wide enough for totals)
+                const gstH = 13;
+
+                cell(gstX, y, gC1, gstH, 'Inter State', { size: 8, padding: 3 });
+                cell(gstX + gC1, y, gC2, gstH, `IGST ${igstRate}%`, { size: 7, padding: 2 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, '0', { align: 'right', size: 8, padding: 2 }); y += gstH;
+
+                cell(gstX, y, gC1, gstH, 'Intra State', { size: 8, padding: 3, noBorderBottom: true });
+                cell(gstX + gC1, y, gC2, gstH, `CGST ${gstRate}%`, { size: 7, padding: 2 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, fmtD2(cgst), { align: 'right', size: 7, padding: 2 }); y += gstH;
+
+                cell(gstX, y, gC1, gstH, '', { noBorderTop: true });
+                cell(gstX + gC1, y, gC2, gstH, `SGST ${gstRate}%`, { size: 7, padding: 2 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, fmtD2(sgst), { align: 'right', size: 7, padding: 2 }); y += gstH;
+
+                cell(gstX, y, gC1 + gC2, gstH, 'Total', { size: 9, padding: 3 });
+                cell(gstX + gC1 + gC2, y, gC3, gstH, fmtD2(grandTotal), { align: 'right', font: 'Helvetica-Bold', size: 7, padding: 2 }); y += gstH;
+
+                // Amount in words
+                y += 2;
+                const wordsText = `Total Amount in words -  ${numberToWords(grandTotal)}`;
+                cell(M, y, W, 15, wordsText, { font: 'Helvetica-Bold', size: 8, noBorderLeft: true, noBorderRight: true, padding: 3 }); y += 15;
+
+                // Signature
+                const sigX = colX(8);
+                const sigW = cols.slice(8).reduce((s, c) => s + c, 0);
+                cell(sigX, y, sigW, 14, `For ${co.company}`, { align: 'right', size: 8, noBorderRight: true, padding: 3 }); y += 14;
+                cell(sigX, y, sigW, 28, '', { noBorderRight: true });
+                doc.font('Helvetica-BoldOblique').fontSize(8).fillColor('#000')
+                    .text('Autorised Signatory', sigX, y + 18, { width: sigW, align: 'right' }); y += 28;
+
+                // Declaration
+                y += 2;
+                const declText = `"I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us during the Financial Year ${financialYear} under forward charge.".\nGTA in relation to transport of goods supplied by us during the Financial Year ${financialYear} under forward charge.".`;
+                cell(M, y, W * 0.04, 30, `${igstRate}%\n(FCM)`, { align: 'center', size: 6, noBorderLeft: true, noBorderBottom: true, padding: 1 });
+                cell(M + W * 0.04, y, W * 0.11, 30, 'Decelaration -', { align: 'center', size: 8, noBorderBottom: true, padding: 3 });
+                cell(M + W * 0.15, y, W * 0.85, 30, declText, { align: 'center', size: 6, noBorderRight: true, noBorderBottom: true, padding: 3 });
+            }
+        }
+
+        // Render
+        for (let p = 0; p < pages.length; p++) {
+            drawPage(pages[p], p, p === pages.length - 1);
+        }
 
         doc.end();
-        stream.on('finish', () => resolve(outputPath));
-        stream.on('error', reject);
+        if (outputPath) {
+            stream.on('finish', () => resolve(outputPath));
+            stream.on('error', reject);
+        } else {
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+        }
     });
 }
 

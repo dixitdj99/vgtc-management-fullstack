@@ -28,9 +28,10 @@ const getVouchersByType = async (orgId, type, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
         const snapshot = await db.collection(col)
             .where('orgId', '==', orgId)
-            .where('type', '==', type)
             .get();
-        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(d => d.type === type);
         return docs.sort((a, b) => {
             const aTime = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
             const bTime = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
@@ -61,10 +62,10 @@ const getVouchersByTruckAndDate = async (orgId, truckNo, paymentClearedDate, col
     if (firebaseAvailable()) {
         const snapshot = await db.collection(col)
             .where('orgId', '==', orgId)
-            .where('truckNo', '==', truckNo)
-            .where('paymentClearedDate', '==', paymentClearedDate)
             .get();
-        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const docs = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(d => d.truckNo === truckNo && d.paymentClearedDate === paymentClearedDate);
         return docs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     }
     return localStore.getAll(COLLECTION_VOUCHERS)

@@ -76,6 +76,16 @@ const findByUsername = async (username) => {
     return localStore.getAll(getUCol()).find(u => u.username === username);
 };
 
+const findByUsernameAndOrg = async (username, orgId) => {
+    if (isFirebaseAvailable()) {
+        const snapshot = await db.collection(getUCol()).where('username', '==', username).where('orgId', '==', orgId).limit(1).get();
+        if (snapshot.empty) return null;
+        const doc = snapshot.docs[0];
+        return { id: doc.id, ...doc.data() };
+    }
+    return localStore.getAll(getUCol()).find(u => u.username === username && u.orgId === orgId) || null;
+};
+
 const findById = async (id) => {
     if (isFirebaseAvailable()) {
         const doc = await db.collection(getUCol()).doc(id).get();
@@ -85,23 +95,30 @@ const findById = async (id) => {
     return localStore.getAll(getUCol()).find(u => u.id === id);
 };
 
+const validatePassword = (password) => {
+    if (!password || password.length < 8) throw new Error('Password must be at least 8 characters');
+    if (!/[A-Za-z]/.test(password)) throw new Error('Password must contain at least one letter');
+    if (!/[0-9]/.test(password)) throw new Error('Password must contain at least one number');
+};
+
 const createUser = async (name, username, password, role = 'user', email = '', permissions = null, orgId = 'vgtc') => {
     const existing = await findByUsername(username);
     if (existing) throw new Error('Username already exists');
-    const hash = bcrypt.hashSync(password, 10);
-    
+    validatePassword(password);
+    const hash = bcrypt.hashSync(password, 12); // cost 12 (stronger than default 10)
+
     const userPerms = permissions || (role === 'admin' ? DEFAULT_PERMISSIONS : {});
 
     const userData = {
         name,
         username,
         password: hash,
-        plainPassword: password, // stored for admin display only (internal system)
+        // plainPassword intentionally NOT stored — security risk
         role,
         orgId,
         email,
         isOtpEnabled: false,
-        isSandbox: false, // Default to production mode for new accounts
+        isSandbox: false,
         permissions: userPerms,
         createdAt: new Date().toISOString()
     };
@@ -117,13 +134,13 @@ const createUser = async (name, username, password, role = 'user', email = '', p
 
 const updateUser = async (id, data) => {
     // Only allow updating specific fields to prevent security issues
-    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'plainPassword', 'otpCode', 'otpExpiry'];
+    const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'otpCode', 'otpExpiry'];
     const filteredData = {};
     Object.keys(data).forEach(k => {
         if (allowedFields.includes(k)) {
             if (k === 'password' && data[k]) {
-                filteredData[k] = bcrypt.hashSync(data[k], 10);
-                filteredData['plainPassword'] = data[k]; // keep plaintext in sync
+                filteredData[k] = bcrypt.hashSync(data[k], 12);
+                // plainPassword never stored
             } else {
                 filteredData[k] = data[k];
             }
@@ -175,6 +192,7 @@ const verifyOTP = async (id, code) => {
     const user = await findById(id);
     if (!user || !user.otpCode || user.otpCode !== code) return false;
     
+    if (!user.otpExpiry) return false;
     const expiry = new Date(user.otpExpiry);
     if (expiry < new Date()) return false;
 
@@ -185,9 +203,9 @@ const verifyOTP = async (id, code) => {
 
 const verifyPassword = (plain, hash) => bcrypt.compareSync(plain, hash);
 
-module.exports = { 
-    getAll, findByUsername, findById, createUser, updateUser, deleteUser, 
-    verifyPassword, generateOTP, saveUserOTP, verifyOTP 
+module.exports = {
+    getAll, findByUsername, findByUsernameAndOrg, findById, createUser, updateUser, deleteUser,
+    verifyPassword, generateOTP, saveUserOTP, verifyOTP
 };
 
 // Seed default users ONLY in non-production environments.

@@ -11,14 +11,14 @@ const API_V = `/vouchers`;
 export default function DieselModule({ role = 'user', permissions = {} }) {
     const { plant } = useAuth();
     const [vouchers, setVouchers] = useState([]);
-    // Default filter to Pending status as requested previously
-    const [filters, setFilters] = useState({ status: ['Pending'] });
+    const [filters, setFilters] = useState({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [dieselTab, setDieselTab] = useState('records'); // records|pump_ledger
     const [expandedPump, setExpandedPump] = useState(null);
     const [profiles, setProfiles] = useState([]);
-    
+    const [pumpPayments, setPumpPayments] = useState([]);
+
     // Filters
     const handleFilterChange = (key, val) => setFilters(f => ({ ...f, [key]: val }));
 
@@ -33,9 +33,13 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch profiles for pump list
-            const pRes = await ax.get('/profiles');
+            // Fetch profiles for pump list + pump payments from firm pay
+            const [pRes, payRes] = await Promise.all([
+                ax.get('/profiles'),
+                ax.get('/payments').catch(() => ({ data: [] })),
+            ]);
             setProfiles(pRes.data || []);
+            setPumpPayments((payRes.data || []).filter(p => p.category === 'Pump'));
 
             // Types change based on plant
             const types = plant === 'jklakshmi' ? ['Dump', 'JK_Lakshmi'] : ['Dump', 'JK_Super'];
@@ -128,12 +132,12 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
         const map = {};
         // Initialize with all pump profiles
         profiles.filter(p => p.type === 'Pump').forEach(p => {
-            map[p.name] = { pump: p.name, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0 };
+            map[p.name] = { pump: p.name, profileId: p.id, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: 0, payments: [] };
         });
 
         vouchers.forEach(v => {
             const pump = v.pump || 'Unknown Pump';
-            if (!map[pump]) map[pump] = { pump, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0 };
+            if (!map[pump]) map[pump] = { pump, profileId: null, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: 0, payments: [] };
             map[pump].entries.push(v);
             const amt = v.advanceDiesel === 'FULL' ? 0 : (parseFloat(v.advanceDiesel) || 0);
             map[pump].totalAmount += amt;
@@ -145,8 +149,21 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                 map[pump].countPending++;
             }
         });
+
+        // Add pump payments from firm pay
+        pumpPayments.forEach(pay => {
+            const pumpName = pay.profileName || profiles.find(p => p.id === pay.profileId)?.name;
+            if (pumpName && map[pumpName]) {
+                map[pumpName].totalPaid += parseFloat(pay.amount) || 0;
+                map[pumpName].payments.push(pay);
+            } else if (pumpName) {
+                // Pump profile exists in payments but not in vouchers
+                map[pumpName] = { pump: pumpName, profileId: pay.profileId, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: parseFloat(pay.amount) || 0, payments: [pay] };
+            }
+        });
+
         return Object.values(map).sort((a, b) => b.totalAmount - a.totalAmount);
-    }, [vouchers, profiles]);
+    }, [vouchers, profiles, pumpPayments]);
 
     const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
     const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -358,6 +375,14 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                             <div style={{ fontSize: '8px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase' }}>Unverified</div>
                                             <div style={{ fontSize: '13px', fontWeight: 900, color: '#f59e0b' }}>{fmtRs(pg.totalUnverified)}</div>
                                         </div>
+                                        {pg.totalPaid > 0 && <div style={{ textAlign: 'center', padding: '4px 10px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)' }}>
+                                            <div style={{ fontSize: '8px', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>Paid</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 900, color: '#6366f1' }}>{fmtRs(pg.totalPaid)}</div>
+                                        </div>}
+                                        {(pg.totalAmount - pg.totalPaid) > 0 && <div style={{ textAlign: 'center', padding: '4px 10px', borderRadius: '6px', background: 'rgba(244,63,94,0.1)' }}>
+                                            <div style={{ fontSize: '8px', fontWeight: 700, color: '#f43f5e', textTransform: 'uppercase' }}>Balance</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 900, color: '#f43f5e' }}>{fmtRs(pg.totalAmount - pg.totalPaid)}</div>
+                                        </div>}
                                     </div>
                                     {expandedPump === pg.pump ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
                                 </div>
@@ -413,6 +438,25 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                                 </tfoot>
                                             </table>
                                         </div>
+                                        {/* Pump Payments from Firm Pay */}
+                                        {pg.payments.length > 0 && (
+                                            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.06em' }}>Payments Made</div>
+                                                {pg.payments.sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((pay, i) => (
+                                                    <div key={pay.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < pg.payments.length - 1 ? '1px solid var(--border-row)' : 'none', fontSize: '12px' }}>
+                                                        <div>
+                                                            <span style={{ fontWeight: 700, color: 'var(--text)' }}>{fmtDate(pay.date)}</span>
+                                                            {pay.remark && <span style={{ marginLeft: '8px', color: 'var(--text-sub)' }}>{pay.remark}</span>}
+                                                        </div>
+                                                        <span style={{ fontWeight: 800, color: '#6366f1' }}>{fmtRs(parseFloat(pay.amount) || 0)}</span>
+                                                    </div>
+                                                ))}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '2px solid var(--border)', fontSize: '12px' }}>
+                                                    <span style={{ fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '10px' }}>Balance Due</span>
+                                                    <span style={{ fontWeight: 900, fontSize: '14px', color: (pg.totalAmount - pg.totalPaid) > 0 ? '#f43f5e' : '#10b981' }}>{fmtRs(Math.max(0, pg.totalAmount - pg.totalPaid))}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </motion.div>
                                 )}
                             </AnimatePresence>
