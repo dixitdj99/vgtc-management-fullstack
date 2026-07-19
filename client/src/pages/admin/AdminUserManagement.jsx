@@ -178,6 +178,9 @@ export default function AdminUserManagement() {
   const [editTarget, setEditTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [formError, setFormError] = useState('');
+  const [otpMode, setOtpMode] = useState(false);
+  const [methodId, setMethodId] = useState('');
+  const [otpCode, setOtpCode] = useState('');
 
   const [form, setForm] = useState({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
 
@@ -212,6 +215,9 @@ export default function AdminUserManagement() {
     setEditTarget(null);
     setShowPerms(false);
     setFormError('');
+    setOtpMode(false);
+    setMethodId('');
+    setOtpCode('');
   };
 
   const handleSubmit = async e => {
@@ -223,13 +229,28 @@ export default function AdminUserManagement() {
         const payload = { name: form.name, email: form.email, role: form.role, isOtpEnabled: form.isOtpEnabled, permissions: form.permissions };
         if (form.password) payload.password = form.password;
         await ax.patch(`${API}/${editTarget.id}`, payload);
+        resetForm();
+        fetchUsers();
       } else {
-        await ax.post(API, form);
+        if (!otpMode) {
+          // Send OTP to email first
+          const res = await ax.post(`${API}/send-otp`, { email: form.email });
+          setMethodId(res.data.methodId);
+          setOtpMode(true);
+          setFormError('A verification OTP has been sent to the email address. Please enter it below to confirm.');
+        } else {
+          // Verify OTP and Create User
+          await ax.post(API, {
+            ...form,
+            otpCode,
+            methodId
+          });
+          resetForm();
+          fetchUsers();
+        }
       }
-      resetForm();
-      fetchUsers();
-    } catch (e) {
-      setFormError(e.response?.data?.error || 'Operation failed');
+    } catch (err) {
+      setFormError(err.response?.data?.error || 'Operation failed');
     } finally {
       setBusy(false);
     }
@@ -370,24 +391,31 @@ export default function AdminUserManagement() {
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="field">
                 <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px', display: 'block' }}>Full Name</label>
-                <input className="fi" value={form.name} onChange={e => S('name', e.target.value)} placeholder="e.g. Rahul Sharma" required />
+                <input className="fi" value={form.name} onChange={e => S('name', e.target.value)} placeholder="e.g. Rahul Sharma" required disabled={otpMode && !editTarget} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="field">
                   <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px', display: 'block' }}>Username</label>
-                  <input className="fi" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} placeholder="username" required disabled={!!editTarget} />
+                  <input className="fi" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} placeholder="username" required disabled={!!editTarget || (otpMode && !editTarget)} />
                 </div>
                 <div className="field">
                   <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px', display: 'block' }}>{editTarget ? 'New Password' : 'Password'}</label>
-                  <input className="fi" type="text" value={form.password} onChange={e => S('password', e.target.value)} placeholder={editTarget ? 'Leave blank to keep' : 'Password'} required={!editTarget} />
+                  <input className="fi" type="text" value={form.password} onChange={e => S('password', e.target.value)} placeholder={editTarget ? 'Leave blank to keep' : 'Password'} required={!editTarget} disabled={otpMode && !editTarget} />
                 </div>
               </div>
 
               <div className="field">
                 <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px', display: 'block' }}>Email</label>
-                <input className="fi" type="email" value={form.email} onChange={e => S('email', e.target.value)} placeholder="user@company.com" />
+                <input className="fi" type="email" value={form.email} onChange={e => S('email', e.target.value)} placeholder="user@company.com" required disabled={otpMode && !editTarget} />
               </div>
+
+              {otpMode && !editTarget && (
+                <div className="field">
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px', display: 'block' }}>Verification OTP</label>
+                  <input className="fi" value={otpCode} onChange={e => setOtpCode(e.target.value.trim())} placeholder="Enter 6-digit OTP code" required style={{ border: '1px solid var(--primary)', background: 'var(--bg-input)' }} />
+                </div>
+              )}
 
               {/* Role Selector */}
               <div className="field">
@@ -397,7 +425,7 @@ export default function AdminUserManagement() {
                     const isActive = form.role === r;
                     const c = ROLE_COLOR[r] || '#8b5cf6';
                     return (
-                      <button key={r} type="button" onClick={() => handleRoleChange(r)} style={{
+                      <button key={r} type="button" onClick={() => handleRoleChange(r)} disabled={otpMode && !editTarget} style={{
                         padding: '8px 14px', borderRadius: '10px', border: '1px solid',
                         borderColor: isActive ? c : 'var(--border)', background: isActive ? `${c}15` : 'var(--bg-input)',
                         color: isActive ? c : 'var(--text-muted)', fontWeight: 800, fontSize: '12px',
@@ -408,14 +436,6 @@ export default function AdminUserManagement() {
                 </div>
               </div>
 
-              {/* OTP Toggle */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-input)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ width: '16px', height: '16px' }} />
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 800 }}>Email OTP Verification</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Require OTP code on login</div>
-                </div>
-              </label>
 
               {/* Permissions Accordion */}
               <div style={{ border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
@@ -454,7 +474,17 @@ export default function AdminUserManagement() {
               </div>
 
               {formError && (
-                <div style={{ padding: '10px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, background: 'rgba(244,63,94,0.1)', color: 'var(--danger)', border: '1px solid rgba(244,63,94,0.2)' }}>{formError}</div>
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  background: formError.includes('verification OTP') ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)',
+                  color: formError.includes('verification OTP') ? '#10b981' : 'var(--danger)',
+                  border: formError.includes('verification OTP') ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(244,63,94,0.2)'
+                }}>
+                  {formError}
+                </div>
               )}
 
               <button type="submit" disabled={busy} style={{
@@ -462,7 +492,7 @@ export default function AdminUserManagement() {
                 background: 'linear-gradient(135deg, var(--primary), #6366f1)', color: 'white',
                 fontWeight: 800, fontSize: '14px', cursor: 'pointer', boxShadow: '0 6px 16px rgba(139,92,246,0.25)'
               }}>
-                {busy ? <><RefreshCw size={14} className="ani-spin" /> Processing...</> : (editTarget ? 'Update User' : 'Create User')}
+                {busy ? <><RefreshCw size={14} className="ani-spin" /> Processing...</> : (editTarget ? 'Update User' : (otpMode ? 'Verify & Create User' : 'Send Verification OTP'))}
               </button>
             </form>
           </div>
@@ -551,7 +581,7 @@ export default function AdminUserManagement() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'rgba(0,0,0,0.15)' }}>
-                  {['User', 'Username', 'Password', 'Email', 'OTP', 'Role', ''].map(h => (
+                  {['User', 'Username', 'Password', 'Email', 'Role', ''].map(h => (
                     <th key={h} style={{ padding: '14px 16px', textAlign: 'left', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -576,9 +606,6 @@ export default function AdminUserManagement() {
                       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 600, fontSize: '12px' }}>@{u.username}</td>
                       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}><PasswordCell plainPassword={u.plainPassword} /></td>
                       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-muted)', fontSize: '12px' }}>{u.email || <span style={{ opacity: 0.3 }}>—</span>}</td>
-                      <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}>
-                        {u.isOtpEnabled ? <Check size={14} color="#10b981" /> : <X size={14} color="var(--text-muted)" style={{ opacity: 0.4 }} />}
-                      </td>
                       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}><RoleBadge role={u.role} /></td>
                       <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-row)' }}>
                         <div style={{ display: 'flex', gap: '4px' }}>

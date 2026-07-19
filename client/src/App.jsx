@@ -5,6 +5,7 @@ import TruckLoader from './components/TruckLoader';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ax from './api';
 import LoginPage from './pages/LoginPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import AdminPage from './pages/AdminPage';
 import LRModule from './modules/LRModule';
 import VoucherModule from './modules/VoucherModule';
@@ -505,6 +506,7 @@ function AppInner() {
   // Move public/auth-independent routes here
   if (path === '/loading-status') return <PublicLoadingStatus />;
   if (path === '/labour') return <LabourLoadingStatus />;
+  if (path === '/reset-password') return <ResetPasswordPage />;
 
 
   if (path.startsWith('/receipt/')) {

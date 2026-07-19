@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const localStore = require('./localStore');
 const { db, isAvailable } = require('../firebase');
 const { getEnvCol } = require('./collectionUtils');
+const stytchService = require('./stytchService');
 
 // Labourers stored in a SEPARATE collection from main users.
 // They can ONLY access the Labour Portal, NOT the main management system.
@@ -42,14 +43,30 @@ const create = async (orgId, { name, username, password, godown }) => {
     const existing = await findByUsername(username);
     if (existing) throw new Error('Username already taken');
 
+    const email = `${username}@vgtc-labour.com`;
+
+    // Call Stytch signup first
+    let stytchUserId = null;
+    try {
+        const stytchRes = await stytchService.signup(email, password);
+        stytchUserId = stytchRes.user_id;
+    } catch (err) {
+        console.error('[Labour] Stytch signup during worker creation failed:', err.message);
+        if (stytchService.isStytchConfigured()) {
+            throw new Error(`Stytch signup failed: ${err.message}`);
+        }
+    }
+
     const hash = bcrypt.hashSync(password, 10);
     const data = {
         name,
         username,
+        email,
         password: hash,
         godown, // 'kosli' | 'jhajjar' | 'jkl'
         orgId,
         role: 'labourer',
+        stytchUserId,
         createdAt: new Date().toISOString(),
     };
 
