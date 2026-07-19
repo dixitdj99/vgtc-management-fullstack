@@ -4,6 +4,7 @@ const { db, isAvailable } = require('../firebase');
 const orgService = require('../services/orgService');
 const { isProduction } = require('./envConfig');
 const { getEnvCol } = require('./collectionUtils');
+const stytchService = require('./stytchService');
 
 const getUCol = () => getEnvCol('users');
 
@@ -105,7 +106,48 @@ const createUser = async (name, username, password, role = 'user', email = '', p
     const existing = await findByUsername(username);
     if (existing) throw new Error('Username already exists');
     validatePassword(password);
+
+    if (!email) throw new Error('Email is required');
+    const finalEmail = email;
     const hash = bcrypt.hashSync(password, 12); // cost 12 (stronger than default 10)
+
+    // Call Stytch signup first (always, using finalEmail)
+    let stytchUserId = null;
+    try {
+        const stytchRes = await stytchService.signup(finalEmail, password);
+        stytchUserId = stytchRes.user_id;
+    } catch (err) {
+        if (err.message && err.message.toLowerCase().includes('already exists')) {
+            try {
+                console.log('[Auth] User already exists in Stytch, attempting password migration fallback...');
+                const migrateRes = await stytchService.migratePassword(finalEmail, hash);
+                stytchUserId = migrateRes.user_id;
+            } catch (migErr) {
+                if (migErr.message && migErr.message.toLowerCase().includes('already has a password')) {
+                    try {
+                        console.log('[Auth] User already has a password set on Stytch. Fetching user details...');
+                        const existingUser = await stytchService.searchUserByEmail(finalEmail);
+                        if (existingUser) {
+                            stytchUserId = existingUser.user_id;
+                        } else {
+                            throw new Error('User not found on Stytch search');
+                        }
+                    } catch (searchErr) {
+                        console.error('[Auth] Stytch search user failed:', searchErr.message);
+                        throw new Error(`Stytch signup failed because user exists, has a password, and user search failed: ${searchErr.message}`);
+                    }
+                } else {
+                    console.error('[Auth] Fallback Stytch password migration failed:', migErr.message);
+                    throw new Error(`Stytch signup failed because user exists, and password migration failed: ${migErr.message}`);
+                }
+            }
+        } else {
+            console.error('[Auth] Stytch signup during user creation failed:', err.message);
+            if (stytchService.isStytchConfigured()) {
+                throw new Error(`Stytch signup failed: ${err.message}`);
+            }
+        }
+    }
 
     const userPerms = permissions || (role === 'admin' ? DEFAULT_PERMISSIONS : {});
 
@@ -116,10 +158,11 @@ const createUser = async (name, username, password, role = 'user', email = '', p
         // plainPassword intentionally NOT stored — security risk
         role,
         orgId,
-        email,
+        email: finalEmail,
         isOtpEnabled: false,
         isSandbox: false,
         permissions: userPerms,
+        stytchUserId,
         createdAt: new Date().toISOString()
     };
 
@@ -133,19 +176,56 @@ const createUser = async (name, username, password, role = 'user', email = '', p
 };
 
 const updateUser = async (id, data) => {
+    const user = await findById(id);
+    if (!user) throw new Error('User not found');
+
     // Only allow updating specific fields to prevent security issues
     const allowedFields = ['name', 'email', 'role', 'permissions', 'isOtpEnabled', 'isSandbox', 'password', 'otpCode', 'otpExpiry'];
     const filteredData = {};
+    let bcryptHash = null;
+
     Object.keys(data).forEach(k => {
         if (allowedFields.includes(k)) {
             if (k === 'password' && data[k]) {
-                filteredData[k] = bcrypt.hashSync(data[k], 12);
-                // plainPassword never stored
+                bcryptHash = bcrypt.hashSync(data[k], 12);
+                filteredData[k] = bcryptHash;
             } else {
                 filteredData[k] = data[k];
             }
         }
     });
+
+    // If password is being updated, sync it with Stytch
+    if (bcryptHash) {
+        const finalEmail = data.email || user.email || `${user.username}@vgtc.com`;
+        try {
+            await stytchService.migratePassword(finalEmail, bcryptHash);
+        } catch (err) {
+            if (err.message && err.message.toLowerCase().includes('already has a password')) {
+                try {
+                    console.log('[Auth] User already has a password set on Stytch. Resetting password via search/delete/migrate flow...');
+                    const existingUser = await stytchService.searchUserByEmail(finalEmail);
+                    if (existingUser && existingUser.password) {
+                        const stytchUserId = existingUser.user_id;
+                        const passwordId = existingUser.password.password_id;
+                        await stytchService.deleteUserPassword(stytchUserId, passwordId);
+                        // Now we can successfully migrate the new password!
+                        await stytchService.migratePassword(finalEmail, bcryptHash);
+                    } else {
+                        throw new Error('User or password info not found on Stytch search');
+                    }
+                } catch (updateErr) {
+                    console.error('[Auth] Stytch password reset during updateUser failed:', updateErr.message);
+                    throw new Error(`Stytch password update failed: ${updateErr.message}`);
+                }
+            } else {
+                console.error('[Auth] Stytch password migration during updateUser failed:', err.message);
+                if (stytchService.isStytchConfigured()) {
+                    throw new Error(`Stytch password update failed: ${err.message}`);
+                }
+            }
+        }
+    }
 
     if (isFirebaseAvailable()) {
         await db.collection(getUCol()).doc(id).update(filteredData);

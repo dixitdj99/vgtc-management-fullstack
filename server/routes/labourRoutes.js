@@ -7,6 +7,7 @@ const { db, isAvailable } = require('../firebase');
 const { getEnvCol } = require('../utils/collectionUtils');
 const { getEnvPrefix } = require('../utils/envConfig');
 const localStore = require('../utils/localStore');
+const stytchService = require('../utils/stytchService');
 
 // ── Labour JWT Middleware ──────────────────────────────────
 const requireLabourAuth = (req, res, next) => {
@@ -30,8 +31,22 @@ router.post('/login', async (req, res) => {
         if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
         const worker = await labourService.findByUsername(username);
-        if (!worker || !labourService.verifyPassword(password, worker.password))
-            return res.status(401).json({ error: 'Invalid username or password' });
+        if (!worker) return res.status(401).json({ error: 'Invalid username or password' });
+
+        const emailToAuth = worker.email || `${username}@vgtc-labour.com`;
+
+        // Authenticate password
+        if (stytchService.isStytchConfigured()) {
+            try {
+                await stytchService.authenticate(emailToAuth, password);
+            } catch (err) {
+                return res.status(401).json({ error: err.message || 'Invalid username or password' });
+            }
+        } else {
+            // Fallback to local bcrypt validation
+            if (!labourService.verifyPassword(password, worker.password))
+                return res.status(401).json({ error: 'Invalid username or password' });
+        }
 
         const token = jwt.sign(
             { id: worker.id, name: worker.name, username: worker.username, godown: worker.godown, orgId: worker.orgId, role: 'labourer' },
