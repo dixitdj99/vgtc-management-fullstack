@@ -18,6 +18,7 @@ const TRANSLATIONS = {
   en: {
     portal_title: "Labour Portal",
     loading_status: "Loading Status",
+    attendance_tab: "Attendance",
     pending: "pending",
     refresh: "Refresh",
     truck_no: "Truck No",
@@ -60,6 +61,7 @@ const TRANSLATIONS = {
   hi: {
     portal_title: "लेबर पोर्टल",
     loading_status: "लोडिंग स्थिति",
+    attendance_tab: "हाजिरी (अटेंडेंस)",
     pending: "बाकी",
     refresh: "रिफ्रेश",
     truck_no: "ट्रक नंबर",
@@ -353,6 +355,13 @@ export default function LabourLoadingStatus() {
   const [lang, setLang] = useState(() => localStorage.getItem('vgtc-labour-lang') || 'en');
   const t = getT(lang);
 
+  const [activePortalTab, setActivePortalTab] = useState('loading'); // 'loading' | 'attendance'
+  const [profiles, setProfiles] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [attEdits, setAttEdits] = useState({});
+  const [attSaving, setAttSaving] = useState(false);
+  const [attSaved, setAttSaved] = useState(false);
+
   useEffect(() => {
     localStorage.setItem('vgtc-labour-lang', lang);
   }, [lang]);
@@ -361,6 +370,53 @@ export default function LabourLoadingStatus() {
   const isFirstFetch = useRef(true);
 
   const token = localStorage.getItem('vgtc-labour-token');
+
+  // Fetch Attendance & Profiles when token/date changes
+  const fetchAttendance = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [pRes, aRes] = await Promise.all([
+        api.get('/labour/profiles', { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: [] })),
+        api.get(`/labour/attendance?date=${selectedDate}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: [] })),
+      ]);
+      setProfiles(pRes.data || []);
+      const attList = aRes.data || [];
+      setAttendance(attList);
+      const map = {};
+      attList.forEach(a => { map[a.profileId] = a.status; });
+      setAttEdits(map);
+    } catch (e) {
+      console.error('Attendance fetch error:', e);
+    }
+  }, [token, selectedDate]);
+
+  useEffect(() => {
+    if (worker && activePortalTab === 'attendance') {
+      fetchAttendance();
+    }
+  }, [worker, activePortalTab, fetchAttendance]);
+
+  const saveAttendance = async () => {
+    if (!token) return;
+    setAttSaving(true);
+    try {
+      const records = profiles.map(p => ({
+        profileId: p.id,
+        profileName: p.name,
+        profileType: p.type || 'Staff',
+        status: attEdits[p.id] || 'present',
+      }));
+      await api.post('/labour/attendance/bulk', { date: selectedDate, records }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAttSaved(true);
+      setTimeout(() => setAttSaved(false), 2000);
+    } catch (e) {
+      alert('Save attendance failed: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setAttSaving(false);
+    }
+  };
 
   // ── Fetch today's LRs ──────────────────────────────────────
   const fetchData = useCallback(async (silent = false) => {
@@ -506,20 +562,38 @@ export default function LabourLoadingStatus() {
             </button>
           </div>
         </div>
+        {/* Navigation Portal Tabs */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', background: 'rgba(255,255,255,0.06)', padding: '4px', borderRadius: '10px' }}>
+          <button onClick={() => setActivePortalTab('loading')}
+            style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', background: activePortalTab === 'loading' ? '#6366f1' : 'transparent', color: 'white', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <Truck size={16} /> {t('loading_status')}
+          </button>
+          <button onClick={() => setActivePortalTab('attendance')}
+            style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', background: activePortalTab === 'attendance' ? '#6366f1' : 'transparent', color: 'white', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <User size={16} /> {t('attendance_tab')}
+          </button>
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                 style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '12.5px', padding: '6px 10px', outline: 'none', appearance: 'none', WebkitAppearance: 'none' }} />
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-              {(() => {
-                const filtered = receipts.filter(r => selectedDate !== todayStr || r.status !== 'Loaded');
-                return `${filtered.length} ${t('pending')}`;
-              })()}
-            </div>
+            {activePortalTab === 'loading' ? (
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                {(() => {
+                  const filtered = receipts.filter(r => selectedDate !== todayStr || r.status !== 'Loaded');
+                  return `${filtered.length} ${t('pending')}`;
+                })()}
+              </div>
+            ) : (
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                {profiles.length} Staff/Labourers
+              </div>
+            )}
           </div>
-          <button onClick={() => fetchData()} style={{ background: 'rgba(99,102,241,0.1)', border: 'none', color: '#818cf8', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}>
+          <button onClick={() => activePortalTab === 'loading' ? fetchData() : fetchAttendance()} style={{ background: 'rgba(99,102,241,0.1)', border: 'none', color: '#818cf8', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}>
             <RefreshCw size={14} /> {t('refresh')}
           </button>
         </div>
@@ -527,7 +601,49 @@ export default function LabourLoadingStatus() {
 
       {/* Content */}
       <div style={{ padding: '16px', paddingBottom: '40px' }}>
-        {loading ? (
+        {activePortalTab === 'attendance' ? (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#0f172a' }}>Daily Attendance ({selectedDate})</div>
+              <button onClick={saveAttendance} disabled={attSaving}
+                style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: attSaved ? '#10b981' : '#6366f1', color: 'white', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle size={15} /> {attSaving ? 'Saving...' : attSaved ? 'Saved!' : 'Save Attendance'}
+              </button>
+            </div>
+            {profiles.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '16px', color: '#94a3b8' }}>
+                No staff profiles found.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {profiles.map(p => {
+                  const currentSt = attEdits[p.id] || 'present';
+                  return (
+                    <div key={p.id} style={{ background: 'white', borderRadius: '12px', padding: '12px 14px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>{p.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{p.type || 'Staff'}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {[
+                          { id: 'present', label: 'P', name: 'Present', bg: '#dcfce7', color: '#166534' },
+                          { id: 'absent', label: 'A', name: 'Absent', bg: '#ffe4e6', color: '#9f1239' },
+                          { id: 'half_day', label: 'HD', name: 'Half Day', bg: '#fef3c7', color: '#92400e' },
+                          { id: 'leave', label: 'L', name: 'Leave', bg: '#e0e7ff', color: '#3730a3' },
+                        ].map(st => (
+                          <button key={st.id} onClick={() => setAttEdits(prev => ({ ...prev, [p.id]: st.id }))}
+                            style={{ padding: '6px 12px', borderRadius: '8px', border: currentSt === st.id ? `2px solid ${st.color}` : '1px solid #e2e8f0', background: currentSt === st.id ? st.bg : '#f8fafc', color: currentSt === st.id ? st.color : '#64748b', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}>
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : loading ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
             <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
             <div>{t('loading_vehicles')}</div>

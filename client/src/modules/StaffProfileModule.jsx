@@ -499,61 +499,61 @@ const StaffProfileModule = ({ role }) => {
                         </div>
                         
                         <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-                            <form id="profileForm" onSubmit={handleSave} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                            <form id="profileForm" onSubmit={handleSave} className="fg fg-2" style={{ gap: '20px' }}>
                                 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Profile Type</label>
+                                <div className="field">
+                                    <label>Profile Type</label>
                                     <select value={form.type} onChange={e => {
                                         const type = e.target.value;
                                         setForm({...form, type, department: type === 'Driver' ? 'Driver' : form.department})
-                                    }} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}>
+                                    }} className="fi">
                                         {PROFILE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
 
                                 {!VENDOR_TYPES.includes(form.type) && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Department</label>
-                                    <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}>
+                                <div className="field">
+                                    <label>Department</label>
+                                    <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className="fi">
                                         {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                                     </select>
                                 </div>
                                 )}
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Full Name</label>
-                                    <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                <div className="field">
+                                    <label>Full Name</label>
+                                    <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="fi" />
                                 </div>
 
                                 {form.type === 'Manual' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: '1 / -1' }}>
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Profile Description / Role</label>
-                                        <input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="e.g. Local Material Supplier" style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                    <div className="field" style={{ gridColumn: '1 / -1' }}>
+                                        <label>Profile Description / Role</label>
+                                        <input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="e.g. Local Material Supplier" className="fi" />
                                     </div>
                                 )}
 
                                 {!VENDOR_TYPES.includes(form.type) && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Father's Name</label>
-                                        <input value={form.fatherName} onChange={e => setForm({...form, fatherName: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                    <div className="field">
+                                        <label>Father's Name</label>
+                                        <input value={form.fatherName} onChange={e => setForm({...form, fatherName: e.target.value})} className="fi" />
                                     </div>
                                 )}
 
-                                <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Address</label>
-                                    <textarea value={form.address} onChange={e => setForm({...form, address: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minHeight: '60px', resize: 'vertical' }} />
+                                <div className="field" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Address</label>
+                                    <textarea value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="fi" style={{ minHeight: '60px', resize: 'vertical' }} />
                                 </div>
 
                                 {/* Mobile Numbers (Array) */}
-                                <div style={{ gridColumn: '1 / -1' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', display: 'block' }}>Mobile Numbers</label>
+                                <div className="field" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Mobile Numbers</label>
                                     {form.mobileNumbers.map((num, i) => (
                                         <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
                                             <input value={num} onChange={e => {
                                                 const newNums = [...form.mobileNumbers];
                                                 newNums[i] = e.target.value;
                                                 setForm({...form, mobileNumbers: newNums});
-                                            }} placeholder="Enter mobile number" style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                            }} placeholder="Enter mobile number" className="fi" style={{ flex: 1 }} />
                                             {i > 0 && <button type="button" onClick={() => {
                                                 const newNums = form.mobileNumbers.filter((_, idx) => idx !== i);
                                                 setForm({...form, mobileNumbers: newNums});
@@ -565,37 +565,37 @@ const StaffProfileModule = ({ role }) => {
 
                                 {/* Bank Details (Array) */}
                                 <div style={{ gridColumn: '1 / -1', background: 'rgba(0,0,0,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                                    <label style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px', display: 'block' }}>Bank Details</label>
+                                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '12px', display: 'block' }}>Bank Details</label>
                                     {form.bankDetails.map((bank, i) => (
                                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '10px', marginBottom: '12px', alignItems: 'end' }}>
-                                            <div>
-                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Bank Name</div>
+                                            <div className="field">
+                                                <label>Bank Name</label>
                                                 <input value={bank.bankName} onChange={e => {
                                                     const newBanks = [...form.bankDetails];
                                                     newBanks[i].bankName = e.target.value;
                                                     setForm({...form, bankDetails: newBanks});
-                                                }} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                                }} className="fi" />
                                             </div>
-                                            <div>
-                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Account No</div>
+                                            <div className="field">
+                                                <label>Account No</label>
                                                 <input value={bank.accountNo} onChange={e => {
                                                     const newBanks = [...form.bankDetails];
                                                     newBanks[i].accountNo = e.target.value;
                                                     setForm({...form, bankDetails: newBanks});
-                                                }} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                                }} className="fi" />
                                             </div>
-                                            <div>
-                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>IFSC Code</div>
+                                            <div className="field">
+                                                <label>IFSC Code</label>
                                                 <input value={bank.ifsc} onChange={e => {
                                                     const newBanks = [...form.bankDetails];
                                                     newBanks[i].ifsc = e.target.value;
                                                     setForm({...form, bankDetails: newBanks});
-                                                }} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                                }} className="fi" />
                                             </div>
                                             {i > 0 && <button type="button" onClick={() => {
                                                 const newBanks = form.bankDetails.filter((_, idx) => idx !== i);
                                                 setForm({...form, bankDetails: newBanks});
-                                            }} style={{ background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '6px', height: '36px', width: '36px', display: 'flex', alignItems: 'center', justifyItems: 'center', cursor: 'pointer' }}><Trash2 size={16} style={{margin:'0 auto'}} /></button>}
+                                            }} style={{ background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '6px', height: '40px', width: '36px', display: 'flex', alignItems: 'center', justifyItems: 'center', cursor: 'pointer' }}><Trash2 size={16} style={{margin:'0 auto'}} /></button>}
                                         </div>
                                     ))}
                                     <button type="button" onClick={() => setForm({...form, bankDetails: [...form.bankDetails, { bankName: '', accountNo: '', ifsc: '' }]})} style={{ fontSize: '13px', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', fontWeight: 600 }}>+ Add Another Bank</button>
@@ -604,13 +604,13 @@ const StaffProfileModule = ({ role }) => {
                                 {/* Driver Specific Details */}
                                 {form.type === 'Driver' && (
                                     <>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: '#f59e0b' }}>Vehicle Number</label>
-                                            <input required value={form.vehicleNo} onChange={e => setForm({...form, vehicleNo: e.target.value.toUpperCase()})} placeholder="HR 55 ..." style={{ padding: '10px', borderRadius: '8px', border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)', color: 'var(--text)', textTransform: 'uppercase' }} />
+                                        <div className="field">
+                                            <label style={{ color: '#f59e0b' }}>Vehicle Number</label>
+                                            <input required value={form.vehicleNo} onChange={e => setForm({...form, vehicleNo: e.target.value.toUpperCase()})} placeholder="HR 55 ..." className="fi" style={{ textTransform: 'uppercase' }} />
                                         </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: '#f59e0b' }}>Vehicle Type</label>
-                                            <select value={form.vehicleType} onChange={e => setForm({...form, vehicleType: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)', color: 'var(--text)' }}>
+                                        <div className="field">
+                                            <label style={{ color: '#f59e0b' }}>Vehicle Type</label>
+                                            <select value={form.vehicleType} onChange={e => setForm({...form, vehicleType: e.target.value})} className="fi">
                                                 <option value="Trailer">Trailer</option>
                                                 <option value="Canter">Canter</option>
                                             </select>
@@ -619,23 +619,23 @@ const StaffProfileModule = ({ role }) => {
                                 )}
 
                                 {!VENDOR_TYPES.includes(form.type) && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: form.type === 'Driver' ? '1 / -1' : 'auto' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success)' }}>Fixed Monthly Salary (₹)</label>
-                                    <input type="number" required min="0" step="0.01" value={form.fixedSalary} onChange={e => setForm({...form, fixedSalary: e.target.value})} placeholder="e.g. 20000" style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--success)', background: 'rgba(16, 185, 129, 0.05)', color: 'var(--text)', fontSize: '16px', fontWeight: 700 }} />
+                                <div className="field" style={{ gridColumn: form.type === 'Driver' ? '1 / -1' : 'auto' }}>
+                                    <label style={{ color: 'var(--success)' }}>Fixed Monthly Salary (₹)</label>
+                                    <input type="number" required min="0" step="0.01" value={form.fixedSalary} onChange={e => setForm({...form, fixedSalary: e.target.value})} placeholder="e.g. 20000" className="fi" style={{ fontSize: '16px', fontWeight: 700 }} />
                                 </div>
                                 )}
 
                                 {!VENDOR_TYPES.includes(form.type) && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Date of Joining</label>
-                                    <input type="date" required value={form.dateJoined} onChange={e => setForm({...form, dateJoined: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                <div className="field">
+                                    <label>Date of Joining</label>
+                                    <input type="date" required value={form.dateJoined} onChange={e => setForm({...form, dateJoined: e.target.value})} className="fi" />
                                 </div>
                                 )}
 
                                 {!VENDOR_TYPES.includes(form.type) && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--danger)' }}>Date of Exit (Leave blank if active)</label>
-                                    <input type="date" value={form.dateExit} onChange={e => setForm({...form, dateExit: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }} />
+                                <div className="field">
+                                    <label style={{ color: 'var(--danger)' }}>Date of Exit (Leave blank if active)</label>
+                                    <input type="date" value={form.dateExit} onChange={e => setForm({...form, dateExit: e.target.value})} className="fi" />
                                 </div>
                                 )}
 
