@@ -284,4 +284,82 @@ router.patch('/lr/:godown/:id/status', requireLabourAuth, async (req, res) => {
     }
 });
 
+// ── LABOUR: Get profiles for attendance ───────────────────
+router.get('/profiles', requireLabourAuth, async (req, res) => {
+    try {
+        let docs = [];
+        if (!isAvailable()) {
+            docs = localStore.getAll('profiles');
+        } else {
+            const prefix = getEnvPrefix();
+            const col = prefix ? `${prefix}profiles` : 'profiles';
+            const snapshot = await db.collection(col).get();
+            docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
+        res.json(docs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── LABOUR: Attendance ────────────────────────────────────
+router.get('/attendance', requireLabourAuth, async (req, res) => {
+    try {
+        const { date, month } = req.query;
+        let docs = [];
+        if (!isAvailable()) {
+            docs = localStore.getAll('attendance');
+        } else {
+            const prefix = getEnvPrefix();
+            const col = prefix ? `${prefix}attendance` : 'attendance';
+            const snapshot = await db.collection(col).get();
+            docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
+        if (date) docs = docs.filter(d => d.date === date);
+        if (month) docs = docs.filter(d => (d.date || '').startsWith(month));
+        res.json(docs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/attendance/bulk', requireLabourAuth, async (req, res) => {
+    try {
+        const { date, records } = req.body;
+        if (!date || !Array.isArray(records)) return res.status(400).json({ error: 'date and records[] required' });
+
+        const prefix = getEnvPrefix();
+        const basCol = 'attendance';
+        const col = prefix ? `${prefix}${basCol}` : basCol;
+        const results = [];
+
+        if (!isAvailable()) {
+            for (const r of records) {
+                const payload = { ...r, date, createdAt: new Date().toISOString() };
+                const existing = localStore.getAll(basCol).find(d => d.profileId === r.profileId && d.date === date);
+                if (existing) {
+                    localStore.update(basCol, existing.id, payload);
+                    results.push({ id: existing.id, ...payload });
+                } else {
+                    const doc = localStore.insert(basCol, payload);
+                    results.push({ id: doc.id, ...payload });
+                }
+            }
+        } else {
+            const batch = db.batch();
+            for (const r of records) {
+                const docId = `${r.profileId}_${date}`;
+                const payload = { ...r, date, createdAt: new Date().toISOString() };
+                batch.set(db.collection(col).doc(docId), payload, { merge: true });
+                results.push({ id: docId, ...payload });
+            }
+            await batch.commit();
+        }
+
+        res.json({ message: 'Attendance updated', records: results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

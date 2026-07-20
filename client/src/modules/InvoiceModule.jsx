@@ -491,10 +491,43 @@ export default function InvoiceModule({ brand = 'dump' }) {
       <div className="page-hd">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ background: '#10b981', color: 'white', padding: '10px', borderRadius: '12px' }}><FileText size={24} /></div>
-          <div><h1>Generate Invoice</h1><p>Transportation Freight Bill — Tax Invoice</p></div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ margin: 0 }}>Generate Invoice</h1>
+              <span className="nav-badge-soon">COMING SOON</span>
+            </div>
+            <p style={{ margin: 0 }}>Transportation Freight Bill — Tax Invoice</p>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {view !== 'upload' && <button className="btn btn-g btn-sm" onClick={() => { setView('upload'); setEditingInvoiceId(null); }}><ArrowLeft size={14} /> Back</button>}
+        </div>
+      </div>
+
+      {/* Coming Soon Alert Banner */}
+      <div style={{
+        marginBottom: '20px',
+        padding: '14px 18px',
+        borderRadius: '12px',
+        background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.08))',
+        border: '1px solid rgba(245, 158, 11, 0.3)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ background: '#f59e0b', color: 'white', padding: '6px 12px', borderRadius: '20px', fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', shrink: 0 }}>
+            Coming Soon
+          </div>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
+              ⚡ Direct Tax Invoice Automation Engine
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Direct automated PDF tax invoice creation with NIC portal integration is under final preparation. Excel template processing is enabled in the interim below.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -554,17 +587,17 @@ export default function InvoiceModule({ brand = 'dump' }) {
                   <h3 style={{ margin: 0, fontSize: '14px' }}>Step 2 — Upload Excel & Set Bill Details</h3>
                 </div>
                 <div style={{ padding: '20px' }}>
-                  <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                    <div className="field" style={{ margin: 0, flex: 1, minWidth: '100px' }}>
-                      <label style={{ fontSize: '10px', fontWeight: 700 }}>Starting Bill No.</label>
+                  <div className="fg fg-2" style={{ marginBottom: '20px' }}>
+                    <div className="field-h">
+                      <label>Starting Bill No.</label>
                       <input className="fi" type="text" placeholder="e.g. 92" value={billNoStart} onChange={e => setBillNoStart(e.target.value)} />
                     </div>
-                    <div className="field" style={{ margin: 0, flex: 1, minWidth: '140px' }}>
-                      <label style={{ fontSize: '10px', fontWeight: 700 }}>Bill Date</label>
+                    <div className="field-h">
+                      <label>Bill Date</label>
                       <input className="fi" type="date" value={billDate} onChange={e => setBillDate(e.target.value)} />
                     </div>
-                    <div className="field" style={{ margin: 0, minWidth: '90px' }}>
-                      <label style={{ fontSize: '10px', fontWeight: 700 }}>Entries/Bill</label>
+                    <div className="field-h">
+                      <label>Entries/Bill</label>
                       <input className="fi" type="number" min="5" max="100" value={maxPerBill} onChange={e => setMaxPerBill(parseInt(e.target.value) || 20)} />
                     </div>
                   </div>

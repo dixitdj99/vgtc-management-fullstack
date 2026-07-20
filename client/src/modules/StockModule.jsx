@@ -903,28 +903,44 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi MIGO (Stock Entry)' : 'MIGO — Stock Entry'}</h3><p>Record new material delivery into inventory</p></div>
             </div></div>
             <form onSubmit={triggerMigo} style={{ padding: '18px 20px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '14px', alignItems: 'end' }}>
-                {fi('Truck Number *', <>
-                  <input className="fi" type="text" placeholder="Enter truck number" required list="migo-truck-list"
-                    value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
-                  <datalist id="migo-truck-list">
-                    {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-                  </datalist>
-                </>)}
-                {fi('Material', <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
-                  {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (Bags) *', <div style={{ position: 'relative' }}>
-                  <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity in bags" style={{ paddingRight: migoForm.quantity ? '70px' : '12px' }}
-                    value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />
-                  {migoForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', pointerEvents: 'none' }}>{(migoForm.quantity * 0.05).toFixed(2)} MT</span>}
-                </div>)}
-                {fi('Date', <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />)}
-                {fi('Remark', <input className="fi" type="text" placeholder="Supplier name / note"
-                  value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />)}
+              <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
+                <div className="field-h">
+                  <label>Truck Number *</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="text" placeholder="Enter truck number" required list="migo-truck-list"
+                      value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
+                    <datalist id="migo-truck-list">
+                      {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Material</label>
+                  <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
+                    {MATS.map(m => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="field-h">
+                  <label>Quantity (Bags) *</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity in bags" style={{ paddingRight: migoForm.quantity ? '70px' : '12px' }}
+                      value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />
+                    {migoForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', pointerEvents: 'none' }}>{(migoForm.quantity * 0.05).toFixed(2)} MT</span>}
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Date</label>
+                  <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />
+                </div>
+                <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <label>Remark</label>
+                  <input className="fi" type="text" placeholder="Supplier name / note"
+                    value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
                 {err ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div> : <div />}
-                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px' }}>
+                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px', padding: '11px 24px' }}>
                   {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
                 </button>
               </div>
@@ -1001,48 +1017,73 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div className="card-title-text"><h3>Dispatch New Challan</h3><p>Assign stock to a vehicle (Challan Created status)</p></div>
             </div></div>
             <form onSubmit={triggerChallan} style={{ padding: '18px 20px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', alignItems: 'end' }}>
-                {fi('LR Number *', <>
-                  <input className="fi" type="text" placeholder="Enter LR number" required list="stock-lr-list"
-                    value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
-                  <datalist id="stock-lr-list">
-                    {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
-                  </datalist>
-                </>)}
-                {fi('Truck Number *', <>
-                  <input className="fi" type="text" placeholder="Enter truck number" required list="stock-truck-list"
-                    value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
-                  <datalist id="stock-truck-list">
-                    {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
-                  </datalist>
-                </>)}
-                {fi('Material', <select className="fi" value={chalForm.material} onChange={e => setChalForm(f => ({ ...f, material: e.target.value }))}>
-                  {MATS.map(m => <option key={m}>{m}</option>)}</select>)}
-                {fi('Quantity (Bags) *', <div style={{ position: 'relative' }}>
-                  <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity" style={{ paddingRight: chalForm.quantity ? '70px' : '12px' }}
-                    value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
-                  {chalForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--warn)', pointerEvents: 'none' }}>{(chalForm.quantity * 0.05).toFixed(2)} MT</span>}
-                </div>)}
-                {fi('Party Name', <>
-                  <input className="fi" type="text" placeholder="Enter customer or party name" list="stock-party-list"
-                    value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
-                  <datalist id="stock-party-list">
-                    {partySuggestions.map(name => <option key={name} value={name} />)}
-                  </datalist>
-                </>)}
-                {fi('Party Code', <input className="fi" type="text" placeholder="Optional party code"
-                  value={chalForm.partyCode} onChange={e => setChalForm(f => ({ ...f, partyCode: e.target.value }))} />)}
-                {fi('Bill No', <input className="fi" type="text" placeholder="Optional bill number"
-                  value={chalForm.billNo} onChange={e => setChalForm(f => ({ ...f, billNo: e.target.value }))} />)}
-                {fi('Date', <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />)}
+              <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
+                <div className="field-h">
+                  <label>LR Number *</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="text" placeholder="Enter LR number" required list="stock-lr-list"
+                      value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
+                    <datalist id="stock-lr-list">
+                      {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Truck Number *</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="text" placeholder="Enter truck number" required list="stock-truck-list"
+                      value={chalForm.truckNo} onChange={e => setChalForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
+                    <datalist id="stock-truck-list">
+                      {vehicles.map(v => <option key={v.id} value={v.truckNo} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Material</label>
+                  <select className="fi" value={chalForm.material} onChange={e => setChalForm(f => ({ ...f, material: e.target.value }))}>
+                    {MATS.map(m => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="field-h">
+                  <label>Quantity (Bags) *</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity" style={{ paddingRight: chalForm.quantity ? '70px' : '12px' }}
+                      value={chalForm.quantity} onChange={e => setChalForm(f => ({ ...f, quantity: e.target.value }))} />
+                    {chalForm.quantity && <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', fontWeight: 800, color: 'var(--warn)', pointerEvents: 'none' }}>{(chalForm.quantity * 0.05).toFixed(2)} MT</span>}
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Party Name</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="text" placeholder="Enter customer or party name" list="stock-party-list"
+                      value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
+                    <datalist id="stock-party-list">
+                      {partySuggestions.map(name => <option key={name} value={name} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Party Code</label>
+                  <input className="fi" type="text" placeholder="Optional party code"
+                    value={chalForm.partyCode} onChange={e => setChalForm(f => ({ ...f, partyCode: e.target.value }))} />
+                </div>
+                <div className="field-h">
+                  <label>Bill No</label>
+                  <input className="fi" type="text" placeholder="Optional bill number"
+                    value={chalForm.billNo} onChange={e => setChalForm(f => ({ ...f, billNo: e.target.value }))} />
+                </div>
+                <div className="field-h">
+                  <label>Date</label>
+                  <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />
+                </div>
+                <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <label>Remark</label>
+                  <input className="fi" type="text" placeholder="Notes"
+                    value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                  <div className="field" style={{ flex: 1, maxWidth: '300px' }}>
-                    <label>Remark</label>
-                    <input className="fi" type="text" placeholder="Notes"
-                      value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />
-                  </div>
                   {chalForm.material && (
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, padding: '4px 12px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                       📦 {chalForm.material}: <strong style={{ color: 'var(--text)' }}>{(stockMap[chalForm.material]?.available || 0).toLocaleString()}</strong> bags available
@@ -1050,7 +1091,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   )}
                   {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div>}
                 </div>
-                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px' }}>
+                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px', padding: '11px 24px' }}>
                   {saving ? '…' : <><Tag size={14} /> Create Challan</>}
                 </button>
               </div>
@@ -1222,26 +1263,51 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               </div>
             </div>
             <form onSubmit={handleTransfer} style={{ padding: '16px 18px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
-                {fi('Convert From *', <select className="fi" value={transferForm.sourceMaterial} onChange={e => setTransferForm(f => ({ ...f, sourceMaterial: e.target.value }))} required>
-                  <option value="">Select source material...</option>
-                  {MATS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>)}
-                {fi('Convert To *', <select className="fi" value={transferForm.destMaterial} onChange={e => setTransferForm(f => ({ ...f, destMaterial: e.target.value }))} required>
-                  <option value="">Select destination material...</option>
-                  {MATS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>)}
-                {fi('Quantity (bags) *', <input className="fi" type="number" min="1" placeholder="Bags" value={transferForm.quantity} onChange={e => setTransferForm(f => ({ ...f, quantity: e.target.value }))} required />)}
-                {fi('Party Name', <input className="fi" type="text" placeholder="Party" value={transferForm.partyName} onChange={e => setTransferForm(f => ({ ...f, partyName: e.target.value }))} list="transfer-party-list" />)}
-                <datalist id="transfer-party-list">{partySuggestions.map(p => <option key={p} value={p} />)}</datalist>
-                {fi('Challan No.', <input className="fi" type="text" placeholder="CH-XXXX" value={transferForm.challanNo} onChange={e => setTransferForm(f => ({ ...f, challanNo: e.target.value }))} />)}
-                {fi('Date', <input className="fi" type="date" value={transferForm.date} onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} />)}
-                {fi('Remark', <input className="fi" type="text" placeholder="Note" value={transferForm.remark} onChange={e => setTransferForm(f => ({ ...f, remark: e.target.value }))} />)}
-                <button type="submit" className="btn btn-p" disabled={transferSaving} style={{ height: '38px', fontWeight: 800 }}>
+              <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
+                <div className="field-h">
+                  <label>Convert From *</label>
+                  <select className="fi" value={transferForm.sourceMaterial} onChange={e => setTransferForm(f => ({ ...f, sourceMaterial: e.target.value }))} required>
+                    <option value="">Select source material...</option>
+                    {MATS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="field-h">
+                  <label>Convert To *</label>
+                  <select className="fi" value={transferForm.destMaterial} onChange={e => setTransferForm(f => ({ ...f, destMaterial: e.target.value }))} required>
+                    <option value="">Select destination material...</option>
+                    {MATS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="field-h">
+                  <label>Quantity (bags) *</label>
+                  <input className="fi" type="number" min="1" placeholder="Bags" value={transferForm.quantity} onChange={e => setTransferForm(f => ({ ...f, quantity: e.target.value }))} required />
+                </div>
+                <div className="field-h">
+                  <label>Party Name</label>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input className="fi" type="text" placeholder="Party" value={transferForm.partyName} onChange={e => setTransferForm(f => ({ ...f, partyName: e.target.value }))} list="transfer-party-list" />
+                    <datalist id="transfer-party-list">{partySuggestions.map(p => <option key={p} value={p} />)}</datalist>
+                  </div>
+                </div>
+                <div className="field-h">
+                  <label>Challan No.</label>
+                  <input className="fi" type="text" placeholder="CH-XXXX" value={transferForm.challanNo} onChange={e => setTransferForm(f => ({ ...f, challanNo: e.target.value }))} />
+                </div>
+                <div className="field-h">
+                  <label>Date</label>
+                  <input className="fi" type="date" value={transferForm.date} onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} />
+                </div>
+                <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <label>Remark</label>
+                  <input className="fi" type="text" placeholder="Note" value={transferForm.remark} onChange={e => setTransferForm(f => ({ ...f, remark: e.target.value }))} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                {transferErr ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600 }}>{transferErr}</div> : <div />}
+                <button type="submit" className="btn btn-p" disabled={transferSaving} style={{ minWidth: '160px', padding: '11px 24px' }}>
                   {transferSaving ? '...' : <><ArrowRightLeft size={13} /> Transfer</>}
                 </button>
               </div>
-              {transferErr && <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '8px', fontWeight: 600 }}>{transferErr}</div>}
             </form>
           </div>
 

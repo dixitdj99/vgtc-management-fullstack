@@ -552,16 +552,16 @@ export default function OrganizationSettings({ orgOnly = false }) {
                         <form onSubmit={handleCreate} className="card">
                             <SectionHeader icon={Plus} title="Create Organization" subtitle="Provision branding, default access, and an optional first admin" color="#10b981" />
                             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                                    <div className="field"><label>Organization Name *</label><IconInput icon={Type}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.name} onChange={e => patchCreate({ name: e.target.value, id: createForm.id || slugify(e.target.value) })} required /></IconInput></div>
-                                    <div className="field"><label>Organization ID *</label><IconInput icon={Tag}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.id} onChange={e => patchCreate({ id: slugify(e.target.value) })} required /></IconInput></div>
-                                    <div className="field"><label>Domain Name</label><IconInput icon={Globe}><input className="fi" style={{ paddingLeft: '34px' }} placeholder="company.com" value={createForm.domain} onChange={e => patchCreate({ domain: e.target.value })} /></IconInput></div>
-                                    <div className="field"><label>Logo URL</label><IconInput icon={Image}><input className="fi" style={{ paddingLeft: '34px' }} placeholder="https://..." value={createForm.logoUrl} onChange={e => patchCreate({ logoUrl: e.target.value })} /></IconInput></div>
-                                    <div className="field"><label>Contact Email</label><IconInput icon={Mail}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.config.contactEmail} onChange={e => patchCreateConfig({ contactEmail: e.target.value })} /></IconInput></div>
-                                    <div className="field"><label>Contact Phone</label><IconInput icon={Phone}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.config.contactPhone} onChange={e => patchCreateConfig({ contactPhone: e.target.value })} /></IconInput></div>
-                                    <div className="field" style={{ gridColumn: '1 / -1' }}><label>Address</label><IconInput icon={MapPin}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.config.address} onChange={e => patchCreateConfig({ address: e.target.value })} /></IconInput></div>
-                                    <div className="field"><label>Primary Color</label><IconInput icon={Palette}><input className="fi" style={{ paddingLeft: '34px' }} type="color" value={createForm.config.primaryColor} onChange={e => patchCreateConfig({ primaryColor: e.target.value })} /></IconInput></div>
-                                    <div className="field"><label>Accent Color</label><IconInput icon={Palette}><input className="fi" style={{ paddingLeft: '34px' }} type="color" value={createForm.config.accentColor} onChange={e => patchCreateConfig({ accentColor: e.target.value })} /></IconInput></div>
+                                <div className="fg fg-2">
+                                    <div className="field-h"><label>Organization Name *</label><IconInput icon={Type}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.name} onChange={e => patchCreate({ name: e.target.value, id: createForm.id || slugify(e.target.value) })} required /></IconInput></div>
+                                    <div className="field-h"><label>Organization ID *</label><IconInput icon={Tag}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.id} onChange={e => patchCreate({ id: slugify(e.target.value) })} required /></IconInput></div>
+                                    <div className="field-h"><label>Domain Name</label><IconInput icon={Globe}><input className="fi" style={{ paddingLeft: '34px' }} placeholder="company.com" value={createForm.domain} onChange={e => patchCreate({ domain: e.target.value })} /></IconInput></div>
+                                    <div className="field-h"><label>Logo URL</label><IconInput icon={Image}><input className="fi" style={{ paddingLeft: '34px' }} placeholder="https://..." value={createForm.logoUrl} onChange={e => patchCreate({ logoUrl: e.target.value })} /></IconInput></div>
+                                    <div className="field-h"><label>Contact Email</label><IconInput icon={Mail}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.config.contactEmail} onChange={e => patchCreateConfig({ contactEmail: e.target.value })} /></IconInput></div>
+                                    <div className="field-h"><label>Contact Phone</label><IconInput icon={Phone}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.config.contactPhone} onChange={e => patchCreateConfig({ contactPhone: e.target.value })} /></IconInput></div>
+                                    <div className="field-h"><label>Address</label><IconInput icon={MapPin}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.config.address} onChange={e => patchCreateConfig({ address: e.target.value })} /></IconInput></div>
+                                    <div className="field-h"><label>Primary Color</label><IconInput icon={Palette}><input className="fi" style={{ paddingLeft: '34px' }} type="color" value={createForm.config.primaryColor} onChange={e => patchCreateConfig({ primaryColor: e.target.value })} /></IconInput></div>
+                                    <div className="field-h"><label>Accent Color</label><IconInput icon={Palette}><input className="fi" style={{ paddingLeft: '34px' }} type="color" value={createForm.config.accentColor} onChange={e => patchCreateConfig({ accentColor: e.target.value })} /></IconInput></div>
                                 </div>
 
                                 <div>
@@ -571,11 +571,11 @@ export default function OrganizationSettings({ orgOnly = false }) {
 
                                 <div style={{ padding: '16px', borderRadius: '14px', border: '1px solid var(--border)', background: 'var(--bg-input)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 900, marginBottom: '14px' }}><UserPlus size={16} /> First Admin User</div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
-                                        <div className="field"><label>Name</label><IconInput icon={Users}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.admin.name} onChange={e => patchCreateAdmin({ name: e.target.value })} /></IconInput></div>
-                                        <div className="field"><label>Username</label><IconInput icon={Tag}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.admin.username} onChange={e => patchCreateAdmin({ username: e.target.value.toLowerCase().replace(/\s/g, '') })} /></IconInput></div>
-                                        <div className="field"><label>Password</label><IconInput icon={Lock}><input className="fi" style={{ paddingLeft: '34px' }} type="text" value={createForm.admin.password} onChange={e => patchCreateAdmin({ password: e.target.value })} /></IconInput></div>
-                                        <div className="field"><label>Email</label><IconInput icon={Mail}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.admin.email} onChange={e => patchCreateAdmin({ email: e.target.value })} /></IconInput></div>
+                                    <div className="fg fg-2">
+                                        <div className="field-h"><label>Name</label><IconInput icon={Users}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.admin.name} onChange={e => patchCreateAdmin({ name: e.target.value })} /></IconInput></div>
+                                        <div className="field-h"><label>Username</label><IconInput icon={Tag}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.admin.username} onChange={e => patchCreateAdmin({ username: e.target.value.toLowerCase().replace(/\s/g, '') })} /></IconInput></div>
+                                        <div className="field-h"><label>Password</label><IconInput icon={Lock}><input className="fi" style={{ paddingLeft: '34px' }} type="text" value={createForm.admin.password} onChange={e => patchCreateAdmin({ password: e.target.value })} /></IconInput></div>
+                                        <div className="field-h"><label>Email</label><IconInput icon={Mail}><input className="fi" style={{ paddingLeft: '34px' }} value={createForm.admin.email} onChange={e => patchCreateAdmin({ email: e.target.value })} /></IconInput></div>
                                     </div>
                                     <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', marginTop: '12px' }}>
                                         <input type="checkbox" checked={createForm.admin.isOtpEnabled} onChange={e => patchCreateAdmin({ isOtpEnabled: e.target.checked })} />
@@ -592,18 +592,20 @@ export default function OrganizationSettings({ orgOnly = false }) {
                         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div className="card">
                                 <SectionHeader icon={Info} title="Organization Details" subtitle="Branding, domain, logo, and business profile" />
-                                <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 180px', gap: '14px', alignItems: 'end' }}>
-                                    <div className="field"><label>Organization Name</label><IconInput icon={Type}><input className="fi" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={{ paddingLeft: '34px' }} required /></IconInput></div>
-                                    <div className="field"><label>Domain Name</label><IconInput icon={Globe}><input className="fi" value={form.domain} onChange={e => setForm(f => ({ ...f, domain: e.target.value }))} style={{ paddingLeft: '34px' }} /></IconInput></div>
-                                    <div className="field"><label>Status</label><select className="fi" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></div>
-                                    <div className="field" style={{ gridColumn: '1 / 3' }}><label>Logo URL</label><IconInput icon={Image}><input className="fi" value={form.logoUrl} onChange={e => setForm(f => ({ ...f, logoUrl: e.target.value }))} style={{ paddingLeft: '34px' }} /></IconInput></div>
-                                    <button className="btn btn-p" type="submit" disabled={saving} style={{ height: '42px' }}>{saving ? <><RefreshCw size={15} className="ani-spin" /> Saving...</> : <><Save size={15} /> Save</>}</button>
-                                    <div className="field"><label>Contact Email</label><IconInput icon={Mail}><input className="fi" value={form.config.contactEmail || ''} onChange={e => patchConfig({ contactEmail: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
-                                    <div className="field"><label>Contact Phone</label><IconInput icon={Phone}><input className="fi" value={form.config.contactPhone || ''} onChange={e => patchConfig({ contactPhone: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
-                                    <div className="field"><label>Business Type</label><input className="fi" value={form.config.businessType || ''} onChange={e => patchConfig({ businessType: e.target.value })} /></div>
-                                    <div className="field"><label>Plan</label><input className="fi" placeholder="e.g. Free, Pro, Enterprise" value={form.config.plan || ''} onChange={e => patchConfig({ plan: e.target.value })} /></div>
-                                    <div className="field"><label>Primary Color</label><input className="fi" type="color" value={form.config.primaryColor || '#8b5cf6'} onChange={e => patchConfig({ primaryColor: e.target.value })} /></div>
-                                    <div className="field" style={{ gridColumn: '1 / -1' }}><label>Address</label><IconInput icon={MapPin}><input className="fi" value={form.config.address || ''} onChange={e => patchConfig({ address: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    <div className="fg fg-2">
+                                        <div className="field-h"><label>Organization Name</label><IconInput icon={Type}><input className="fi" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={{ paddingLeft: '34px' }} required /></IconInput></div>
+                                        <div className="field-h"><label>Domain Name</label><IconInput icon={Globe}><input className="fi" value={form.domain} onChange={e => setForm(f => ({ ...f, domain: e.target.value }))} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                        <div className="field-h"><label>Status</label><select className="fi" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></div>
+                                        <div className="field-h"><label>Logo URL</label><IconInput icon={Image}><input className="fi" value={form.logoUrl} onChange={e => setForm(f => ({ ...f, logoUrl: e.target.value }))} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                        <div className="field-h"><label>Contact Email</label><IconInput icon={Mail}><input className="fi" value={form.config.contactEmail || ''} onChange={e => patchConfig({ contactEmail: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                        <div className="field-h"><label>Contact Phone</label><IconInput icon={Phone}><input className="fi" value={form.config.contactPhone || ''} onChange={e => patchConfig({ contactPhone: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                        <div className="field-h"><label>Business Type</label><input className="fi" value={form.config.businessType || ''} onChange={e => patchConfig({ businessType: e.target.value })} /></div>
+                                        <div className="field-h"><label>Plan</label><input className="fi" placeholder="e.g. Free, Pro, Enterprise" value={form.config.plan || ''} onChange={e => patchConfig({ plan: e.target.value })} /></div>
+                                        <div className="field-h"><label>Primary Color</label><input className="fi" type="color" value={form.config.primaryColor || '#8b5cf6'} onChange={e => patchConfig({ primaryColor: e.target.value })} /></div>
+                                        <div className="field-h"><label>Address</label><IconInput icon={MapPin}><input className="fi" value={form.config.address || ''} onChange={e => patchConfig({ address: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                    </div>
+                                    <button className="btn btn-p" type="submit" disabled={saving} style={{ height: '42px', marginTop: '4px', width: '100%' }}>{saving ? <><RefreshCw size={15} className="ani-spin" /> Saving...</> : <><Save size={15} /> Save Organization Details</>}</button>
                                 </div>
                             </div>
 
@@ -676,12 +678,12 @@ export default function OrganizationSettings({ orgOnly = false }) {
                                                 <div style={{ fontSize: '13px', fontWeight: 900 }}>{editingUser ? 'Edit User' : 'Create New User'}</div>
                                                 <button type="button" onClick={() => { setEditingUser(null); setShowUserCreate(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>
                                             </div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                                                <div className="field"><label>Name *</label><input className="fi" value={userForm.name} onChange={e => setUserForm(f => ({ ...f, name: e.target.value }))} required /></div>
-                                                <div className="field"><label>Username {editingUser ? '(readonly)' : '*'}</label><input className="fi" value={userForm.username} onChange={e => setUserForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') }))} disabled={!!editingUser} required={!editingUser} /></div>
-                                                <div className="field"><label>{editingUser ? 'New Password (leave blank to keep)' : 'Password *'}</label><input className="fi" type="text" value={userForm.password} onChange={e => setUserForm(f => ({ ...f, password: e.target.value }))} required={!editingUser} /></div>
-                                                <div className="field"><label>Email</label><input className="fi" value={userForm.email} onChange={e => setUserForm(f => ({ ...f, email: e.target.value }))} /></div>
-                                                <div className="field">
+                                            <div className="fg fg-2" style={{ marginBottom: '14px' }}>
+                                                <div className="field-h"><label>Name *</label><input className="fi" value={userForm.name} onChange={e => setUserForm(f => ({ ...f, name: e.target.value }))} required /></div>
+                                                <div className="field-h"><label>Username {editingUser ? '(readonly)' : '*'}</label><input className="fi" value={userForm.username} onChange={e => setUserForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') }))} disabled={!!editingUser} required={!editingUser} /></div>
+                                                <div className="field-h"><label>{editingUser ? 'New Password' : 'Password *'}</label><input className="fi" type="text" value={userForm.password} onChange={e => setUserForm(f => ({ ...f, password: e.target.value }))} required={!editingUser} /></div>
+                                                <div className="field-h"><label>Email</label><input className="fi" value={userForm.email} onChange={e => setUserForm(f => ({ ...f, email: e.target.value }))} /></div>
+                                                <div className="field-h">
                                                     <label>Role</label>
                                                     <select className="fi" value={userForm.role} onChange={e => {
                                                         const newRole = e.target.value;
@@ -692,13 +694,16 @@ export default function OrganizationSettings({ orgOnly = false }) {
                                                         {getOrgRoles().map(r => <option key={r} value={r}>{r}</option>)}
                                                     </select>
                                                 </div>
-                                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                                                    <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px' }}>
-                                                        <input type="checkbox" checked={userForm.isOtpEnabled} onChange={e => setUserForm(f => ({ ...f, isOtpEnabled: e.target.checked }))} /> OTP
-                                                    </label>
-                                                    <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px' }}>
-                                                        <input type="checkbox" checked={userForm.isSandbox} onChange={e => setUserForm(f => ({ ...f, isSandbox: e.target.checked }))} /> Sandbox
-                                                    </label>
+                                                <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                                                    <label>Security</label>
+                                                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                                                        <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', cursor: 'pointer' }}>
+                                                            <input type="checkbox" checked={userForm.isOtpEnabled} onChange={e => setUserForm(f => ({ ...f, isOtpEnabled: e.target.checked }))} /> OTP Enabled
+                                                        </label>
+                                                        <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', cursor: 'pointer' }}>
+                                                            <input type="checkbox" checked={userForm.isSandbox} onChange={e => setUserForm(f => ({ ...f, isSandbox: e.target.checked }))} /> Sandbox Mode
+                                                        </label>
+                                                    </div>
                                                 </div>
                                             </div>
                                             {userForm.role !== 'admin' && (
@@ -779,9 +784,14 @@ export default function OrganizationSettings({ orgOnly = false }) {
 
                             <div className="card">
                                 <SectionHeader icon={Layout} title="Module Labels" subtitle="Labels are saved separately for the selected organization" />
-                                <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {displayModuleKeys.map(m => (
-                                        <div key={m.id} className="field"><label style={{ fontSize: '11px', opacity: 0.7 }}>{m.default}</label><IconInput icon={Tag}><input className="fi" placeholder={m.default} value={form.moduleLabels[m.id] || ''} onChange={e => setLabel(m.id, e.target.value)} style={{ paddingLeft: '34px' }} /></IconInput></div>
+                                        <div key={m.id} className="field-h">
+                                            <label>{m.default}</label>
+                                            <IconInput icon={Tag}>
+                                                <input className="fi" placeholder={m.default} value={form.moduleLabels[m.id] || ''} onChange={e => setLabel(m.id, e.target.value)} style={{ paddingLeft: '34px' }} />
+                                            </IconInput>
+                                        </div>
                                     ))}
                                 </div>
                             </div>

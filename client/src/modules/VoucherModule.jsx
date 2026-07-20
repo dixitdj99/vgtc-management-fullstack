@@ -408,75 +408,106 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                     </div>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex' }}><X size={18} /></button>
                 </div>
-                <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div className="fg fg-3">
-                        <div className="field"><label>LR No.</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
-                        <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
-                        <div className="field">
-                            <label>Truck No.</label>
-                            <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`voucher-truck-list-${v.id}`} />
+                <div className="fg fg-2" style={{ padding: '20px 22px', gap: '12px' }}>
+                    <div className="field-h">
+                        <label>LR No. *</label>
+                        <input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} required />
+                    </div>
+                    <div className="field-h">
+                        <label>Date *</label>
+                        <input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} required />
+                    </div>
+                    <div className="field-h">
+                        <label>Truck No. *</label>
+                        <div style={{ position: 'relative', width: '100%' }}>
+                            <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`voucher-truck-list-${v.id}`} required />
                             <datalist id={`voucher-truck-list-${v.id}`}>
                                 {vehicleNumbers.map(no => <option key={no} value={no} />)}
                             </datalist>
                         </div>
-                        <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
-                        <div className="field">
-                            <label>Party Name</label>
+                    </div>
+                    <div className="field-h">
+                        <label>Destination</label>
+                        <input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} />
+                    </div>
+                    <div className="field-h">
+                        <label>Party Name</label>
+                        <div style={{ position: 'relative', width: '100%' }}>
                             <input className="fi" type="text" value={form.partyName} onChange={e => setPartyName(e.target.value)} list={`voucher-party-list-${v.id}`} />
                             <datalist id={`voucher-party-list-${v.id}`}>
                                 {partySuggestions.map(name => <option key={name} value={name} />)}
                             </datalist>
                         </div>
-                        {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill') && (
-                            <>
-                                <div className="field"><label>Party Code</label><input className="fi" type="text" value={form.partyCode} onChange={e => S('partyCode', e.target.value)} /></div>
-                                <div className="field"><label>Bill No</label><input className="fi" type="text" value={form.billNo} onChange={e => S('billNo', e.target.value)} required /></div>
-                                <div className="field"><label>Material Name</label><input className="fi" type="text" value={form.materialName} onChange={e => S('materialName', e.target.value)} /></div>
-                            </>
-                        )}
                     </div>
-                    <hr className="sep" style={{ margin: '2px 0' }} />
-                    <div className="fg fg-3">
-                        <div className="field">
-                            <label>Weight (MT)</label>
-                            <input className="fi" type="number" step="0.01" value={form.weight} 
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
-                                }} 
-                            />
-                        </div>
-                        <div className="field">
-                            <label>Bags</label>
-                            <input className="fi" type="number" value={form.bags} 
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
-                                }} 
-                            />
-                        </div>
-                        <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" value={form.rate} onChange={e => S('rate', e.target.value)} /></div>
+                    {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill') && (
+                        <>
+                            <div className="field-h">
+                                <label>Party Code</label>
+                                <input className="fi" type="text" value={form.partyCode} onChange={e => S('partyCode', e.target.value)} />
+                            </div>
+                            <div className="field-h">
+                                <label>Bill No *</label>
+                                <input className="fi" type="text" value={form.billNo} onChange={e => S('billNo', e.target.value)} required />
+                            </div>
+                            <div className="field-h">
+                                <label>Material Name</label>
+                                <input className="fi" type="text" value={form.materialName} onChange={e => S('materialName', e.target.value)} />
+                            </div>
+                        </>
+                    )}
+                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
+                    <div className="field-h">
+                        <label>Weight (MT)</label>
+                        <input className="fi" type="number" step="0.01" value={form.weight} 
+                            onChange={e => {
+                                const val = e.target.value;
+                                setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
+                            }} 
+                        />
                     </div>
-                    <div className="fg fg-3">
-                        <div className="field"><label>Diesel Advance</label><input className="fi" type="text" value={form.advanceDiesel} onChange={e => S('advanceDiesel', e.target.value)} /></div>
-                        <div className="field"><label>Cash Advance</label><input className="fi" type="number" value={form.advanceCash} onChange={e => S('advanceCash', e.target.value)} /></div>
-                        <div className="field"><label>Online Advance</label><input className="fi" type="number" value={form.advanceOnline} onChange={e => S('advanceOnline', e.target.value)} /></div>
+                    <div className="field-h">
+                        <label>Bags</label>
+                        <input className="fi" type="number" value={form.bags} 
+                            onChange={e => {
+                                const val = e.target.value;
+                                setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
+                            }} 
+                        />
                     </div>
-                    <div className="field"><label>Fuel Station</label>
+                    <div className="field-h">
+                        <label>Rate (Rs/MT)</label>
+                        <input className="fi" type="number" value={form.rate} onChange={e => S('rate', e.target.value)} />
+                    </div>
+                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
+                    <div className="field-h">
+                        <label>Diesel Advance</label>
+                        <input className="fi" type="text" value={form.advanceDiesel} onChange={e => S('advanceDiesel', e.target.value)} />
+                    </div>
+                    <div className="field-h">
+                        <label>Cash Advance</label>
+                        <input className="fi" type="number" value={form.advanceCash} onChange={e => S('advanceCash', e.target.value)} />
+                    </div>
+                    <div className="field-h">
+                        <label>Online Advance</label>
+                        <input className="fi" type="number" value={form.advanceOnline} onChange={e => S('advanceOnline', e.target.value)} />
+                    </div>
+                    <div className="field-h">
+                        <label>Fuel Station</label>
                         <select className="fi" value={form.pump} onChange={e => S('pump', e.target.value)}>
                             {pumpOptions.map(p => <option key={p}>{p}</option>)}
                         </select>
                     </div>
-                    <div className="chk-row">
-                        <input type="checkbox" id="ec" checked={form.hasCommission} onChange={e => S('hasCommission', e.target.checked)} />
-                        <label htmlFor="ec">Commission — Rs.20/MT</label>
+                    <div className="field-h">
+                        <label>Commission</label>
+                        <div style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
+                            <input type="checkbox" id="ec" checked={form.hasCommission} onChange={e => S('hasCommission', e.target.checked)} style={{ marginRight: '8px' }} />
+                            <label htmlFor="ec" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>Rs.20/MT</label>
+                        </div>
                     </div>
                     {isVGTCTruck(form.truckNo) && (
-                        <div className="fg fg-1" style={{ marginTop: '8px' }}>
-                            <div className="field">
-                                <label><Gauge size={11}/> Current Odometer</label>
-                                <input className="fi" type="number" value={form.endKm} onChange={e => S('endKm', e.target.value)} />
-                            </div>
+                        <div className="field-h">
+                            <label><Gauge size={11} style={{ marginRight: '4px' }} /> Odometer</label>
+                            <input className="fi" type="number" value={form.endKm} onChange={e => S('endKm', e.target.value)} />
                         </div>
                     )}
                 </div>
@@ -991,320 +1022,332 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             <motion.div key="form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeInOut' }} style={{ overflow: 'hidden' }}>
                                 <div className="card-body">
                                     <form onSubmit={handleFormRequest} ref={voucherFormRef}>
-                                        <div className="fg fg-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-                                            {!isFactory && (
-                                            <div className="field">
-                                                <label><Search size={11} /> LR Number <span style={{color:'var(--danger)'}}>*</span></label>
-                                                <input
-                                                    className="fi" type="text" placeholder="Enter LR number"
-                                                    value={form.lrNo}
-                                                    onChange={e => handleLrSearch(e.target.value)}
-                                                    style={lrAlreadyUsed ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.18)' } : {}}
-                                                    required
-                                                />
-                                            </div>
-                                            )}
-                                            <div className="field">
-                                                <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
-                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
-                                                <datalist id="voucher-truck-list">
-                                                    {vehicleNumbers.map(no => <option key={no} value={no} />)}
-                                                </datalist>
-                                            </div>
+                                        <div className="fg fg-2">
+                                                {!isFactory && (
+                                                <div className="field-h">
+                                                    <label><Search size={11} style={{ marginRight: '4px' }} /> LR Number *</label>
+                                                    <input
+                                                        className="fi" type="text" placeholder="Enter LR number"
+                                                        value={form.lrNo}
+                                                        onChange={e => handleLrSearch(e.target.value)}
+                                                        style={lrAlreadyUsed ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.18)' } : {}}
+                                                        required
+                                                    />
+                                                </div>
+                                                )}
+                                                <div className="field-h">
+                                                    <label>Truck No. *</label>
+                                                    <div style={{ position: 'relative', width: '100%' }}>
+                                                        <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
+                                                        <datalist id="voucher-truck-list">
+                                                            {vehicleNumbers.map(no => <option key={no} value={no} />)}
+                                                        </datalist>
+                                                    </div>
+                                                </div>
                                                 {!isFactory && <>
-                                            <div className="field">
-                                                <label><MapPin size={11} /> Destination</label>
-                                                <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
-                                            </div>
-                                            <div className="field">
-                                                <label>Party Name</label>
-                                                <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => handlePartyNameChange(e.target.value)} list="voucher-party-list" />
-                                                <datalist id="voucher-party-list">
-                                                    {knownPartyNames.map(name => <option key={name} value={name} />)}
-                                                </datalist>
-                                            </div>
-                                            </>}
-                                            {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
+                                                <div className="field-h">
+                                                    <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
+                                                    <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
+                                                </div>
+                                                <div className="field-h">
+                                                    <label>Party Name</label>
+                                                    <div style={{ position: 'relative', width: '100%' }}>
+                                                        <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => handlePartyNameChange(e.target.value)} list="voucher-party-list" />
+                                                        <datalist id="voucher-party-list">
+                                                            {knownPartyNames.map(name => <option key={name} value={name} />)}
+                                                        </datalist>
+                                                    </div>
+                                                </div>
+                                                </>}
+                                                {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
+                                                    <>
+                                                        <div className="field-h">
+                                                            <label>Party Code</label>
+                                                            <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
+                                                        </div>
+                                                        <div className="field-h">
+                                                            <label>Bill No *</label>
+                                                            <input className="fi" type="text" placeholder="Enter bill number" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
+                                                        </div>
+                                                        <div className="field-h">
+                                                            <label>Material Name</label>
+                                                            <input className="fi" type="text" placeholder="To print with CEMENT" value={form.materialName} onChange={e => set('materialName', e.target.value)} />
+                                                        </div>
+                                                    </>
+                                                )}
+                                                <div className="field-h">
+                                                    <label>Date *</label>
+                                                    <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
+                                                </div>
+
+                                            {lrAlreadyUsed && (
+                                                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '9px', padding: '9px 14px' }}>
+                                                    <AlertTriangle size={15} color="#f43f5e" style={{ flexShrink: 0 }} />
+                                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#f43f5e' }}>LR #{form.lrNo} is already assigned to a {vType.replace('_', ' ')} voucher. Please use a different LR number.</span>
+                                                </div>
+                                            )}
+
+                                            {lrMaterials.length > 0 && (
+                                                <div style={{ gridColumn: '1 / -1', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: '10px', padding: '10px 14px' }}>
+                                                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '7px' }}>Materials — LR #{form.lrNo}</div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                        {lrMaterials.map((m, i) => (
+                                                            <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-input)', borderRadius: '8px', padding: '5px 10px' }}>
+                                                                <span className="badge badge-tag">{m.material}</span>
+                                                                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-sub)' }}>{m.totalBags} bags · {Number(m.weight).toFixed(2)} MT</span>
+                                                            </div>
+                                                        ))}
+                                                        {lrMaterials.length > 1 && (
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: '8px', padding: '5px 10px' }}>
+                                                                <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--accent)' }}>
+                                                                    Total: {lrMaterials.reduce((s, m) => s + (parseFloat(m.totalBags) || 0), 0)} bags · {lrMaterials.reduce((s, m) => s + (parseFloat(m.weight) || 0), 0).toFixed(2)} MT
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* ── Multi-delivery table for JK_Super / JK_Lakshmi ── */}
+                                            {isFactory && (
+                                                <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <MapPin size={12} /> Delivery Entries
+                                                            <span style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>— one row per LR / destination</span>
+                                                        </span>
+                                                        <button type="button" className="btn btn-p btn-sm" onClick={addDelivery}>
+                                                            <Plus size={12} /> Add Destination
+                                                        </button>
+                                                    </div>
+                                                    <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                                            <thead>
+                                                                <tr style={{ background: 'var(--bg-th)' }}>
+                                                                    {['LR No.', 'Destination', 'Party Name', 'Weight (MT)', 'Total Bags', 'Rate (Rs/MT)', 'Gross', ''].map(h => (
+                                                                        <th key={h} style={{ padding: '7px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', textAlign: h === 'Gross' || h === 'Weight (MT)' || h === 'Rate (Rs/MT)' || h === 'Total Bags' ? 'right' : 'left' }}>{h}</th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {deliveries.map((d, idx) => {
+                                                                    const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+                                                                    const isDupLR = d.lrNo?.trim() && usedLRSet.has(d.lrNo.trim());
+                                                                    return (
+                                                                        <tr key={idx} style={{ background: isDupLR ? 'rgba(244,63,94,0.04)' : idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                                                            <td style={{ padding: '5px 8px' }}>
+                                                                                <input className="fi" type="text" placeholder="e.g. 101" value={d.lrNo}
+                                                                                    onChange={e => updateDelivery(idx, 'lrNo', e.target.value)}
+                                                                                    style={{ width: '80px', padding: '4px 7px', fontSize: '12px',
+                                                                                        ...(isDupLR ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.15)' } : {})
+                                                                                    }} />
+                                                                                {isDupLR && <div style={{ fontSize: '9px', color: '#f43f5e', fontWeight: 800, marginTop: '2px' }}>⚠ Already used</div>}
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 8px' }}>
+                                                                                <input className="fi" type="text" placeholder="City / Party" value={d.destination}
+                                                                                    onChange={e => updateDelivery(idx, 'destination', e.target.value)}
+                                                                                    style={{ width: '130px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 8px' }}>
+                                                                                <input className="fi" type="text" placeholder="Party name" value={d.partyName}
+                                                                                    onChange={e => updateDelivery(idx, 'partyName', e.target.value)}
+                                                                                    list={`del-party-${idx}`}
+                                                                                    style={{ width: '150px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                                <datalist id={`del-party-${idx}`}>
+                                                                                    {knownPartyNames.map(n => <option key={n} value={n} />)}
+                                                                                </datalist>
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                                                <input className="fi" type="number" step="0.01" placeholder="0.00" value={d.weight}
+                                                                                    onChange={e => updateDelivery(idx, 'weight', e.target.value)}
+                                                                                    style={{ width: '80px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                                                <input className="fi" type="number" placeholder="0" value={d.bags}
+                                                                                    onChange={e => updateDelivery(idx, 'bags', e.target.value)}
+                                                                                    style={{ width: '75px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                                                <input className="fi" type="number" placeholder="0" value={d.rate}
+                                                                                    onChange={e => updateDelivery(idx, 'rate', e.target.value)}
+                                                                                    style={{ width: '80px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 700, color: rowGross > 0 ? 'var(--accent)' : 'var(--text-muted)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                                                                                {rowGross > 0 ? 'Rs.' + Math.round(rowGross).toLocaleString('en-IN') : '—'}
+                                                                            </td>
+                                                                            <td style={{ padding: '5px 8px', textAlign: 'center' }}>
+                                                                                {deliveries.length > 1 && (
+                                                                                    <button type="button" className="btn btn-d btn-icon btn-sm" onClick={() => removeDelivery(idx)} title="Remove row"><X size={11} /></button>
+                                                                                )}
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                            {/* Totals row */}
+                                                            <tfoot>
+                                                                <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                                                                    <td colSpan={3} style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                                                                        Total ({deliveries.length} {deliveries.length === 1 ? 'destination' : 'destinations'})
+                                                                    </td>
+                                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>
+                                                                        {deliveryTotals.totalWeight > 0 ? deliveryTotals.totalWeight.toFixed(2) + ' MT' : '—'}
+                                                                    </td>
+                                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>
+                                                                        {deliveryTotals.totalBags > 0 ? deliveryTotals.totalBags.toLocaleString('en-IN') : '—'}
+                                                                    </td>
+                                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px' }}>Various</td>
+                                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '14px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                                                                        {deliveryTotals.totalGross > 0 ? 'Rs.' + Math.round(deliveryTotals.totalGross).toLocaleString('en-IN') : '—'}
+                                                                    </td>
+                                                                    <td />
+                                                                </tr>
+                                                            </tfoot>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {!isFactory && (
                                                 <>
-                                                    <div className="field">
-                                                        <label>Party Code</label>
-                                                        <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
+                                                    <div className="field-h">
+                                                        <label>Weight (MT)</label>
+                                                        <input className="fi" type="number" step="0.01" placeholder="0.00" value={form.weight}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
+                                                            }}
+                                                        />
                                                     </div>
-                                                    <div className="field">
-                                                        <label>Bill No <span style={{color:'var(--danger)'}}>*</span></label>
-                                                        <input className="fi" type="text" placeholder="Enter bill number" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
+                                                    <div className="field-h">
+                                                        <label>Total Bags</label>
+                                                        <input className="fi" type="number" placeholder="0" value={form.bags}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
+                                                            }}
+                                                        />
                                                     </div>
-                                                    <div className="field">
-                                                        <label>Material Name</label>
-                                                        <input className="fi" type="text" placeholder="To print with CEMENT" value={form.materialName} onChange={e => set('materialName', e.target.value)} />
+                                                    <div className="field-h">
+                                                        <label>Rate (Rs/MT)</label>
+                                                        <input className="fi" type="number" placeholder="0" value={form.rate} onChange={e => set('rate', e.target.value)} />
+                                                    </div>
+                                                    <div className="field-h">
+                                                        <label>Fuel Station</label>
+                                                        <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
+                                                            {pumpOptions.map(p => <option key={p}>{p}</option>)}
+                                                        </select>
                                                     </div>
                                                 </>
                                             )}
-                                            <div className="field">
-                                                <label>Date</label>
-                                                <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} />
-                                            </div>
-                                        </div>
-
-                                        {lrAlreadyUsed && (
-                                            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '9px', padding: '9px 14px' }}>
-                                                <AlertTriangle size={15} color="#f43f5e" style={{ flexShrink: 0 }} />
-                                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#f43f5e' }}>LR #{form.lrNo} is already assigned to a {vType.replace('_', ' ')} voucher. Please use a different LR number.</span>
-                                            </div>
-                                        )}
-
-                                        {lrMaterials.length > 0 && (
-                                            <div style={{ marginTop: '12px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: '10px', padding: '10px 14px' }}>
-                                                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '7px' }}>Materials — LR #{form.lrNo}</div>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                                    {lrMaterials.map((m, i) => (
-                                                        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-input)', borderRadius: '8px', padding: '5px 10px' }}>
-                                                            <span className="badge badge-tag">{m.material}</span>
-                                                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-sub)' }}>{m.totalBags} bags · {Number(m.weight).toFixed(2)} MT</span>
-                                                        </div>
-                                                    ))}
-                                                    {lrMaterials.length > 1 && (
-                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: '8px', padding: '5px 10px' }}>
-                                                            <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--accent)' }}>
-                                                                Total: {lrMaterials.reduce((s, m) => s + (parseFloat(m.totalBags) || 0), 0)} bags · {lrMaterials.reduce((s, m) => s + (parseFloat(m.weight) || 0), 0).toFixed(2)} MT
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* ── Multi-delivery table for JK_Super / JK_Lakshmi ── */}
-                                        {isFactory && (
-                                            <div style={{ marginTop: '14px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <MapPin size={12} /> Delivery Entries
-                                                        <span style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>— one row per LR / destination</span>
-                                                    </span>
-                                                    <button type="button" className="btn btn-p btn-sm" onClick={addDelivery}>
-                                                        <Plus size={12} /> Add Destination
-                                                    </button>
-                                                </div>
-                                                <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                                                        <thead>
-                                                            <tr style={{ background: 'var(--bg-th)' }}>
-                                                                {['LR No.', 'Destination', 'Party Name', 'Weight (MT)', 'Total Bags', 'Rate (Rs/MT)', 'Gross', ''].map(h => (
-                                                                    <th key={h} style={{ padding: '7px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', textAlign: h === 'Gross' || h === 'Weight (MT)' || h === 'Rate (Rs/MT)' || h === 'Total Bags' ? 'right' : 'left' }}>{h}</th>
-                                                                ))}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {deliveries.map((d, idx) => {
-                                                                const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
-                                                                const isDupLR = d.lrNo?.trim() && usedLRSet.has(d.lrNo.trim());
-                                                                return (
-                                                                    <tr key={idx} style={{ background: isDupLR ? 'rgba(244,63,94,0.04)' : idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                                                                        <td style={{ padding: '5px 8px' }}>
-                                                                            <input className="fi" type="text" placeholder="e.g. 101" value={d.lrNo}
-                                                                                onChange={e => updateDelivery(idx, 'lrNo', e.target.value)}
-                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px',
-                                                                                    ...(isDupLR ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.15)' } : {})
-                                                                                }} />
-                                                                            {isDupLR && <div style={{ fontSize: '9px', color: '#f43f5e', fontWeight: 800, marginTop: '2px' }}>⚠ Already used</div>}
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 8px' }}>
-                                                                            <input className="fi" type="text" placeholder="City / Party" value={d.destination}
-                                                                                onChange={e => updateDelivery(idx, 'destination', e.target.value)}
-                                                                                style={{ width: '130px', padding: '4px 7px', fontSize: '12px' }} />
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 8px' }}>
-                                                                            <input className="fi" type="text" placeholder="Party name" value={d.partyName}
-                                                                                onChange={e => updateDelivery(idx, 'partyName', e.target.value)}
-                                                                                list={`del-party-${idx}`}
-                                                                                style={{ width: '150px', padding: '4px 7px', fontSize: '12px' }} />
-                                                                            <datalist id={`del-party-${idx}`}>
-                                                                                {knownPartyNames.map(n => <option key={n} value={n} />)}
-                                                                            </datalist>
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                                                                            <input className="fi" type="number" step="0.01" placeholder="0.00" value={d.weight}
-                                                                                onChange={e => updateDelivery(idx, 'weight', e.target.value)}
-                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                                                                            <input className="fi" type="number" placeholder="0" value={d.bags}
-                                                                                onChange={e => updateDelivery(idx, 'bags', e.target.value)}
-                                                                                style={{ width: '75px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                                                                            <input className="fi" type="number" placeholder="0" value={d.rate}
-                                                                                onChange={e => updateDelivery(idx, 'rate', e.target.value)}
-                                                                                style={{ width: '80px', padding: '4px 7px', fontSize: '12px', textAlign: 'right' }} />
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 700, color: rowGross > 0 ? 'var(--accent)' : 'var(--text-muted)', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                                                                            {rowGross > 0 ? 'Rs.' + Math.round(rowGross).toLocaleString('en-IN') : '—'}
-                                                                        </td>
-                                                                        <td style={{ padding: '5px 8px', textAlign: 'center' }}>
-                                                                            {deliveries.length > 1 && (
-                                                                                <button type="button" className="btn btn-d btn-icon btn-sm" onClick={() => removeDelivery(idx)} title="Remove row"><X size={11} /></button>
-                                                                            )}
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                        {/* Totals row */}
-                                                        <tfoot>
-                                                            <tr style={{ background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
-                                                                <td colSpan={3} style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                                                                    Total ({deliveries.length} {deliveries.length === 1 ? 'destination' : 'destinations'})
-                                                                </td>
-                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>
-                                                                    {deliveryTotals.totalWeight > 0 ? deliveryTotals.totalWeight.toFixed(2) + ' MT' : '—'}
-                                                                </td>
-                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>
-                                                                    {deliveryTotals.totalBags > 0 ? deliveryTotals.totalBags.toLocaleString('en-IN') : '—'}
-                                                                </td>
-                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px' }}>Various</td>
-                                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, fontSize: '14px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
-                                                                    {deliveryTotals.totalGross > 0 ? 'Rs.' + Math.round(deliveryTotals.totalGross).toLocaleString('en-IN') : '—'}
-                                                                </td>
-                                                                <td />
-                                                            </tr>
-                                                        </tfoot>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {!isFactory && <div className="fg fg-4" style={{ marginTop: '12px' }}>
-                                            <div className="field">
-                                                <label>Weight (MT)</label>
-                                                <input className="fi" type="number" step="0.01" placeholder="0.00" value={form.weight}
-                                                    onChange={e => {
-                                                        const val = e.target.value;
-                                                        setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
-                                                    }}
-                                                />
-                                            </div>
-                                            <div className="field">
-                                                <label>Total Bags</label>
-                                                <input className="fi" type="number" placeholder="0" value={form.bags}
-                                                    onChange={e => {
-                                                        const val = e.target.value;
-                                                        setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
-                                                    }}
-                                                />
-                                            </div>
-                                            <div className="field"><label>Rate (Rs/MT)</label><input className="fi" type="number" placeholder="0" value={form.rate} onChange={e => set('rate', e.target.value)} /></div>
-                                            <div className="field"><label>Fuel Station</label>
-                                                <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
-                                                    {pumpOptions.map(p => <option key={p}>{p}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>}
-                                        <div className="fg fg-4" style={{ marginTop: '12px' }}>
                                             {isFactory && (
-                                                <div className="field">
+                                                <div className="field-h">
                                                     <label>Fuel Station</label>
                                                     <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
                                                         {pumpOptions.map(p => <option key={p}>{p}</option>)}
                                                     </select>
                                                 </div>
                                             )}
-                                            <div className="field">
-                                                <label><Fuel size={11} /> Diesel Advance</label>
-                                                <div className="fi-row">
+                                            <div className="field-h">
+                                                <label><Fuel size={11} style={{ marginRight: '4px' }} /> Diesel Advance</label>
+                                                <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
                                                     <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
-                                                    <button type="button" style={{ minWidth: '48px' }} className={`btn btn-sm ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
+                                                    <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
                                                         onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
                                                 </div>
                                             </div>
-                                            <div className="field"><label><Wallet size={11} /> Cash Advance</label><input className="fi" type="number" placeholder="0" value={form.advanceCash} onChange={e => set('advanceCash', e.target.value)} /></div>
-                                            <div className="field">
-                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span><CreditCard size={11} /> Online Advance</span>
-                                                    <span onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { module: brand === 'jklakshmi' ? 'pay_jharli' : 'pay_dump' } }))} style={{ fontSize: '9px', color: 'var(--primary)', cursor: 'pointer', fontWeight: 700 }}>View All →</span>
-                                                </label>
-                                                <input className="fi" type="number" placeholder="0" value={form.advanceOnline} onChange={e => set('advanceOnline', e.target.value)} />
+                                            <div className="field-h">
+                                                <label><Wallet size={11} style={{ marginRight: '4px' }} /> Cash Advance</label>
+                                                <input className="fi" type="number" placeholder="0" value={form.advanceCash} onChange={e => set('advanceCash', e.target.value)} />
                                             </div>
-                                            <div className="field" style={{ justifyContent: 'flex-end' }}>
-                                                <div className="chk-row" style={{ marginTop: 'auto' }}>
-                                                    <input type="checkbox" id="comm" checked={form.hasCommission} onChange={e => set('hasCommission', e.target.checked)} />
-                                                    <label htmlFor="comm">Commission Rs.20/MT</label>
+                                            <div className="field-h">
+                                                <label><CreditCard size={11} style={{ marginRight: '4px' }} /> Online Advance</label>
+                                                <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                                    <input className="fi" type="number" placeholder="0" value={form.advanceOnline} onChange={e => set('advanceOnline', e.target.value)} />
+                                                    <button type="button" className="btn btn-g btn-sm"
+                                                        onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { active: brand === 'jklakshmi' ? 'pay_jharli' : 'pay_dump', subActive: 'online' } }))}
+                                                        style={{ fontSize: '11px', whiteSpace: 'nowrap', padding: '0 10px', height: '38px', flexShrink: 0 }}>
+                                                        View All →
+                                                    </button>
                                                 </div>
                                             </div>
-                                        </div>
+                                            <div className="field-h">
+                                                <label>Commission</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', height: '38px' }}>
+                                                    <input type="checkbox" id="comm" checked={form.hasCommission} onChange={e => set('hasCommission', e.target.checked)} style={{ marginRight: '8px' }} />
+                                                    <label htmlFor="comm" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>Rs.20/MT</label>
+                                                </div>
+                                            </div>
 
-                                        {/* ── Vehicle Expenses — VGTC self-trucks only ── */}
-                                        {form.truckNo && isVGTCTruck(cleanTruckNo(form.truckNo)) && (
-                                            <div style={{ marginTop: '12px' }}>
-                                                <button type="button" onClick={() => setShowVehicleExpenses(s => !s)}
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
-                                                    <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
-                                                    🔧 Vehicle Expenses (Tyre, Extra Cash)
-                                                    {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
-                                                        <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
-                                                    )}
-                                                </button>
-                                                {showVehicleExpenses && (
-                                                    <div style={{ marginTop: '10px', padding: '14px', background: 'var(--bg)', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                                                        <div className="fg fg-3" style={{ marginBottom: '10px' }}>
-                                                            <div className="field">
-                                                                <label style={{ fontSize: '11px' }}>🔧 Tyre Puncture</label>
+                                            {/* ── Vehicle Expenses — VGTC self-trucks only ── */}
+                                            {form.truckNo && isVGTCTruck(cleanTruckNo(form.truckNo)) && (
+                                                <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    <button type="button" onClick={() => setShowVehicleExpenses(s => !s)}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
+                                                        <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
+                                                        🔧 Vehicle Expenses (Tyre, Extra Cash)
+                                                        {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
+                                                            <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
+                                                        )}
+                                                    </button>
+                                                    {showVehicleExpenses && (
+                                                        <div className="fg fg-2" style={{ padding: '14px', background: 'var(--bg)', borderRadius: '10px', border: '1px solid var(--border)', gap: '12px' }}>
+                                                            <div className="field-h">
+                                                                <label>🔧 Tyre Puncture</label>
                                                                 <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
                                                             </div>
-                                                            <div className="field">
-                                                                <label style={{ fontSize: '11px' }}>⚙️ Tyre Greasing & Air</label>
+                                                            <div className="field-h">
+                                                                <label>⚙️ Tyre Greasing & Air</label>
                                                                 <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => set('tyreGreasingAir', e.target.value)} />
                                                             </div>
-                                                        </div>
-                                                        <div className="fg fg-2">
-                                                            <div className="field">
-                                                                <label style={{ fontSize: '11px' }}>💰 Extra Cash</label>
+                                                            <div className="field-h">
+                                                                <label>💰 Extra Cash</label>
                                                                 <input className="fi" type="number" placeholder="₹0" value={form.extraCash} onChange={e => set('extraCash', e.target.value)} />
                                                             </div>
-                                                            <div className="field">
-                                                                <label style={{ fontSize: '11px' }}>Remark</label>
+                                                            <div className="field-h">
+                                                                <label>Remark</label>
                                                                 <input className="fi" type="text" placeholder="Reason for extra cash" value={form.extraCashRemark} onChange={e => set('extraCashRemark', e.target.value)} />
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* ── Odometer KM fields — VGTC trucks only, all voucher types ── */}
-                                        {isVGTCTruck(form.truckNo) && (
-                                            <div style={{ marginTop: '12px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                                    <Gauge size={14} color="#f59e0b" />
-                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odometer / Mileage</span>
+                                                    )}
                                                 </div>
-                                                <div className="fg fg-1">
-                                                    <div className="field">
+                                            )}
+
+                                            {/* ── Odometer KM fields — VGTC trucks only, all voucher types ── */}
+                                            {isVGTCTruck(form.truckNo) && (
+                                                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'inherit', gap: 'inherit' }}>
+                                                    <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <Gauge size={14} color="#f59e0b" />
+                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odometer / Mileage</span>
+                                                    </div>
+                                                    <div className="field-h">
                                                         <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                             <Gauge size={11} /> Current Odometer
                                                             {fetchingKm && <Loader2 size={10} className="spin" style={{ opacity: 0.5 }} />}
                                                         </label>
-                                                        <input
-                                                            className="fi"
-                                                            type="number"
-                                                            placeholder="e.g. 45850"
-                                                            value={form.endKm}
-                                                            onChange={e => set('endKm', e.target.value)}
-                                                        />
-                                                        {lastKmInfo && (
-                                                            <div style={{ marginTop: '4px', fontSize: '10px', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <Check size={10} /> Last trip (LR#{lastKmInfo.lrNo}) ended at {lastKmInfo.endKm} km on {lastKmInfo.date}
-                                                            </div>
-                                                        )}
-                                                        {!lastKmInfo && form.truckNo && !fetchingKm && (
-                                                            <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                                                No previous trip found — entering this will start tracking
-                                                            </div>
-                                                        )}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                                                            <input
+                                                                className="fi"
+                                                                type="number"
+                                                                placeholder="e.g. 45850"
+                                                                value={form.endKm}
+                                                                onChange={e => set('endKm', e.target.value)}
+                                                            />
+                                                            {lastKmInfo && (
+                                                                <div style={{ marginTop: '4px', fontSize: '10px', color: '#10b981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <Check size={10} /> Last trip (LR#{lastKmInfo.lrNo}) ended at {lastKmInfo.endKm} km on {lastKmInfo.date}
+                                                                </div>
+                                                            )}
+                                                            {!lastKmInfo && form.truckNo && !fetchingKm && (
+                                                                <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                                                    No previous trip found — entering this will start tracking
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
 
                                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
                                             <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving || lrAlreadyUsed} title="Save Voucher">
