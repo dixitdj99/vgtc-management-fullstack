@@ -315,11 +315,11 @@ export default function PartyMaster() {
                     <h3 style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>Basic Info</h3>
                   </div>
 
-                  <div className="field">
+                  <div className="field-h">
                     <label>Party Name *</label>
                     <input className="fi" type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="e.g. M/S ABC Logistics" />
                   </div>
-                  <div className="field">
+                  <div className="field-h">
                     <label>Party Type</label>
                     <select className="fi" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
                       <option value="customer">Customer</option>
@@ -334,15 +334,15 @@ export default function PartyMaster() {
                     <h3 style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>Contact Details</h3>
                   </div>
 
-                  <div className="field">
+                  <div className="field-h">
                     <label>Contact Person</label>
                     <input className="fi" type="text" value={formData.contactPerson} onChange={e => setFormData({...formData, contactPerson: e.target.value})} placeholder="Name" />
                   </div>
-                  <div className="field">
+                  <div className="field-h">
                     <label>Phone Number</label>
                     <input className="fi" type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+91..." />
                   </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
                     <label>Address</label>
                     <textarea className="fi" rows="2" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Full address..." />
                   </div>
@@ -352,26 +352,26 @@ export default function PartyMaster() {
                     <h3 style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>Tax & Financials</h3>
                   </div>
 
-                  <div className="field">
+                  <div className="field-h">
                     <label>GSTIN</label>
                     <input className="fi" type="text" value={formData.gstin} onChange={e => setFormData({...formData, gstin: e.target.value.toUpperCase()})} placeholder="22AAAAA0000A1Z5" />
                   </div>
-                  <div className="field">
+                  <div className="field-h">
                     <label>PAN Number</label>
                     <input className="fi" type="text" value={formData.pan} onChange={e => setFormData({...formData, pan: e.target.value.toUpperCase()})} placeholder="AAAAA0000A" />
                   </div>
-                  <div className="field">
+                  <div className="field-h">
                     <label>Opening Balance (₹)</label>
                     <input className="fi" type="number" value={formData.openingBalance} onChange={e => setFormData({...formData, openingBalance: e.target.value})} />
                   </div>
-                  <div className="field">
+                  <div className="field-h">
                     <label>Balance Type</label>
                     <select className="fi" value={formData.balanceType} onChange={e => setFormData({...formData, balanceType: e.target.value})}>
                       <option value="credit">Credit (They owe us)</option>
                       <option value="debit">Debit (We owe them)</option>
                     </select>
                   </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
                     <label>Bank Details</label>
                     <textarea className="fi" rows="2" value={formData.bankDetails} onChange={e => setFormData({...formData, bankDetails: e.target.value})} placeholder="A/C No, IFSC, Bank Name" />
                   </div>

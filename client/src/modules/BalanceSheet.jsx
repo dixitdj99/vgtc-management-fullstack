@@ -1038,32 +1038,36 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   {/* Add Advance Form */}
                   {showAdvanceForm && (
                     <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-input)' }}>
-                      <form onSubmit={handleAdvSubmit} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
-                        <div className="field" style={{ flex: '0 0 auto', minWidth: '140px' }}>
-                          <label>Type</label>
-                          <select className="fi" value={advForm.type} onChange={e => setAdvForm(f => ({ ...f, type: e.target.value }))}>
-                            <option value="credit">Vehicle Owner Submits (Credit +)</option>
-                            <option value="debit">We Give to Owner (Debit −)</option>
-                          </select>
+                      <form onSubmit={handleAdvSubmit}>
+                        <div className="fg fg-2" style={{ gap: '12px' }}>
+                          <div className="field-h">
+                            <label>Type</label>
+                            <select className="fi" value={advForm.type} onChange={e => setAdvForm(f => ({ ...f, type: e.target.value }))}>
+                              <option value="credit">Vehicle Owner Submits (Credit +)</option>
+                              <option value="debit">We Give to Owner (Debit −)</option>
+                            </select>
+                          </div>
+                          <div className="field-h">
+                            <label>Amount (Rs.)</label>
+                            <input className="fi" type="number" step="any" min="1" placeholder="Amount" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} required />
+                          </div>
+                          <div className="field-h">
+                            <label>Date</label>
+                            <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
+                          </div>
+                          <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                            <label>Remark</label>
+                            <input className="fi" type="text" placeholder="e.g. Cash received" value={advForm.remark} onChange={e => setAdvForm(f => ({ ...f, remark: e.target.value }))} />
+                          </div>
+                          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                            <button type="button" className="btn btn-g" onClick={() => setShowAdvanceForm(false)}>
+                              Cancel
+                            </button>
+                            <button type="submit" className="btn btn-p" disabled={advSaving}>
+                              {advSaving ? 'Saving...' : <><Check size={13} /> Save Entry</>}
+                            </button>
+                          </div>
                         </div>
-                        <div className="field" style={{ flex: 1, minWidth: '100px' }}>
-                          <label>Amount (Rs.)</label>
-                          <input className="fi" type="number" step="any" min="1" placeholder="Amount" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} required />
-                        </div>
-                        <div className="field" style={{ flex: 1, minWidth: '120px' }}>
-                          <label>Date</label>
-                          <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
-                        </div>
-                        <div className="field" style={{ flex: 2, minWidth: '140px' }}>
-                          <label>Remark</label>
-                          <input className="fi" type="text" placeholder="e.g. Cash received" value={advForm.remark} onChange={e => setAdvForm(f => ({ ...f, remark: e.target.value }))} />
-                        </div>
-                        <button type="submit" className="btn btn-p" disabled={advSaving} style={{ height: '38px' }}>
-                          {advSaving ? '...' : <><Check size={13} /> Save</>}
-                        </button>
-                        <button type="button" className="btn btn-g" onClick={() => setShowAdvanceForm(false)} style={{ height: '38px' }}>
-                          <X size={13} />
-                        </button>
                       </form>
                     </div>
                   )}
@@ -1220,12 +1224,12 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   <div style={{ fontSize: '11px', color: 'var(--warn)', marginBottom: '18px', fontWeight: 700 }}>
                     Advance given: {dieselVerifyTarget.advanceDiesel === 'FULL' ? 'Full Tank (Est. Rs.4000)' : `Rs.${dieselVerifyTarget.advanceDiesel}`}
                   </div>
-                  <div className="fg fg-2" style={{ marginBottom: '18px' }}>
-                    <div className="field">
-                      <label>Actual Litres Filled</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '18px' }}>
+                    <div className="field-h">
+                      <label>Actual Litres</label>
                       <input className="fi" type="number" step="0.1" placeholder="e.g. 45.5" value={dieselVerifyForm.litres} onChange={e => setDieselVerifyForm(f => ({ ...f, litres: e.target.value }))} />
                     </div>
-                    <div className="field">
+                    <div className="field-h">
                       <label>Pump Name</label>
                       <input className="fi" type="text" placeholder="e.g. HP Petrol Pump" value={dieselVerifyForm.pump} onChange={e => setDieselVerifyForm(f => ({ ...f, pump: e.target.value }))} />
                     </div>
@@ -1254,9 +1258,9 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   style={{ width: '90%', maxWidth: '400px', background: 'var(--bg-card)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '28px 24px' }}>
                   <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Monthly P&L Report</div>
                   <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '20px' }}>Select a month to generate the P&L breakdown PDF for <strong>{selTruck}</strong>.</div>
-                  <div className="field" style={{ marginBottom: '20px' }}>
+                  <div className="field-h" style={{ marginBottom: '20px' }}>
                     <label>Month</label>
-                    <select className="fi" value={selectedPLMonth} onChange={e => setSelectedPLMonth(e.target.value)} style={{ width: '100%' }}>
+                    <select className="fi" value={selectedPLMonth} onChange={e => setSelectedPLMonth(e.target.value)}>
                       {sortedMonths.map(ym => {
                         const [y, m] = ym.split('-');
                         const label = new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });

@@ -1,14 +1,14 @@
 // VGTC Service Worker — Offline-first PWA
-// v3: NetworkFirst for HTML to prevent stale-bundle white screens
-const STATIC_CACHE = 'vgtc-static-v3';
-const API_CACHE    = 'vgtc-api-v3';
+// v6: Force skipWaiting on install and bypass browser HTTP cache for HTML documents
+const STATIC_CACHE = 'vgtc-static-v6';
+const API_CACHE    = 'vgtc-api-v6';
 const FONT_CACHE   = 'vgtc-fonts-v1';
 
 // ── Install ───────────────────────────────────────────────────────────────
-// Do NOT call skipWaiting here — we want the new SW to wait so the app
-// can show an "Update available" banner and let the user choose when to reload.
+// Call skipWaiting immediately so the new SW takes control and updates the app,
+// preventing white-screen deadlocks if the UI has crashed.
 self.addEventListener('install', (event) => {
-  // SW waits in 'installed' state until page calls SKIP_WAITING
+  self.skipWaiting();
 });
 
 // ── Activate: purge stale caches ─────────────────────────────────────────
@@ -94,7 +94,13 @@ async function networkFirst(cacheName, request) {
   const cache = await caches.open(cacheName);
   try {
     const fresh = await fetch(request.clone());
-    if (fresh.ok) cache.put(request, fresh.clone());
+    if (fresh.ok) {
+      const contentType = fresh.headers.get('Content-Type') || '';
+      // Only cache API responses if they are not HTML error/fallback pages
+      if (!contentType.includes('text/html')) {
+        cache.put(request, fresh.clone());
+      }
+    }
     return fresh;
   } catch {
     const cached = await cache.match(request);
@@ -108,8 +114,9 @@ async function networkFirst(cacheName, request) {
 
 async function networkFirstHTML(request) {
   // For HTML: always try network. Only fall back to cache on network failure.
+  // Bypass the browser's HTTP cache using cache: 'no-cache' to avoid loading stale index.html.
   try {
-    const fresh = await fetch(request.clone());
+    const fresh = await fetch(new Request(request, { cache: 'no-cache' }));
     if (fresh.ok) {
       const cache = await caches.open(STATIC_CACHE);
       cache.put(request, fresh.clone());
@@ -127,17 +134,51 @@ async function networkFirstHTML(request) {
 async function cacheFirst(cacheName, request) {
   const cache  = await caches.open(cacheName);
   const cached = await cache.match(request);
-  if (cached) return cached;
+  if (cached) {
+    // If the cached response is an HTML fallback, delete it and fetch fresh
+    const contentType = cached.headers.get('Content-Type') || '';
+    if (contentType.includes('text/html')) {
+      await cache.delete(request);
+    } else {
+      return cached;
+    }
+  }
   const fresh = await fetch(request.clone());
-  if (fresh.ok) cache.put(request, fresh.clone());
+  if (fresh.ok) {
+    const contentType = fresh.headers.get('Content-Type') || '';
+    // Only cache if it is not an HTML fallback page
+    if (!contentType.includes('text/html')) {
+      cache.put(request, fresh.clone());
+    }
+  }
   return fresh;
 }
 
 async function staleWhileRevalidate(cacheName, request) {
   const cache  = await caches.open(cacheName);
   const cached = await cache.match(request);
+  
+  // If the cached response is an HTML fallback, ignore it
+  let validCached = cached;
+  if (cached) {
+    const contentType = cached.headers.get('Content-Type') || '';
+    if (contentType.includes('text/html')) {
+      validCached = null;
+      await cache.delete(request);
+    }
+  }
+
   const fresh  = fetch(request.clone())
-    .then(res => { if (res.ok) cache.put(request, res.clone()); return res; })
+    .then(res => {
+      if (res.ok) {
+        const contentType = res.headers.get('Content-Type') || '';
+        // Only cache if it's not an HTML fallback
+        if (!contentType.includes('text/html')) {
+          cache.put(request, res.clone());
+        }
+      }
+      return res;
+    })
     .catch(() => null);
-  return cached || (await fresh) || new Response('Offline', { status: 503 });
+  return validCached || (await fresh) || new Response('Offline', { status: 503 });
 }

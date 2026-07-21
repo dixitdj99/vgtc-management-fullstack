@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, Users, Truck, Eye, EyeOff, ExternalLink, Fuel } from 'lucide-react';
+import { 
+  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, 
+  Users, Truck, Eye, EyeOff, ExternalLink, Fuel, Settings, Globe, Mail, Save, Building2, Server,
+  BarChart3, TrendingUp, Cloud, LayoutDashboard
+} from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import AdminDashboard from '../pages/admin/AdminDashboard';
+import ProfitLossSheet from '../pages/admin/ProfitLossSheet';
+import AdminModule from '../modules/AdminModule';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
@@ -41,7 +48,6 @@ const MODULES = [
   { key: 'loading_status', label: 'Loading Realtime' },
 ];
 
-// Location-based permission hierarchy
 const HIERARCHY = [
   {
     id: 'jharli',
@@ -69,7 +75,6 @@ const HIERARCHY = [
         modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage'],
       },
     ],
-    // Maps to internal: plant=jklakshmi
     plantKey: 'jklakshmi',
   },
   {
@@ -88,7 +93,6 @@ const HIERARCHY = [
         modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'],
       },
     ],
-    // Maps to internal: plant=jksuper, godown=kosli
     plantKey: 'jksuper',
     godownKey: 'kosli',
   },
@@ -108,7 +112,6 @@ const HIERARCHY = [
         modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'],
       },
     ],
-    // Maps to internal: plant=jksuper, godown=jhajjar
     plantKey: 'jksuper',
     godownKey: 'jhajjar',
   },
@@ -221,6 +224,25 @@ function UserRow({ u, i, RIcon, isMe, onEdit, onDelete }) {
 
 export default function AdminPage() {
   const { user: me } = useAuth();
+  const [activeTab, setActiveTab] = useState('users'); // 'overview' | 'users' | 'workers' | 'fuel' | 'system' | 'pl_sheet' | 'backup'
+
+  // Access Control Guard
+  if (me?.role !== 'admin') {
+    return (
+      <div style={{ padding: '80px 20px', textAlign: 'center', maxWidth: '440px', margin: '0 auto' }}>
+        <Shield size={54} color="#ef4444" style={{ opacity: 0.8, marginBottom: '16px' }} />
+        <h2 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', margin: 0 }}>Admin Settings Access Restricted</h2>
+        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.5 }}>
+          System Settings &amp; Admin Panel are strictly available to Administrator accounts only.
+        </p>
+        <button className="btn btn-g" style={{ marginTop: '20px' }} onClick={() => window.location.href = '/'}>
+          Return to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  // ── State: Users ──
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -233,7 +255,64 @@ export default function AdminPage() {
   });
   const [formError, setFormError] = useState('');
 
-  useEffect(() => { fetchUsers(); fetchWorkers(); fetchFuelStations(); }, []);
+  // ── State: System Settings ──
+  const [sysSettings, setSysSettings] = useState({
+    nicEway: {
+      gstin: '06AAAAA0000A1Z5',
+      username: '',
+      password: '',
+      clientId: '',
+      clientSecret: '',
+      env: 'sandbox'
+    },
+    smtp: {
+      host: 'smtp.gmail.com',
+      port: '587',
+      user: '',
+      pass: ''
+    },
+    org: {
+      name: 'VGTC Logistics Management',
+      phone: '+91 9812000000',
+      address: 'Kosli / Jhajjar / Jharli'
+    }
+  });
+  const [sysSaving, setSysSaving] = useState(false);
+
+  useEffect(() => { 
+    fetchUsers(); 
+    fetchWorkers(); 
+    fetchFuelStations(); 
+    fetchSysSettings();
+  }, []);
+
+  const fetchSysSettings = async () => {
+    try {
+      const res = await ax.get('/settings');
+      if (res.data) {
+        setSysSettings(s => ({
+          ...s,
+          ...res.data,
+          nicEway: { ...s.nicEway, ...(res.data.nicEway || {}) },
+          smtp: { ...s.smtp, ...(res.data.smtp || {}) },
+          org: { ...s.org, ...(res.data.org || {}) }
+        }));
+      }
+    } catch {}
+  };
+
+  const handleSaveSysSettings = async (e) => {
+    e.preventDefault();
+    setSysSaving(true);
+    try {
+      await ax.post('/settings', sysSettings);
+      alert('System & Govt API Settings updated successfully!');
+    } catch (err) {
+      alert('Failed to save settings: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSysSaving(false);
+    }
+  };
 
   // ── Labour Workers ───────────────────────────────────────────
   const [workers, setWorkers] = useState([]);
@@ -371,7 +450,6 @@ export default function AdminPage() {
     </div>
   );
 
-  // Per-location allowed plants/godowns helpers
   const isLocAllowed = (locId) => {
     const loc = HIERARCHY.find(h => h.id === locId);
     if (!loc) return false;
@@ -385,17 +463,14 @@ export default function AdminPage() {
   };
 
   const toggleLocation = (loc, checked) => {
-    // Update allowedPlants
     const currentPlants = form.permissions.allowedPlants || [];
     let nextPlants = checked
       ? (currentPlants.includes(loc.plantKey) ? currentPlants : [...currentPlants, loc.plantKey])
       : currentPlants.filter(p => {
-          // Only remove if no other selected location uses the same plantKey
           const otherLocs = HIERARCHY.filter(h => h.id !== loc.id && isLocAllowed(h.id));
           return otherLocs.some(h => h.plantKey === p) || p !== loc.plantKey;
         });
     if (!checked) {
-      // Simpler: just remove if no other active location with same plantKey
       const otherActiveWithSamePlant = HIERARCHY.filter(h => h.id !== loc.id && h.plantKey === loc.plantKey && isLocAllowed(h.id));
       if (otherActiveWithSamePlant.length === 0) {
         nextPlants = nextPlants.filter(p => p !== loc.plantKey);
@@ -403,7 +478,6 @@ export default function AdminPage() {
     }
     SPerm('allowedPlants', nextPlants);
 
-    // Update allowedGodowns
     if (loc.godownKey) {
       const currentGodowns = form.permissions.allowedGodowns || [];
       const nextGodowns = checked
@@ -419,221 +493,259 @@ export default function AdminPage() {
         {delTarget && <DeleteConfirm u={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { setDelTarget(null); fetchUsers(); }} />}
       </AnimatePresence>
 
-      <div style={{ padding: '0 20px 40px' }}>
-        <div className="page-hd">
+      <div style={{ padding: '0 20px 40px', maxWidth: '1280px', margin: '0 auto' }}>
+        {/* ── Page Header ── */}
+        <div className="page-hd" style={{ marginBottom: '20px' }}>
           <div>
-            <h1><Shield size={20} color="#6366f1" /> Admin Panel</h1>
-            <p>User accounts & permissions</p>
+            <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Settings size={22} color="#6366f1" /> System Settings &amp; Admin Hub
+            </h1>
+            <p>Unified administration panel for users, permissions, fuel pumps, system statistics, and Govt E-Way API credentials.</p>
           </div>
           <button className="btn btn-g btn-sm" onClick={fetchUsers}><RefreshCw size={14} className={loading ? 'ani-spin' : ''} /> Refresh</button>
         </div>
 
-        <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
+        {/* ── UNIFIED SETTINGS NAVIGATION TABS ── */}
+        <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid var(--border)', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }}>
+          {[
+            { id: 'users', label: 'Users & Permissions', icon: Users, color: '#6366f1' },
+            { id: 'workers', label: 'Labour Workers', icon: Truck, color: '#10b981' },
+            { id: 'fuel', label: 'Fuel Stations', icon: Fuel, color: '#3b82f6' },
+            { id: 'system', label: 'Govt E-Way API & SMTP Settings', icon: Globe, color: '#f59e0b' },
+            { id: 'overview', label: 'System Overview & Fleet', icon: LayoutDashboard, color: '#8b5cf6' },
+            { id: 'pl_sheet', label: 'Profit & Loss', icon: TrendingUp, color: '#ec4899' },
+            { id: 'backup', label: 'Google Drive Backup', icon: Cloud, color: '#14b8a6' },
+          ].map(t => {
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px',
+                  borderRadius: '10px 10px 0 0', border: 'none',
+                  background: isActive ? t.color + '15' : 'transparent',
+                  color: isActive ? t.color : 'var(--text-muted)',
+                  fontWeight: isActive ? 800 : 600, fontSize: '13px',
+                  cursor: 'pointer', borderBottom: isActive ? `3px solid ${t.color}` : '3px solid transparent',
+                  transition: 'all 0.18s', whiteSpace: 'nowrap'
+                }}
+              >
+                <t.icon size={16} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
 
-          {/* ── User Form (Create/Edit) ── */}
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title-block">
-                <div className={`card-icon ${editTarget ? 'ci-amber' : 'ci-indigo'}`}>
-                  {editTarget ? <Users size={17} /> : <Plus size={17} />}
+        {/* ── TAB 1: USERS & PERMISSIONS ── */}
+        {activeTab === 'users' && (
+          <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
+            {/* User Form (Create/Edit) */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title-block">
+                  <div className={`card-icon ${editTarget ? 'ci-amber' : 'ci-indigo'}`}>
+                    {editTarget ? <Users size={17} /> : <Plus size={17} />}
+                  </div>
+                  <div className="card-title-text">
+                    <h3>{editTarget ? 'Edit User' : 'Create User'}</h3>
+                    <p>{editTarget ? `Modifying @${editTarget.username}` : 'Add a new account'}</p>
+                  </div>
                 </div>
-                <div className="card-title-text">
-                  <h3>{editTarget ? 'Edit User' : 'Create User'}</h3>
-                  <p>{editTarget ? `Modifying @${editTarget.username}` : 'Add a new account'}</p>
+                {editTarget && (
+                  <button className="btn-icon" onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }} style={{ color: 'var(--text-muted)' }}>
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div className="card-body">
+                <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div className="field">
+                    <label>Full Name</label>
+                    <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div className="field">
+                      <label><User size={11} /> Username</label>
+                      <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
+                    </div>
+                    <div className="field">
+                      <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
+                      <input className="fi" type="text" placeholder={editTarget ? 'Leave blank to keep' : 'e.g. pass@123'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>Email Address</label>
+                    <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
+                  </div>
+
+                  <div className="field">
+                    <label>Role</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {ROLES.map(r => {
+                        const RIcon = ROLE_ICON[r];
+                        return (
+                          <button key={r} type="button" onClick={() => S('role', r)}
+                            style={{
+                              flex: 1, padding: '9px 8px', borderRadius: '10px', border: '1px solid',
+                              borderColor: form.role === r ? ROLE_COLOR[r] : 'var(--border)',
+                              background: form.role === r ? ROLE_COLOR[r] + '18' : 'var(--bg-input)',
+                              color: form.role === r ? ROLE_COLOR[r] : 'var(--text-muted)',
+                              fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.15s',
+                              fontFamily: 'inherit'
+                            }}>
+                            <RIcon size={13} />{r.charAt(0).toUpperCase() + r.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
+                    background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
+                      <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      Requires two-step verification using a code sent to the email above.
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '8px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.05)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
+                      Location &amp; Module Access
+                    </div>
+
+                    {HIERARCHY.map(loc => {
+                      const allowed = isLocAllowed(loc.id);
+                      return (
+                        <div key={loc.id} style={{ marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
+                            <input type="checkbox" checked={allowed} onChange={e => toggleLocation(loc, e.target.checked)} />
+                            <span style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              fontSize: '13px', fontWeight: 800,
+                              color: allowed ? loc.color : 'var(--text)'
+                            }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: loc.color, display: 'inline-block', flexShrink: 0 }} />
+                              {loc.label}
+                            </span>
+                          </label>
+
+                          {allowed && (
+                            <div style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {loc.groups.map(grp => (
+                                <div key={grp.id}>
+                                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: loc.color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', opacity: 0.8 }}>
+                                    {grp.label}
+                                  </div>
+                                  {grp.modules.map(mKey => (
+                                    <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {formError && (
+                    <div style={{
+                      background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)',
+                      borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: 'var(--danger)', fontWeight: 600
+                    }}>
+                      {formError}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                    {editTarget && (
+                      <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
+                    )}
+                    <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
+                      {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : <><Plus size={14} /> Create User</>)}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Users size={17} /></div>
+                  <div className="card-title-text"><h3>All System Users</h3><p>{users.length} accounts</p></div>
                 </div>
               </div>
-              {editTarget && (
-                <button className="btn-icon" onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }} style={{ color: 'var(--text-muted)' }}>
-                  <X size={16} />
-                </button>
+              {loading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading...</div>
+              ) : (
+                <div className="tbl-wrap">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-th)' }}>
+                        {['User', 'Username', 'Password', 'Email', 'OTP', 'Role', 'Actions'].map(h => (
+                          <th key={h} style={{
+                            padding: '10px 16px', textAlign: 'left', fontSize: '10px',
+                            fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase',
+                            letterSpacing: '0.08em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap'
+                          }}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((u, i) => {
+                        const RIcon = ROLE_ICON[u.role] || Users;
+                        const isMe = u.id === me?.id;
+                        return (
+                          <UserRow key={u.id} u={u} i={i} RIcon={RIcon} isMe={isMe}
+                            onEdit={() => {
+                              setEditTarget(u);
+                              setForm({
+                                name: u.name, username: u.username, password: '', role: u.role,
+                                email: u.email || '', isOtpEnabled: !!u.isOtpEnabled,
+                                permissions: u.permissions || {}
+                              });
+                            }}
+                            onDelete={() => setDelTarget(u)}
+                          />
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
-            <div className="card-body">
-              <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate}
-                style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="field">
-                  <label>Full Name</label>
-                  <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div className="field">
-                    <label><User size={11} /> Username</label>
-                    <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
-                  </div>
-                  <div className="field">
-                    <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
-                    <input className="fi" type="text" placeholder={editTarget ? 'Leave blank to keep' : 'e.g. pass@123'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
-                  </div>
-                </div>
-
-                <div className="field">
-                  <label>Email Address</label>
-                  <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
-                </div>
-
-                <div className="field">
-                  <label>Role</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {ROLES.map(r => {
-                      const RIcon = ROLE_ICON[r];
-                      return (
-                        <button key={r} type="button" onClick={() => S('role', r)}
-                          style={{
-                            flex: 1, padding: '9px 8px', borderRadius: '10px', border: '1px solid',
-                            borderColor: form.role === r ? ROLE_COLOR[r] : 'var(--border)',
-                            background: form.role === r ? ROLE_COLOR[r] + '18' : 'var(--bg-input)',
-                            color: form.role === r ? ROLE_COLOR[r] : 'var(--text-muted)',
-                            fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.15s',
-                            fontFamily: 'inherit'
-                          }}>
-                          <RIcon size={13} />{r.charAt(0).toUpperCase() + r.slice(1)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{
-                  marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
-                  background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
-                    <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
-                  </div>
-                  <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                    Requires two-step verification using a code sent to the email above.
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '8px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.05)' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
-                    Location & Module Access
-                  </div>
-
-                  {HIERARCHY.map(loc => {
-                    const allowed = isLocAllowed(loc.id);
-                    return (
-                      <div key={loc.id} style={{ marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
-                          <input type="checkbox" checked={allowed} onChange={e => toggleLocation(loc, e.target.checked)} />
-                          <span style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            fontSize: '13px', fontWeight: 800,
-                            color: allowed ? loc.color : 'var(--text)'
-                          }}>
-                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: loc.color, display: 'inline-block', flexShrink: 0 }} />
-                            {loc.label}
-                          </span>
-                        </label>
-
-                        {allowed && (
-                          <div style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {loc.groups.map(grp => (
-                              <div key={grp.id}>
-                                <div style={{ fontSize: '9.5px', fontWeight: 800, color: loc.color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', opacity: 0.8 }}>
-                                  {grp.label}
-                                </div>
-                                {grp.modules.map(mKey => (
-                                  <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {formError && (
-                  <div style={{
-                    background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)',
-                    borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: 'var(--danger)', fontWeight: 600
-                  }}>
-                    {formError}
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                  {editTarget && (
-                    <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
-                  )}
-                  <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
-                    {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : <><Plus size={14} /> Create User</>)}
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
+        )}
 
-          {/* ── Users Table ── */}
+        {/* ── TAB 2: LABOUR WORKERS ── */}
+        {activeTab === 'workers' && (
           <div className="card">
-            <div className="card-header">
-              <div className="card-title-block">
-                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Users size={17} /></div>
-                <div className="card-title-text"><h3>All Users</h3><p>{users.length} accounts</p></div>
-              </div>
-            </div>
-            {loading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading...</div>
-            ) : (
-              <div className="tbl-wrap">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-th)' }}>
-                      {['User', 'Username', 'Password', 'Email', 'OTP', 'Role', 'Actions'].map(h => (
-                        <th key={h} style={{
-                          padding: '10px 16px', textAlign: 'left', fontSize: '10px',
-                          fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase',
-                          letterSpacing: '0.08em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap'
-                        }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u, i) => {
-                      const RIcon = ROLE_ICON[u.role] || Users;
-                      const isMe = u.id === me?.id;
-                      return (
-                        <UserRow key={u.id} u={u} i={i} RIcon={RIcon} isMe={isMe}
-                          onEdit={() => {
-                            setEditTarget(u);
-                            setForm({
-                              name: u.name, username: u.username, password: '', role: u.role,
-                              email: u.email || '', isOtpEnabled: !!u.isOtpEnabled,
-                              permissions: u.permissions || {}
-                            });
-                          }}
-                          onDelete={() => setDelTarget(u)}
-                        />
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* ── Labour Workers Section ─────────────────────────────── */}
-          <div className="card" style={{ marginTop: '28px' }}>
-            <div className="card-header" style={{ borderBottom: '1px solid var(--border)', marginBottom: '0' }}>
+            <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="card-title-block">
                 <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Truck size={17} /></div>
                 <div className="card-title-text">
-                  <h3>Labour Workers</h3>
+                  <h3>Labour Workers Management</h3>
                   <p>Workers who log in to the Labour Portal to update loading statuses</p>
                 </div>
-                <a href="/labour" target="_blank" rel="noopener noreferrer" className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
-                  <ExternalLink size={12} /> Open Labour Portal
-                </a>
               </div>
+              <a href="/labour" target="_blank" rel="noopener noreferrer" className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
+                <ExternalLink size={12} /> Open Labour Portal
+              </a>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '20px' }}>
-              {/* Create Worker Form */}
+            <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '24px', padding: '20px' }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Add New Worker</div>
                 <form onSubmit={handleCreateWorker} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -664,17 +776,16 @@ export default function AdminPage() {
                 </form>
               </div>
 
-              {/* Worker List */}
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Registered Workers ({workers.length})</div>
                 {workers.length === 0 ? (
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '10px' }}>No workers yet. Add one to get started.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
                     {workers.map(w => (
-                      <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: `${GODOWN_COLOR[w.godown]}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Truck size={15} color={GODOWN_COLOR[w.godown] || '#6366f1'} />
+                      <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: `${GODOWN_COLOR[w.godown]}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Truck size={16} color={GODOWN_COLOR[w.godown] || '#6366f1'} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{w.name}</div>
@@ -688,20 +799,21 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+        )}
 
-          {/* ── Fuel Stations Section ─────────────────────────────── */}
-          <div className="card" style={{ marginTop: '28px' }}>
+        {/* ── TAB 3: FUEL STATIONS ── */}
+        {activeTab === 'fuel' && (
+          <div className="card">
             <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="card-title-block">
                 <div className="card-icon" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}><Fuel size={17} /></div>
                 <div className="card-title-text">
-                  <h3>Fuel Stations</h3>
-                  <p>Manage diesel pump list shown in voucher & LR forms</p>
+                  <h3>Fuel Stations Management</h3>
+                  <p>Manage diesel pump list shown in voucher &amp; LR forms</p>
                 </div>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '20px' }}>
-              {/* Add Fuel Station Form */}
+            <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '24px', padding: '20px' }}>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Add New Station</div>
                 <form onSubmit={handleAddFuel} style={{ display: 'flex', gap: '10px' }}>
@@ -712,17 +824,16 @@ export default function AdminPage() {
                 </form>
               </div>
 
-              {/* Fuel Station List */}
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Registered Stations ({fuelStations.length})</div>
                 {fuelStations.length === 0 ? (
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '10px' }}>No fuel stations added yet.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
                     {fuelStations.map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Fuel size={15} color="#3b82f6" />
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Fuel size={16} color="#3b82f6" />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           {fuelEditId === s.id ? (
@@ -748,8 +859,120 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+        )}
 
-        </div>
+        {/* ── TAB 4: SYSTEM & GOVT API SETTINGS ── */}
+        {activeTab === 'system' && (
+          <form onSubmit={handleSaveSysSettings} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* ── NIC Govt E-Way API Configuration Card ── */}
+            <div className="card">
+              <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Globe size={18} /></div>
+                  <div className="card-title-text">
+                    <h3>Government NIC E-Way Portal Credentials</h3>
+                    <p>API integration settings for live ewaybillgst.gov.in verification and auto validity extension</p>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: '20px' }}>
+                <div className="fg fg-2" style={{ gap: '14px' }}>
+                  <div className="field">
+                    <label>Company GSTIN *</label>
+                    <input className="fi" type="text" placeholder="06AAAAA0000A1Z5" value={sysSettings.nicEway.gstin} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, gstin: e.target.value.toUpperCase() } })} required />
+                  </div>
+
+                  <div className="field">
+                    <label>API Environment</label>
+                    <select className="fi" value={sysSettings.nicEway.env} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, env: e.target.value } })}>
+                      <option value="sandbox">Sandbox / Test Mode</option>
+                      <option value="production">Production (Live ewaybillgst.gov.in)</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>E-Way Portal Username *</label>
+                    <input className="fi" type="text" placeholder="NIC E-Way Portal API Username" value={sysSettings.nicEway.username} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, username: e.target.value } })} />
+                  </div>
+
+                  <div className="field">
+                    <label>E-Way Portal Password *</label>
+                    <input className="fi" type="password" placeholder="••••••••" value={sysSettings.nicEway.password} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, password: e.target.value } })} />
+                  </div>
+
+                  <div className="field">
+                    <label>GSP Client ID (ClearTax / MasterIndia / NIC)</label>
+                    <input className="fi" type="text" placeholder="Client ID string" value={sysSettings.nicEway.clientId} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, clientId: e.target.value } })} />
+                  </div>
+
+                  <div className="field">
+                    <label>GSP Client Secret</label>
+                    <input className="fi" type="password" placeholder="Client secret string" value={sysSettings.nicEway.clientSecret} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, clientSecret: e.target.value } })} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── SMTP Email & OTP Configuration Card ── */}
+            <div className="card">
+              <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}><Mail size={18} /></div>
+                  <div className="card-title-text">
+                    <h3>SMTP &amp; Email OTP Server Settings</h3>
+                    <p>Configure outgoing SMTP mail server for login 2FA OTP codes and notifications</p>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: '20px' }}>
+                <div className="fg fg-2" style={{ gap: '14px' }}>
+                  <div className="field">
+                    <label>SMTP Host</label>
+                    <input className="fi" type="text" placeholder="smtp.gmail.com" value={sysSettings.smtp.host} onChange={e => setSysSettings({ ...sysSettings, smtp: { ...sysSettings.smtp, host: e.target.value } })} />
+                  </div>
+
+                  <div className="field">
+                    <label>SMTP Port</label>
+                    <input className="fi" type="text" placeholder="587" value={sysSettings.smtp.port} onChange={e => setSysSettings({ ...sysSettings, smtp: { ...sysSettings.smtp, port: e.target.value } })} />
+                  </div>
+
+                  <div className="field">
+                    <label>Sender Email Address</label>
+                    <input className="fi" type="email" placeholder="notifications@vgtc.in" value={sysSettings.smtp.user} onChange={e => setSysSettings({ ...sysSettings, smtp: { ...sysSettings.smtp, user: e.target.value } })} />
+                  </div>
+
+                  <div className="field">
+                    <label>SMTP Password / App Password</label>
+                    <input className="fi" type="password" placeholder="••••••••" value={sysSettings.smtp.pass} onChange={e => setSysSettings({ ...sysSettings, smtp: { ...sysSettings.smtp, pass: e.target.value } })} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Save Settings Button Bar ── */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button type="submit" className="btn btn-p" style={{ padding: '12px 28px', fontSize: '14px', fontWeight: 800 }} disabled={sysSaving}>
+                {sysSaving ? 'Saving Settings...' : <><Save size={16} /> Save All System Settings</>}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── TAB 5: SYSTEM OVERVIEW & FLEET FINANCING ── */}
+        {activeTab === 'overview' && (
+          <AdminDashboard />
+        )}
+
+        {/* ── TAB 6: PROFIT & LOSS SHEET ── */}
+        {activeTab === 'pl_sheet' && (
+          <ProfitLossSheet />
+        )}
+
+        {/* ── TAB 7: GOOGLE DRIVE BACKUP ── */}
+        {activeTab === 'backup' && (
+          <AdminModule />
+        )}
+
       </div>
     </>
   );

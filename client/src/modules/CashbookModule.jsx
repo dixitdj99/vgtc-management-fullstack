@@ -108,33 +108,44 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
         <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Enter = next · Ctrl+S = save · Esc = close</span>
       </div>
       <form onSubmit={handleFormRequest}>
-        {!isDeposit && (
-          <div className="field" style={{ marginBottom: '10px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Give Cash To (Optional)</label>
-            <select className="fi" value={form.entityKey} onChange={e => setForm(f => ({ ...f, entityKey: e.target.value }))}>
-              <option value="">— None (General Expense) —</option>
-              {drivers.length > 0 && <optgroup label="Drivers">
-                {drivers.map(d => <option key={d.id} value={`driver::${d.id}`}>{d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}</option>)}
-              </optgroup>}
-              {vehicles.length > 0 && <optgroup label="Vehicles">
-                {vehicles.map(v => <option key={v.truckNo} value={`vehicle::${v.truckNo}`}>{v.truckNo} — {v.ownerName || v.driverName || ''}</option>)}
-              </optgroup>}
-              {staffList.length > 0 && <optgroup label="Staff Members">
-                {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
-              </optgroup>}
-            </select>
+        <div className="fg fg-2" style={{ gap: '14px' }}>
+          {!isDeposit && (
+            <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+              <label>Give Cash To</label>
+              <select className="fi" value={form.entityKey} onChange={e => setForm(f => ({ ...f, entityKey: e.target.value }))}>
+                <option value="">— None (General Expense) —</option>
+                {drivers.length > 0 && <optgroup label="Drivers">
+                  {drivers.map(d => <option key={d.id} value={`driver::${d.id}`}>{d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}</option>)}
+                </optgroup>}
+                {vehicles.length > 0 && <optgroup label="Vehicles">
+                  {vehicles.map(v => <option key={v.truckNo} value={`vehicle::${v.truckNo}`}>{v.truckNo} — {v.ownerName || v.driverName || ''}</option>)}
+                </optgroup>}
+                {staffList.length > 0 && <optgroup label="Staff Members">
+                  {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
+                </optgroup>}
+              </select>
+            </div>
+          )}
+          <div className="field-h">
+            <label>Amount (Rs.) *</label>
+            <input className="fi" type="number" step="0.01" placeholder="0" required value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
           </div>
-        )}
-        <div className="fg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '9px', alignItems: 'end' }}>
-          <div className="field"><label>Amount (Rs.)</label><input className="fi" type="number" step="0.01" placeholder="0" required value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></div>
-          <div className="field"><label>Date</label><input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
-          <div className="field"><label>Remark</label><input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office expenses'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} /></div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button type="submit" className={`btn ${isDeposit ? 'btn-a' : 'btn-d'}`} disabled={saving} title="Save Entry">{saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />}</button>
-            <button type="button" className="btn btn-g btn-icon" onClick={onCancel} title="Cancel"><X size={14} /></button>
+          <div className="field-h">
+            <label>Date *</label>
+            <input className="fi" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
+          </div>
+          <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+            <label>Remark</label>
+            <input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office expenses'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} />
+          </div>
+          {err && <div className="field-error" style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{err}</div>}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+            <button type="button" className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }} onClick={onCancel}>Cancel</button>
+            <button type="submit" className={`btn ${isDeposit ? 'btn-a' : 'btn-d'}`} style={{ fontWeight: 800 }} disabled={saving}>
+              {saving ? <Loader2 size={14} className="spin" /> : 'Confirm Save'}
+            </button>
           </div>
         </div>
-        {err && <div className="field-error" style={{ marginTop: '6px' }}>{err}</div>}
       </form>
       <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : 'Confirm Cash Out'} message={confirmMsg} isSaving={saving} />
     </motion.div>
@@ -673,13 +684,15 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>Mark as Returned</span>
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '16px' }}>{returnTarget.label}</div>
-              <div className="field" style={{ marginBottom: '10px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Return Date</label>
-                <input type="date" className="fi" value={returnTarget.date} onChange={e => setReturnTarget(p => ({ ...p, date: e.target.value }))} />
-              </div>
-              <div className="field" style={{ marginBottom: '18px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Remark (Optional)</label>
-                <input type="text" className="fi" placeholder="e.g. Cash returned by driver" value={returnTarget.remark} onChange={e => setReturnTarget(p => ({ ...p, remark: e.target.value }))} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '18px' }}>
+                <div className="field-h">
+                  <label>Return Date *</label>
+                  <input type="date" className="fi" value={returnTarget.date} onChange={e => setReturnTarget(p => ({ ...p, date: e.target.value }))} required />
+                </div>
+                <div className="field-h">
+                  <label>Remark</label>
+                  <input type="text" className="fi" placeholder="e.g. Cash returned by driver" value={returnTarget.remark} onChange={e => setReturnTarget(p => ({ ...p, remark: e.target.value }))} />
+                </div>
               </div>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <button className="btn btn-g" onClick={() => setReturnTarget(null)}>Cancel</button>

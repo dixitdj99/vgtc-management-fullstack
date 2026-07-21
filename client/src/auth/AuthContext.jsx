@@ -70,6 +70,30 @@ export function AuthProvider({ children }) {
     return u;
   };
 
+  const signup = async (name, username, email, password, orgId, code, methodId) => {
+    const res = await ax.post(`/auth/signup`, { name, username, email, password, orgId, code, methodId });
+    if (res.data.requireOtp) {
+      return res.data;
+    }
+    const { token: t, user: u } = res.data;
+    localStorage.setItem('vgtc-token', t);
+    setAuthToken(t);
+    setToken(t);
+    setUser(u);
+    setCurrentUser(u);
+    return u;
+  };
+
+  const forgotPassword = async (email) => {
+    const res = await ax.post(`/auth/forgot-password`, { email });
+    return res.data;
+  };
+
+  const resetPassword = async (token, password) => {
+    const res = await ax.post(`/auth/reset-password`, { token, password });
+    return res.data;
+  };
+
   const verifyOtp = async (userId, code, selectedPlant, selectedGodown, orgId) => {
     const res = await ax.post(`/auth/verify-otp`, { userId, code, plant: selectedPlant, godown: selectedGodown, orgId });
     const { token: t, user: u } = res.data;
@@ -132,7 +156,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, verifyOtp, resendOtp, refreshUser, logout, ready, hasPermission }}>
+    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, signup, forgotPassword, resetPassword, verifyOtp, resendOtp, refreshUser, logout, ready, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

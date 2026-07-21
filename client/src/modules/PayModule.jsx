@@ -7,6 +7,7 @@ import {
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
 import ColumnFilter from '../components/ColumnFilter';
+import VehicleCreditDebitModule from './VehicleCreditDebitModule';
 
 const API_V = '/vouchers';
 const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill'];
@@ -102,12 +103,12 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   // Vehicle Advance states (synced with Balance Sheet)
   const [advances, setAdvances] = useState([]);
-  const [advForm, setAdvForm] = useState({ type: 'debit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+  const [advForm, setAdvForm] = useState({ type: 'debit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '', addToCashbook: true });
   const [advSaving, setAdvSaving] = useState(false);
   const [showAdvForm, setShowAdvForm] = useState(false);
 
   const advanceBalance = useMemo(() =>
-    advances.reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0),
+    advances.filter(a => !a.isCleared && !a.isGpsRent && !(a.remark || '').toLowerCase().includes('gps rent')).reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0),
   [advances]);
 
   const getTypesForBrand = () => {
@@ -143,7 +144,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     setAdvSaving(true);
     try {
       await ax.post('/vehicle-advances', { ...advForm, truckNo: selTruck });
-      setAdvForm({ type: 'debit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
+      setAdvForm({ type: 'debit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '', addToCashbook: true });
       setShowAdvForm(false);
       fetchAdvances(selTruck);
     } catch (er) { alert(er.response?.data?.error || 'Failed to save advance'); }
@@ -383,6 +384,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const selRows = vehicleLrs.filter(v => selectedLrs.has(v.id));
   const selOutstanding = selRows.reduce((s, v) => s + Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0)), 0);
 
+  const netPayout = useMemo(() => {
+    return selOutstanding + advanceBalance - (gpsAccrual?.amount || 0) - miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  }, [selOutstanding, advanceBalance, gpsAccrual, miscDeductions]);
+
   // Vehicle expenses from selected entries (or all pending if none selected)
   const expenseSource = selRows.length > 0 ? selRows : vehicleLrs;
   const selVehicleExpenses = useMemo(() => {
@@ -424,7 +429,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
           type: 'debit',
           amount: gpsAccrual.amount,
           date: paymentDate,
-          remark: `GPS Rent (${gpsAccrual.months}m × ${gpsAccrual.gpsCount} GPS × ₹250) - ${gpsAccrual.gpsLabel}`
+          remark: `GPS Rent (${gpsAccrual.months}m × ${gpsAccrual.gpsCount} GPS × ₹250) - ${gpsAccrual.gpsLabel}`,
+          isCleared: true,
+          isGpsRent: true
         });
       }
 
@@ -436,11 +443,20 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             type: 'debit',
             amount: d.amount,
             date: d.date || paymentDate,
-            remark: d.remark || 'Miscellaneous Deduction'
+            remark: d.remark || 'Miscellaneous Deduction',
+            isCleared: true
           });
         }
       }
       setMiscDeductions([]);
+
+      // Clear active vehicle advances for this truck so they are not double-counted in future payments
+      try {
+        await ax.post('/vehicle-advances/clear', { truckNo: selTruck, paymentId: `PAY-${Date.now()}` });
+        fetchAdvances(selTruck);
+      } catch (clearErr) {
+        console.error('Failed to clear vehicle advances:', clearErr);
+      }
 
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 5000);
@@ -449,7 +465,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       setReceiptModal({
         truckNo: selTruck,
         date: paymentDate,
-        amount: selOutstanding,
+        amount: netPayout,
         phone: tv?.ownerContact || ''
       });
 
@@ -543,6 +559,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
           <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
             <button className={`btn btn-sm ${view === 'freight' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('freight')}>Freight Pay</button>
             <button className={`btn btn-sm ${view === 'online' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('online')}>Online Advances</button>
+            <button className={`btn btn-sm ${view === 'vehicle_advances' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('vehicle_advances')}>Vehicle Credit & Debit</button>
             <button className={`btn btn-sm ${view === 'firm' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('firm')}>Firm Pay</button>
             <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Staff Pay</button>
           </div>
@@ -550,7 +567,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
         </div>
       </div>
 
-      {view === 'online' ? (() => {
+      {view === 'vehicle_advances' ? (
+        <VehicleCreditDebitModule />
+      ) : view === 'online' ? (() => {
         const onlineList = vouchers
           .filter(v => parseFloat(v.advanceOnline) > 0)
           .map(v => ({ ...v, onlineAmt: parseFloat(v.advanceOnline) || 0 }))
@@ -704,31 +723,33 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <HandCoins size={20} color="var(--primary)" /> Record Firm Payment
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="field">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <label style={{ margin: 0 }}>Select Profile</label>
-                  {firmForm.profileId && firmForm.profileId !== '__other__' && (
-                    <button onClick={() => setShowLedger(profiles.find(p => p.id === firmForm.profileId))} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>View Full Ledger</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="field-h">
+                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ margin: 0 }}>Select Profile</label>
+                    {firmForm.profileId && firmForm.profileId !== '__other__' && (
+                      <button onClick={() => setShowLedger(profiles.find(p => p.id === firmForm.profileId))} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>View Ledger</button>
+                    )}
+                  </div>
+                  <select className="fi" value={firmForm.profileId} onChange={e => setFirmForm({...firmForm, profileId: e.target.value, otherProfileName: ''})}>
+                    <option value="">-- Select Profile --</option>
+                    {profiles.map(p => {
+                      const bal = getProfileBalance(p);
+                      return (
+                        <option key={p.id} value={p.id}>{p.name} ({p.type}) | Bal: ₹{bal.toLocaleString()}</option>
+                      );
+                    })}
+                    <option value="__other__">+ Other (Type Manually)</option>
+                  </select>
+                  {firmForm.profileId === '__other__' && (
+                    <input className="fi" style={{ marginTop: '8px' }} type="text" placeholder="Enter name (e.g. vendor, supplier, expense...)" value={firmForm.otherProfileName}
+                      onChange={e => setFirmForm({...firmForm, otherProfileName: e.target.value})} autoFocus />
                   )}
                 </div>
-                <select className="fi" value={firmForm.profileId} onChange={e => setFirmForm({...firmForm, profileId: e.target.value, otherProfileName: ''})}>
-                  <option value="">-- Select Profile --</option>
-                  {profiles.map(p => {
-                    const bal = getProfileBalance(p);
-                    return (
-                      <option key={p.id} value={p.id}>{p.name} ({p.type}) | Bal: ₹{bal.toLocaleString()}</option>
-                    );
-                  })}
-                  <option value="__other__">+ Other (Type Manually)</option>
-                </select>
-                {firmForm.profileId === '__other__' && (
-                  <input className="fi" style={{ marginTop: '8px' }} type="text" placeholder="Enter name (e.g. vendor, supplier, expense...)" value={firmForm.otherProfileName}
-                    onChange={e => setFirmForm({...firmForm, otherProfileName: e.target.value})} autoFocus />
-                )}
               </div>
-              <div className="field">
-                <label>Payment Category</label>
+              <div className="field-h">
+                <label>Category</label>
                 <select className="fi" value={firmForm.category} onChange={e => setFirmForm({...firmForm, category: e.target.value})}>
                   <option value="Salary">Staff Salary</option>
                   <option value="Advance">Advance Payment</option>
@@ -738,19 +759,17 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   <option value="Other">Other Expenses</option>
                 </select>
               </div>
-              <div className="fg fg-2">
-                <div className="field">
-                  <label>Amount (₹)</label>
-                  <input type="number" className="fi" value={firmForm.amount} onChange={e => setFirmForm({...firmForm, amount: e.target.value})} placeholder="0.00" />
-                </div>
-                <div className="field">
-                  <label>Date</label>
-                  <input type="date" className="fi" value={firmForm.date} onChange={e => setFirmForm({...firmForm, date: e.target.value})} />
-                </div>
+              <div className="field-h">
+                <label>Amount (₹)</label>
+                <input type="number" className="fi" value={firmForm.amount} onChange={e => setFirmForm({...firmForm, amount: e.target.value})} placeholder="0.00" />
               </div>
-              <div className="field">
+              <div className="field-h">
+                <label>Date</label>
+                <input type="date" className="fi" value={firmForm.date} onChange={e => setFirmForm({...firmForm, date: e.target.value})} />
+              </div>
+              <div className="field-h">
                 <label>Remark / Note</label>
-                <textarea className="fi" value={firmForm.remark} onChange={e => setFirmForm({...firmForm, remark: e.target.value})} placeholder="Payment details..." style={{ minHeight: '80px' }} />
+                <textarea className="fi" value={firmForm.remark} onChange={e => setFirmForm({...firmForm, remark: e.target.value})} placeholder="Payment details..." style={{ minHeight: '60px' }} />
               </div>
               <button className="btn btn-p" style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 700 }}
                 onClick={async () => {
@@ -988,6 +1007,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <button className={`btn btn-sm ${detailTab === 'pending' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('pending')}>
                   Pending ({vehicleLrs.length})
                 </button>
+                <button className={`btn btn-sm ${detailTab === 'advance' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('advance')}>
+                  Advances ({advances.length})
+                </button>
                 <button className={`btn btn-sm ${detailTab === 'history' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('history')}>
                   History ({paidLrs.length})
                 </button>
@@ -1072,6 +1094,107 @@ export default function PayModule({ brand, role, permissions, initialView }) {
               </table>
                   </div>
               </React.Fragment>
+            ) : detailTab === 'advance' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '20px' }}>
+                {/* Advance Form */}
+                <div className="card" style={{ padding: '20px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: 900, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Banknote size={16} /> Record Vehicle Advance
+                  </h3>
+                  <form onSubmit={handleAdvSubmit}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div className="field-h">
+                        <label>Entry Type</label>
+                        <select className="fi" value={advForm.type} onChange={e => setAdvForm({...advForm, type: e.target.value})}>
+                          <option value="debit">Debit (Advance Given)</option>
+                          <option value="credit">Credit (Refund/Received)</option>
+                        </select>
+                      </div>
+
+                      <div className="field-h">
+                        <label>Amount (₹)</label>
+                        <input className="fi" type="number" required min="1" step="1" placeholder="0.00" value={advForm.amount} onChange={e => setAdvForm({...advForm, amount: e.target.value})} />
+                      </div>
+
+                      <div className="field-h">
+                        <label>Date</label>
+                        <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm({...advForm, date: e.target.value})} />
+                      </div>
+
+                      <div className="field-h">
+                        <label>Remark / Note</label>
+                        <textarea className="fi" rows={3} placeholder="Describe advance/refund reason..." value={advForm.remark} onChange={e => setAdvForm({...advForm, remark: e.target.value})} />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                        <input
+                          type="checkbox"
+                          id="pay_addToCashbook"
+                          checked={advForm.addToCashbook}
+                          onChange={e => setAdvForm({ ...advForm, addToCashbook: e.target.checked })}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                        />
+                        <label htmlFor="pay_addToCashbook" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-sub)', cursor: 'pointer', userSelect: 'none' }}>
+                          Automatically add entry to Cashbook
+                        </label>
+                      </div>
+
+                      <button type="submit" className="btn btn-p" disabled={advSaving} style={{ width: '100%', padding: '12px', marginTop: '4px' }}>
+                        {advSaving ? 'Saving...' : 'Save Advance Entry'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Advance History List */}
+                <div className="card">
+                  <div className="card-header border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: 800 }}>Advance Ledger for {selTruck}</h3>
+                    <span style={{ fontSize: '13px', fontWeight: 900, color: advanceBalance >= 0 ? 'var(--accent)' : 'var(--danger)' }}>
+                      Balance: ₹{advanceBalance.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="tbl-wrap">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr>
+                          <th style={TH}>Date</th>
+                          <th style={TH}>Type</th>
+                          <th style={TH}>Amount</th>
+                          <th style={TH}>Remark</th>
+                          <th style={{ ...TH, textAlign: 'center' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {advances.map((a, i) => (
+                          <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                            <td style={TD}>{fmtDate(a.date)}</td>
+                            <td style={TD}>
+                              <span style={{
+                                padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700,
+                                background: a.type === 'credit' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                                color: a.type === 'credit' ? 'var(--accent)' : 'var(--danger)'
+                              }}>
+                                {a.type === 'credit' ? 'Received' : 'Given'}
+                              </span>
+                            </td>
+                            <td style={{ ...TD, fontWeight: 700, color: a.type === 'credit' ? 'var(--accent)' : 'var(--danger)' }}>
+                              ₹{parseFloat(a.amount).toLocaleString('en-IN')}
+                            </td>
+                            <td style={{ ...TD, whiteSpace: 'normal', fontSize: '11px' }}>{a.remark}</td>
+                            <td style={{ ...TD, textAlign: 'center' }}>
+                              <button type="button" className="btn btn-g btn-sm" style={{ padding: '2px 6px', color: 'var(--danger)' }} onClick={() => handleAdvDelete(a.id)}>Delete</button>
+                            </td>
+                          </tr>
+                        ))}
+                        {advances.length === 0 && (
+                          <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No advance history recorded yet.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             ) : (
               // HISTORY TABLE
               <div className="card tbl-wrap">
@@ -1180,9 +1303,20 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </div>
                 ))}
 
+                {advanceBalance !== 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+                    <span style={{ fontSize: '11px', color: advanceBalance > 0 ? '#10b981' : 'var(--danger)', fontWeight: 700 }}>
+                      {advanceBalance > 0 ? '+ Vehicle Credit Balance:' : '− Vehicle Debit Balance:'}
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: advanceBalance > 0 ? '#10b981' : 'var(--danger)' }}>
+                      {advanceBalance > 0 ? '+' : ''}{fmtRs(advanceBalance)}
+                    </span>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid var(--border)', paddingTop: '10px', marginTop: '10px' }}>
                   <span style={{ fontSize: '15px', color: 'var(--primary)', fontWeight: 900 }}>Net Payout:</span>
-                  <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(selOutstanding - (gpsAccrual?.amount || 0) - miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0))}</span>
+                  <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(netPayout)}</span>
                 </div>
               </div>
 

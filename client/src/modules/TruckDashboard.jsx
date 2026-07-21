@@ -287,7 +287,7 @@ export default function TruckDashboard({ role, permissions }) {
                     style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderLeft: overdueBorder, cursor: 'pointer', transition: 'background 0.12s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}
-                    onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { module: 'balance_dump', search: r.truckNo } }))}>
+                    onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { active: 'balance_dump', search: r.truckNo } }))}>
                     <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                     <td style={TD}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

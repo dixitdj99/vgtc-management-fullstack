@@ -145,6 +145,11 @@ app.use('/api/payments', requireAuth, paymentRoutes);
 app.use('/api/maintenance', requireAuth, maintenanceRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/tolls', requireAuth, require('./routes/tollRoutes'));
+app.use('/api/tyres', requireAuth, require('./routes/tyreRoutes'));
+app.use('/api/vendors', requireAuth, require('./routes/vendorRoutes'));
+app.use('/api/attendance', requireAuth, require('./routes/attendanceRoutes'));
+app.use('/api/eway', requireAuth, require('./routes/ewayRoutes'));
+app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
 
 const PORT = process.env.PORT || 5000;
 

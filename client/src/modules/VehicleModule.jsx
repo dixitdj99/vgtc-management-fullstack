@@ -20,7 +20,7 @@ const getEmptyForm = () => ({
     driverName: '',
     driverContact: '',
     vehicleType: 'Trailer',
-    ownershipType: 'market',
+    ownershipType: 'self',
     make: 'Tata',
     model: '',
     grossWeight: '',
@@ -45,43 +45,6 @@ const parseJson = (val, fallback = {}) => {
     } catch { }
     return fallback || {};
 };
-
-/* ── Vehicle Visualizer ── */
-function VehicleVisualizer() {
-    return (
-        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="card" style={{ marginBottom: '24px', overflow: 'hidden', border: '1px solid var(--primary-glow)' }}>
-            <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div className="card-title-block">
-                    <div className="card-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}><Info size={17} /></div>
-                    <div className="card-title-text">
-                        <h3>Vehicle Anatomy & Parts Guide</h3>
-                        <p>Locate key components for maintenance (Tata/Ashok Leyland style)</p>
-                    </div>
-                </div>
-            </div>
-            <div style={{ position: 'relative', background: '#0f172a', padding: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px' }}>
-                <img src="/commercial_vehicle_parts_diagram_1777288985862.png" alt="Vehicle Parts Diagram" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} />
-                
-                <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '10px', color: '#10b981', fontWeight: 800 }}>ENGINE AREA</div>
-                    <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '10px', color: '#3b82f6', fontWeight: 800 }}>CHASSIS FRAME</div>
-                    <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '10px', color: '#f59e0b', fontWeight: 800 }}>AXLE SYSTEM</div>
-                </div>
-
-                <div style={{ position: 'absolute', bottom: '20px', left: '20px', background: 'rgba(0,0,0,0.7)', padding: '12px 20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(8px)', maxWidth: '280px' }}>
-                    <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', marginBottom: '8px' }}>Maintenance Checkpoints</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        {['Fuel Tank', 'Battery Box', 'Air Filter', 'Propeller Shaft'].map(p => (
-                            <div key={p} style={{ fontSize: '11px', color: '#f1f5f9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#3b82f6' }} /> {p}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </motion.div>
-    );
-}
 
 /* ── Delete Modal (Dual Verification) ── */
 function DeleteConfirm({ vehicle, onClose, onConfirm }) {
@@ -647,8 +610,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
     // UI State
     const [tab, setTab] = useState('list'); // add new 'registry' option
-    // Add tab button in UI rendering section (approx line 600) 
-    const [ownershipFilter, setOwnershipFilter] = useState('all'); 
+    const [ownershipFilter, setOwnershipFilter] = useState('self'); 
     const [fSearch, setFSearch] = useState('');
     const [expandedOwners, setExpandedOwners] = useState({});
     const [profiles, setProfiles] = useState([]);
@@ -1115,46 +1077,41 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '12px', boxShadow: '0 8px 16px var(--primary-glow)' }}><Truck size={24} /></div>
                     <div>
-                        <h1>Fleet & Asset Management</h1>
-                        <p>Detailed RC inventory, EMI tracking, and commercial documentation</p>
+                        <h1>Fleet Management</h1>
+                        <p>Manage vehicles, documents, EMIs, tolls and outstanding balances</p>
                     </div>
                 </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Briefcase size={14} /> Asset List</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '16px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Truck size={14} /> Vehicles</button>
                     <button className={`tab-btn${tab === 'toll' ? ' tab-amber' : ''}`} onClick={() => setTab('toll')}><Receipt size={14} /> Toll Records</button>
-                    <button className={`tab-btn${tab === 'registry' ? ' tab-amber' : ''}`} onClick={() => setTab('registry')}><Check size={14} /> Firm Registry</button>
-                    <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Update Record</> : <><Plus size={14} /> New Vehicle Profile</>}</button>
+                    <button className={`tab-btn${tab === 'registry' ? ' tab-amber' : ''}`} onClick={() => setTab('registry')}><Check size={14} /> Pending Trucks</button>
+                    <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Edit Vehicle</> : <><Plus size={14} /> Add Vehicle</>}</button>
                 </div>
                 {tab === 'list' && (
                     <div className="tab-grp">
                         <button className="tab-btn tab-indigo" onClick={handleSendAlerts} style={{ marginRight: '10px', background: '#3b82f6', color: 'white' }}>
-                            <FileText size={14} /> Send Email Alerts
+                            <Bell size={14} /> Email Alert
                         </button>
-                        <button className={`tab-btn${ownershipFilter === 'all' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('all')}>All</button>
-                        <button className={`tab-btn${ownershipFilter === 'self' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('self')}>Self</button>
-                        <button className={`tab-btn${ownershipFilter === 'market' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('market')}>Market</button>
-                        <button className={`tab-btn${ownershipFilter === 'other' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('other')}>Other</button>
+                        <button className={`tab-btn${ownershipFilter === 'self' ? ' tab-indigo' : ''}`} onClick={() => setOwnershipFilter('self')}>Own Fleet (Self)</button>
                     </div>
                 )}
             </div>
-
-            {tab === 'list' && ownershipFilter === 'self' && <VehicleVisualizer />}
 
             {tab === 'add' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card">
                     <form className="card-body" onSubmit={handleSaveRequest}>
                         <div className="fg fg-3">
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Truck No. *</label>
                                 <input className="fi" type="text" placeholder="RJXX-XXXX" value={form.truckNo} onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })} required list="truck-list" />
                                 <datalist id="truck-list">{uniqueTruckNos.map(no => <option key={no} value={no} />)}</datalist>
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Make & Model</label>
-                                <div style={{ display: 'flex', gap: '4px' }}>
+                                <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
                                     <select className="fi" style={{ flex: 1 }} value={form.make} onChange={e => setForm({ ...form, make: e.target.value })}>
                                         <option value="Tata">Tata</option>
                                         <option value="Ashok Leyland">Ashok Leyland</option>
@@ -1165,7 +1122,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <input className="fi" style={{ flex: 1 }} type="text" placeholder="e.g. 3518, 4018" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
                                 </div>
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Type</label>
                                 <select className="fi" value={form.vehicleType} onChange={e => setForm({ ...form, vehicleType: e.target.value })}>
                                     <option value="Trailer">Trailer</option>
@@ -1173,7 +1130,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <option value="Canter">Canter</option>
                                 </select>
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Ownership</label>
                                 <select className="fi" value={form.ownershipType} onChange={e => setForm({ ...form, ownershipType: e.target.value })}>
                                     <option value="market">Market Vehicle</option>
@@ -1181,7 +1138,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <option value="other">Other Vehicle</option>
                                 </select>
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>GPS Type</label>
                                 <select className="fi" value={form.gpsType} onChange={e => setForm({ ...form, gpsType: e.target.value })}>
                                     <option value="none">None</option>
@@ -1193,15 +1150,15 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         </div>
 
                         <div className="fg fg-3">
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Gross Weight (KG)</label>
                                 <input className="fi" type="number" placeholder="GVW" value={form.grossWeight} onChange={e => setForm({ ...form, grossWeight: e.target.value })} />
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Unladen Weight (KG)</label>
                                 <input className="fi" type="number" placeholder="Kerb weight" value={form.unladenWeight} onChange={e => setForm({ ...form, unladenWeight: e.target.value })} />
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Payload (Calculated)</label>
                                 <div className="fi" style={{ background: 'var(--bg-th)', color: 'var(--primary)', fontWeight: 800 }}>
                                     {Math.max(0, (parseFloat(form.grossWeight) || 0) - (parseFloat(form.unladenWeight) || 0))} KG
@@ -1210,15 +1167,15 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         </div>
 
                         <div className="fg fg-3">
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Registration Date (Age: {calculateAge(form.regDate)})</label>
                                 <input className="fi" type="date" value={form.regDate} onChange={e => setForm({ ...form, regDate: e.target.value })} />
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>National Permit Expiry</label>
                                 <input className="fi" type="date" value={form.nationalPermitDate} onChange={e => setForm({ ...form, nationalPermitDate: e.target.value })} />
                             </div>
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Target Average (KM/L)</label>
                                 <input className="fi" type="number" step="0.1" placeholder="e.g. 4.5" value={form.targetMileage} onChange={e => setForm({ ...form, targetMileage: e.target.value })} />
                             </div>
@@ -1231,17 +1188,19 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 </h4>
 
                                 <div className="fg fg-2">
-                                    <div className="field">
-                                        <label>Owner Name * <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '10px' }}>(Select from Party Master to sync bank info)</span></label>
-                                        <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required={form.ownershipType !== 'self'} list="owner-list" />
-                                        <datalist id="owner-list">
-                                            {uniqueOwners.map(o => {
-                                                const isMaster = parties.some(p => p.name === o);
-                                                return <option key={o} value={o}>{isMaster ? '⭐ (Master Data)' : ''}</option>;
-                                            })}
-                                        </datalist>
+                                    <div className="field-h">
+                                        <label>Owner Name *</label>
+                                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                            <input className="fi" type="text" placeholder="Name or Company" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} required={form.ownershipType !== 'self'} list="owner-list" />
+                                            <datalist id="owner-list">
+                                                {uniqueOwners.map(o => {
+                                                    const isMaster = parties.some(p => p.name === o);
+                                                    return <option key={o} value={o}>{isMaster ? '⭐ (Master Data)' : ''}</option>;
+                                                })}
+                                            </datalist>
+                                        </div>
                                     </div>
-                                    <div className="field">
+                                    <div className="field-h">
                                         <label>Owner Contact</label>
                                         <input className="fi" type="text" placeholder="Phone number" value={form.ownerContact} onChange={e => setForm({ ...form, ownerContact: e.target.value })} />
                                     </div>
@@ -1252,12 +1211,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} color="var(--primary)" /> RC & Document Numbers Registry</h4>
                             <div className="fg fg-3">
-                                <div className="field"><label>RC Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).rcNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
-                                <div className="field"><label>Insurance Policy</label><input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
-                                <div className="field"><label>Permit Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).permitNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
-                                <div className="field"><label>Engine Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).engineNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
-                                <div className="field"><label>Chassis Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
-                                <div className="field"><label>Fastag Serial</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
+                                <div className="field-h"><label>RC Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).rcNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.rcNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field-h"><label>Insurance Policy</label><input className="fi" type="text" value={parseJson(form.docNumbers).insuranceNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.insuranceNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field-h"><label>Permit Number</label><input className="fi" type="text" value={parseJson(form.docNumbers).permitNo || ''} onChange={e => { const d = parseJson(form.docNumbers); d.permitNo = e.target.value; setForm({ ...form, docNumbers: JSON.stringify(d) }); }} /></div>
+                                <div className="field-h"><label>Engine Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).engineNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.engineNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
+                                <div className="field-h"><label>Chassis Number</label><input className="fi" type="text" value={parseJson(form.rcDetails).chassisNo || ''} onChange={e => { const d = parseJson(form.rcDetails); d.chassisNo = e.target.value; setForm({ ...form, rcDetails: JSON.stringify(d) }); }} /></div>
+                                <div className="field-h"><label>Fastag Serial</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
                             </div>
                         </div>
 
@@ -1268,16 +1227,16 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '4px 10px', borderRadius: '20px' }}>AUTO CALCULATE ENABLED</div>
                                 </div>
                                 <div className="fg fg-3">
-                                    <div className="field"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName || ''} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo || ''} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total || ''} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure || ''} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due || ''} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>EMI End Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).endDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.endDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending || ''} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
-                                    <div className="field"><label>EMI Due Day (1-31)</label><input className="fi" type="number" min="1" max="31" placeholder="e.g. 5" value={parseJson(form.emiDetails).emiDay || ''} onChange={e => { const d = parseJson(form.emiDetails); d.emiDay = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName || ''} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Loan Number</label><input className="fi" type="text" value={parseJson(form.emiDetails).loanNo || ''} onChange={e => { const d = parseJson(form.emiDetails); d.loanNo = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Interest Rate (%)</label><input className="fi" type="number" step="0.1" value={parseJson(form.emiDetails).interestRate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.interestRate = e.target.value; d.due = calculateEMI(d.total, e.target.value, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Total Loan Amount (P)</label><input className="fi" type="number" value={parseJson(form.emiDetails).total || ''} onChange={e => { const d = parseJson(form.emiDetails); d.total = e.target.value; d.due = calculateEMI(e.target.value, d.interestRate, d.tenure); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Tenure (Months)</label><input className="fi" type="number" value={parseJson(form.emiDetails).tenure || ''} onChange={e => { const d = parseJson(form.emiDetails); d.tenure = e.target.value; d.due = calculateEMI(d.total, d.interestRate, e.target.value); setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Monthly EMI Amount</label><input className="fi" type="number" value={parseJson(form.emiDetails).due || ''} onChange={e => { const d = parseJson(form.emiDetails); d.due = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>EMI End Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).endDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.endDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Loan Start Date</label><input className="fi" type="date" value={parseJson(form.emiDetails).startDate || ''} onChange={e => { const d = parseJson(form.emiDetails); d.startDate = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>Current Pending Principal</label><input className="fi" type="number" value={parseJson(form.emiDetails).pending || ''} onChange={e => { const d = parseJson(form.emiDetails); d.pending = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
+                                    <div className="field-h"><label>EMI Due Day (1-31)</label><input className="fi" type="number" min="1" max="31" placeholder="e.g. 5" value={parseJson(form.emiDetails).emiDay || ''} onChange={e => { const d = parseJson(form.emiDetails); d.emiDay = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
                                 </div>
                             </div>
                         )}
@@ -1286,24 +1245,26 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                             <h4 style={{ fontSize: '13px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={16} /> Virtual RC & Documents</h4>
                             <div className="fg fg-3">
                                 {['rc', 'pollution', 'permit', 'insurance', 'fitness', 'tax'].map(doc => (
-                                    <div className="field" key={doc}>
+                                    <div className="field-h" key={doc}>
                                         <label>{doc.toUpperCase()} Expiry</label>
                                         <input className="fi" type="date" value={parseJson(form.docs)[doc]} onChange={e => { const d = parseJson(form.docs); d[doc] = e.target.value; setForm({ ...form, docs: JSON.stringify(d) }); }} />
                                     </div>
                                 ))}
                             </div>
-                            <div className="field" style={{ marginTop: '12px' }}><label>Fastag ID</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
+                            <div className="field-h" style={{ marginTop: '12px' }}><label>Fastag ID</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
                         </div>
 
                         <div className="fg fg-2" style={{ marginTop: '20px' }}>
                             {form.ownershipType !== 'self' && (
-                                <div className="field">
+                                <div className="field-h">
                                     <label>Owner Name</label>
-                                    <input className="fi" type="text" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} list="owner-list" />
-                                    <datalist id="owner-list">{uniqueOwners.map(o => <option key={o} value={o} />)}</datalist>
+                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                        <input className="fi" type="text" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} list="owner-list" />
+                                        <datalist id="owner-list">{uniqueOwners.map(o => <option key={o} value={o} />)}</datalist>
+                                    </div>
                                 </div>
                             )}
-                            <div className="field">
+                            <div className="field-h">
                                 <label>Driver Name</label>
                                 <select className="fi" value={form.driverName} onChange={e => { const p = profiles.find(x => x.name === e.target.value); setForm({ ...form, driverName: e.target.value, driverContact: p?.mobileNumbers?.[0] || '' }); }}>
                                     <option value="">Select Driver</option>
@@ -1314,7 +1275,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
                         {err && <div style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '12px', fontWeight: 600 }}>{err}</div>}
                         <div style={{ marginTop: '24px', display: 'flex', gap: '10px' }}>
-                            <button type="submit" className="btn btn-p" disabled={saving} style={{ flex: 1 }}>{saving ? 'Saving...' : 'Save Vehicle'}</button>
+                            <button type="submit" className="btn btn-p" disabled={saving} style={{ flex: 1 }}>{saving ? 'Saving...' : editId ? 'Update Vehicle' : 'Add to Fleet'}</button>
                             <button type="button" className="btn btn-g" onClick={() => setTab('list')}>Cancel</button>
                         </div>
                     </form>
@@ -1341,8 +1302,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             {tab === 'registry' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ padding: '20px', background: 'var(--bg-th)' }}>
-                        <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}><Check size={18} color="var(--primary)" /> Vehicle Firm Registry</h3>
-                        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Manage vehicle approvals and market vehicle records</p>
+                        <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}><Truck size={18} color="var(--primary)" /> Pending Trucks</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Trucks seen in vouchers but not yet added to the fleet. Click a card to register them.</p>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
@@ -1364,198 +1325,134 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             )}
 
             {tab === 'list' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div className="card" style={{ padding: '16px' }}>
-                        <div style={{ position: 'relative' }}>
-                            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input className="fi" type="text" placeholder="Search vehicle or owner..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '40px' }} />
-                        </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {/* Search bar */}
+                    <div style={{ position: 'relative' }}>
+                        <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input className="fi" placeholder="Search truck no, owner, driver..." value={fSearch} onChange={e => setFSearch(e.target.value)} style={{ paddingLeft: '38px', width: '100%' }} />
                     </div>
 
-                    {owners.map(owner => (
-                        <div key={owner.name} className="card" style={{ overflow: 'hidden' }}>
-                            <div onClick={() => toggleOwner(owner.name)} style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: expandedOwners[owner.name] ? 'var(--bg-th)' : 'transparent' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    {expandedOwners[owner.name] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                                    <div>
-                                        <div style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            {owner.name}
-                                            {owner.vehicles.some(v => isNearExpiry(v)) && <span style={{ background: 'var(--danger)', color: 'white', fontSize: '9px', padding: '2px 6px', borderRadius: '4px' }}>ALERT</span>}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{owner.vehicles.length} Vehicles • {owner.contact || 'No Contact'}</div>
+                    {/* KPI bar */}
+                    {(() => {
+                        const allV = owners.flatMap(o => o.vehicles);
+                        const self = allV.filter(v => v.ownershipType === 'self').length;
+                        const market = allV.filter(v => v.ownershipType === 'market').length;
+                        const alerts = allV.filter(v => isNearExpiry(v)).length;
+                        const totalBal = owners.reduce((s, o) => s + o.balance, 0);
+                        return (
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                {[
+                                    { label: 'Total Vehicles', value: allV.length, color: '#6366f1' },
+                                    { label: 'Own Fleet', value: self, color: '#10b981' },
+                                    { label: 'Market', value: market, color: '#f59e0b' },
+                                    { label: 'Doc Alerts', value: alerts, color: '#f43f5e' },
+                                    { label: 'Total Outstanding', value: fmtRs(totalBal), color: '#3b82f6' },
+                                ].map(k => (
+                                    <div key={k.label} style={{ background: 'var(--bg-card)', border: `1px solid ${k.color}22`, borderRadius: '10px', padding: '10px 16px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                        <div style={{ fontSize: '18px', fontWeight: 900, color: k.color }}>{k.value}</div>
+                                        <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{k.label}</div>
                                     </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 800 }}>COMBINED BALANCE</div>
-                                        <div style={{ fontSize: '15px', fontWeight: 900, color: owner.balance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(owner.balance)}</div>
-                                    </div>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setOwnerDeleteTarget(owner); }}
-                                        title="Delete owner with all vehicles"
-                                        style={{ color: '#f43f5e', border: 'none', background: 'rgba(244,63,94,0.08)', cursor: 'pointer', padding: '7px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
+                                ))}
                             </div>
-                            
-                            <AnimatePresence>
-                                {expandedOwners[owner.name] && (
-                                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
-                                        <div style={{ padding: '20px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-                                            {owner.vehicles.map(v => {
-                                                const tb = truckBalanceMap[cleanTruckNo(v.truckNo)];
-                                                const vBalance = tb ? tb.outstanding : 0;
-                                                return (
-                                                <div key={v.id} style={{ border: isNearExpiry(v) ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)', borderRadius: '14px', padding: '0', background: 'var(--bg-card)', overflow: 'hidden', transition: 'box-shadow 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
-                                                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'}
-                                                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'}>
-                                                    {/* Header */}
-                                                    <div style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                        <div style={{ flex: 1 }}>
-                                                            <div onClick={() => handleEdit(v)} style={{ fontWeight: 900, fontSize: '16px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} title="Open vehicle profile">
-                                                                <Truck size={16} style={{ color: '#3b82f6', flexShrink: 0 }} /> {v.truckNo}
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                                                <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: '4px' }}>{v.make}{v.model ? ` ${v.model}` : ''}</span>
-                                                                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>Age: {calculateAge(v.regDate)}</span>
-                                                            </div>
+                        );
+                    })()}
+
+                    {/* Flat table */}
+                    <div className="card" style={{ overflow: 'hidden' }}>
+                        {loading ? (
+                            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}><Loader2 size={20} className="spin" /></div>
+                        ) : owners.flatMap(o => o.vehicles).length === 0 ? (
+                            <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <Truck size={40} style={{ opacity: 0.15, marginBottom: '10px' }} />
+                                <div style={{ fontWeight: 700 }}>No vehicles found</div>
+                                <div style={{ fontSize: '12px', marginTop: '4px' }}>Add a vehicle using the "Add Vehicle" tab</div>
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                    <thead>
+                                        <tr style={{ borderBottom: '2px solid var(--border)', background: 'var(--bg-th)' }}>
+                                            {['Truck No.', 'Type / Make', 'Owner', 'Driver', 'Balance', 'Docs', 'Actions'].map(h => (
+                                                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {owners.flatMap(owner => owner.vehicles.map(v => {
+                                            const tb = truckBalanceMap[cleanTruckNo(v.truckNo)];
+                                            const vBalance = tb ? tb.outstanding : 0;
+                                            const docEntries = Object.entries(parseJson(v.docs)).filter(([, d]) => d);
+                                            const expiredDocs = docEntries.filter(([, d]) => checkExpiry(d) === 'expired');
+                                            const nearDocs = docEntries.filter(([, d]) => checkExpiry(d) === 'near');
+                                            const isSelf = v.ownershipType === 'self';
+                                            return (
+                                                <tr key={v.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-th)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                                    {/* Truck No */}
+                                                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <Truck size={14} color={isSelf ? '#10b981' : '#f59e0b'} />
+                                                            <span style={{ fontWeight: 900, fontSize: '14px' }}>{v.truckNo}</span>
+                                                            <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: isSelf ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: isSelf ? '#10b981' : '#f59e0b' }}>
+                                                                {isSelf ? 'OWN' : 'MKT'}
+                                                            </span>
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
-                                                            {v.ownershipType === 'self' && (
-                                                                <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ color: '#f59e0b', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Wrench size={13} /></button>
-                                                            )}
-                                                            <button onClick={() => openTyreLog(v.truckNo)} title="Tyre & Expense Log" style={{ color: '#10b981', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center', fontSize: '10px', fontWeight: 700 }}>🛞</button>
-                                                            <button onClick={() => handleSendVehicleAlert(v.id, v.truckNo)} title="Send alert" style={{ color: '#8b5cf6', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Bell size={13} /></button>
-                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ color: 'var(--primary)', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Edit3 size={13} /></button>
-                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ color: '#f43f5e', border: 'none', background: 'transparent', cursor: 'pointer', padding: '5px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>
+                                                    </td>
+                                                    {/* Type / Make */}
+                                                    <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ fontSize: '12px', fontWeight: 700 }}>{v.vehicleType || '—'}</div>
+                                                        <div style={{ fontSize: '11px' }}>{v.make}{v.model ? ` ${v.model}` : ''}</div>
+                                                    </td>
+                                                    {/* Owner */}
+                                                    <td style={{ padding: '12px 14px' }}>
+                                                        <div style={{ fontSize: '12px', fontWeight: 700 }}>{v.ownerName || '—'}</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{v.ownerContact || ''}</div>
+                                                    </td>
+                                                    {/* Driver */}
+                                                    <td style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                                                        {v.driverName || <span style={{ opacity: 0.4 }}>No Driver</span>}
+                                                    </td>
+                                                    {/* Balance */}
+                                                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                                                        <span style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</span>
+                                                        {tb?.toll > 0 && <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>Toll: −{fmtRs(tb.toll)}</div>}
+                                                    </td>
+                                                    {/* Doc alerts */}
+                                                    <td style={{ padding: '12px 14px' }}>
+                                                        {expiredDocs.length > 0 && (
+                                                            <span style={{ fontSize: '10px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', padding: '2px 7px', borderRadius: '4px', fontWeight: 700, marginRight: '4px' }}>
+                                                                {expiredDocs.length} Expired
+                                                            </span>
+                                                        )}
+                                                        {nearDocs.length > 0 && (
+                                                            <span style={{ fontSize: '10px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '2px 7px', borderRadius: '4px', fontWeight: 700 }}>
+                                                                {nearDocs.length} Due Soon
+                                                            </span>
+                                                        )}
+                                                        {expiredDocs.length === 0 && nearDocs.length === 0 && docEntries.length > 0 && (
+                                                            <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>✓ OK</span>
+                                                        )}
+                                                        {docEntries.length === 0 && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>—</span>}
+                                                    </td>
+                                                    {/* Actions */}
+                                                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                            <button onClick={() => handleEdit(v)} title="Edit" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}><Edit3 size={11} /> Edit</button>
+                                                            {isSelf && <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}><Wrench size={11} /></button>}
+                                                            {isSelf && parseJson(v.emiDetails).loanNo && <button onClick={() => setEmiTrackerTarget(v)} title="EMI Schedule" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}>EMI</button>}
+                                                            <button onClick={() => openTyreLog(v.truckNo)} title="Tyre & Expense Log" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#10b981', fontSize: '11px', fontWeight: 700 }}>🛞</button>
+                                                            <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ background: 'none', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#f43f5e', display: 'flex', alignItems: 'center' }}><Trash2 size={11} /></button>
                                                         </div>
-                                                    </div>
-
-                                                    {/* Info Row */}
-                                                    {v.ownershipType !== 'self' && (
-                                                        <div style={{ padding: '0 16px 12px' }}>
-                                                            <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><CreditCard size={11} /> GPS: {(v.gpsType || 'NONE').toUpperCase()}</span>
-                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Banknote size={11} /> {parseJson(v.bankDetails).bank || 'No Bank'}</span>
-                                                            </div>
-                                                            {/* Balance bar */}
-                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px' }}>
-                                                                {tb?.toll > 0 && (
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>🚧 Toll Deducted</span>
-                                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b' }}>− {fmtRs(tb.toll)}</span>
-                                                                    </div>
-                                                                )}
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Outstanding Balance</span>
-                                                                    <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance >= 0 ? '#10b981' : '#f43f5e' }}>{fmtRs(vBalance)}</strong>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {v.ownershipType === 'self' && (
-                                                        <div style={{ padding: '0 16px' }}>
-                                                            {/* Balance bar for self vehicles */}
-                                                            <div style={{ padding: '8px 12px', background: 'var(--bg)', borderRadius: '8px', marginBottom: '10px' }}>
-                                                                {tb?.toll > 0 && (
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>🚧 Toll Deducted</span>
-                                                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b' }}>− {fmtRs(tb.toll)}</span>
-                                                                    </div>
-                                                                )}
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Outstanding Balance</span>
-                                                                    <strong style={{ fontSize: '14px', fontWeight: 900, color: vBalance > 0 ? '#10b981' : vBalance < 0 ? '#f43f5e' : 'var(--text-muted)' }}>{fmtRs(vBalance)}</strong>
-                                                                </div>
-                                                            </div>
-                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
-                                                                {Object.entries(parseJson(v.docs)).map(([k, d]) => getDocIcon(k, d))}
-                                                                {v.nationalPermitDate && getDocIcon('NP', v.nationalPermitDate)}
-                                                            </div>
-
-                                                            {parseJson(v.emiDetails).loanNo && (() => {
-                                                                const emi = parseJson(v.emiDetails);
-                                                                const schedule = emi.schedule || [];
-                                                                const todayStr = new Date().toISOString().slice(0, 10);
-                                                                
-                                                                // Calculate elapsed months since start date
-                                                                const getElapsedMonths = (startStr, dayVal) => {
-                                                                    if (!startStr) return 0;
-                                                                    const start = new Date(startStr);
-                                                                    if (isNaN(start.getTime())) return 0;
-                                                                    const today = new Date();
-                                                                    let m = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
-                                                                    const dVal = parseInt(dayVal) || start.getDate();
-                                                                    if (today.getDate() < dVal) m--;
-                                                                    return Math.max(0, m);
-                                                                };
-                                                                
-                                                                const elapsed = getElapsedMonths(emi.startDate, emi.emiDay);
-                                                                const manualPaid = schedule.filter(item => item.status === 'paid').length;
-                                                                const schedulePaid = schedule.filter(item => item.status === 'paid' || item.dueDate <= todayStr).length;
-                                                                
-                                                                const paidCount = schedule.length > 0
-                                                                    ? schedulePaid
-                                                                    : Math.max(elapsed, (emi.paidEmis || []).length);
-                                                                const totalTenure = parseInt(emi.tenure) || 0;
-                                                                const pendingEmis = Math.max(0, totalTenure - paidCount);
-                                                                return (
-                                                                    <div style={{ padding: '12px', background: 'linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.03))', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.12)', marginBottom: '10px' }}>
-                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                                            <div>
-                                                                                <div style={{ fontWeight: 800, color: '#3b82f6', fontSize: '12px' }}>{emi.bankName || 'BANK'}</div>
-                                                                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Loan: {emi.loanNo || 'N/A'}</div>
-                                                                            </div>
-                                                                            <button onClick={() => setEmiTrackerTarget(v)} style={{ fontSize: '9px', fontWeight: 800, background: '#3b82f6', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}>Track EMI</button>
-                                                                        </div>
-                                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', textAlign: 'center', margin: '8px 0' }}>
-                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>MONTHLY EMI</div>
-                                                                                <strong style={{ fontSize: '11px', color: '#3b82f6' }}>₹{(parseFloat(emi.due) || 0).toLocaleString()}</strong>
-                                                                            </div>
-                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>OUTSTANDING</div>
-                                                                                <strong style={{ fontSize: '11px', color: '#ef4444' }}>₹{(pendingEmis * (parseFloat(emi.due) || 0)).toLocaleString()}</strong>
-                                                                            </div>
-                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>TENURE</div>
-                                                                                <strong style={{ fontSize: '11px', color: 'var(--text)' }}>{totalTenure} EMI</strong>
-                                                                            </div>
-                                                                            <div style={{ padding: '6px 4px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                                                <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>REMAINING</div>
-                                                                                <strong style={{ fontSize: '11px', color: pendingEmis > 0 ? '#ef4444' : '#10b981' }}>{pendingEmis} EMI</strong>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 600 }}>
-                                                                            Progress: {paidCount} Paid / {pendingEmis} EMI Left
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })()}
-
-                                                            <button onClick={() => setMaintenanceTarget(v)} style={{ width: '100%', padding: '7px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '8px' }}>
-                                                                <Wrench size={12} /> Maintenance Tracker
-                                                            </button>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Footer */}
-                                                    <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: '11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', background: 'var(--bg)' }}>
-                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><User size={11} /> {v.driverName || 'No Driver'}</span>
-                                                        <span style={{ fontSize: '10px' }}>{fmtDate(v.createdAt)}</span>
-                                                    </div>
-                                                </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        }))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

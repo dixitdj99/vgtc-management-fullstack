@@ -19,11 +19,30 @@ router.get('/', async (req, res) => {
     }
 });
 
+// POST /api/users/send-otp (admin only)
+router.post('/send-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        const otpRes = await require('../utils/stytchService').sendEmailOTP(email);
+        res.json({ methodId: otpRes.method_id });
+    } catch (err) {
+        console.error('[User Admin] Send OTP error:', err.message);
+        res.status(400).json({ error: err.message });
+    }
+});
+
 // POST /api/users  (admin only)
 router.post('/', async (req, res) => {
-    const { name, username, password, role, email, permissions } = req.body;
-    if (!name || !username || !password) return res.status(400).json({ error: 'name, username and password are required' });
+    const { name, username, password, role, email, permissions, otpCode, methodId } = req.body;
+    if (!name || !username || !password || !email) return res.status(400).json({ error: 'name, username, password and email are required' });
+    if (!otpCode || !methodId) return res.status(400).json({ error: 'Email verification code is required' });
     try {
+        // Authenticate the OTP via Stytch first
+        const stytchService = require('../utils/stytchService');
+        await stytchService.authenticateOTP(methodId, otpCode);
+
         const org = await orgService.getById(req.orgId);
 
         // Resolve permissions: explicit > role template > org default
@@ -36,7 +55,7 @@ router.post('/', async (req, res) => {
             finalPermissions = org?.config?.defaultPermissions || null;
         }
 
-        const user = await authService.createUser(name, username, password, role || 'user', email || '', finalPermissions, req.orgId);
+        const user = await authService.createUser(name, username, password, role || 'user', email, finalPermissions, req.orgId);
 
         // Audit log
         auditService.logAction({
@@ -47,7 +66,7 @@ router.post('/', async (req, res) => {
             targetId: user.id,
             targetType: 'user',
             before: null,
-            after: { name, username, role: role || 'user', email: email || '', permissions: finalPermissions }
+            after: { name, username, role: role || 'user', email, permissions: finalPermissions }
         });
 
         res.status(201).json(user);
@@ -63,6 +82,10 @@ router.patch('/:id', async (req, res) => {
         const target = await authService.findById(req.params.id);
         if (!target) return res.status(404).json({ error: 'User not found' });
         if (target.orgId !== req.orgId) return res.status(403).json({ error: 'Cannot modify users from another organization' });
+
+        if (req.body.email === '') {
+            return res.status(400).json({ error: 'Email cannot be empty' });
+        }
 
         const beforeState = { name: target.name, email: target.email, role: target.role, permissions: target.permissions, isOtpEnabled: target.isOtpEnabled, isSandbox: target.isSandbox };
 

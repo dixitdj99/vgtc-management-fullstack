@@ -84,7 +84,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
       <input
         type="text"
-        className={className}
+        className={className || 'fi'}
         placeholder={placeholder}
         value={value}
         onChange={onChange}
@@ -429,9 +429,9 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
         {/* Modal body */}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '70vh', overflowY: 'auto' }}>
           <div className="fg fg-2">
-            <div className="field"><label>LR Number</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
-            <div className="field"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
-            <div className="field">
+            <div className="field-h"><label>LR Number</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
+            <div className="field-h"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
+            <div className="field-h">
               <label>Truck No.</label>
               <AutocompleteInput
                 value={form.truckNo}
@@ -440,7 +440,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
                 placeholder="Enter truck number"
               />
             </div>
-            <div className="field">
+            <div className="field-h">
               <label><User size={11} /> Party Name</label>
               <AutocompleteInput
                 value={form.partyName}
@@ -449,11 +449,11 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
                 placeholder="Enter party name"
               />
             </div>
-            <div className="field"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
+            <div className="field-h"><label>Destination</label><input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} /></div>
           </div>
           <hr className="sep" style={{ margin: '4px 0' }} />
           <div className="fg fg-3">
-            <div className="field">
+            <div className="field-h">
               <label>
                 Material
                 {form.billing && form.billing !== 'No' && (
@@ -466,14 +466,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
                 {MATERIALS.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
-            <div className="field">
+            <div className="field-h">
               <label>Loading Type</label>
               <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
                 <option value="From Godown">From Godown</option>
                 <option value="Crossing">Crossing</option>
               </select>
             </div>
-            <div className="field">
+            <div className="field-h">
               <label style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Bags</span>
                 <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 800 }}>STOCK: {stockMap[form.material]?.physical || 0}</span>
@@ -483,12 +483,12 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
                 setForm(f => ({ ...f, totalBags: bags, weight: bags ? (parseFloat(bags) * 0.05).toFixed(2) : '' }));
               }} />
             </div>
-            <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} /></div>
+            <div className="field-h"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} /></div>
           </div>
           
-          <div className="field">
+          <div className="field-h">
             <label><Tag size={11} /> Challan Selection</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
               <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                    <Tag size={14} color="#f59e0b" />
@@ -509,14 +509,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
           <hr className="sep" style={{ margin: '4px 0' }} />
           
-          <div className="field">
+          <div className="field-h">
             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour</label>
             <textarea className="fi" rows={2} placeholder="Add instructions..." value={form.note} onChange={e => S('note', e.target.value)} style={{ resize: 'vertical', minHeight: '60px' }} />
           </div>
 
-          <div className="field">
+          <div className="field-h">
             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message</label>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
               {!isRecording ? (
                 <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
                   <Mic size={13} /> {voicePreviewUrl || form.voiceMessageBase64 ? 'Change Voice' : 'Record Voice'}
@@ -757,15 +757,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
             {tab === 'create' && (
               <motion.div key="create" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                <form id="createChalForm" onSubmit={handleCreateRequest} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div className="field">
-                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Challan No. (Manual No / LR No)</span>
-                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#f59e0b' }}>OPTIONAL — Leave blank for auto-gen</span>
-                    </label>
-                    <input className="fi" type="text" placeholder="e.g. 1234 or LR-501" value={chalForm.challanNo} onChange={e => S('challanNo', e.target.value)} />
-                  </div>
-                  <div className="fg fg-2">
+                <form id="createChalForm" onSubmit={handleCreateRequest}>
+                  <div className="fg fg-2" style={{ gap: '14px' }}>
+                    <div className="field" style={{ gridColumn: '1 / -1' }}>
+                      <label>Challan No.</label>
+                      <input className="fi" type="text" placeholder="e.g. 1234 or LR-501 (Optional)" value={chalForm.challanNo} onChange={e => S('challanNo', e.target.value)} />
+                    </div>
                     <div className="field">
                       <label>Truck No. *</label>
                       <AutocompleteInput
@@ -775,14 +772,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                         placeholder="GJ01AB1234"
                         required={true}
                       />
-                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format (e.g. RJ07GA1234 or HR361234)</div>}
+                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format</div>}
                     </div>
                     <div className="field">
                       <label><Calendar size={11} /> Date *</label>
                       <input className="fi" type="date" value={chalForm.date} onChange={e => S('date', e.target.value)} required />
                     </div>
-                  </div>
-                  <div className="fg fg-2">
                     <div className="field">
                       <label>Material *</label>
                       <select className="fi" value={chalForm.material} onChange={e => S('material', e.target.value)}>
@@ -790,12 +785,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       </select>
                     </div>
                     <div className="field">
-                      <label>Quantity (bags) *</label>
-                      <input className="fi" type="number" step="1" min="1" placeholder="0" value={chalForm.quantity} onChange={e => S('quantity', e.target.value)} required />
-                      {chalForm.quantity && <div style={{ fontSize: '10px', fontWeight: 800, color: '#f59e0b', marginTop: '4px' }}>= {(chalForm.quantity * 0.05).toFixed(2)} MT</div>}
+                      <label>Quantity *</label>
+                      <input className="fi" type="number" step="1" min="1" placeholder="bags" value={chalForm.quantity} onChange={e => S('quantity', e.target.value)} required />
                     </div>
-                  </div>
-                  <div className="fg fg-2">
                     <div className="field">
                       <label><User size={11} /> Party Name</label>
                       <AutocompleteInput
@@ -809,12 +801,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       <label>Destination</label>
                       <input className="fi" type="text" placeholder="Delivery location" value={chalForm.destination} onChange={e => S('destination', e.target.value)} />
                     </div>
+                    <div className="field" style={{ gridColumn: '1 / -1' }}>
+                      <label>Remark</label>
+                      <input className="fi" type="text" placeholder="Optional notes" value={chalForm.remark} onChange={e => S('remark', e.target.value)} />
+                    </div>
                   </div>
-                  <div className="field">
-                    <label>Remark / Notes</label>
-                    <input className="fi" type="text" placeholder="Optional notes" value={chalForm.remark} onChange={e => S('remark', e.target.value)} />
-                  </div>
-                  {err && <div style={{ fontSize: '12px', color: '#f43f5e', fontWeight: 600 }}>{err}</div>}
+                  {err && <div style={{ fontSize: '12px', color: '#f43f5e', fontWeight: 600, marginTop: '10px' }}>{err}</div>}
                 </form>
               </motion.div>
             )}
@@ -1546,9 +1538,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <div className="card-body">
               <form onSubmit={handleFormRequest} ref={createFormRef}>
                 <div className="fg fg-2">
-                  <div className="field"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
-                  <div className="field">
-                    <label>Truck No. <span style={{color:'var(--danger)'}}>*</span></label>
+                  <div className="field-h"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
+                  <div className="field-h">
+                    <label>Truck No. *</label>
                     <AutocompleteInput
                       value={form.truckNo}
                       onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })}
@@ -1558,8 +1550,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     />
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
                   </div>
-                  <div className="field">
-                    <label><User size={11} /> Party Name {!form.materials.some(m => m.partyName) && <span style={{color:'var(--danger)'}}>*</span>}</label>
+                  <div className="field-h">
+                    <label><User size={11} /> Party Name</label>
                     <AutocompleteInput
                       value={form.partyName}
                       onChange={e => {
@@ -1584,10 +1576,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       ) : null;
                     })()}
                   </div>
-                  <div className="field"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
-                  <div className="field">
-                    <label><Tag size={11} /> Challan Selection</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="field-h"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
+                  <div className="field-h">
+                    <label><Tag size={11} /> Challan</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
                       <button
                         type="button"
                         onClick={() => setShowChalPopup(true)}
@@ -1646,24 +1638,24 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
                     </div>
                     <div className="fg" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', display: 'grid', gap: '12px' }}>
-                      <div className="field"><label>Type</label>
+                      <div className="field-h"><label>Type</label>
                         <select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
                         </select>
                       </div>
-                      <div className="field">
-                        <label>Loading Type</label>
+                      <div className="field-h">
+                        <label>Loading</label>
                         <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
                           <option value="From Godown">From Godown</option>
                           <option value="Crossing">Crossing</option>
                         </select>
                       </div>
-                      <div className="field">
+                      <div className="field-h">
                         <label>Bags</label>
                         <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
                       </div>
-                      <div className="field"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
-                      <div className="field"><label>Party</label>
+                      <div className="field-h"><label>Weight</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
+                      <div className="field-h"><label>Party</label>
                         <input className="fi" type="text" placeholder={form.partyName || 'Party name'} value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
                       </div>
                     </div>
@@ -1681,15 +1673,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 ))}
                 <hr className="sep" style={{ margin: '8px 0' }} />
                 {/* Note */}
-                <div className="field" style={{ marginBottom: '10px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour (optional)</label>
+                <div className="field-h" style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note</label>
                   <textarea className="fi" rows={2} placeholder="e.g. Handle carefully, load from gate 2..." value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
                     style={{ resize: 'vertical', minHeight: '60px' }} />
                 </div>
                 {/* Voice Message */}
-                <div className="field" style={{ marginBottom: '14px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message (optional)</label>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="field-h" style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
                     {!isRecording ? (
                       <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
                         <Mic size={13} /> {voicePreviewUrl ? 'Re-record' : 'Record Voice'}

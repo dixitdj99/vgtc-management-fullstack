@@ -248,17 +248,17 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             ))}
           </div>
 
-          <div className="field">
+          <div className="field-h">
             <label>Amount (Rs.)</label>
             <input className="fi" type="number" min="1" step="1" required placeholder="e.g. 5000"
               value={transferForm.amount} onChange={e => setTransferForm(f => ({ ...f, amount: e.target.value }))} />
           </div>
-          <div className="field">
+          <div className="field-h">
             <label>Date</label>
             <input className="fi" type="date" value={transferForm.date}
               onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} />
           </div>
-          <div className="field">
+          <div className="field-h">
             <label>Remark</label>
             <input className="fi" type="text" placeholder="e.g. Today's dump sale collection"
               value={transferForm.remark} onChange={e => setTransferForm(f => ({ ...f, remark: e.target.value }))} />
@@ -434,63 +434,64 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             </div>
             
             <form onSubmit={handleSubmit} style={{ padding: '20px' }}>
-              <div style={{ display: 'grid', gap: '15px' }}>
-                <div className="field">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="field-h">
                   <label><Calendar size={13} /> Date</label>
                   <input className="fi" type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
                 </div>
 
-                <div className="field">
-                  <label><Package size={13} /> Material Brand</label>
+                <div className="field-h">
+                  <label><Package size={13} /> Brand</label>
                   <select className="fi" value={form.material} onChange={e => setForm({...form, material: e.target.value})}>
                     {MATS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="field">
-                    <label><Weight size={13} /> Bags</label>
-                    <input className="fi" type="number" placeholder="50" value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <label><Weight size={13} /> Weight (MT)</label>
-                    <input className="fi" type="text" readOnly value={weightMT.toFixed(2) + ' MT'} style={{ background: 'var(--bg)', opacity: 0.8 }} />
-                  </div>
+                <div className="field-h">
+                  <label><Weight size={13} /> Bags</label>
+                  <input className="fi" type="number" placeholder="50" value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} />
                 </div>
 
-                <div className="field">
-                  <label><IndianRupee size={13} /> Rate per Bag</label>
+                <div className="field-h">
+                  <label><Weight size={13} /> Wt (MT)</label>
+                  <input className="fi" type="text" readOnly value={weightMT.toFixed(2) + ' MT'} style={{ background: 'var(--bg)', opacity: 0.8 }} />
+                </div>
+
+                <div className="field-h">
+                  <label><IndianRupee size={13} /> Rate</label>
                   <input className="fi" type="number" step="0.01" placeholder="420.00" value={form.rate} onChange={e => setForm({...form, rate: e.target.value})} />
                 </div>
 
-                 <div className="field">
-                    <label><CreditCard size={13} /> Payment & Status</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                        <button type="button" onClick={() => setForm({...form, paymentStatus: 'paid'})} className={`btn btn-sm ${form.paymentStatus === 'paid' ? 'btn-s' : 'btn-g'}`} style={{ height: '36px' }}>
-                           <Check size={14} /> Paid
-                        </button>
-                        <button type="button" onClick={() => setForm({...form, paymentStatus: 'pending'})} className={`btn btn-sm ${form.paymentStatus === 'pending' ? 'btn-d' : 'btn-g'}`} style={{ height: '36px' }}>
-                           <RefreshCw size={14} /> Pending
-                        </button>
+                <div className="field-h">
+                  <label><CreditCard size={13} /> Pay Status</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <button type="button" onClick={() => setForm({...form, paymentStatus: 'paid'})} className={`btn btn-sm ${form.paymentStatus === 'paid' ? 'btn-s' : 'btn-g'}`} style={{ height: '32px', fontSize: '12px' }}>
+                         <Check size={12} /> Paid
+                      </button>
+                      <button type="button" onClick={() => setForm({...form, paymentStatus: 'pending'})} className={`btn btn-sm ${form.paymentStatus === 'pending' ? 'btn-d' : 'btn-g'}`} style={{ height: '32px', fontSize: '12px' }}>
+                         <RefreshCw size={12} /> Pending
+                      </button>
                     </div>
                     {form.paymentStatus === 'paid' && (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                          <button type="button" onClick={() => setForm({...form, paymentType: 'cash'})} className={`btn btn-sm ${form.paymentType === 'cash' ? 'btn-p' : 'btn-g'}`} style={{ height: '36px' }}>
-                             <Banknote size={14} /> Cash
-                          </button>
-                          <button type="button" onClick={() => setForm({...form, paymentType: 'online'})} className={`btn btn-sm ${form.paymentType === 'online' ? 'btn-p' : 'btn-g'}`} style={{ height: '36px' }}>
-                             <CreditCard size={14} /> Online
-                          </button>
+                        <button type="button" onClick={() => setForm({...form, paymentType: 'cash'})} className={`btn btn-sm ${form.paymentType === 'cash' ? 'btn-p' : 'btn-g'}`} style={{ height: '32px', fontSize: '12px' }}>
+                           <Banknote size={12} /> Cash
+                        </button>
+                        <button type="button" onClick={() => setForm({...form, paymentType: 'online'})} className={`btn btn-sm ${form.paymentType === 'online' ? 'btn-p' : 'btn-g'}`} style={{ height: '32px', fontSize: '12px' }}>
+                           <CreditCard size={12} /> Online
+                        </button>
                       </div>
                     )}
+                  </div>
                 </div>
 
-                <div className="field">
-                  <label><User size={13} /> Customer Name</label>
+                <div className="field-h">
+                  <label><User size={13} /> Customer</label>
                   <input className="fi" type="text" placeholder="e.g. Local Cash" value={form.customerName} onChange={e => setForm({...form, customerName: e.target.value})} />
                 </div>
 
-                <div className="field">
+                <div className="field-h">
                   <label><FileText size={13} /> Remarks</label>
                   <textarea className="fi" rows={2} placeholder="Optional notes" value={form.remark} onChange={e => setForm({...form, remark: e.target.value})} />
                 </div>

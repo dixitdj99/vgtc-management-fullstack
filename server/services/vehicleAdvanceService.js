@@ -1,8 +1,11 @@
 const localStore = require('../utils/localStore');
 const { db, admin, isAvailable } = require('../firebase');
+const cashbookService = require('../utils/cashbookService');
+const { getCol } = require('../utils/collectionUtils');
 const firebaseAvailable = () => isAvailable();
 
 const COLLECTION = 'vehicle_advances';
+const CASHBOOK_COL = 'cashbook';
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
@@ -11,10 +14,11 @@ const firestoreCreate = async (orgId, data, col) => {
     const payload = {
         ...data,
         orgId,
+        isCleared: data.isCleared !== undefined ? data.isCleared : false,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     await ref.set(payload);
-    return { id: ref.id, ...data };
+    return { id: ref.id, ...data, isCleared: payload.isCleared };
 };
 
 const firestoreGetAll = async (orgId, col) => {
@@ -46,12 +50,29 @@ const firestoreDelete = async (id, col) => {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-const createAdvance = async (orgId, data, col = COLLECTION) => {
-    const { truckNo, type, amount, date, remark, cashbookEntryId } = data;
+const createAdvance = async (orgId, data, col = COLLECTION, cashbookCol = CASHBOOK_COL) => {
+    const { truckNo, type, amount, date, remark, addToCashbook, cashbookEntryId } = data;
     if (!truckNo) throw new Error('Truck number required');
     if (!type || !['credit', 'debit'].includes(type)) throw new Error('Type must be credit or debit');
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) throw new Error('Amount must be positive');
+
+    let linkedCashbookId = cashbookEntryId || null;
+
+    // Optional Cashbook integration
+    if (addToCashbook && !linkedCashbookId) {
+        try {
+            const cbType = type === 'credit' ? 'deposit' : 'cash_out';
+            const cbRemark = `[Vehicle ${truckNo}] ${type === 'credit' ? 'Credit Advance Received' : 'Debit Advance Given'} — ${remark || ''}`;
+            const cbDoc = await cashbookService.addEntry(orgId, cbType, amt, cbRemark, date || new Date().toISOString().slice(0, 10), cashbookCol, {
+                entityType: 'vehicle',
+                entityId: truckNo,
+            });
+            linkedCashbookId = cbDoc.id;
+        } catch (cbErr) {
+            console.error('[VehicleAdvance] Cashbook auto-create error:', cbErr.message);
+        }
+    }
 
     const payload = {
         truckNo: String(truckNo).toUpperCase().replace(/\s/g, ''),
@@ -60,7 +81,9 @@ const createAdvance = async (orgId, data, col = COLLECTION) => {
         amount: amt,
         date: date || new Date().toISOString().slice(0, 10),
         remark: remark || '',
-        ...(cashbookEntryId ? { cashbookEntryId } : {}),
+        isCleared: data.isCleared !== undefined ? data.isCleared : false,
+        isGpsRent: data.isGpsRent || false,
+        ...(linkedCashbookId ? { cashbookEntryId: linkedCashbookId } : {}),
     };
 
     if (firebaseAvailable()) return await firestoreCreate(orgId, payload, col);
@@ -90,9 +113,47 @@ const deleteAdvance = async (id, col = COLLECTION) => {
     localStore.delete(col, id);
 };
 
+const clearAdvancesForTruck = async (orgId, truckNo, paymentId, advanceIds = [], col = COLLECTION) => {
+    const normalizedTruck = String(truckNo).toUpperCase().replace(/\s/g, '');
+    if (firebaseAvailable()) {
+        const snapshot = await db.collection(col)
+            .where('orgId', '==', orgId)
+            .where('truckNo', '==', normalizedTruck)
+            .where('isCleared', '==', false)
+            .get();
+
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => {
+            if (advanceIds.length === 0 || advanceIds.includes(doc.id)) {
+                batch.update(doc.ref, {
+                    isCleared: true,
+                    clearedInPaymentId: paymentId || `PAY-${Date.now()}`,
+                    clearedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        });
+        await batch.commit();
+        return { success: true, count: snapshot.docs.length };
+    } else {
+        const advances = localStore.getAll(col);
+        advances.forEach(a => {
+            if (a.orgId === orgId && a.truckNo === normalizedTruck && !a.isCleared) {
+                if (advanceIds.length === 0 || advanceIds.includes(a.id)) {
+                    a.isCleared = true;
+                    a.clearedInPaymentId = paymentId || `PAY-${Date.now()}`;
+                    a.clearedAt = new Date().toISOString();
+                }
+            }
+        });
+        localStore.saveAll(col, advances);
+        return { success: true };
+    }
+};
+
 module.exports = {
     createAdvance,
     getAllAdvances,
     getAdvancesByTruck,
-    deleteAdvance
+    deleteAdvance,
+    clearAdvancesForTruck
 };
