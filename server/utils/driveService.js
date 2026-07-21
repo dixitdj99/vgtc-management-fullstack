@@ -58,12 +58,14 @@ function isConfigured() {
 }
 
 async function isAuthorized() {
-    if (fs.existsSync(TOKEN_PATH)) return true;
-    if (isAvailable()) {
-        const doc = await db.collection(CONFIG_COLL).doc(TOKEN_DOC).get();
-        return doc.exists;
+    try {
+        const client = await getAuthClient();
+        const res = await client.getAccessToken();
+        return res && res.token ? true : false;
+    } catch (e) {
+        console.warn('[Drive] Token is invalid or unauthorized:', e.message);
+        return false;
     }
-    return false;
 }
 
 function getAuthUrl() {
