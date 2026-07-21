@@ -81,6 +81,7 @@ function AppInner() {
   const [col, setCol] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'light');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
@@ -758,43 +759,7 @@ function AppInner() {
             );
           })()}
         </nav>
-        {/* User info + logout at bottom of sidebar */}
-        <div style={{ marginTop: 'auto', padding: col ? '12px 8px' : '12px 14px', borderTop: '1px solid var(--border)' }}>
-          {!col && (
-            <div style={{ marginBottom: '10px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '1px' }}>{user.role}</div>
-            </div>
-          )}
-          {user?.role === 'admin' && (
-            <button onClick={() => { setActive('admin_settings'); setSubActive(''); setShowMobileMenu(false); }}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px',
-                borderRadius: '10px', border: '1px solid var(--border)',
-                background: active === 'admin_settings' ? 'rgba(99, 102, 241, 0.18)' : 'rgba(139, 92, 246, 0.1)',
-                color: active === 'admin_settings' ? '#818cf8' : '#a78bfa', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                transition: 'all 0.18s', justifyContent: col ? 'center' : 'flex-start',
-                fontFamily: 'inherit', marginBottom: '8px'
-              }}>
-              <Settings size={15} />
-              {!col && 'System Settings & Admin'}
-            </button>
-          )}
-          <button onClick={logout}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px',
-              borderRadius: '10px', border: '1px solid var(--border)', background: 'none',
-              color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-              transition: 'all 0.18s', justifyContent: col ? 'center' : 'flex-start',
-              fontFamily: 'inherit'
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(244,63,94,0.08)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = 'rgba(244,63,94,0.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
-            <LogOut size={15} />
-            {!col && 'Logout'}
-          </button>
-        </div>
-        <div className="sidebar-footer" style={{ borderTop: 'none' }}>
+        <div className="sidebar-footer" style={{ marginTop: 'auto', borderTop: '1px solid var(--border)' }}>
           <button className="collapse-btn" onClick={() => setCol(c => !c)}>
             <span className={`chevron${!col ? ' flipped' : ''}`}><ChevronRight size={18} /></span>
           </button>
@@ -1067,14 +1032,118 @@ function AppInner() {
               );
             })()}
             <div className="sep-v" />
-            <div className="user-chip">
-              <div className="user-info">
-                <div className="user-name">{user.name}</div>
-                <div className="user-role">{user.role}</div>
+            <div style={{ position: 'relative' }}>
+              <div className="user-chip" onClick={() => setUserMenuOpen(prev => !prev)}>
+                <div className="user-info">
+                  <div className="user-name">{user.name}</div>
+                  <div className="user-role">{user.role}</div>
+                </div>
+                <div className="user-avatar" style={{ fontSize: '14px', fontWeight: 800, color: 'white' }}>
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
               </div>
-              <div className="user-avatar" style={{ fontSize: '14px', fontWeight: 800, color: 'white' }}>
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+
+              {/* User Dropdown Menu */}
+              <AnimatePresence>
+                {userMenuOpen && (
+                  <>
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} onClick={() => setUserMenuOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      style={{
+                        position: 'absolute',
+                        top: '48px',
+                        right: 0,
+                        width: '240px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '14px',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.12)',
+                        zIndex: 1000,
+                        overflow: 'hidden',
+                        padding: '8px'
+                      }}
+                    >
+                      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{user.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Role: <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{user.role}</span></div>
+                      </div>
+
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={() => {
+                            setActive('admin_settings');
+                            setSubActive('');
+                            setUserMenuOpen(false);
+                            setShowMobileMenu(false);
+                          }}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: active === 'admin_settings' ? 'var(--bg-th)' : 'transparent',
+                            color: active === 'admin_settings' ? 'var(--primary)' : 'var(--text)',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.15s',
+                            fontFamily: 'inherit',
+                            marginBottom: '4px'
+                          }}
+                          onMouseEnter={e => { if (active !== 'admin_settings') e.currentTarget.style.background = 'var(--bg-th)'; }}
+                          onMouseLeave={e => { if (active !== 'admin_settings') e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <Settings size={16} />
+                          <span>System Settings & Admin</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          logout();
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--text-muted)',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.15s',
+                          fontFamily: 'inherit'
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = 'rgba(244, 63, 94, 0.08)';
+                          e.currentTarget.style.color = 'var(--danger)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.color = 'var(--text-muted)';
+                        }}
+                      >
+                        <LogOut size={16} />
+                        <span>Logout</span>
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>
