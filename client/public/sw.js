@@ -1,7 +1,7 @@
 // VGTC Service Worker — Offline-first PWA
-// v5: Force skipWaiting on install to break white-screen deadlocks
-const STATIC_CACHE = 'vgtc-static-v5';
-const API_CACHE    = 'vgtc-api-v5';
+// v6: Force skipWaiting on install and bypass browser HTTP cache for HTML documents
+const STATIC_CACHE = 'vgtc-static-v6';
+const API_CACHE    = 'vgtc-api-v6';
 const FONT_CACHE   = 'vgtc-fonts-v1';
 
 // ── Install ───────────────────────────────────────────────────────────────
@@ -114,8 +114,9 @@ async function networkFirst(cacheName, request) {
 
 async function networkFirstHTML(request) {
   // For HTML: always try network. Only fall back to cache on network failure.
+  // Bypass the browser's HTTP cache using cache: 'no-cache' to avoid loading stale index.html.
   try {
-    const fresh = await fetch(request.clone());
+    const fresh = await fetch(new Request(request, { cache: 'no-cache' }));
     if (fresh.ok) {
       const cache = await caches.open(STATIC_CACHE);
       cache.put(request, fresh.clone());
