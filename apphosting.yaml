@@ -36,3 +36,5 @@ env:
     secret: JWT_SECRET
   - variable: SMTP_PASS
     secret: SMTP_PASS
+  - variable: GOOGLE_CREDENTIALS
+    secret: GOOGLE_CREDENTIALS

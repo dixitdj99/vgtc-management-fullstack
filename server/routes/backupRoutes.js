@@ -50,25 +50,32 @@ router.post('/submit-code', async (req, res) => {
 router.get('/oauth-callback', async (req, res) => {
     const { code, error } = req.query;
     if (error) {
-        return res.send(`<html><body><script>window.close(); window.opener && window.opener.postMessage({type:'oauth-error',msg:'${error}'},'*');</script><p>Authorization failed: ${error}. You can close this tab.</p></body></html>`);
+        return res.send(`
+            <div style="font-family: system-ui, sans-serif; padding: 40px; text-align: center; max-width: 500px; margin: 40px auto; border: 1px solid #fca5a5; border-radius: 16px; background: #fff5f5;">
+                <h1 style="color: #ef4444; font-size: 22px; margin-bottom: 12px;">❌ Authorization Failed</h1>
+                <p style="color: #7f1d1d; font-size: 14px; line-height: 1.5;">${error}</p>
+                <p style="color: #991b1b; font-size: 13px; margin-top: 16px;">You can close this tab and try again.</p>
+            </div>
+        `);
     }
     if (!code) {
         return res.status(400).send('No authorization code received.');
     }
-    try {
-        await driveService.saveToken(code);
-        // Close the popup and notify the opener
-        res.send(`<html><body><script>
-            if (window.opener) {
-                window.opener.postMessage({ type: 'oauth-success' }, '*');
-                window.close();
-            } else {
-                window.location.href = '/';
-            }
-        </script><p>✅ Google Drive authorized! You can close this tab.</p></body></html>`);
-    } catch (e) {
-        res.status(500).send(`<html><body><p>❌ Authorization failed: ${e.message}. Close this tab and try again.</p></body></html>`);
-    }
+    
+    // Display the code to the user for manual copy-paste
+    res.send(`
+        <div style="font-family: system-ui, sans-serif; padding: 40px; text-align: center; max-width: 500px; margin: 40px auto; border: 1px solid #e2e8f0; border-radius: 20px; background: #ffffff; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);">
+            <div style="font-size: 40px; margin-bottom: 16px;">🔑</div>
+            <h1 style="color: #0f172a; font-size: 22px; font-weight: 700; margin: 0 0 8px 0;">Authorization Successful!</h1>
+            <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 24px 0;">Please copy the code below and paste it into the <b>Verify Code</b> field in the backup settings dashboard.</p>
+            
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; padding: 16px; border-radius: 12px; font-family: monospace; font-size: 15px; color: #0f172a; word-break: break-all; user-select: all; cursor: pointer; margin-bottom: 24px; font-weight: 600;" title="Click to select all" onclick="document.execCommand('copy')">
+                ${code}
+            </div>
+            
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">Once copied, you can close this tab safely.</p>
+        </div>
+    `);
 });
 
 // POST /api/backup/now
