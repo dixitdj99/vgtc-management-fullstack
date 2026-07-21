@@ -1,14 +1,14 @@
 // VGTC Service Worker — Offline-first PWA
-// v4: Prevent caching of HTML fallback pages for static assets and bump cache version
-const STATIC_CACHE = 'vgtc-static-v4';
-const API_CACHE    = 'vgtc-api-v4';
+// v5: Force skipWaiting on install to break white-screen deadlocks
+const STATIC_CACHE = 'vgtc-static-v5';
+const API_CACHE    = 'vgtc-api-v5';
 const FONT_CACHE   = 'vgtc-fonts-v1';
 
 // ── Install ───────────────────────────────────────────────────────────────
-// Do NOT call skipWaiting here — we want the new SW to wait so the app
-// can show an "Update available" banner and let the user choose when to reload.
+// Call skipWaiting immediately so the new SW takes control and updates the app,
+// preventing white-screen deadlocks if the UI has crashed.
 self.addEventListener('install', (event) => {
-  // SW waits in 'installed' state until page calls SKIP_WAITING
+  self.skipWaiting();
 });
 
 // ── Activate: purge stale caches ─────────────────────────────────────────
