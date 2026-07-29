@@ -28,6 +28,11 @@ const MODULES = [
   { key: 'bill_jhajjar', label: 'Jhajjar Bill' },
   { key: 'balance_jhajjar', label: 'Balance - Jhajjar' },
   { key: 'stock_jhajjar', label: 'Jhajjar Stock' },
+  // Bahadurgarh
+  { key: 'lr_bahadurgarh', label: 'Bahadurgarh LR' },
+  { key: 'bill_bahadurgarh', label: 'Bahadurgarh Bill' },
+  { key: 'balance_bahadurgarh', label: 'Balance - Bahadurgarh' },
+  { key: 'stock_bahadurgarh', label: 'Bahadurgarh Stock' },
   // JK Lakshmi (Jharli)
   { key: 'lr_jkl', label: 'JK Lakshmi LR' },
   { key: 'voucher_jkl_dump', label: 'JKL Dump Voucher' },
@@ -115,6 +120,25 @@ const HIERARCHY = [
     ],
     plantKey: 'jksuper',
     godownKey: 'jhajjar',
+  },
+  {
+    id: 'bahadurgarh',
+    label: 'Bahadurgarh Dump',
+    color: '#d97706',
+    groups: [
+      {
+        id: 'bahadurgarh_plant',
+        label: 'Bahadurgarh Plant Modules',
+        modules: ['lr_bahadurgarh', 'bill_bahadurgarh', 'balance_bahadurgarh', 'stock_bahadurgarh'],
+      },
+      {
+        id: 'bahadurgarh_shared',
+        label: 'Shared Utilities',
+        modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'],
+      },
+    ],
+    plantKey: 'jksuper',
+    godownKey: 'bahadurgarh',
   },
 ];
 
