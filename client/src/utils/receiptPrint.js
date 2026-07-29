@@ -28,10 +28,20 @@ const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { background: #fff; }
   body {
-    width: ${width}mm;
+    /**
+     * Fills the page box rather than pinning ${width}mm.
+     *
+     * A printer that cannot offer a ${width}mm page makes Chrome drop the @page
+     * size and fall back to the printer's own paper as the page box. A body
+     * hard-set to ${width}mm then sits in the corner of a much larger sheet —
+     * the receipt comes out tiny and the operator has to raise Scale by hand
+     * every time. Filling the box prints identically on a true ${width}mm page
+     * and adapts by itself when it is something else.
+     */
+    width: 100%;
     min-height: ${minHeight}mm;
     padding: ${padding};
-    margin: 0 auto;
+    margin: 0;
     display: flex;
     flex-direction: column;
     font-family: Arial, Helvetica, sans-serif;
@@ -45,6 +55,11 @@ const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
     font-weight: 700;
     word-break: break-word;
     overflow-wrap: break-word;
+  }
+  /* On screen the slip is held at the real paper width — it keeps the preview
+     honest, and it is the width the height measurement is taken against. */
+  @media screen {
+    body { width: ${width}mm; margin: 0 auto; }
   }
   /* The template's outer wrapper fills the slip, so a \`margin-top: auto\`
      signature block sits at the bottom of a short receipt and is simply pushed
