@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { isProduction } = require('./utils/envConfig');
 
 let db;
 let isFirebaseInitialized = false;
@@ -60,7 +61,22 @@ try {
         console.error('[Firebase] Serverless Error: Cannot initialize cloud database.');
         console.error('[Firebase] INSTRUCTIONS: Add your serviceAccountKey.json content to the "FIREBASE_SERVICE_ACCOUNT" environment variable in Netlify Site Settings.');
     }
-    // ... rest of mock db
+
+    // In production there is no safe fallback. The local JSON store lives on an
+    // ephemeral container disk: writes would appear to succeed and then vanish on
+    // the next restart, and would diverge between instances. Refuse to start
+    // instead of silently accepting data we cannot keep.
+    if (isProduction()) {
+        console.error('[Firebase] FATAL: Firestore is unavailable in production. Refusing to start.');
+        console.error('[Firebase] Reason:', error && error.message);
+        console.error('[Firebase] Fix the service account credentials and redeploy. The local JSON');
+        console.error('[Firebase] fallback is disabled in production because it loses data on restart.');
+        process.exit(1);
+    }
+
+    // Local/beta only: fall through to the in-memory mock so the app can boot
+    // without credentials. Services check isAvailable() and route to localStore.
+    console.warn('[Firebase] Falling back to local JSON store (non-production environment only).');
     db = {
         collection: () => ({
             doc: () => ({ 

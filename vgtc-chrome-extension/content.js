@@ -1,4 +1,4 @@
-// VGTC Content Script — JK Super Cement Order Scraper
+// VGTC Content Script — JK Super Cement RFID TMS Scraper
 (function () {
   if (window.__VGTC_EXT_LOADED__) return;
   window.__VGTC_EXT_LOADED__ = true;
@@ -19,16 +19,24 @@
           right: 24px;
           z-index: 999999;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          align-items: flex-end;
+        }
+        .vgtc-btn-container {
+          display: flex;
+          gap: 8px;
         }
         .vgtc-sync-btn {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           background: linear-gradient(135deg, #4f46e5, #6366f1);
           color: #ffffff;
           border: 1px solid rgba(255,255,255,0.2);
-          padding: 12px 20px;
-          border-radius: 14px;
+          padding: 10px 16px;
+          border-radius: 12px;
           font-size: 13px;
           font-weight: 800;
           cursor: pointer;
@@ -43,9 +51,17 @@
         .vgtc-sync-btn:active {
           transform: translateY(0) scale(0.98);
         }
+        .vgtc-batch-btn {
+          background: linear-gradient(135deg, #059669, #10b981);
+          box-shadow: 0 10px 25px rgba(16, 185, 129, 0.4);
+        }
+        .vgtc-batch-btn:hover {
+          background: linear-gradient(135deg, #047857, #059669);
+          box-shadow: 0 14px 30px rgba(16, 185, 129, 0.5);
+        }
         .vgtc-toast {
           position: fixed;
-          bottom: 80px;
+          bottom: 90px;
           right: 24px;
           background: #0f172a;
           color: #ffffff;
@@ -66,12 +82,20 @@
           to { transform: translateX(0); opacity: 1; }
         }
       </style>
-      <button class="vgtc-sync-btn" id="vgtc-sync-action-btn" title="Extract order details and create Factory Voucher in VGTC">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-        </svg>
-        Sync Factory Voucher to VGTC
-      </button>
+      <div class="vgtc-btn-container">
+        <button class="vgtc-sync-btn vgtc-batch-btn" id="vgtc-batch-sync-btn" title="Batch sync all vehicle loading receipts on screen to VGTC">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+          Batch Sync All Receipts
+        </button>
+        <button class="vgtc-sync-btn" id="vgtc-sync-action-btn" title="Extract current loading receipt & create Factory Voucher in VGTC">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          Sync Loading Receipt (JK Super)
+        </button>
+      </div>
     `;
 
     document.body.appendChild(widget);
@@ -79,14 +103,18 @@
     document.getElementById('vgtc-sync-action-btn').addEventListener('click', () => {
       triggerVoucherSync();
     });
+
+    document.getElementById('vgtc-batch-sync-btn').addEventListener('click', () => {
+      triggerBatchSync();
+    });
   }
 
-  // Extract order fields from page
+  // Extract order fields from JK Super Loading Receipt page or DOM
   function scrapeOrderData() {
     const text = document.body.innerText || '';
     const html = document.body.innerHTML || '';
 
-    // Regex extractors
+    // Regex extractors helper
     const findMatch = (regexes) => {
       for (const r of regexes) {
         const match = text.match(r) || html.match(r);
@@ -95,81 +123,86 @@
       return '';
     };
 
-    // Helper to search input values or table cells by label
+    // Table / Label based lookup
     const findByLabel = (labelKeywords) => {
-      const elements = Array.from(document.querySelectorAll('label, th, td, div, span'));
+      const elements = Array.from(document.querySelectorAll('label, th, td, div, span, p'));
       for (const el of elements) {
-        const txt = el.innerText || '';
-        if (labelKeywords.some(kw => txt.toLowerCase().includes(kw))) {
-          // Check next sibling or parent input
-          const nextEl = el.nextElementSibling || el.parentElement?.querySelector('input, select, td:nth-child(2)');
-          if (nextEl) {
-            return nextEl.value || nextEl.innerText || '';
+        const txt = (el.innerText || '').trim().toLowerCase();
+        if (labelKeywords.some(kw => txt.includes(kw))) {
+          // Check sibling or parent context
+          const parent = el.parentElement;
+          if (parent) {
+            const nextTd = el.nextElementSibling;
+            if (nextTd && nextTd.innerText) return nextTd.innerText.trim();
+
+            const siblingCell = parent.querySelector('td:nth-child(2), span:nth-child(2), div:nth-child(2)');
+            if (siblingCell && siblingCell !== el) return siblingCell.innerText.trim();
           }
         }
       }
       return '';
     };
 
+    // Scrape specific LR fields from RFID TMS Loading Receipt Layout
     const orderNo = findMatch([
-      /order\s*no[\.\:\s]*([A-Z0-9\-\/]+)/i,
+      /transporter\s*lr\s*no[\.\:\s]*([A-Z0-9\-\/]+)/i,
       /lr\s*no[\.\:\s]*([A-Z0-9\-\/]+)/i,
-      /sales\s*doc[\.\:\s]*([A-Z0-9\-\/]+)/i,
+      /order\s*no[\.\:\s]*([A-Z0-9\-\/]+)/i,
       /invoice\s*no[\.\:\s]*([A-Z0-9\-\/]+)/i
-    ]) || findByLabel(['order no', 'lr no', 'invoice no']) || `JK-${Math.floor(100000 + Math.random() * 900000)}`;
+    ]) || findByLabel(['transporter lr no', 'lr no', 'order no', 'invoice no']) || `JK-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const truckNo = findMatch([
       /vehicle\s*no[\.\:\s]*([A-Z0-9\s\-]+)/i,
       /truck\s*no[\.\:\s]*([A-Z0-9\s\-]+)/i,
       /lorry\s*no[\.\:\s]*([A-Z0-9\s\-]+)/i
-    ]) || findByLabel(['vehicle', 'truck', 'lorry']) || 'HR63E9632';
+    ]) || findByLabel(['vehicle no', 'truck no', 'lorry no']) || 'HR63E9632';
 
     const consignee = findMatch([
-      /customer[\.\:\s]*([A-Za-z0-9\s\.\,\-]+)/i,
       /consignee[\.\:\s]*([A-Za-z0-9\s\.\,\-]+)/i,
+      /customer[\.\:\s]*([A-Za-z0-9\s\.\,\-]+)/i,
       /party[\.\:\s]*([A-Za-z0-9\s\.\,\-]+)/i
-    ]) || findByLabel(['customer', 'consignee', 'party']) || 'JK CEMENT WORKS';
+    ]) || findByLabel(['consignee', 'customer', 'party']) || 'JK CEMENT WORKS';
 
     const destination = findMatch([
-      /city[\.\:\s]*([A-Za-z\s]+)/i,
+      /to[\.\:\s]*([A-Za-z0-9\s\,\-]+)/i,
       /destination[\.\:\s]*([A-Za-z\s]+)/i,
-      /county[\.\:\s]*([A-Za-z\s]+)/i
-    ]) || findByLabel(['destination', 'city', 'district']) || 'HISAR';
+      /consignee\s*address[\.\:\s]*([A-Za-z0-9\s\,\-]+)/i
+    ]) || findByLabel(['to', 'destination', 'consignee address']) || 'HISAR';
 
     const qty = findMatch([
+      /order\s*qty[\.\:\s]*([\d\.]+)/i,
+      /no\s*of\s*bags[\.\:\s]*([\d\.]+)/i,
       /billed\s*qty[\.\:\s]*([\d\.]+)/i,
-      /quantity[\.\:\s]*([\d\.]+)/i,
-      /bags[\.\:\s]*([\d\.]+)/i,
-      /sales\s*quantity[\.\:\s]*([\d\.]+)/i
-    ]) || findByLabel(['quantity', 'qty', 'weight', 'bags']) || '42';
+      /quantity[\.\:\s]*([\d\.]+)/i
+    ]) || findByLabel(['order qty', 'no of bags', 'billed qty', 'quantity']) || '42';
 
     const freight = findMatch([
       /total\s*freight[\.\:\s]*([\d\.]+)/i,
-      /total\s*fright[\.\:\s]*([\d\.]+)/i,
+      /freight\s*\(mt\)[\.\:\s]*([\d\.]+)/i,
       /freight\s*amount[\.\:\s]*([\d\.]+)/i
-    ]) || findByLabel(['total freight', 'freight']) || '25200';
+    ]) || findByLabel(['total freight', 'freight']) || '0';
 
-    const date = findMatch([
-      /billing\s*date[\.\:\s]*([\d\.\-\/]+)/i,
-      /date[\.\:\s]*([\d\.\-\/]+)/i
+    const dateStr = findMatch([
+      /date[\.\:\s]*([\d\.\-\/]+)/i,
+      /print\s*date[\.\:\s]*([\d\.\-\/]+)/i
     ]) || new Date().toISOString().split('T')[0];
 
     const billedQtyNum = parseFloat(qty) || 42;
-    const freightNum = parseFloat(freight) || 25200;
+    const freightNum = parseFloat(freight) || 0;
     const ratePMT = billedQtyNum > 0 ? Math.round(freightNum / billedQtyNum) : 600;
 
     return {
       type: 'JK_Super',
       brand: 'jksuper',
       lrNo: orderNo,
-      date,
-      truckNo,
+      date: dateStr,
+      truckNo: truckNo.toUpperCase().replace(/\s+/g, ''),
       consigneeName: consignee,
       destination,
       billedQty: billedQtyNum,
       ratePMT,
       freightAmount: freightNum,
-      remarks: `Extracted from ${window.location.host}`
+      remarks: `Extracted from JK Super RFID TMS (${window.location.host})`
     };
   }
 
@@ -177,29 +210,81 @@
     const btn = document.getElementById('vgtc-sync-action-btn');
     if (btn) {
       btn.disabled = true;
-      btn.innerText = '⏳ Syncing to VGTC...';
+      btn.innerText = '⏳ Syncing JK Super Receipt...';
     }
 
     const payload = scrapeOrderData();
-    console.log('[VGTC Extension] Scraped order payload:', payload);
+    console.log('[VGTC Extension] Scraped JK Super receipt payload:', payload);
 
     chrome.runtime.sendMessage({ action: 'CREATE_VOUCHER', payload }, (res) => {
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = `
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg> Sync Factory Voucher to VGTC
+          </svg> Sync Loading Receipt (JK Super)
         `;
       }
 
       if (res && res.success) {
-        showToast(`✓ Factory Voucher Created in VGTC! (LR #${payload.lrNo})`, '#10b981');
+        showToast(`✓ Factory Voucher Created! (Truck #${payload.truckNo} - LR #${payload.lrNo})`, '#10b981');
       } else {
-        const err = (res && res.error) ? res.error : 'Sync failed. Ensure VGTC Server is running.';
+        const err = (res && res.error) ? res.error : 'Sync failed. Ensure VGTC Server is running on port 5000.';
         showToast(`❌ ${err}`, '#ef4444');
       }
     });
+  }
+
+  async function triggerBatchSync() {
+    const batchBtn = document.getElementById('vgtc-batch-sync-btn');
+    if (batchBtn) {
+      batchBtn.disabled = true;
+      batchBtn.innerText = '⏳ Batch Syncing...';
+    }
+
+    // Locate vehicle cards on left panel
+    const vehicleCards = Array.from(document.querySelectorAll('div, span, li')).filter(el => {
+      const txt = el.innerText || '';
+      return /veh\.\s*no\./i.test(txt) || /vehicle\s*no/i.test(txt) || /^HR\d+[A-Z]+\d+/i.test(txt.trim());
+    });
+
+    if (vehicleCards.length === 0) {
+      // Sync single view if cards not found separately
+      triggerVoucherSync();
+      if (batchBtn) {
+        batchBtn.disabled = false;
+        batchBtn.innerText = 'Batch Sync All Receipts';
+      }
+      return;
+    }
+
+    showToast(`🔄 Found ${vehicleCards.length} vehicles. Starting batch sync...`, '#6366f1');
+
+    let countSuccess = 0;
+    for (let i = 0; i < vehicleCards.length; i++) {
+      const card = vehicleCards[i];
+      card.click();
+      await new Promise(r => setTimeout(r, 1200));
+
+      const payload = scrapeOrderData();
+      await new Promise(resolve => {
+        chrome.runtime.sendMessage({ action: 'CREATE_VOUCHER', payload }, (res) => {
+          if (res && res.success) countSuccess++;
+          resolve();
+        });
+      });
+    }
+
+    if (batchBtn) {
+      batchBtn.disabled = false;
+      batchBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+        </svg> Batch Sync All Receipts
+      `;
+    }
+
+    showToast(`🎉 Batch sync complete! ${countSuccess}/${vehicleCards.length} Vouchers Synced.`, '#10b981');
   }
 
   function showToast(msg, bg = '#10b981') {
@@ -213,7 +298,7 @@
     toast.innerHTML = `<span style="color:${bg}; font-size:16px;">●</span> <span>${msg}</span>`;
 
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4500);
+    setTimeout(() => toast.remove(), 5000);
   }
 
   // Auto inject widget after page loads
@@ -223,3 +308,4 @@
     document.addEventListener('DOMContentLoaded', injectWidget);
   }
 })();
+

@@ -11,3 +11,11 @@ server/serviceAccountKey.json
 server/config/*.json
 server/config/*.js
 server/temp_backups/
+
+# Database dumps and one-off destructive maintenance scripts. These touch real
+# production records — never commit them. `artifacts/` was previously untracked
+# but not ignored, so a `git add .` would have committed a full production dump.
+artifacts/
+*_db_backup_*.json
+server/delete_production.js
+server/dump_production.js

@@ -11,6 +11,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
+import { openReceiptWindow } from '../utils/receiptPrint';
 
 const PAGE_SIZE = 20;
 
@@ -146,7 +147,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
 }
 
 /* ── Print helper ── */
-function printReceipt(allRows, lrNo, allChallans = []) {
+function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
@@ -155,69 +156,301 @@ function printReceipt(allRows, lrNo, allChallans = []) {
   const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
   const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  const materialLines = rows.map(m =>
-    `<div class="line"><span class="lbl">${m.material}</span><span class="val">${m.totalBags} bags · ${Number(m.weight).toFixed(2)} MT${m.loadingType && m.loadingType !== 'Godown' ? ` · ${m.loadingType}` : ''}</span></div>`
-  ).join('');
+  const challanNos = base.billing ? base.billing.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const challanDetailsText = challanNos.map(no => {
+    const match = (allChallans || []).find(c => c.challanNo === no);
+    if (!match) return no;
+    let qty = 0;
+    if (match.materials && match.materials.length > 0) {
+      qty = match.materials.reduce((sum, cm) => sum + (parseInt(cm.totalBags) || 0), 0);
+    } else {
+      qty = parseInt(match.quantity || match.bags || 0);
+    }
+    return qty ? `${no} (${qty} Bags)` : no;
+  }).join(', ');
 
-  const html = `<!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>LR #${lrNo}</title>
-      <style>
-        @page { size: 105mm 148mm; margin: 5mm; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; width: 95mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.3; }
-        .hd { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 6px; }
-        .hd .co { font-size: 13px; font-weight: 900; }
-        .hd .sub { font-size: 9px; margin-top: 2px; }
-        .lr { text-align: center; font-size: 16px; font-weight: 900; border: 1.5px solid #000; display: inline-block; padding: 2px 16px; margin: 4px auto 8px; letter-spacing: 1px; }
-        .lr-wrap { text-align: center; }
-        .sec { border: 1px solid #000; border-radius: 3px; margin-bottom: 6px; }
-        .line { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 0.5px solid #ccc; font-size: 11px; }
+  if (brand === 'jkl') {
+    openReceiptWindow({
+      title: `LR #${lrNo}`,
+      fontSize: '9.5pt',
+      styles: `
+      .hd {
+        text-align: center;
+        border-bottom: 2.5px solid #000;
+        padding-bottom: 1.5mm;
+        margin-bottom: 2mm;
+      }
+      .hd .co {
+        font-size: 12.5pt;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .hd .sub {
+        font-size: 8pt;
+        font-weight: bold;
+        color: #000;
+        margin-top: 1px;
+      }
+      .lr-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9.5pt;
+        font-weight: bold;
+        margin-bottom: 1.5mm;
+      }
+      .sec {
+        border: 2px solid #000;
+        border-radius: 3px;
+        margin-bottom: 2mm;
+        background: #fff;
+        overflow: hidden;
+      }
+      .line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 4mm;
+        padding: 2px 5px;
+        border-bottom: 1.5px solid #000;
+        font-size: 9pt;
+      }
+      .line:last-child { border-bottom: none; }
+      .lbl {
+        font-weight: bold;
+        font-size: 8pt;
+        text-transform: uppercase;
+        color: #000;
+        flex-shrink: 0;
+      }
+      .val {
+        font-weight: 800;
+        text-align: right;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 2mm;
+      }
+      th {
+        font-size: 8pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        padding: 3px 5px;
+        border: 2px solid #000;
+        background: #e0e0e0;
+        text-align: left;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      td {
+        padding: 3px 5px;
+        border: 1.5px solid #000;
+        font-size: 9pt;
+        font-weight: 700;
+      }
+      .tot-row td {
+        font-weight: 900;
+        font-size: 9.5pt;
+        background: #d0d0d0;
+        border-top: 2.5px solid #000;
+        padding: 3.5px 5px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .sig-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: auto;
+        padding-top: 3mm;
+      }
+      .sig-box {
+        text-align: center;
+        font-size: 8pt;
+        font-weight: bold;
+        border-top: 2px solid #000;
+        padding-top: 1.5px;
+        width: 22mm;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .digital-sig-box {
+        border: 2px solid #000;
+        background: #fff;
+        border-radius: 4px;
+        padding: 2px 5px;
+        text-align: center;
+        width: 34mm;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .digital-sig-title {
+        font-size: 6pt;
+        color: #000;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.1px;
+        display: block;
+      }
+      .digital-sig-text {
+        font-family: 'Brush Script MT', cursive, sans-serif;
+        font-size: 14pt;
+        color: #000;
+        font-weight: bold;
+        line-height: 0.95;
+      }
+      .digital-sig-footer {
+        font-size: 5.5pt;
+        color: #000;
+        display: block;
+      }`,
+      body: `
+    <div class="container">
+      <div>
+        <div class="hd">
+          <div class="co">Vikas Goods Transport</div>
+          <div class="sub">Jharli, Jhajjar | 9416319445</div>
+        </div>
+
+        <div class="lr-row">
+          <span>LR # ${lrNo}</span>
+          <span>Date: ${fmtDate}</span>
+        </div>
+
+        <div class="sec">
+          <div class="line"><span class="lbl">Truck No</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
+          <div class="line"><span class="lbl">Party Name</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
+          ${base.billing ? `<div class="line"><span class="lbl">${challanNos.length > 1 ? 'Challans' : 'Challan'}</span><span class="val" style="font-size: 9pt; font-weight: 800;">${challanDetailsText}</span></div>` : ''}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Material</th>
+              <th style="text-align:center; width: 14mm;">Bags</th>
+              <th style="text-align:right; width: 18mm;">Wt (MT)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(m => `
+              <tr>
+                <td>
+                  ${m.material}
+                  ${m.billing && m.billing !== 'No' ? `<span style="font-size: 8pt; font-weight: normal; display: block; color: #444; margin-top: 1px;">Challan: ${m.billing}</span>` : ''}
+                </td>
+                <td style="text-align:center">${m.totalBags}</td>
+                <td style="text-align:right">${Number(m.weight).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+            <tr class="tot-row">
+              <td>TOTAL</td>
+              <td style="text-align:center">${totalBags}</td>
+              <td style="text-align:right">${totalWeight}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sig-section">
+        <div class="sig-box">Driver</div>
+        <div class="digital-sig-box">
+          <span class="digital-sig-title">Digitally Signed</span>
+          <span class="digital-sig-text">VGTC Admin</span>
+          <span class="digital-sig-footer">Auth. Signatory</span>
+        </div>
+      </div>
+    </div>`,
+    });
+    return;
+  }
+
+  const materialRowsHtml = rows.map(m => `
+    <tr>
+      <td style="padding:4px 8px;border:1px solid #ccc;font-size:11px;font-weight:700;">
+        ${m.material}${m.loadingType && m.loadingType !== 'Godown' ? ` <span style="font-size:9px;color:#555;">(${m.loadingType})</span>` : ''}
+        ${m.billing && m.billing !== 'No' ? `<span style="font-size:9.5px;font-weight:normal;display:block;color:#444;margin-top:1px;">Challan: ${m.billing}</span>` : ''}
+      </td>
+      <td style="padding:4px 8px;border:1px solid #ccc;text-align:center;font-size:11px;font-weight:700;">${m.totalBags}</td>
+      <td style="padding:4px 8px;border:1px solid #ccc;text-align:right;font-size:11px;font-weight:700;">${Number(m.weight).toFixed(2)} MT</td>
+    </tr>
+  `).join('');
+
+  openReceiptWindow({
+    title: `LR #${lrNo}`,
+    fontSize: '11px',
+    lineHeight: '1.3',
+    styles: `
+        .content-wrap { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: flex-start; }
+        .hd { text-align: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+        .hd .co { font-size: 14.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15; }
+        .hd .sub { font-size: 9.5px; margin-top: 2px; color: #111; font-weight: 700; }
+        .lr-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .lr-badge {
+          font-size: 14px;
+          font-weight: 900;
+          border: 2px solid #000;
+          display: inline-block;
+          padding: 3px 12px;
+          letter-spacing: 1px;
+          background: #fff;
+        }
+        .lr-date { font-size: 11px; font-weight: 800; }
+        .sec { border: 1.5px solid #000; border-radius: 3px; margin-bottom: 6px; background: #fff; overflow: hidden; }
+        .line { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #ccc; font-size: 11px; }
         .line:last-child { border-bottom: none; }
-        .lbl { font-weight: 800; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
-        .val { font-weight: 600; text-align: right; }
-        .tot { background: #eee; font-weight: 900; font-size: 12px; border-top: 1.5px solid #000; }
-        .sig { display: flex; justify-content: space-between; margin-top: 20px; }
-        .sig-box { text-align: center; font-size: 9px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; min-width: 60px; text-transform: uppercase; }
-        .no-print { display: block; width: 100%; padding: 10px; background: #10b981; color: #fff; text-align: center; font-weight: 800; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; margin-top: 12px; }
-        @media print { .no-print { display: none; } }
-      </style>
-    </head>
-    <body>
-      <div class="hd">
-        <div class="co">Vikas Goods Transport Company</div>
-        <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar</div>
-      </div>
+        .lbl { font-weight: 900; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0; color: #000; }
+        .val { font-weight: 700; text-align: right; color: #000; font-size: 11.5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 0; }
+        th { font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border: 1px solid #000; background: #eee; text-align: left; }
+        .tot-row td { font-weight: 900; font-size: 12px; background: #eee; border-top: 2px solid #000; padding: 5px 8px; }
+        .sig { display: flex; justify-content: space-between; margin-top: auto; padding-top: 10px; gap: 6px; }
+        .sig-box { flex: 1; text-align: center; font-size: 9px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; text-transform: uppercase; white-space: nowrap; }`,
+    body: `
+      <div class="content-wrap">
+        <div class="hd">
+          <div class="co">Vikas Goods Transport Company</div>
+          <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar</div>
+        </div>
 
-      <div class="lr-wrap"><div class="lr">LR # ${lrNo}</div></div>
+        <div class="lr-row">
+          <div class="lr-badge">LR # ${lrNo}</div>
+          <div class="lr-date"><strong>Date:</strong> ${fmtDate}</div>
+        </div>
 
-      <div class="sec">
-        <div class="line"><span class="lbl">Date</span><span class="val">${fmtDate}</span></div>
-        <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13px;font-weight:900;">${base.truckNo}</span></div>
-        <div class="line"><span class="lbl">Party</span><span class="val">${parties}</span></div>
-        ${base.billing ? `<div class="line"><span class="lbl">Challans</span><span class="val">${base.billing}</span></div>` : ''}
-      </div>
+        <div class="sec">
+          <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13.5px;font-weight:900;">${base.truckNo}</span></div>
+          <div class="line"><span class="lbl">Party Name</span><span class="val">${parties}</span></div>
+          ${base.billing ? `<div class="line"><span class="lbl">${challanNos.length > 1 ? 'Challans' : 'Challan'}</span><span class="val" style="font-size: 11px; font-weight: 800;">${challanDetailsText}</span></div>` : ''}
+        </div>
 
-      <div class="sec">
-        <div class="line" style="background:#eee;"><span class="lbl">Material</span><span class="lbl">Details</span></div>
-        ${materialLines}
-        <div class="line tot"><span class="lbl">Total</span><span class="val">${totalBags} bags · ${totalWeight} MT</span></div>
+        <div class="sec">
+          <table>
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th style="text-align:center">Bags</th>
+                <th style="text-align:right">Weight (MT)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${materialRowsHtml}
+              <tr class="tot-row">
+                <td>TOTAL</td>
+                <td style="text-align:center">${totalBags}</td>
+                <td style="text-align:right">${totalWeight} MT</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="sig">
         <div class="sig-box">Driver</div>
         <div class="sig-box">Receiver</div>
         <div class="sig-box">Authorised</div>
-      </div>
-
-      <button class="no-print" onclick="window.print()">Print</button>
-      <script>setTimeout(() => window.print(), 500);</script>
-    </body>
-  </html>`;
-  const w = window.open('', '_blank', 'width=800,height=600');
-  w.document.write(html); w.document.close();
+      </div>`,
+  });
 }
 
 /* ── Edit Modal ── */
@@ -325,33 +558,33 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
     // 1. Strict Quantity Validation
     const lrBags = parseInt(form.totalBags || 0);
     let totalChallanBags = 0;
-    
+
     form.usedChallans.forEach(c => {
       if (c.materials) {
         const mat = c.materials.find(m => m.type === form.material);
         if (mat) {
-           totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
-           if (row.billing.includes(c.challanNo) && row.material === form.material) {
-             totalChallanBags += parseInt(row.totalBags || 0);
-           }
+          totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
+          if (row.billing.includes(c.challanNo) && row.material === form.material) {
+            totalChallanBags += parseInt(row.totalBags || 0);
+          }
         }
       } else if (c.material === form.material) {
         totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
         if (row.billing.includes(c.challanNo) && row.material === form.material) {
-           totalChallanBags += parseInt(row.totalBags || 0);
+          totalChallanBags += parseInt(row.totalBags || 0);
         }
       }
     });
 
     if (form.usedChallans.length > 0 && lrBags > totalChallanBags) {
-       alert(`Not Enough Bags!\nLoading Receipt has ${lrBags} bags, but selected challans only provide ${totalChallanBags} bags of ${form.material}.\n\nPlease select more challans or reduce LR bags.`);
-       return;
+      alert(`Not Enough Bags!\nLoading Receipt has ${lrBags} bags, but selected challans only provide ${totalChallanBags} bags of ${form.material}.\n\nPlease select more challans or reduce LR bags.`);
+      return;
     }
 
     setLoading(true);
     const oldBags = parseInt(row.totalBags || 0);
     const newBags = parseInt(form.totalBags || 0);
-    
+
     // Validate physical stock
     if (form.material === row.material) {
       if (newBags > oldBags) {
@@ -392,9 +625,9 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
       await ax.put(`${ENDPOINT.replace('/stock/challans', '/lr')}/${row.id}`, payload);
       onSave();
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
-      alert('Update failed: ' + (e.response?.data?.error || e.message)); 
+      alert('Update failed: ' + (e.response?.data?.error || e.message));
     } finally { setLoading(false); }
   };
 
@@ -425,7 +658,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <X size={18} />
           </button>
         </div>
-        
+
         {/* Modal body */}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '70vh', overflowY: 'auto' }}>
           <div className="fg fg-2">
@@ -485,14 +718,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             </div>
             <div className="field-h"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} /></div>
           </div>
-          
+
           <div className="field-h">
             <label><Tag size={11} /> Challan Selection</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
               <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                   <Tag size={14} color="#f59e0b" />
-                   {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
+                  <Tag size={14} color="#f59e0b" />
+                  {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
                 </span>
                 <Pencil size={12} opacity={0.5} />
               </button>
@@ -508,7 +741,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           </div>
 
           <hr className="sep" style={{ margin: '4px 0' }} />
-          
+
           <div className="field-h">
             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour</label>
             <textarea className="fi" rows={2} placeholder="Add instructions..." value={form.note} onChange={e => S('note', e.target.value)} style={{ resize: 'vertical', minHeight: '60px' }} />
@@ -549,22 +782,22 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
         </div>
 
         {showChalPopup && (
-           <ChallanPopup 
-             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
-             selectedChallans={form.usedChallans}
-             onClose={() => setShowChalPopup(false)}
-             onToggleSelect={(ch) => {
-                const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
-                if (isSelected) {
-                   setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
-                } else {
-                   if (form.truckNo && ch.truckNo !== form.truckNo) {
-                      if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
-                   }
-                   setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
+          <ChallanPopup
+            brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
+            selectedChallans={form.usedChallans}
+            onClose={() => setShowChalPopup(false)}
+            onToggleSelect={(ch) => {
+              const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
+              if (isSelected) {
+                setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
+              } else {
+                if (form.truckNo && ch.truckNo !== form.truckNo) {
+                  if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
                 }
-             }}
-           />
+                setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
+              }
+            }}
+          />
         )}
       </motion.div>
       <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title="Save Changes" message="Update this loading receipt?" isSaving={loading} />
@@ -579,12 +812,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
   const filteredChallans = challanSearch
     ? openChallans.filter(c => {
-        const s = challanSearch.toLowerCase();
-        return (c.challanNo || '').toLowerCase().includes(s) ||
-               (c.truckNo || '').toLowerCase().includes(s) ||
-               (c.partyName || '').toLowerCase().includes(s) ||
-               (c.destination || '').toLowerCase().includes(s);
-      })
+      const s = challanSearch.toLowerCase();
+      return (c.challanNo || '').toLowerCase().includes(s) ||
+        (c.truckNo || '').toLowerCase().includes(s) ||
+        (c.partyName || '').toLowerCase().includes(s) ||
+        (c.destination || '').toLowerCase().includes(s);
+    })
     : openChallans;
 
   // For 'create' tab
@@ -772,7 +1005,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                         placeholder="GJ01AB1234"
                         required={true}
                       />
-                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format</div>}
+                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px' }}>Invalid format</div>}
                     </div>
                     <div className="field">
                       <label><Calendar size={11} /> Date *</label>
@@ -867,9 +1100,9 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
       }
       await ax.delete(apiUrl + '/' + row.id);
       onConfirm();
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
-      alert('Delete failed: ' + (e.response?.data?.error || e.message)); 
+      alert('Delete failed: ' + (e.response?.data?.error || e.message));
     } finally { setDeleting(false); }
   };
   return (
@@ -921,7 +1154,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     API_STOCK = `${BASE_API}/stock`;
   }
   const API_CHAL = `${API_STOCK}/challans`;
-  
+
   const [materialObjs, setMaterialObjs] = useState([]);
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
@@ -1059,9 +1292,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       setReceipts([...dataRes.data].sort((a, b) => b.lrNo - a.lrNo));
       setParties(partiesRes.data);
       try {
-         const vRes = await ax.get(`/vouchers`);
-         setAllVouchers(vRes.data || []);
-      } catch(e) { console.error('Failed to fetch vouchers', e); }
+        const vRes = await ax.get(`/vouchers`);
+        setAllVouchers(vRes.data || []);
+      } catch (e) { console.error('Failed to fetch vouchers', e); }
     } catch { }
     finally { setTableLoading(false); }
   };
@@ -1090,8 +1323,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const fetchMaterials = async () => {
     try {
-       const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
-       if (data && data.length > 0) setMaterialObjs(data);
+      const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
+      if (data && data.length > 0) setMaterialObjs(data);
     } catch (e) { console.error('fetchMaterials failed:', e.message); }
   };
 
@@ -1244,28 +1477,28 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const executeSaveLR = async () => {
     setIsConfirmingSave(false);
-    
+
     // 1. Strict Quantity Validation
     for (const m of form.materials) {
       if (m.billing && m.billing !== 'No') {
-          const lrBags = parseInt(m.bags || 0);
-          let totalChallanBags = 0;
-          const nos = m.billing.split(',').map(s => s.trim());
-          const used = allChallans.filter(c => nos.includes(c.challanNo));
+        const lrBags = parseInt(m.bags || 0);
+        let totalChallanBags = 0;
+        const nos = m.billing.split(',').map(s => s.trim());
+        const used = allChallans.filter(c => nos.includes(c.challanNo));
 
-          used.forEach(c => {
-             if (c.materials) {
-                const mat = c.materials.find(cm => cm.type === m.type);
-                if (mat) totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
-             } else if (c.material === m.type) {
-                totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
-             }
-          });
-
-          if (lrBags > totalChallanBags) {
-             alert(`Not Enough Bags in ${m.type}!\nLR needs ${lrBags} bags, but selected challan(s) only provide ${totalChallanBags} bags.\n\nPlease fix the bag count or selection.`);
-             return;
+        used.forEach(c => {
+          if (c.materials) {
+            const mat = c.materials.find(cm => cm.type === m.type);
+            if (mat) totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
+          } else if (c.material === m.type) {
+            totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
           }
+        });
+
+        if (lrBags > totalChallanBags) {
+          alert(`Not Enough Bags in ${m.type}!\nLR needs ${lrBags} bags, but selected challan(s) only provide ${totalChallanBags} bags.\n\nPlease fix the bag count or selection.`);
+          return;
+        }
       }
     }
 
@@ -1294,7 +1527,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       };
 
       const res = await ax.post(API, payload);
-      
+
       let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
@@ -1311,11 +1544,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         }
       }
 
-      alert('Receipt #' + res.data.lrNo + ' created!');
       fetchLRData(); fetchChallans();
       clearVoice();
       rememberSticky('lr.date', form.date);
       setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+
+      // Auto open print page, no notification popup
+      printReceipt([res.data], res.data.lrNo, allChallans, brand);
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -1326,13 +1561,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const filteredReceipts = useMemo(() => {
     let list = [...receipts];
-    
+
     // Dynamic filtering
     Object.keys(filters).forEach(key => {
-        const vals = filters[key];
-        if (vals && vals.length > 0) {
-            list = list.filter(r => vals.includes(String(r[key] ?? '')));
-        }
+      const vals = filters[key];
+      if (vals && vals.length > 0) {
+        list = list.filter(r => vals.includes(String(r[key] ?? '')));
+      }
     });
 
     return list;
@@ -1538,7 +1773,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <div className="card-body">
               <form onSubmit={handleFormRequest} ref={createFormRef}>
                 <div className="fg fg-2">
-                  <div className="field-h"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
+                  <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field-h">
                     <label>Truck No. *</label>
                     <AutocompleteInput
@@ -1548,7 +1783,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       placeholder="Enter truck number e.g. HR47G1234"
                       required={true}
                     />
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block' }}>Invalid format</span>}
                   </div>
                   <div className="field-h">
                     <label><User size={11} /> Party Name</label>
@@ -1724,11 +1959,11 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               <div style={{ display: 'flex', gap: '8px', padding: '10px 14px', background: 'var(--bg-filter)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {Object.keys(filters).map(k => filters[k].length > 0 && (
-                        <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
-                            {k}: {filters[k].length} selected
-                        </span>
-                    ))}
+                  {Object.keys(filters).map(k => filters[k].length > 0 && (
+                    <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
+                      {k}: {filters[k].length} selected
+                    </span>
+                  ))}
                 </div>
                 <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto', height: '24px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear All Filters</button>
               </div>
@@ -1740,16 +1975,16 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
                   <th style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -1860,24 +2095,24 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td className="c">
                           {(() => {
                             const usedInVouchers = allVouchers.filter(v => {
-                               if (!v.lrNo) return false;
-                               const vLrs = String(v.lrNo).split(',').map(s => s.trim());
-                               return vLrs.includes(String(lr.lrNo));
+                              if (!v.lrNo) return false;
+                              const vLrs = String(v.lrNo).split(',').map(s => s.trim());
+                              return vLrs.includes(String(lr.lrNo));
                             });
-                            
+
                             if (usedInVouchers.length === 0) {
-                               return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)' }}>Unbilled</span>;
+                              return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)' }}>Unbilled</span>;
                             }
-                            
+
                             return (
-                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                 {usedInVouchers.map(v => (
-                                    <div key={v.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '3px 8px' }}>
-                                       <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981' }}>{v.type ? v.type.replace('_', ' ') : 'Voucher'}</span>
-                                       {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>Bill: {v.billNo}</span>}
-                                    </div>
-                                 ))}
-                               </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                {usedInVouchers.map(v => (
+                                  <div key={v.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '3px 8px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981' }}>{v.type ? v.type.replace('_', ' ') : 'Voucher'}</span>
+                                    {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>Bill: {v.billNo}</span>}
+                                  </div>
+                                ))}
+                              </div>
                             );
                           })()}
                         </td>
@@ -1904,7 +2139,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
                         <td className="c">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans)}>
+                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans, brand)}>
                               <Printer size={14} />
                             </button>
                             {canEdit && (
@@ -1925,7 +2160,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </table>
             </div>
 
-            <Pagination 
+            <Pagination
               currentPage={currentPage}
               totalItems={filteredReceipts.length}
               pageSize={PAGE_SIZE}

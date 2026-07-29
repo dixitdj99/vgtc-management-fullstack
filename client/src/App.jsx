@@ -38,7 +38,6 @@ import TyreModule from './modules/TyreModule';
 import VendorModule from './modules/VendorModule';
 import TripProfitModule from './modules/TripProfitModule';
 import AttendanceModule from './modules/AttendanceModule';
-import EwayModule from './modules/EwayModule';
 import VehicleCreditDebitModule from './modules/VehicleCreditDebitModule';
 
 const THEMES = [
@@ -81,6 +80,7 @@ function AppInner() {
   const [col, setCol] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('vgtc-theme') || 'light');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
@@ -396,8 +396,7 @@ function AppInner() {
     { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'SOON' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'SOON' },
-    { id: 'eway_dump', label: 'E-Way Bills', Icon: FileCheck, color: '#10b981', section: 'jksuper', permKey: 'eway', badge: 'SOON' },
+    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'NEW' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -451,8 +450,7 @@ function AppInner() {
     { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'SOON' },
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'SOON' },
-    { id: 'eway_jharli', label: 'E-Way Bills', Icon: FileCheck, color: '#f59e0b', section: 'jharli', permKey: 'eway', badge: 'SOON' },
+    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'NEW' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -597,7 +595,6 @@ function AppInner() {
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
       {(id === 'attendance_dump' || id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
-      {(id === 'eway_dump' || id === 'eway_jharli' || id === 'eway_main') && <EwayModule />}
       {/* ── Generic (non-VGTC orgs) ── */}
       {id === 'lr_main' && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
       {id === 'voucher_main' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Bill'} brand="main" />}
@@ -692,7 +689,10 @@ function AppInner() {
                     }}
                   >
                     <span className="nav-indicator" style={{ background: color, opacity: active === id ? 1 : 0 }} />
-                    <Icon size={20} color={active === id ? (sub ? color : '#fff') : 'currentColor'} />
+                    {/* The active pill is a 7% tint of `color`, not a solid fill —
+                        a white icon on it is invisible in light mode and clashes
+                        with the accent-coloured label in dark. */}
+                    <Icon size={20} color={active === id ? color : 'currentColor'} />
                     {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
                     {!col && badge === 'NEW' && <span className="nav-badge-new">NEW</span>}
                     {!col && badge === 'SOON' && <span className="nav-badge-soon">SOON</span>}
@@ -716,7 +716,7 @@ function AppInner() {
                             border: 'none', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', fontSize: '12.5px',
                             fontWeight: active === id && subActive === s.id ? 600 : 500, transition: 'all 0.15s',
-                            color: active === id && subActive === s.id ? color : '#6B7280',
+                            color: active === id && subActive === s.id ? color : 'var(--text-muted)',
                           }}
                         >
                           <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', marginRight: '8px', opacity: active === id && subActive === s.id ? 1 : 0.4 }} />
@@ -732,7 +732,7 @@ function AppInner() {
 
             // Sidebar groups — module ids map by prefix; unknown ids fall through ungrouped
             const groupOf = (id) => {
-              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_|eway_)/.test(id)) return 'Operations';
+              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_)/.test(id)) return 'Operations';
               if (/^(balance_|cashbook_|pay_|trip_profit_|vehicle_credit_debit_)/.test(id)) return 'Money';
               if (/^(vehicles_|truck_dashboard|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
               return null;
@@ -758,43 +758,7 @@ function AppInner() {
             );
           })()}
         </nav>
-        {/* User info + logout at bottom of sidebar */}
-        <div style={{ marginTop: 'auto', padding: col ? '12px 8px' : '12px 14px', borderTop: '1px solid var(--border)' }}>
-          {!col && (
-            <div style={{ marginBottom: '10px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '1px' }}>{user.role}</div>
-            </div>
-          )}
-          {user?.role === 'admin' && (
-            <button onClick={() => { setActive('admin_settings'); setSubActive(''); setShowMobileMenu(false); }}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px',
-                borderRadius: '10px', border: '1px solid var(--border)',
-                background: active === 'admin_settings' ? 'rgba(99, 102, 241, 0.18)' : 'rgba(139, 92, 246, 0.1)',
-                color: active === 'admin_settings' ? '#818cf8' : '#a78bfa', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                transition: 'all 0.18s', justifyContent: col ? 'center' : 'flex-start',
-                fontFamily: 'inherit', marginBottom: '8px'
-              }}>
-              <Settings size={15} />
-              {!col && 'System Settings & Admin'}
-            </button>
-          )}
-          <button onClick={logout}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px',
-              borderRadius: '10px', border: '1px solid var(--border)', background: 'none',
-              color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-              transition: 'all 0.18s', justifyContent: col ? 'center' : 'flex-start',
-              fontFamily: 'inherit'
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(244,63,94,0.08)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = 'rgba(244,63,94,0.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
-            <LogOut size={15} />
-            {!col && 'Logout'}
-          </button>
-        </div>
-        <div className="sidebar-footer" style={{ borderTop: 'none' }}>
+        <div className="sidebar-footer" style={{ marginTop: 'auto', borderTop: '1px solid var(--border)' }}>
           <button className="collapse-btn" onClick={() => setCol(c => !c)}>
             <span className={`chevron${!col ? ' flipped' : ''}`}><ChevronRight size={18} /></span>
           </button>
@@ -837,11 +801,10 @@ function AppInner() {
           </div>
           <div className="topbar-right">
             {/* Command palette trigger */}
-            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#F3F4F6', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', marginRight: '8px' }}>
-              <Search size={13} color="#9CA3AF" />
-              <span style={{ fontSize: '12px', fontWeight: 500, color: '#9CA3AF' }}>Search</span>
-              <kbd style={{ fontSize: '9px', fontWeight: 700, color: '#9CA3AF', background: '#fff', border: '1px solid var(--border)', borderRadius: '4px', padding: '1px 5px' }}>Ctrl K</kbd>
+            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)" className="search-trigger">
+              <Search size={13} />
+              <span>Search</span>
+              <kbd>Ctrl K</kbd>
             </button>
             {/* Offline/sync indicator */}
             {(pendingSync > 0 || !isOnline) && (
@@ -948,14 +911,6 @@ function AppInner() {
                     {/* Notification List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
                       {[
-                        {
-                          id: 'n1',
-                          title: 'E-Way Bill Auto-Regeneration',
-                          desc: 'Auto-option to create a new e-way bill for expired or un-loaded vehicle orders.',
-                          time: 'Just now',
-                          icon: FileCheck,
-                          color: '#10b981',
-                        },
                         {
                           id: 'n2',
                           title: 'Trip Profitability Analysis',
@@ -1067,14 +1022,118 @@ function AppInner() {
               );
             })()}
             <div className="sep-v" />
-            <div className="user-chip">
-              <div className="user-info">
-                <div className="user-name">{user.name}</div>
-                <div className="user-role">{user.role}</div>
+            <div style={{ position: 'relative' }}>
+              <div className="user-chip" onClick={() => setUserMenuOpen(prev => !prev)}>
+                <div className="user-info">
+                  <div className="user-name">{user.name}</div>
+                  <div className="user-role">{user.role}</div>
+                </div>
+                <div className="user-avatar" style={{ fontSize: '14px', fontWeight: 800, color: 'white' }}>
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
               </div>
-              <div className="user-avatar" style={{ fontSize: '14px', fontWeight: 800, color: 'white' }}>
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+
+              {/* User Dropdown Menu */}
+              <AnimatePresence>
+                {userMenuOpen && (
+                  <>
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} onClick={() => setUserMenuOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      style={{
+                        position: 'absolute',
+                        top: '48px',
+                        right: 0,
+                        width: '240px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '14px',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.12)',
+                        zIndex: 1000,
+                        overflow: 'hidden',
+                        padding: '8px'
+                      }}
+                    >
+                      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{user.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Role: <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{user.role}</span></div>
+                      </div>
+
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={() => {
+                            setActive('admin_settings');
+                            setSubActive('');
+                            setUserMenuOpen(false);
+                            setShowMobileMenu(false);
+                          }}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: active === 'admin_settings' ? 'var(--bg-th)' : 'transparent',
+                            color: active === 'admin_settings' ? 'var(--primary)' : 'var(--text)',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.15s',
+                            fontFamily: 'inherit',
+                            marginBottom: '4px'
+                          }}
+                          onMouseEnter={e => { if (active !== 'admin_settings') e.currentTarget.style.background = 'var(--bg-th)'; }}
+                          onMouseLeave={e => { if (active !== 'admin_settings') e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <Settings size={16} />
+                          <span>System Settings & Admin</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          logout();
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--text-muted)',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.15s',
+                          fontFamily: 'inherit'
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = 'rgba(244, 63, 94, 0.08)';
+                          e.currentTarget.style.color = 'var(--danger)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.color = 'var(--text-muted)';
+                        }}
+                      >
+                        <LogOut size={16} />
+                        <span>Logout</span>
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>

@@ -5,9 +5,13 @@
     "client",
     "server"
   ],
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "build": "npm run build -w vgtc-client",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test": "npm run test -w vgtc-server"
   },
   "dependencies": {
     "axios": "^1.6.8",

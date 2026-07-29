@@ -1,6 +1,24 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
+// Shipped placeholder from apphosting.yaml. Treated as "not configured" so a
+// forgotten deploy step fails loudly at startup instead of silently swallowing
+// every OTP, password reset, and fleet alert.
+const PLACEHOLDER_SMTP_USER = 'your-email@gmail.com';
+
+const isEmailConfigured = () =>
+    !!process.env.SMTP_USER &&
+    process.env.SMTP_USER !== PLACEHOLDER_SMTP_USER &&
+    !!process.env.SMTP_PASS;
+
+if (!isEmailConfigured()) {
+    const reason = process.env.SMTP_USER === PLACEHOLDER_SMTP_USER
+        ? `SMTP_USER is still the placeholder "${PLACEHOLDER_SMTP_USER}"`
+        : 'SMTP_USER or SMTP_PASS is not set';
+    console.error(`[Email] NOT CONFIGURED — ${reason}.`);
+    console.error('[Email] Outbound mail is disabled: OTP login, password reset, and daily alerts will not be delivered.');
+}
+
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: process.env.SMTP_PORT || 587,
@@ -12,8 +30,8 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendOTP = async (email, otp) => {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        console.warn('[Email] SMTP credentials missing. OTP email not sent. OTP is:', otp);
+    if (!isEmailConfigured()) {
+        console.warn('[Email] SMTP not configured. OTP email not sent. OTP is:', otp);
         return;
     }
 
@@ -45,4 +63,4 @@ const sendOTP = async (email, otp) => {
     }
 };
 
-module.exports = { sendOTP };
+module.exports = { sendOTP, isEmailConfigured };

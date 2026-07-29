@@ -1,7 +1,7 @@
 const http = require('http');
 const jwt = require('jsonwebtoken');
 
-const BASE = 'http://localhost:5000/api';
+const BASE = 'http://127.0.0.1:5000/api';
 const TOKEN = jwt.sign(
   { id: 'test-user', role: 'admin', orgId: 'vgtc', name: 'Test Admin' },
   'vgtc-secret-2026',
