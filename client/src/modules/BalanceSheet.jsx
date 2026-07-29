@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock, Banknote, ArrowRight
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -707,6 +707,33 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [dieselVerifyForm, setDieselVerifyForm] = useState({ litres: '', pump: '' });
   const [dieselVerifySaving, setDieselVerifySaving] = useState(false);
 
+  // ── Send to Pay ───────────────────────────────────────────────────────────
+  // Done one truck at a time, from inside that truck's entries: the clerk opens
+  // it, ticks the entries to hand over — with Monthly / All Pending / Till Date
+  // as quick selections — and sends those. Batches hold only trip ids; every
+  // rupee is still computed here and in Pay from the same vouchers, so there is
+  // nothing to keep in sync.
+  const [batches, setBatches] = useState([]);
+  const [sending, setSending] = useState(false);
+  // Quick-select presets inside a truck. The clerk still confirms the ticked
+  // entries before sending — a preset only sets the selection.
+  const [payMonth, setPayMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [payTillDate, setPayTillDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const fetchBatches = useCallback(async () => {
+    try { setBatches((await ax.get('/freight-batches', { params: { open: 1 }, _skipCache: true })).data || []); }
+    catch { setBatches([]); }
+  }, []);
+  useEffect(() => { fetchBatches(); }, [fetchBatches]);
+
+  /** voucherId -> the open batch holding it, so a row can show it is already gone. */
+  const sentVoucherIds = useMemo(() => {
+    const map = new Map();
+    batches.forEach(b => (b.voucherIds || []).forEach(id => map.set(id, b)));
+    return map;
+  }, [batches]);
+
+
   const executeDieselVerify = async () => {
     if (!dieselVerifyTarget) return;
     setDieselVerifySaving(true);
@@ -949,6 +976,90 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     return filtered;
   }, [allTrucks, truckGroups, filters, vehicles]);
 
+  /**
+   * An entry can go to Pay only if it still owes something and has not already
+   * been handed over. Anything else is filtered out of every preset, so the
+   * clerk cannot send the same trip twice by accident.
+   */
+  const canSendToPay = useCallback(
+    v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0) && !sentVoucherIds.has(v.id),
+    [selVehicle, sentVoucherIds],
+  );
+
+  /**
+   * An entry is not fit to be paid until its numbers are settled. Sending it
+   * anyway pushes an incomplete figure into Pay, and once paid the balance
+   * sheet is wrong with no obvious sign why — so it is blocked here rather than
+   * discovered later.
+   */
+  const payBlockers = useCallback((v) => {
+    const problems = [];
+    const dieselVal = parseFloat(v.advanceDiesel);
+    const hasDiesel = (!isNaN(dieselVal) && dieselVal > 0) || v.advanceDiesel === 'FULL' || v.isFullTank;
+    if (hasDiesel && !v.isDieselVerified) problems.push('Diesel not verified');
+    if ((parseFloat(v.advanceOnline) || 0) > 0 && !v.isOnlinePaid) problems.push('Online advance not paid');
+    if (!(parseFloat(v.rate) > 0)) problems.push('Rate not entered');
+    return problems;
+  }, []);
+
+  // Raised instead of sending when any ticked entry is not ready.
+  const [sendBlocked, setSendBlocked] = useState(null);
+
+  const sendableRows = useMemo(() => allVisibleRows.filter(canSendToPay), [allVisibleRows, canSendToPay]);
+  const alreadySentCount = useMemo(
+    () => allVisibleRows.filter(v => sentVoucherIds.has(v.id)).length,
+    [allVisibleRows, sentVoucherIds],
+  );
+  const notReadyCount = useMemo(
+    () => sendableRows.filter(v => payBlockers(v).length).length,
+    [sendableRows, payBlockers],
+  );
+
+  /** Presets only set the tick boxes — the clerk still reviews before sending. */
+  const applyPayPreset = (kind) => {
+    let rows = sendableRows;
+    if (kind === 'month') rows = rows.filter(v => (v.date || '').slice(0, 7) === payMonth);
+    if (kind === 'till') rows = rows.filter(v => v.date && v.date <= payTillDate);
+    // 'pending' is every sendable entry, which is what sendableRows already is.
+    setSelected(new Set(rows.map(v => v.id)));
+    if (!rows.length) alert('Nothing matches that — those entries are either paid or already sent to Pay.');
+  };
+
+  const sendSelectedToPay = async () => {
+    const trips = selRows.filter(canSendToPay);
+    if (!trips.length || sending) return;
+
+    // Everything ticked has to be complete. Stop on the whole selection rather
+    // than quietly sending the good ones — the clerk asked for these entries.
+    const notReady = trips
+      .map(v => ({ v, problems: payBlockers(v) }))
+      .filter(x => x.problems.length);
+    if (notReady.length) { setSendBlocked(notReady); return; }
+
+    setSending(true);
+    try {
+      // The period is taken from what was actually ticked, so the batch records
+      // the real span rather than whatever the preset happened to be.
+      const dates = trips.map(v => v.date).filter(Boolean).sort();
+      const { data } = await ax.post('/freight-batches', {
+        batches: [{
+          type: tab,
+          truckNo: selTruck,
+          voucherIds: trips.map(v => v.id),
+          periodFrom: dates[0] || null,
+          periodTo: dates[dates.length - 1] || null,
+        }],
+      });
+      await fetchBatches();
+      setSelected(new Set());
+      const skipped = data.skipped?.length ? `\n${data.skipped.length} entry(s) were already sent and were left out.` : '';
+      alert(`Sent ${trips.length} entr${trips.length === 1 ? 'y' : 'ies'} for ${selTruck} to Pay.${skipped}`);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not send to Pay');
+      fetchBatches();
+    } finally { setSending(false); }
+  };
+
   return (
     <div>
       <div className="page-hd">
@@ -972,6 +1083,13 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
           <button className={`btn btn-sm ${showPnL ? 'btn-p' : 'btn-g'}`} onClick={() => setShowPnL(s => !s)} title="Toggle P&L columns (deductions + margin %)">
             <TrendingDown size={13} /> {showPnL ? 'Hide P&L' : 'P&L View'}
           </button>
+          {/* A whole-month report, so it belongs with the other page-level
+              actions rather than in the row that acts on ticked entries. */}
+          {selTruck && sortedMonths.length > 0 && (
+            <button className="btn btn-g btn-sm" onClick={() => { setSelectedPLMonth(sortedMonths[0] || ''); setShowMonthPLModal(true); }}>
+              <Printer size={13} /> Monthly P&L Report
+            </button>
+          )}
           {!lockedType && !isGeneric && (
             <div className="tab-grp">
               {TYPES.map(t => <button key={t} className={`tab-btn${tab === t ? ' tab-amber' : ''}`} onClick={() => setTab(t)}>{t.replace('_', ' ')}</button>)}
@@ -1151,6 +1269,51 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             </div>
           )}
 
+          {/* Send to Pay — pick the entries for this truck, then hand them over. */}
+          {allVisibleRows.length > 0 && (role === 'admin' || permissions?.balance === 'edit') && (
+            <div style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
+              padding: '12px 18px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Banknote size={16} color="#10b981" />
+                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>Send to Pay</span>
+              </div>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>Select:</span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <input type="month" className="fi" style={{ width: '135px', height: '30px', fontSize: '11.5px' }}
+                  value={payMonth} onChange={e => setPayMonth(e.target.value)} />
+                <button className="btn btn-g btn-sm" onClick={() => applyPayPreset('month')}>Monthly</button>
+              </div>
+
+              <button className="btn btn-g btn-sm" onClick={() => applyPayPreset('pending')}
+                title="Every entry still owing that has not been sent yet">
+                All Pending
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <input type="date" className="fi" style={{ width: '140px', height: '30px', fontSize: '11.5px' }}
+                  value={payTillDate} onChange={e => setPayTillDate(e.target.value)} />
+                <button className="btn btn-g btn-sm" onClick={() => applyPayPreset('till')}>Till Date</button>
+              </div>
+
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  {sendableRows.length} sendable
+                  {alreadySentCount > 0 && <> · <span style={{ color: 'var(--primary)' }}>{alreadySentCount} already sent</span></>}
+                  {notReadyCount > 0 && <> · <span style={{ color: '#f43f5e' }}>{notReadyCount} not ready</span></>}
+                </span>
+                <button className="btn btn-p btn-sm"
+                  disabled={sending || selRows.filter(canSendToPay).length === 0}
+                  onClick={sendSelectedToPay}>
+                  {sending ? <Loader2 size={13} className="spin" /> : <ArrowRight size={13} />}
+                  {sending ? 'Sending…' : `Send ${selRows.filter(canSendToPay).length} to Pay`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Select-all action bar */}
           {allVisibleRows.length > 0 && (
             <div style={{
@@ -1171,26 +1334,20 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   Due: {selOut > 0 ? fmtRs(selOut) : 'Cleared ✓'}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '7px' }}>
-                {(role === 'admin' || permissions?.balance === 'edit') && (
-                  <button className="btn btn-p btn-sm" onClick={triggerMarkSelectedPaid} disabled={marking} title="Mark selected entries as Paid">
-                    {marking ? <Loader2 size={13} className="spin" /> : <><CheckCircle2 size={13} /> Mark {selected.size} as Paid</>}
-                  </button>
-                )}
-                  <button className="btn btn-g btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab, orgName, selVehicle)}>
+                  {/* Print is the action for whatever is ticked, so it leads. */}
+                  <button className="btn btn-p btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab, orgName, selVehicle)}>
                     <Printer size={13} /> Print {selected.size} Selected
                   </button>
+                  {(role === 'admin' || permissions?.balance === 'edit') && (
+                    <button className="btn btn-g btn-sm" onClick={triggerMarkSelectedPaid} disabled={marking} title="Mark selected entries as Paid">
+                      {marking ? <Loader2 size={13} className="spin" /> : <><CheckCircle2 size={13} /> Mark {selected.size} as Paid</>}
+                    </button>
+                  )}
                   <button className="btn btn-g btn-sm" onClick={() => setSelected(new Set())}>
                     <X size={13} /> Clear
                   </button>
                 </div>
               </>)}
-              {selected.size === 0 && (
-                <div style={{ marginLeft: 'auto' }}>
-                  <button className="btn btn-g btn-sm" onClick={() => { setSelectedPLMonth(sortedMonths[0] || ''); setShowMonthPLModal(true); }}>
-                    <Printer size={13} /> Monthly P&L Report
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -1279,6 +1436,58 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             )}
           </AnimatePresence>
 
+          {/* Entries that are not ready to be handed to Pay. */}
+          <AnimatePresence>
+            {sendBlocked && (
+              <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}
+                onClick={() => setSendBlocked(null)}>
+                <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                  onClick={e => e.stopPropagation()}
+                  style={{ width: '94%', maxWidth: '520px', maxHeight: '80vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <AlertTriangle size={19} color="#f43f5e" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>
+                        {sendBlocked.length} entr{sendBlocked.length === 1 ? 'y is' : 'ies are'} not ready for Pay
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Nothing has been sent. Fix these, then send again.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '16px 0' }}>
+                    {sendBlocked.map(({ v, problems }) => (
+                      <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', background: 'var(--bg-tf)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>
+                            LR #{v.lrNo || '—'} <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '11.5px' }}>· {v.date || '—'}</span>
+                          </span>
+                          <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)' }}>{v.destination || v.partyName || ''}</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                          {problems.map(p => (
+                            <span key={p} style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10.5px', fontWeight: 800, background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}>{p}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '16px' }}>
+                    Verify diesel in the Diesel Control module, mark online advances paid under Pay → Online Advance,
+                    and enter any missing rate on the entry itself.
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn btn-p" onClick={() => setSendBlocked(null)}>Got it</button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
           <AnimatePresence>
             {confirmMarkPaid && (
               <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}>
@@ -1354,10 +1563,11 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   <th style={TH}>Paid</th>
                   <th style={TH}>Outstanding</th>
                   <th style={TH}><ColumnFilter label="Status" colKey="status" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  <th style={TH}>Sent to Pay</th>
                 </tr>
               </thead>
               <tbody>
-                {truckSummaries.length === 0 && <tr><td colSpan={9} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No records</td></tr>}
+                {truckSummaries.length === 0 && <tr><td colSpan={10} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No records</td></tr>}
                 {truckSummaries.map(({ truck, trips, gross, net, paid, outstanding, gpsType }, i) => (
                   <tr key={truck}
                     style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', cursor: 'pointer', transition: 'background 0.12s' }}
@@ -1403,6 +1613,29 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                           </div>;
                         })()
                       }
+                    </td>
+                    {/* Already handed to Pay — stops the same trips going twice
+                        and tells the clerk when the office owes it by. */}
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      {(() => {
+                        const open = batches.filter(b => b.truckNo === truck);
+                        if (!open.length) return <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>;
+                        const trips = open.reduce((s, b) => s + (b.voucherIds || []).length, 0);
+                        const due = open.map(b => b.dueDate).filter(Boolean).sort()[0];
+                        const overdue = due && due < new Date().toISOString().slice(0, 10);
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', fontSize: '11px', fontWeight: 700 }}>
+                              <ArrowRight size={10} /> {trips} trip{trips === 1 ? '' : 's'}
+                            </span>
+                            {due && (
+                              <span style={{ fontSize: '9px', fontWeight: 800, color: overdue ? '#f43f5e' : 'var(--text-muted)' }}>
+                                due {due}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
