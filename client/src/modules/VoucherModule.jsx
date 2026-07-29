@@ -37,6 +37,24 @@ const getAllowedPump = (pump, advanceDiesel, pumpOptions = []) => {
     return pump && pump !== NONE_PUMP ? pump : (pumps[0] || NONE_PUMP);
 };
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
+
+/**
+ * A diesel advance must name a real fuel station. Saved with pump "None" it
+ * lands in the pump ledger under no station, can never be matched to any
+ * monthly bill, and therefore can never be verified or paid — the "None" rows
+ * the ledger used to accumulate. Returns a user-facing reason, or null if fine.
+ */
+const dieselPumpProblem = (advanceDiesel, isFullTank, pump, pumpOptions = []) => {
+    if (!hasDieselAdvance(advanceDiesel) && !isFullTank) return null;
+    const stations = pumpOptions.filter(p => p !== NONE_PUMP);
+    if (!stations.length) {
+        return 'No fuel station is registered, so a diesel advance cannot be recorded. Add the station first under Admin Settings → Fuel Stations.';
+    }
+    if (!pump || pump === NONE_PUMP) {
+        return 'Select the fuel station this diesel was taken from — a diesel advance cannot be saved without one.';
+    }
+    return null;
+};
 const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill' || type === 'Bahadurgarh_Bill';
 
 const getCalc = (w, r, hasComm) => {
@@ -592,6 +610,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     const requestSave = () => {
         if (markInvalidFields(modalRef.current)) return;
         if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) return;
+        // Same rule as the create form: diesel needs a real station or the
+        // pump ledger gets an unbillable "None" row.
+        const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
+        if (pumpProblem) { alert(pumpProblem); return; }
         setIsConfirming(true);
     };
 
@@ -1113,6 +1135,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             alert('Truck No. is required');
             return;
         }
+        // Diesel advance without a station would create an unbillable "None"
+        // row in the pump ledger.
+        const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
+        if (pumpProblem) { alert(pumpProblem); return; }
 
         // Check delivery LR duplicates for factory types
         if (isFactory) {
@@ -1552,11 +1578,20 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             )}
                                             <div className="field-h">
                                                 <label><Fuel size={11} style={{ marginRight: '4px' }} /> Diesel Advance</label>
-                                                <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                                                    <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
-                                                    <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
-                                                        onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
-                                                </div>
+                                                {/* No registered station → diesel cannot be recorded at all.
+                                                    Saved with pump "None" it can never be matched to a monthly
+                                                    bill, so it is blocked here instead of failing at save. */}
+                                                {pumpOptions.filter(p => p !== NONE_PUMP).length === 0 ? (
+                                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--warn)', padding: '9px 12px', background: 'rgba(245,158,11,0.08)', border: '1px dashed rgba(245,158,11,0.4)', borderRadius: '8px', width: '100%' }}>
+                                                        No fuel station registered — add one under Admin Settings → Fuel Stations to record diesel.
+                                                    </div>
+                                                ) : (
+                                                    <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                                        <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
+                                                        <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
+                                                            onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="field-h">
                                                 <label><Wallet size={11} style={{ marginRight: '4px' }} /> Cash Advance</label>

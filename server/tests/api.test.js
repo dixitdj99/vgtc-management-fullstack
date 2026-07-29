@@ -1,7 +1,9 @@
 const http = require('http');
 const jwt = require('jsonwebtoken');
 
-const BASE = 'http://127.0.0.1:5000/api';
+// Overridable so the suite can run against a throwaway instance on another
+// port while a dev server is already holding 5000 with older code.
+const BASE = process.env.API_BASE || 'http://127.0.0.1:5000/api';
 const TOKEN = jwt.sign(
   { id: 'test-user', role: 'admin', orgId: 'vgtc', name: 'Test Admin' },
   'vgtc-secret-2026',
@@ -278,6 +280,171 @@ test('GET /payments', async () => {
 test('GET /vehicles without token => 401', async () => {
   const res = await get('/vehicles', false);
   assert(res.status === 401, `expected 401 got ${res.status}`);
+});
+
+// ── Freight batches ────────────────────────────────────────────────────────
+// A batch records which trips a clerk sent from a balance sheet to Pay. The
+// duplicate guard is the rule worth testing: the same trip in two open batches
+// means it gets paid twice.
+const stamp = Date.now();
+const tripA = `test-voucher-a-${stamp}`;
+const tripB = `test-voucher-b-${stamp}`;
+const testTruck = `TEST${stamp}`;
+const createdBatchIds = [];
+
+test('GET /freight-batches', async () => {
+  const res = await get('/freight-batches');
+  assertGet(res);
+});
+
+test('POST /freight-batches creates a batch', async () => {
+  const res = await post('/freight-batches', {
+    batches: [{
+      type: 'Kosli_Bill', truckNo: testTruck, voucherIds: [tripA, tripB],
+      periodFrom: '2026-07-01', periodTo: '2026-07-31',
+    }],
+  });
+  assert(res.status === 201, `expected 201 got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(res.data.created?.length === 1, 'expected one batch created');
+  assert(res.data.created[0].voucherIds.length === 2, 'expected both trips in the batch');
+  assert(res.data.created[0].dueDate === null, 'dueDate should start unset');
+  createdBatchIds.push(res.data.created[0].id);
+});
+
+test('POST /freight-batches refuses trips already sent', async () => {
+  const res = await post('/freight-batches', {
+    batches: [{ type: 'Dump', truckNo: testTruck, voucherIds: [tripA] }],
+  });
+  assert(res.status === 409, `expected 409 got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(res.data.skipped?.some(s => s.voucherId === tripA), 'expected tripA reported as skipped');
+});
+
+test('POST /freight-batches sends only the trips not already sent', async () => {
+  const tripC = `test-voucher-c-${stamp}`;
+  const res = await post('/freight-batches', {
+    batches: [{ type: 'Dump', truckNo: testTruck, voucherIds: [tripA, tripC] }],
+  });
+  assert(res.status === 201, `expected 201 got ${res.status}`);
+  assert(res.data.created[0].voucherIds.length === 1, 'expected only the unsent trip');
+  assert(res.data.created[0].voucherIds[0] === tripC, 'expected tripC to be the one sent');
+  assert(res.data.skipped.length === 1, 'expected tripA skipped');
+  createdBatchIds.push(res.data.created[0].id);
+});
+
+test('POST /freight-batches rejects an empty trip list', async () => {
+  const res = await post('/freight-batches', {
+    batches: [{ type: 'Kosli_Bill', truckNo: testTruck, voucherIds: [] }],
+  });
+  assert(res.status === 400, `expected 400 got ${res.status}`);
+});
+
+test('PATCH /freight-batches/bulk/due-date spans a truck\'s modules', async () => {
+  const res = await patch('/freight-batches/bulk/due-date', { truckNo: testTruck, dueDate: '2026-08-15' });
+  assert(res.status === 200, `expected 200 got ${res.status} ${JSON.stringify(res.data)}`);
+  // Two batches, two different modules, one due date — that is the merged row.
+  assert(res.data.updated === 2, `expected 2 batches updated, got ${res.data.updated}`);
+});
+
+test('PATCH /freight-batches/:id rejects a bad due date', async () => {
+  const res = await patch(`/freight-batches/${createdBatchIds[0]}`, { dueDate: '15-08-2026' });
+  assert(res.status === 400, `expected 400 got ${res.status}`);
+});
+
+test('PATCH /freight-batches/:id cannot rewrite the trip list', async () => {
+  const res = await patch(`/freight-batches/${createdBatchIds[0]}`, { voucherIds: ['smuggled'] });
+  assert(res.status === 400, `expected 400 got ${res.status}`);
+});
+
+test('cancelling frees its trips to be sent again', async () => {
+  const cancel = await patch(`/freight-batches/${createdBatchIds[0]}`, { cancel: true });
+  assert(cancel.status === 200, `expected 200 got ${cancel.status}`);
+  const res = await post('/freight-batches', {
+    batches: [{ type: 'Kosli_Bill', truckNo: testTruck, voucherIds: [tripA] }],
+  });
+  assert(res.status === 201, `expected the cancelled trip to be sendable, got ${res.status}`);
+  createdBatchIds.push(res.data.created[0].id);
+});
+
+test('GET /freight-batches without token => 401', async () => {
+  const res = await get('/freight-batches', false);
+  assert(res.status === 401, `expected 401 got ${res.status}`);
+});
+
+// Leave dev Firestore as we found it. There is no delete by design — a sent
+// batch stays auditable — so cancel is the cleanup.
+test('cleanup: cancel the batches these tests created', async () => {
+  for (const id of createdBatchIds) {
+    const res = await patch(`/freight-batches/${id}`, { cancel: true });
+    assert(res.status === 200, `cleanup failed for ${id}: ${res.status}`);
+  }
+});
+
+// ── Party brands ───────────────────────────────────────────────────────────
+// Parties carry which lists they belong to (jklakshmi/jksuper). Junk brand
+// values must be dropped, not stored — a typo must not hide a party somewhere.
+let brandPartyId;
+test('POST /parties persists brands and drops junk values', async () => {
+  const res = await post('/parties', {
+    name: `TEST BRAND PARTY ${stamp}`,
+    type: 'customer',
+    brands: ['jklakshmi', 'bogus', 'jklakshmi'],
+  });
+  assert(res.status >= 200 && res.status < 300, `expected 2xx got ${res.status} ${JSON.stringify(res.data)}`);
+  brandPartyId = res.data.id;
+  assert(JSON.stringify(res.data.brands) === '["jklakshmi"]',
+    `expected ["jklakshmi"], got ${JSON.stringify(res.data.brands)}`);
+  cleanup.push(() => del(`/parties/${brandPartyId}`));
+});
+
+// ── Pump monthly bill ──────────────────────────────────────────────────────
+// The bill flow records one payment (category Pump) then stamps each voucher
+// with dieselBillPaymentId, which is what keeps a settled entry out of every
+// later bill run. Both halves must persist.
+let pumpVoucherId, pumpPaymentId;
+test('POST /vouchers creates a diesel entry for the bill flow', async () => {
+  const res = await post('/vouchers', {
+    type: 'Dump', lrNo: `9${stamp % 100000}`, date: '2026-07-20',
+    truckNo: `TESTPUMP${stamp % 1000}`, weight: '5', rate: '100',
+    advanceDiesel: '2000', pump: `TEST PUMP ${stamp}`,
+  });
+  assert(res.status >= 200 && res.status < 300, `expected 2xx got ${res.status}`);
+  pumpVoucherId = res.data.id;
+  cleanup.push(() => del(`/vouchers/${pumpVoucherId}`));
+});
+
+test('POST /payments (category Pump) returns an id and echoes meta', async () => {
+  const res = await post('/payments', {
+    profileName: `TEST PUMP ${stamp}`, category: 'Pump', amount: 2000,
+    date: '2026-08-01', paymentMethod: 'Online',
+    remark: `Diesel bill 2026-07 — TEST PUMP ${stamp}`,
+    meta: { billMonth: '2026-07', voucherIds: [pumpVoucherId] },
+  });
+  assert(res.status >= 200 && res.status < 300, `expected 2xx got ${res.status}`);
+  pumpPaymentId = res.data.id;
+  assert(!!pumpPaymentId, 'expected a payment id');
+  assert(res.data.meta?.voucherIds?.[0] === pumpVoucherId, 'expected meta.voucherIds to persist');
+  cleanup.push(() => del(`/payments/${pumpPaymentId}`));
+});
+
+test('PATCH /vouchers/:id persists the settled marker', async () => {
+  if (!pumpVoucherId) throw new Error('no test voucher');
+  const res = await patch(`/vouchers/${pumpVoucherId}`, {
+    dieselBillPaymentId: pumpPaymentId, dieselBillPaidAt: '2026-08-01',
+  });
+  assert(res.status >= 200 && res.status < 300, `expected 2xx got ${res.status}`);
+  const all = await get('/vouchers/Dump');
+  const v = (all.data || []).find(x => x.id === pumpVoucherId);
+  assert(v && v.dieselBillPaymentId === pumpPaymentId,
+    `expected marker on voucher, got ${JSON.stringify(v?.dieselBillPaymentId)}`);
+});
+
+test('PATCH /parties/:id can widen brands', async () => {
+  if (!brandPartyId) throw new Error('no test party');
+  const res = await patch(`/parties/${brandPartyId}`, { brands: ['jklakshmi', 'jksuper'] });
+  assert(res.status >= 200 && res.status < 300, `expected 2xx got ${res.status}`);
+  const all = await get('/parties');
+  const p = (all.data || []).find(x => x.id === brandPartyId);
+  assert(p && p.brands.length === 2, `expected both brands, got ${JSON.stringify(p?.brands)}`);
 });
 
 // Run
