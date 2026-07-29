@@ -57,4 +57,27 @@ router.post('/', async (req, res) => {
     }
 });
 
+// DELETE a payment (org-checked). Until now a mistyped firm/pump payment could
+// never be removed at all — it sat in every ledger forever.
+router.delete('/:id', async (req, res) => {
+    try {
+        if (!isAvailable()) {
+            const doc = localStore.getAll(PAYMENTS_COL).find(d => d.id === req.params.id && d.orgId === req.orgId);
+            if (!doc) return res.status(404).json({ error: 'Payment not found' });
+            localStore.delete(PAYMENTS_COL, req.params.id);
+        } else {
+            const ref = db.collection(getCol(PAYMENTS_COL, req)).doc(req.params.id);
+            const doc = await ref.get();
+            if (!doc.exists || doc.data().orgId !== req.orgId) {
+                return res.status(404).json({ error: 'Payment not found' });
+            }
+            await ref.delete();
+        }
+        res.json({ message: 'Payment deleted' });
+    } catch (err) {
+        console.error('delete payment error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
