@@ -13,6 +13,7 @@ import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import { openReceiptWindow } from '../utils/receiptPrint';
+import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 
 const PAGE_SIZE = 20;
 
@@ -1219,14 +1220,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const partySuggestions = useMemo(() => {
-    const validParties = parties.filter(p => p.type === 'customer' || p.type === 'broker');
+    // Only this side's parties. JK Lakshmi and JK Super trade with different
+    // dealers, so offering the whole pool here put the wrong names one
+    // keystroke away. Untagged parties still appear (partyVisibleIn) until the
+    // backfill or Party Master sorts them. The legacy names below come from
+    // this module's own receipts and challans, so they are already scoped.
+    const group = brandOfLr(brand);
+    const validParties = parties.filter(p =>
+      (p.type === 'customer' || p.type === 'broker') && partyVisibleIn(p, group));
     const legacyNames = buildPartySuggestions(
       receipts.map(r => r.partyName),
       allChallans.map(c => c.partyName),
       openChallans.map(c => c.partyName)
     );
     return [...new Set([...validParties.map(p => p.name), ...legacyNames])].sort();
-  }, [parties, receipts, allChallans, openChallans]);
+  }, [parties, receipts, allChallans, openChallans, brand]);
 
   const startRecording = async () => {
     try {

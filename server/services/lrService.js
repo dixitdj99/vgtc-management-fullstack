@@ -3,12 +3,38 @@ const { normalizePartyName } = require('../utils/partyNameUtils');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
+const { brandOfLr } = require('../utils/partyBrands');
 
 const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
 
+/**
+ * Party group for an LR collection. The collection name is the one thing every
+ * caller already passes that identifies the location — routes and client need
+ * no change. Names may carry an env prefix (dev_...), hence includes().
+ * Plain 'loading_receipts' is generic orgs: no split.
+ */
+const groupOfLrCollection = (col = '') => {
+    if (col.includes('jkl_loading_receipts')) return 'jklakshmi';
+    if (col.includes('kosli_loading_receipts')
+        || col.includes('jhajjar_loading_receipts')
+        || col.includes('bahadurgarh_loading_receipts')) return 'jksuper';
+    return null;
+};
+
 // ── Party Sync Helper ──────────────────────────────────────────────────────────
-const syncParty = async (orgId, partyName) => {
+/**
+ * Ensures a party exists for `partyName` and returns its id.
+ *
+ * `group` is the party list this LR belongs to ('jklakshmi' | 'jksuper' |
+ * null). A new party is created already tagged with it, so auto-created
+ * parties land in the right list instead of leaking into both. If the party
+ * exists but lacks the group, the group is ADDED — the same dealer name used
+ * on both sides becomes a both-lists party, which is exactly what the tick
+ * boxes in Party Master express. Groups are never removed here: an LR proves
+ * a party trades somewhere, never that it stopped trading elsewhere.
+ */
+const syncParty = async (orgId, partyName, group = null) => {
     if (!partyName) return null;
     try {
         const parties = await partyService.getAllParties(orgId);
@@ -17,8 +43,14 @@ const syncParty = async (orgId, partyName) => {
             party = await partyService.createParty(orgId, {
                 name: partyName,
                 type: 'customer',
-                isActive: true
+                isActive: true,
+                brands: group ? [group] : [],
             });
+        } else if (group && Array.isArray(party.brands) && party.brands.length && !party.brands.includes(group)) {
+            // Tagged, but not with this side — widen it. An untagged party
+            // (empty brands) is left for the backfill/Party Master, since it
+            // is already visible everywhere.
+            await partyService.updateParty(party.id, { brands: [...party.brands, group] });
         }
         return party.id;
     } catch (err) {
@@ -53,8 +85,9 @@ const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METAD
 
 const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
+    const group = groupOfLrCollection(lrCollection);
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName);
+    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
 
     const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection);
     const batch = db.batch();
@@ -63,7 +96,7 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName));
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
 
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
@@ -108,15 +141,16 @@ const localGetNextLrNo = (orgId, collectionName = 'lr_no') => {
 
 const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
+    const group = groupOfLrCollection(lrCollection);
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName);
-    
+    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
+
     const lrNo = localGetNextLrNo(orgId, counterCollection);
     const createdIds = [];
-    
+
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName));
+        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
 
         const doc = localStore.insert(lrCollection, {
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
