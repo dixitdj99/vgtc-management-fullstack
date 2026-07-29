@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ax from '../api';
+import { useAuth } from '../auth/AuthContext';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -147,7 +148,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
 }
 
 /* ── Print helper ── */
-function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
+function printReceipt(allRows, lrNo, allChallans = [], brand = '', signedBy = 'VGTC') {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
@@ -337,7 +338,7 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
               <tr>
                 <td>
                   ${m.material}
-                  ${m.billing && m.billing !== 'No' ? `<span style="font-size: 8pt; font-weight: normal; display: block; color: #444; margin-top: 1px;">Challan: ${m.billing}</span>` : ''}
+                  ${m.billing && m.billing !== 'No' ? `<span style="font-size: 8pt; font-weight: 700; display: block; color: #000; margin-top: 1px;">Challan: ${m.billing}</span>` : ''}
                 </td>
                 <td style="text-align:center">${m.totalBags}</td>
                 <td style="text-align:right">${Number(m.weight).toFixed(2)}</td>
@@ -356,7 +357,7 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
         <div class="sig-box">Driver</div>
         <div class="digital-sig-box">
           <span class="digital-sig-title">Digitally Signed</span>
-          <span class="digital-sig-text">VGTC Admin</span>
+          <span class="digital-sig-text">${signedBy}</span>
           <span class="digital-sig-footer">Auth. Signatory</span>
         </div>
       </div>
@@ -367,12 +368,12 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
 
   const materialRowsHtml = rows.map(m => `
     <tr>
-      <td style="padding:4px 8px;border:1px solid #ccc;font-size:11px;font-weight:700;">
-        ${m.material}${m.loadingType && m.loadingType !== 'Godown' ? ` <span style="font-size:9px;color:#555;">(${m.loadingType})</span>` : ''}
-        ${m.billing && m.billing !== 'No' ? `<span style="font-size:9.5px;font-weight:normal;display:block;color:#444;margin-top:1px;">Challan: ${m.billing}</span>` : ''}
+      <td style="padding:4px 8px;border:1px solid #000;font-size:11px;font-weight:800;">
+        ${m.material}${m.loadingType && m.loadingType !== 'Godown' ? ` <span style="font-size:9.5px;font-weight:700;">(${m.loadingType})</span>` : ''}
+        ${m.billing && m.billing !== 'No' ? `<span style="font-size:9.5px;font-weight:700;display:block;margin-top:1px;">Challan: ${m.billing}</span>` : ''}
       </td>
-      <td style="padding:4px 8px;border:1px solid #ccc;text-align:center;font-size:11px;font-weight:700;">${m.totalBags}</td>
-      <td style="padding:4px 8px;border:1px solid #ccc;text-align:right;font-size:11px;font-weight:700;">${Number(m.weight).toFixed(2)} MT</td>
+      <td style="padding:4px 8px;border:1px solid #000;text-align:center;font-size:11.5px;font-weight:800;">${m.totalBags}</td>
+      <td style="padding:4px 8px;border:1px solid #000;text-align:right;font-size:11.5px;font-weight:800;">${Number(m.weight).toFixed(2)} MT</td>
     </tr>
   `).join('');
 
@@ -384,7 +385,7 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
         .content-wrap { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: flex-start; }
         .hd { text-align: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
         .hd .co { font-size: 14.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15; }
-        .hd .sub { font-size: 9.5px; margin-top: 2px; color: #111; font-weight: 700; }
+        .hd .sub { font-size: 10px; margin-top: 2px; color: #000; font-weight: 800; }
         .lr-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .lr-badge {
           font-size: 14px;
@@ -397,15 +398,19 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
         }
         .lr-date { font-size: 11px; font-weight: 800; }
         .sec { border: 1.5px solid #000; border-radius: 3px; margin-bottom: 6px; background: #fff; overflow: hidden; }
-        .line { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #ccc; font-size: 11px; }
+        .line { display: flex; justify-content: space-between; align-items: center; gap: 4mm; padding: 4px 8px; border-bottom: 1px solid #000; font-size: 11px; }
         .line:last-child { border-bottom: none; }
         .lbl { font-weight: 900; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0; color: #000; }
-        .val { font-weight: 700; text-align: right; color: #000; font-size: 11.5px; }
+        .val { font-weight: 800; text-align: right; color: #000; font-size: 11.5px; }
         table { width: 100%; border-collapse: collapse; margin-top: 0; }
-        th { font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border: 1px solid #000; background: #eee; text-align: left; }
-        .tot-row td { font-weight: 900; font-size: 12px; background: #eee; border-top: 2px solid #000; padding: 5px 8px; }
+        th { font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border: 1px solid #000; background: #ddd; text-align: left; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .tot-row td { font-weight: 900; font-size: 12.5px; background: #ddd; border-top: 2px solid #000; padding: 5px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .sig { display: flex; justify-content: space-between; margin-top: auto; padding-top: 10px; gap: 6px; }
-        .sig-box { flex: 1; text-align: center; font-size: 9px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; text-transform: uppercase; white-space: nowrap; }`,
+        .sig-box { flex: 1; text-align: center; font-size: 9.5px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; text-transform: uppercase; white-space: nowrap; }
+        .signed { margin-top: 6px; border: 1.5px solid #000; border-radius: 3px; padding: 3px 6px; text-align: center; }
+        .signed-k { display: block; font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
+        .signed-v { display: block; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.1; }
+        .signed-f { display: block; font-size: 7px; font-weight: 700; }`,
     body: `
       <div class="content-wrap">
         <div class="hd">
@@ -448,7 +453,11 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '') {
       <div class="sig">
         <div class="sig-box">Driver</div>
         <div class="sig-box">Receiver</div>
-        <div class="sig-box">Authorised</div>
+      </div>
+      <div class="signed">
+        <span class="signed-k">Digitally Signed</span>
+        <span class="signed-v">${signedBy}</span>
+        <span class="signed-f">Auth. Signatory</span>
       </div>`,
   });
 }
@@ -1132,6 +1141,10 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
+  // Whoever is logged in signs the receipts they print.
+  const { user } = useAuth();
+  const signedBy = user?.name || user?.username || 'VGTC';
+
   // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
   const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : brand === 'bahadurgarh' ? 'lr_bahadurgarh' : 'lr_jkl';
   const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
@@ -1549,8 +1562,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       rememberSticky('lr.date', form.date);
       setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
 
-      // Auto open print page, no notification popup
-      printReceipt([res.data], res.data.lrNo, allChallans, brand);
+      // POST /lr answers with { lrNo, ids } — a receipt number and the document
+      // ids it wrote, NOT the rows themselves. Handing that to the printer as if
+      // it were a row printed a slip with the number filled in and every other
+      // field undefined. Rebuild the rows we just submitted instead; the shape
+      // below mirrors lrService.createLoadingReceipt field for field, so this
+      // slip is identical to one printed from the list afterwards.
+      const printedRows = materialsWithParty.map(m => ({
+        lrNo: res.data.lrNo,
+        date: payload.date || new Date().toISOString().slice(0, 10),
+        truckNo: payload.truckNo,
+        destination: payload.destination || '',
+        material: m.type,
+        loadingType: m.loadingType || 'From Godown',
+        weight: parseFloat(m.weight) || 0,
+        totalBags: parseInt(m.bags) || 0,
+        billing: m.billing || payload.billing || 'No',
+        partyName: m.partyName,
+      }));
+      printReceipt(printedRows, res.data.lrNo, allChallans, brand, signedBy);
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -2139,7 +2169,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
                         <td className="c">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans, brand)}>
+                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans, brand, signedBy)}>
                               <Printer size={14} />
                             </button>
                             {canEdit && (

@@ -39,6 +39,10 @@ const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
     background: #fff;
     font-size: ${fontSize};
     line-height: ${lineHeight};
+    /* Thermal heads lay down thin strokes unevenly and the paper is read at a
+       loading gate, not a desk. Everything on a slip is bold by default; the
+       templates only go heavier, never lighter. */
+    font-weight: 700;
     word-break: break-word;
     overflow-wrap: break-word;
   }
@@ -97,11 +101,12 @@ const autoHeightScript = ({ width, minHeight }) => `
     if (started) return;
     started = true;
     fit();
+    // window.print() blocks until the dialog is dismissed, so the handler has to
+    // be in place before the call — assigning it afterwards missed the event and
+    // left the window open behind the app.
+    window.onafterprint = function () { window.close(); };
     // One frame, so the rewritten rule is in the stylesheet before the dialog reads it.
-    requestAnimationFrame(function () {
-      window.print();
-      window.onafterprint = function () { window.close(); };
-    });
+    requestAnimationFrame(function () { window.print(); });
   }
 
   var settled = [new Promise(function (done) {

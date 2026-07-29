@@ -161,6 +161,38 @@ Not verified in a real browser — there is no headless browser in this repo, so
 the print measurement was checked by replaying the formula rather than by
 rendering. Worth a visual check on the actual thermal printer.
 
+### Follow-up round — blank receipt on create, bold text, dynamic signature
+
+**Blank slip when creating an LR.** Not caused by the 79mm work; it has been
+there all along. `POST /lr` answers `{ lrNo, ids }` — a receipt number and the
+document ids it wrote — because `lrService` explodes one submission into one row
+per material. `LRModule` handed that straight to the printer as `[res.data]`,
+so `rows[0].lrNo` matched, the guard passed, and every other field came out
+`undefined` / `NaN`. Printing the same LR from the list afterwards worked,
+which is why it looked like a print bug rather than a data one.
+
+Fixed by rebuilding the rows from the payload just submitted, mirroring
+`createLoadingReceipt` field for field so the auto-print and a later list print
+produce the same slip. Proven with a harness that extracts the real
+`printReceipt` / `printVoucher` out of the modules and runs them against both
+the list shape and the create shape — before: 4 `undefined` and a `NaN`; after:
+none. The voucher was never affected (its POST returns the whole doc), but it
+now prints `{...payload, ...response}` so a partial response cannot blank it.
+
+**Bold everywhere.** `font-weight: 700` is now the shell default and grey text
+is gone from every template — a thermal head dithers grey into something patchy
+and these are read at a loading gate. A blanket `color: #000` rule was tried
+first and reverted: it also blacked out the white-on-black NET PAYABLE banner.
+
+**Signature.** Was the constant "VGTC Admin" / "VGTC Account". Now the logged-in
+user, threaded as a `signedBy` argument. Added a signature block to the Dump
+loading receipt and the Sell receipt, which had none.
+
+Two other things fixed while in there:
+- `window.print()` blocks until the dialog closes, so assigning `onafterprint`
+  after the call missed the event and the print window never closed.
+- The Dump / JK Super voucher never printed the party name. It does now.
+
 ---
 
 # E-Way Bills — removed
