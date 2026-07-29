@@ -65,11 +65,15 @@ const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
      signature block sits at the bottom of a short receipt and is simply pushed
      further down by a long one. */
   body > .container { flex: 1 0 auto; display: flex; flex-direction: column; }
+  /* Floated out of flow deliberately: the height measurement runs on screen,
+     where this button is still displayed. In normal flow it added its own
+     height to the slip and every receipt asked for a page a centimetre or so
+     longer than the receipt actually was. */
   .no-print {
-    display: block;
-    width: 100%;
-    margin-top: 4mm;
-    padding: 8px;
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    padding: 8px 18px;
     background: #10b981;
     color: #fff;
     border: none;
@@ -77,6 +81,7 @@ const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
     font-weight: 800;
     font-size: 12px;
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
   @media print { .no-print { display: none; } }
 `;
@@ -92,10 +97,14 @@ const autoHeightScript = ({ width, minHeight }) => `
   var started = false;
 
   function heightMm() {
+    // Body only, deliberately. The root element's scroll height is floored at
+    // the viewport, so measuring it reported the height of the popup window
+    // rather than of the receipt: every slip asked for a page as tall as the
+    // window, and the printer then shrank the whole thing to fit that page.
+    // getBoundingClientRect is sub-pixel, which scrollHeight is not.
     var px = Math.max(
-      document.body.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.scrollHeight
+      document.body.getBoundingClientRect().height,
+      document.body.scrollHeight
     );
     // scrollHeight is a whole number of pixels, so a slip sitting exactly on the
     // ${minHeight}mm floor measures a shade over it and would round up to a
