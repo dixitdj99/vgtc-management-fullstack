@@ -7,7 +7,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json" id="app-manifest" />
+    <script>
+      /*
+       * The labour portal installs as its own app.
+       *
+       * There is one manifest for the whole origin and its start_url is "/",
+       * so installing while standing on the labour board produced a shortcut
+       * that opened the office login screen — no use to someone at the gate.
+       * Point the manifest at the labour one before the document finishes
+       * parsing, so it is already correct whenever the install prompt appears.
+       *
+       * Routing in App.jsx compares the path exactly, so this must stay
+       * "/labour" with no trailing slash, and so must start_url.
+       */
+      if (window.location.pathname === '/labour') {
+        document.getElementById('app-manifest').href = '/manifest-labour.json';
+      }
+    </script>
     <meta name="theme-color" content="#6366F1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/vgtc-logo.svg" />

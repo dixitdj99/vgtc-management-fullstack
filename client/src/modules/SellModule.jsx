@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ax from '../api';
+import { useAuth } from '../auth/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Plus, History, Trash2, RefreshCw,
@@ -21,6 +22,10 @@ const MCOL = { "PPC": "#6366f1", "OPC43": "#f59e0b", "Pro+": "#10b981", "Adstar"
 
 export default function SellModule({ brand = 'dump', role = 'user', permissions = {} }) {
   const MATS = brand === 'jkl' ? MATS_JKL : MATS_DUMP;
+
+  // Whoever is logged in signs the receipts they print.
+  const { user } = useAuth();
+  const signedBy = user?.name || user?.username || 'VGTC';
   
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -188,7 +193,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             }
             .hd .sub {
               font-size: 8.5pt;
-              font-weight: bold;
+              font-weight: 800;
               margin-top: 1px;
             }
             .sec {
@@ -209,14 +214,14 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             }
             .line:last-child { border-bottom: none; }
             .lbl {
-              font-weight: bold;
+              font-weight: 800;
               font-size: 8pt;
               text-transform: uppercase;
               color: #000;
               flex-shrink: 0;
             }
             .val {
-              font-weight: 800;
+              font-weight: 900;
               text-align: right;
             }
             .total-banner {
@@ -252,11 +257,33 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             .footer {
               text-align: center;
               font-size: 7.5pt;
-              font-weight: bold;
+              font-weight: 800;
               color: #000;
               border-top: 1px dashed #000;
               padding-top: 1.5mm;
-            }`,
+            }
+            .signed {
+              margin-top: 1.5mm;
+              border: 2px solid #000;
+              border-radius: 4px;
+              padding: 2px 5px;
+              text-align: center;
+            }
+            .signed-k {
+              display: block;
+              font-size: 6pt;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.3px;
+            }
+            .signed-v {
+              display: block;
+              font-family: 'Brush Script MT', cursive, sans-serif;
+              font-size: 14pt;
+              font-weight: 700;
+              line-height: 1.05;
+            }
+            .signed-f { display: block; font-size: 5.5pt; font-weight: 700; }`,
       body: `
           <div class="container">
             <div>
@@ -284,6 +311,12 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                 ${s.paymentStatus === 'pending' ? 'UNPAID / PENDING' : `PAID VIA ${s.paymentType.toUpperCase()}`}
               </div>
               
+              <div class="signed">
+                <span class="signed-k">Digitally Signed</span>
+                <span class="signed-v">${signedBy}</span>
+                <span class="signed-f">Auth. Signatory</span>
+              </div>
+
               <div class="footer">
                 <p>Thank you for your business!</p>
               </div>

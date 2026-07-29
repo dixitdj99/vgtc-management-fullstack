@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel, UserCircle, TrendingUp } from 'lucide-react';
+import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel, UserCircle, TrendingUp, Briefcase } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import AdminUserManagement from './AdminUserManagement';
 import AdminModule from '../../modules/AdminModule';
 import PartyMaster from '../../modules/PartyMaster';
 import FuelStationManager from './FuelStationManager';
+import FirmManager from './FirmManager';
 import StaffProfileModule from '../../modules/StaffProfileModule';
 import ProfitLossSheet from './ProfitLossSheet';
 
@@ -35,6 +36,7 @@ export default function AdminLayout() {
     { id: 'users', label: 'User Management', Icon: Users },
     { id: 'parties', label: 'Party Master', Icon: Building2 },
     { id: 'profiles', label: 'Staff Profiles', Icon: UserCircle },
+    { id: 'firms', label: 'Firms & Vendors', Icon: Briefcase },
     { id: 'fuel', label: 'Fuel Stations', Icon: Fuel },
     { id: 'backup', label: 'System & Backup', Icon: Cloud },
   ];
@@ -228,6 +230,7 @@ export default function AdminLayout() {
                 {active === 'users' && <AdminUserManagement />}
                 {active === 'parties' && <PartyMaster />}
                 {active === 'profiles' && <StaffProfileModule role="admin" />}
+                {active === 'firms' && <FirmManager />}
                 {active === 'fuel' && <FuelStationManager />}
                 {active === 'backup' && <AdminModule />}
               </motion.div>

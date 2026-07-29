@@ -37,6 +37,24 @@ const getAllowedPump = (pump, advanceDiesel, pumpOptions = []) => {
     return pump && pump !== NONE_PUMP ? pump : (pumps[0] || NONE_PUMP);
 };
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
+
+/**
+ * A diesel advance must name a real fuel station. Saved with pump "None" it
+ * lands in the pump ledger under no station, can never be matched to any
+ * monthly bill, and therefore can never be verified or paid — the "None" rows
+ * the ledger used to accumulate. Returns a user-facing reason, or null if fine.
+ */
+const dieselPumpProblem = (advanceDiesel, isFullTank, pump, pumpOptions = []) => {
+    if (!hasDieselAdvance(advanceDiesel) && !isFullTank) return null;
+    const stations = pumpOptions.filter(p => p !== NONE_PUMP);
+    if (!stations.length) {
+        return 'No fuel station is registered, so a diesel advance cannot be recorded. Add the station first under Admin Settings → Fuel Stations.';
+    }
+    if (!pump || pump === NONE_PUMP) {
+        return 'Select the fuel station this diesel was taken from — a diesel advance cannot be saved without one.';
+    }
+    return null;
+};
 const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill' || type === 'Bahadurgarh_Bill';
 
 const getCalc = (w, r, hasComm) => {
@@ -64,7 +82,7 @@ const getNet = (v) => {
 };
 
 /* ── Print ── */
-function printVoucher(v, org = {}, brand = '') {
+function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     const orgName = org.name || 'VIKAS GOODS TRANSPORT CO.';
     const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
 
@@ -135,13 +153,14 @@ function printVoucher(v, org = {}, brand = '') {
       }
       .line:last-child { border-bottom: none; }
       .lbl {
-        font-weight: bold;
+        font-weight: 800;
         font-size: 8.5pt;
         text-transform: uppercase;
         color: #000;
+        flex-shrink: 0;
       }
       .val {
-        font-weight: 800;
+        font-weight: 900;
         text-align: right;
       }
       .net-banner {
@@ -227,7 +246,7 @@ function printVoucher(v, org = {}, brand = '') {
 
         <div class="sec">
           <div class="line"><span class="lbl">Gross Freight</span><span class="val">Rs. ${Math.round(n.gross).toLocaleString('en-IN')}</span></div>
-          ${deductionRows.map(d => `<div class="line"><span class="lbl">${d.lbl}</span><span class="val" style="color: #c00;">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : 'Rs. ' + Math.round(d.val).toLocaleString('en-IN')}</span></div>`).join('')}
+          ${deductionRows.map(d => `<div class="line"><span class="lbl">${d.lbl}</span><span class="val">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : 'Rs. ' + Math.round(d.val).toLocaleString('en-IN')}</span></div>`).join('')}
         </div>
 
         ${n.dieselPending
@@ -240,7 +259,7 @@ function printVoucher(v, org = {}, brand = '') {
         <div class="sig-box">Receiver</div>
         <div class="digital-sig-box">
           <span class="digital-sig-title">Digitally Signed</span>
-          <span class="digital-sig-text">VGTC Account</span>
+          <span class="digital-sig-text">${signedBy}</span>
           <span class="digital-sig-footer">System Verified</span>
         </div>
       </div>
@@ -449,6 +468,7 @@ function printVoucher(v, org = {}, brand = '') {
 <div class="sec">
   <div class="line"><span class="lbl">Date</span><span class="val">${v.date}</span></div>
   <div class="line"><span class="lbl">Truck</span><span class="val">${v.truckNo}</span></div>
+  <div class="line"><span class="lbl">Party</span><span class="val">${v.partyName || '—'}</span></div>
   <div class="line"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
 </div>
 <div class="stat-row">
@@ -462,37 +482,35 @@ function printVoucher(v, org = {}, brand = '') {
             fontSize: '10px',
             styles: `
 .hd { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 4px; margin-bottom: 5px; }
-.hd h1 { font-size: 14px; font-weight: 900; margin: 0; }
-.hd p { font-size: 9px; margin: 1px 0; }
+.hd h1 { font-size: 15px; font-weight: 900; margin: 0; }
+.hd p { font-size: 9.5px; font-weight: 800; margin: 1px 0; }
 .ref-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 5px; }
 .ref-lr { display: inline-block; border: 1.5px solid #000; padding: 2px 10px; font-size: 13px; font-weight: 900; }
-.ref-meta { text-align: right; font-size: 9px; }
-.ref-type { font-weight: 700; text-transform: uppercase; }
+.ref-meta { text-align: right; font-size: 9.5px; font-weight: 800; }
+.ref-type { font-weight: 900; text-transform: uppercase; }
 .sec { border: 1.5px solid #000; border-radius: 3px; margin-bottom: 5px; overflow: hidden; }
-.line { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3px 6px; border-bottom: 1px solid #ccc; }
+.line { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3.5px 6px; border-bottom: 1px solid #000; }
 .line:last-child { border-bottom: none; }
 .lbl { font-weight: 800; font-size: 9px; text-transform: uppercase; flex-shrink: 0; }
-.val { font-weight: 700; text-align: right; }
+.val { font-weight: 900; text-align: right; font-size: 10.5px; }
 .stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin-bottom: 5px; }
 .stat { border: 1px solid #000; padding: 3px 4px; text-align: center; }
-.stat-k { font-size: 7.5px; font-weight: 700; text-transform: uppercase; }
-.stat-v { font-size: 12px; font-weight: 900; }
+.stat-k { font-size: 7.5px; font-weight: 800; text-transform: uppercase; }
+.stat-v { font-size: 12.5px; font-weight: 900; }
 .dlv-list { margin-bottom: 5px; }
 .dlv { border: 1px solid #000; border-radius: 3px; padding: 3px 5px; margin-bottom: 3px; }
-.dlv-top { display: flex; justify-content: space-between; gap: 6px; font-weight: 800; }
-.dlv-lr { font-size: 11px; }
+.dlv-top { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; }
+.dlv-lr { font-size: 11.5px; }
 .dlv-dest { text-align: right; }
-.dlv-party { font-size: 9px; color: #333; }
-.dlv-nums { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; font-size: 9px; margin-top: 2px; }
+.dlv-party { font-size: 9.5px; font-weight: 800; }
+.dlv-nums { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; font-size: 9.5px; font-weight: 800; margin-top: 2px; }
 .dlv-gross { font-weight: 900; }
-.dlv-total { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; font-size: 9.5px; border-top: 1.5px solid #000; padding-top: 3px; }
+.dlv-total { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; font-size: 10px; border-top: 1.5px solid #000; padding-top: 3px; }
 .money { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-.money td { padding: 2.5px 4px; }
-.money .amt { text-align: right; font-weight: 700; }
-.money .ded td { border-bottom: 1px solid #eee; }
-.money .ded .amt { color: #c00; }
-.money .tot td { border-top: 1.5px solid #000; font-weight: 800; }
-.money .tot .amt { color: #c00; }
+.money td { padding: 3px 4px; font-weight: 800; }
+.money .amt { text-align: right; font-weight: 900; }
+.money .ded td { border-bottom: 1px solid #000; }
+.money .tot td { border-top: 1.5px solid #000; font-weight: 900; }
 .net {
   display: flex; justify-content: space-between; gap: 6px;
   padding: 5px 8px; background: #000; color: #fff;
@@ -504,9 +522,14 @@ function printVoucher(v, org = {}, brand = '') {
   font-size: 10px; font-weight: 800; margin: 4px 0;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
-.pump { font-size: 9px; text-align: center; margin-bottom: 3px; }
-.sig { display: flex; justify-content: space-between; gap: 6px; margin-top: auto; padding-top: 12px; }
-.sig div { flex: 1; text-align: center; font-size: 8.5px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; }`,
+.pump { font-size: 9.5px; font-weight: 800; text-align: center; margin-bottom: 3px; }
+.sig-foot { margin-top: auto; }
+.sig { display: flex; justify-content: space-between; gap: 6px; padding-top: 12px; }
+.sig div { flex: 1; text-align: center; font-size: 9px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; }
+.signed { margin-top: 6px; border: 1.5px solid #000; border-radius: 3px; padding: 3px 6px; text-align: center; }
+.signed-k { display: block; font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
+.signed-v { display: block; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.1; }
+.signed-f { display: block; font-size: 7px; font-weight: 700; }`,
             body: `
 <div class="container">
   <div>
@@ -518,8 +541,8 @@ function printVoucher(v, org = {}, brand = '') {
     <div class="ref-row">
       <div>
         ${hasDeliveries
-                    ? `<div style="font-size:9.5px;font-weight:800">Ref: <span style="font-size:11px;font-weight:900">#${v.lrNo || 'AUTO'}</span></div>
-           <div style="font-size:8.5px;color:#444">LRs: ${v.deliveries.map(d => '#' + d.lrNo).join(', ')}</div>`
+                    ? `<div style="font-size:10px;font-weight:800">Ref: <span style="font-size:11.5px;font-weight:900">#${v.lrNo || 'AUTO'}</span></div>
+           <div style="font-size:9px;font-weight:800">LRs: ${v.deliveries.map(d => '#' + d.lrNo).join(', ')}</div>`
                     : `<div class="ref-lr">LR #${v.lrNo}</div>`}
       </div>
       <div class="ref-meta">
@@ -544,10 +567,16 @@ function printVoucher(v, org = {}, brand = '') {
     ${getPumpDisplay(v.pump) !== '—' ? `<div class="pump">Pump: ${getPumpDisplay(v.pump)}</div>` : ''}
   </div>
 
-  <div class="sig">
-    <div>Driver</div>
-    <div>Accountant</div>
-    <div>Auth. Sign</div>
+  <div class="sig-foot">
+    <div class="sig">
+      <div>Driver</div>
+      <div>Accountant</div>
+    </div>
+    <div class="signed">
+      <span class="signed-k">Digitally Signed</span>
+      <span class="signed-v">${signedBy}</span>
+      <span class="signed-f">System Verified</span>
+    </div>
   </div>
 </div>`,
         });
@@ -581,6 +610,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     const requestSave = () => {
         if (markInvalidFields(modalRef.current)) return;
         if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) return;
+        // Same rule as the create form: diesel needs a real station or the
+        // pump ledger gets an unbillable "None" row.
+        const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
+        if (pumpProblem) { alert(pumpProblem); return; }
         setIsConfirming(true);
     };
 
@@ -784,6 +817,8 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
     const { user } = useAuth();
     const org = user?.org || {};
+    // Whoever is logged in signs the vouchers they print.
+    const signedBy = user?.name || user?.username || 'VGTC';
     // canEdit: checks brand-specific voucher key and generic fallback
     const voucherKey = brand === 'jklakshmi' ? 'voucher_jkl' : 'voucher_jksuper';
     const canEdit = role === 'admin'
@@ -1100,6 +1135,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             alert('Truck No. is required');
             return;
         }
+        // Diesel advance without a station would create an unbillable "None"
+        // row in the pump ledger.
+        const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
+        if (pumpProblem) { alert(pumpProblem); return; }
 
         // Check delivery LR duplicates for factory types
         if (isFactory) {
@@ -1152,7 +1191,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             setShowVehicleExpenses(false);
 
             if (window.confirm('Voucher created successfully! Do you want to print it?')) {
-                printVoucher(newVoucher, org, brand);
+                // Merge over the payload: the response is authoritative for what
+                // was stored, but a partial response must not blank the slip.
+                printVoucher({ ...payload, ...newVoucher }, org, brand, signedBy);
             }
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
@@ -1537,11 +1578,20 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             )}
                                             <div className="field-h">
                                                 <label><Fuel size={11} style={{ marginRight: '4px' }} /> Diesel Advance</label>
-                                                <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                                                    <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
-                                                    <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
-                                                        onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
-                                                </div>
+                                                {/* No registered station → diesel cannot be recorded at all.
+                                                    Saved with pump "None" it can never be matched to a monthly
+                                                    bill, so it is blocked here instead of failing at save. */}
+                                                {pumpOptions.filter(p => p !== NONE_PUMP).length === 0 ? (
+                                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--warn)', padding: '9px 12px', background: 'rgba(245,158,11,0.08)', border: '1px dashed rgba(245,158,11,0.4)', borderRadius: '8px', width: '100%' }}>
+                                                        No fuel station registered — add one under Admin Settings → Fuel Stations to record diesel.
+                                                    </div>
+                                                ) : (
+                                                    <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                                        <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
+                                                        <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
+                                                            onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="field-h">
                                                 <label><Wallet size={11} style={{ marginRight: '4px' }} /> Cash Advance</label>
@@ -1839,7 +1889,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         {role === 'admin' && <td style={{ ...TD }}>{v.updatedBy || '—'}</td>}
                                         <td style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org, brand)}><Printer size={13} /></button>
+                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org, brand, signedBy)}><Printer size={13} /></button>
                                                 {canEdit && (
                                                     <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
                                                 )}

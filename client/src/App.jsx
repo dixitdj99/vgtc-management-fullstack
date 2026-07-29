@@ -583,7 +583,31 @@ function AppInner() {
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
       {(id === 'vehicles_dump' || id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
       {id === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
-      {(id === 'diesel_dump' || id === 'diesel_jkl' || id === 'diesel_jharli') && <DieselModule permissions={user.permissions} />}
+      {/* Diesel Control covers exactly the sheets its own location has — the
+          same mapping the Balance Sheet nav uses above. Without this it pulled
+          Jharli's 'Dump' vouchers into every location.
+       *
+       * Every voucher type must stay reachable from exactly one of these, or
+       * its diesel can never be verified — and an unverified entry can no
+       * longer be sent to Pay, so it would become unpayable. Full coverage,
+       * each type in exactly one place:
+       *   Dump, JK_Lakshmi, JK_Super → Jharli — JK Super's records live with
+       *                                these, so it is verified alongside them
+       *   Kosli_Bill                 → Kosli
+       *   Jajjhar_Bill               → Jhajjar
+       *   Bahadurgarh_Bill           → Bahadurgarh
+       *   main                       → generic orgs, below
+       */}
+      {(id === 'diesel_dump' || id === 'diesel_jkl' || id === 'diesel_jharli') && (
+        <DieselModule
+          permissions={user.permissions}
+          types={
+            (id === 'diesel_jkl' || id === 'diesel_jharli')
+              ? ['Dump', 'JK_Lakshmi', 'JK_Super']
+              : [godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill')]
+          }
+        />
+      )}
       {(id === 'mileage_dump' || id === 'mileage_jkl' || id === 'mileage_jharli') && <MileageModule />}
       {(id === 'tyres_dump' || id === 'tyres_jkl' || id === 'tyres_jharli') && <TyreModule />}
       {(id === 'pay_dump' || id === 'pay_jkl' || id === 'pay_jharli') && <PayModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={sub || 'freight'} />}
@@ -602,7 +626,10 @@ function AppInner() {
       {id === 'stock_main' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="main" />}
       {id === 'cashbook_main' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="main" />}
       {id === 'vehicles_main' && <VehicleModule permissions={user.permissions} />}
-      {id === 'diesel_main' && <DieselModule permissions={user.permissions} />}
+      {/* Generic orgs keep their vouchers under type 'main'. Without this it fell
+          back to the VGTC types and a generic org saw no diesel at all — which
+          would now also make its entries permanently unsendable to Pay. */}
+      {id === 'diesel_main' && <DieselModule permissions={user.permissions} types={['main']} />}
       {id === 'mileage_main' && <MileageModule />}
       {id === 'tyres_main' && <TyreModule />}
       {id === 'pay_main' && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
