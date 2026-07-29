@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import ax from '../api';
 import { useAuth } from '../auth/AuthContext';
 
+
 const MODULE_KEYS = [
     { id: 'lr_kosli', default: 'Kosli LR' },
     { id: 'lr_jhajjar', default: 'Jhajjar LR' },
@@ -25,7 +26,7 @@ const MODULE_KEYS = [
     { id: 'loading_status', default: 'Loading Realtime' },
 ];
 
-const PERMISSION_KEYS = ['lr', 'voucher', 'balance', 'stock', 'cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'];
+const PERMISSION_KEYS = ['lr', 'voucher', 'balance', 'stock', 'cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status', 'attendance'];
 const PERMISSION_LABELS = {
     allowedPlants: 'Allowed Plants',
     allowedGodowns: 'Allowed Godowns',
@@ -40,7 +41,8 @@ const PERMISSION_LABELS = {
     diesel: 'Diesel',
     mileage: 'Mileage',
     sell: 'Sell',
-    loading_status: 'Loading Status'
+    loading_status: 'Loading Status',
+    attendance: 'Attendance'
 };
 
 const CLEAN_PERMISSIONS = {
@@ -248,7 +250,8 @@ export default function OrganizationSettings({ orgOnly = false }) {
                 enabledModules: selectedOrg.config?.enabledModules || {},
                 roleTemplates: selectedOrg.config?.roleTemplates || {},
                 locations: selectedOrg.config?.locations || [],
-                plan: selectedOrg.config?.plan || ''
+                plan: selectedOrg.config?.plan || '',
+
             }
         });
     }, [selectedOrg?.id]);
@@ -605,6 +608,7 @@ export default function OrganizationSettings({ orgOnly = false }) {
                                         <div className="field-h"><label>Primary Color</label><input className="fi" type="color" value={form.config.primaryColor || '#8b5cf6'} onChange={e => patchConfig({ primaryColor: e.target.value })} /></div>
                                         <div className="field-h"><label>Address</label><IconInput icon={MapPin}><input className="fi" value={form.config.address || ''} onChange={e => patchConfig({ address: e.target.value })} style={{ paddingLeft: '34px' }} /></IconInput></div>
                                     </div>
+
                                     <button className="btn btn-p" type="submit" disabled={saving} style={{ height: '42px', marginTop: '4px', width: '100%' }}>{saving ? <><RefreshCw size={15} className="ani-spin" /> Saving...</> : <><Save size={15} /> Save Organization Details</>}</button>
                                 </div>
                             </div>

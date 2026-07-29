@@ -33,9 +33,39 @@ export function clearAllCache() {
     _cache.clear();
 }
 
+// Nothing else ever removes an expired entry, and keying on params means one
+// screen can mint an entry per day stepped through. Sweep on write so the map
+// tracks what is actually live rather than growing for the whole session.
+function pruneExpired() {
+    const now = Date.now();
+    for (const [key, entry] of _cache) {
+        if (now >= entry.expiresAt) _cache.delete(key);
+    }
+}
+
+/**
+ * Query params are part of the identity of a GET.
+ *
+ * They live in `config.params` at this point, not in `config.url` — axios only
+ * serialises them onto the URL later. Keying on the url alone meant every
+ * `?date=` shared one entry, so picking another day on the attendance roll-call
+ * (and any other params-driven screen) replayed the first day's data for the
+ * whole TTL. Keys are sorted so `{a,b}` and `{b,a}` stay the same entry.
+ */
+function serialiseParams(params) {
+    if (!params) return '';
+    if (params instanceof URLSearchParams) {
+        const pairs = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
+        return new URLSearchParams(pairs).toString();
+    }
+    const keys = Object.keys(params).filter(k => params[k] !== undefined).sort();
+    if (!keys.length) return '';
+    return keys.map(k => `${k}=${JSON.stringify(params[k])}`).join('&');
+}
+
 function getCacheKey(config) {
-    // Key = method + url + org (so different orgs don't share cache)
-    return `${config.method}:${config.url}:${currentUser?.orgId || ''}`;
+    // Key = method + url + params + org (so different orgs don't share cache)
+    return `${config.method}:${config.url}?${serialiseParams(config.params)}:${currentUser?.orgId || ''}`;
 }
 
 let pendingRequests = 0;
@@ -119,10 +149,12 @@ ax.interceptors.response.use(
         emitLoading();
         if (pendingRequests === 0) { clearTimeout(slowRequestTimer); window.dispatchEvent(new CustomEvent('api-fast')); }
 
-        // Store successful GET responses in cache
-        if (res.config?.method === 'get' && !res.config?._skipCache && Array.isArray(res.data) || (res.config?.method === 'get' && res.data)) {
-            const key = getCacheKey(res.config);
-            _cache.set(key, { data: res.data, expiresAt: Date.now() + CACHE_TTL_MS });
+        // Store successful GET responses in cache. `&&` binds tighter than `||`,
+        // so the old two-branch condition let a `_skipCache` request write to the
+        // cache anyway — opting out of reading it is not opting out of filling it.
+        if (res.config?.method === 'get' && !res.config?._skipCache && res.data) {
+            pruneExpired();
+            _cache.set(getCacheKey(res.config), { data: res.data, expiresAt: Date.now() + CACHE_TTL_MS });
         }
 
         return res;

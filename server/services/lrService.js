@@ -225,7 +225,9 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     } else {
         localStore.update(lrCollection, id, allowed);
         // Propagation for local store (optional, but good for parity)
-        const current = localStore.get(lrCollection, id);
+        // localStore exposes getById, not get — the latter threw on every
+        // local-mode update.
+        const current = localStore.getById(lrCollection, id);
         if (current && current.lrNo && (allowed.note !== undefined || allowed.voiceMessageBase64 !== undefined)) {
             const others = localStore.getAll(lrCollection).filter(r => r.lrNo === current.lrNo && r.id !== id);
             others.forEach(o => {

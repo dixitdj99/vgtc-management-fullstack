@@ -1,8 +1,13 @@
 # apphosting.yaml
 runConfig:
   cpu: 1
-  memoryMiB: 256
+  # 256 MiB left no headroom for firebase-admin + googleapis + pdfkit in a single
+  # Node process; PDF generation and backup runs risk an OOM kill.
+  memoryMiB: 512
   concurrency: 80
+  # Scales to zero to keep cost near nothing at low traffic. Trade-off: the first
+  # request after an idle period pays a cold start (~8s measured locally).
+  # Set to 1 if that delay is unacceptable — it costs one always-on instance.
   minInstances: 0
   maxInstances: 2
 
@@ -13,6 +18,32 @@ env:
       - RUNTIME
   - variable: BLOCK_PROD_WRITES
     value: "false"
+    availability:
+      - RUNTIME
+
+  # CORS allowlist — comma-separated exact origins. The server additionally
+  # allows vgtc.site (and its subdomains) plus this backend's own *.hosted.app
+  # URLs; see isAllowedOrigin() in server/index.js.
+  - variable: ALLOWED_ORIGINS
+    value: "https://vgtc.site,https://www.vgtc.site"
+    availability:
+      - RUNTIME
+  # App Hosting backend id, so we accept only our own *.hosted.app URLs rather
+  # than every tenant on the platform.
+  - variable: APP_HOSTING_BACKEND
+    value: "vgtc-management"
+    availability:
+      - RUNTIME
+  - variable: CRON_TIMEZONE
+    value: "Asia/Kolkata"
+    availability:
+      - RUNTIME
+
+  # REQUIRED: replace with the real Gmail address that sends OTP, password reset,
+  # and daily fleet alert mail. While this is left at the placeholder the server
+  # logs an error on startup and all outbound email is disabled.
+  - variable: SMTP_USER
+    value: "your-email@gmail.com"
     availability:
       - RUNTIME
   - variable: SMTP_HOST
@@ -27,10 +58,7 @@ env:
     value: "false"
     availability:
       - RUNTIME
-  - variable: SMTP_USER
-    value: "your-email@gmail.com"
-    availability:
-      - RUNTIME
+
   # Reference secure variables stored in Cloud Secret Manager
   - variable: JWT_SECRET
     secret: JWT_SECRET
@@ -38,3 +66,8 @@ env:
     secret: SMTP_PASS
   - variable: GOOGLE_CREDENTIALS
     secret: GOOGLE_CREDENTIALS
+  # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling
+  # /api/jobs/*. Create it once with:
+  #   printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create CRON_SECRET --data-file=-
+  - variable: CRON_SECRET
+    secret: CRON_SECRET

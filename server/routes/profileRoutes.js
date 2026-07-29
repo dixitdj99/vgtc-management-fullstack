@@ -7,6 +7,24 @@ const localStore = require('../utils/localStore');
 // Collection Name
 const PROFILE_COL = 'profiles';
 
+// The roll-call photo is stored inline on the profile document. A Firestore
+// document is capped at 1 MB in total, so reject anything that would crowd out
+// the rest of the record. The client already downscales to ~10-20 KB; this is
+// the backstop for a client that does not.
+const PHOTO_MAX_BYTES = 200 * 1024;
+
+const validatePhoto = (photo) => {
+    if (photo === undefined || photo === null || photo === '') return null;
+    if (typeof photo !== 'string') return 'photo must be a data URI string';
+    if (!/^data:image\/(jpeg|png|webp);base64,/.test(photo)) {
+        return 'photo must be a base64 JPEG, PNG or WebP data URI';
+    }
+    if (Buffer.byteLength(photo, 'utf8') > PHOTO_MAX_BYTES) {
+        return `photo is too large (max ${Math.round(PHOTO_MAX_BYTES / 1024)} KB after encoding)`;
+    }
+    return null;
+};
+
 // GET all profiles
 router.get('/', async (req, res) => {
     try {
@@ -34,6 +52,9 @@ router.get('/', async (req, res) => {
 // POST a new profile
 router.post('/', async (req, res) => {
     try {
+        const photoError = validatePhoto(req.body.photo);
+        if (photoError) return res.status(400).json({ error: photoError });
+
         const payload = {
             ...req.body,
             createdAt: new Date().toISOString()
@@ -58,6 +79,9 @@ router.post('/', async (req, res) => {
 // PUT update a profile
 router.put('/:id', async (req, res) => {
     try {
+        const photoError = validatePhoto(req.body.photo);
+        if (photoError) return res.status(400).json({ error: photoError });
+
         const payload = { ...req.body, updatedAt: new Date().toISOString() };
         
         if (!isAvailable()) {

@@ -8,6 +8,7 @@ import {
   CreditCard, Banknote, ReceiptText, ArrowRightLeft
 } from 'lucide-react';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { openReceiptWindow } from '../utils/receiptPrint';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 
@@ -169,54 +170,126 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
   const totalAmt = (parseFloat(form.quantity) || 0) * (parseFloat(form.rate) || 0);
 
   const printReceipt = (s) => {
-    const pwin = window.open('', '_blank');
-    const html = `
-      <html>
-        <head>
-          <title>Receipt - ${s.customerName}</title>
-          <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; line-height: 1.6; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .content { margin-bottom: 30px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #eee; padding-bottom: 4px; }
-            .label { font-weight: bold; color: #666; }
-            .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #999; }
-            .stamp { text-align: right; margin-top: 30px; font-weight: bold; color: #10b981; text-transform: uppercase; border: 2px solid #10b981; display: inline-block; padding: 5px 15px; border-radius: 4px; transform: rotate(-5deg); }
-            .stamp.pending { color: #f43f5e; border-color: #f43f5e; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1 style="margin:0">VIKAS GOODS</h1>
-            <p style="margin:5px 0">Cement Sales Receipt</p>
-          </div>
-          <div class="content">
-            <div class="row"><span class="label">Date:</span> <span>${new Date(s.date).toLocaleDateString('en-IN')}</span></div>
-            <div class="row"><span class="label">Customer Name:</span> <span>${s.customerName}</span></div>
-            <div class="row"><span class="label">Material:</span> <span>${s.material}</span></div>
-            <div class="row"><span class="label">Quantity:</span> <span>${s.quantity} Bags (${(s.quantity * 0.05).toFixed(2)} MT)</span></div>
-            <div class="row"><span class="label">Rate per Bag:</span> <span>₹${s.rate}</span></div>
-            <div class="row"><span class="label">Payment Mode:</span> <span style="text-transform: capitalize;">${s.paymentStatus === 'pending' ? 'Not Paid (Pending)' : s.paymentType}</span></div>
-            <div class="row" style="border-top: 2px solid #333; padding-top: 10px; margin-top: 20px;">
-              <span class="label" style="font-size: 1.2em; color: #000;">Total Amount:</span> 
-              <span style="font-size: 1.2em; font-weight: 900; color: #000;">₹${s.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+    openReceiptWindow({
+      title: `Receipt - ${s.customerName}`,
+      fontSize: '9.5pt',
+      styles: `
+            .hd {
+              text-align: center;
+              border-bottom: 2.5px solid #000;
+              padding-bottom: 1mm;
+              margin-bottom: 2mm;
+            }
+            .hd .co {
+              font-size: 12.5pt;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.3px;
+            }
+            .hd .sub {
+              font-size: 8.5pt;
+              font-weight: bold;
+              margin-top: 1px;
+            }
+            .sec {
+              border: 2px solid #000;
+              border-radius: 4px;
+              margin-bottom: 2mm;
+              background: #fff;
+              overflow: hidden;
+            }
+            .line {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              gap: 4mm;
+              padding: 3px 6px;
+              border-bottom: 1.5px solid #000;
+              font-size: 9pt;
+            }
+            .line:last-child { border-bottom: none; }
+            .lbl {
+              font-weight: bold;
+              font-size: 8pt;
+              text-transform: uppercase;
+              color: #000;
+              flex-shrink: 0;
+            }
+            .val {
+              font-weight: 800;
+              text-align: right;
+            }
+            .total-banner {
+              background: #000;
+              color: #fff;
+              display: flex;
+              justify-content: space-between;
+              padding: 4px 8px;
+              font-size: 11pt;
+              font-weight: 900;
+              border-radius: 2px;
+              margin: 1.5mm 0;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .stamp-box {
+              border: 2px solid #000;
+              border-radius: 4px;
+              padding: 3px 6px;
+              text-align: center;
+              font-size: 9pt;
+              font-weight: 900;
+              text-transform: uppercase;
+              margin-top: auto;
+              margin-bottom: 1.5mm;
+            }
+            .stamp-box.pending {
+              background: #000;
+              color: #fff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .footer {
+              text-align: center;
+              font-size: 7.5pt;
+              font-weight: bold;
+              color: #000;
+              border-top: 1px dashed #000;
+              padding-top: 1.5mm;
+            }`,
+      body: `
+          <div class="container">
+            <div>
+              <div class="hd">
+                <div class="co">Vikas Goods Transport</div>
+                <div class="sub">Cement Sales Receipt</div>
+              </div>
+              
+              <div class="sec">
+                <div class="line"><span class="lbl">Date</span><span class="val">${new Date(s.date).toLocaleDateString('en-IN')}</span></div>
+                <div class="line"><span class="lbl">Customer</span><span class="val">${s.customerName}</span></div>
+                <div class="line"><span class="lbl">Material</span><span class="val">${s.material}</span></div>
+                <div class="line"><span class="lbl">Qty</span><span class="val">${s.quantity} Bags (${(s.quantity * 0.05).toFixed(2)} MT)</span></div>
+                <div class="line"><span class="lbl">Rate</span><span class="val">₹${s.rate} / Bag</span></div>
+              </div>
+
+              <div class="total-banner">
+                <span>TOTAL AMOUNT</span>
+                <span>₹${Math.round(s.totalAmount).toLocaleString('en-IN')}</span>
+              </div>
             </div>
-          </div>
-          <div style="text-align: right;">
-            <div class="stamp ${s.paymentStatus === 'pending' ? 'pending' : ''}">
-              ${s.paymentStatus === 'pending' ? 'NOT PAID / PENDING' : `PAID BY ${s.paymentType.toUpperCase()}`}
+
+            <div style="display: flex; flex-direction: column; align-items: stretch;">
+              <div class="stamp-box ${s.paymentStatus === 'pending' ? 'pending' : ''}">
+                ${s.paymentStatus === 'pending' ? 'UNPAID / PENDING' : `PAID VIA ${s.paymentType.toUpperCase()}`}
+              </div>
+              
+              <div class="footer">
+                <p>Thank you for your business!</p>
+              </div>
             </div>
-          </div>
-          <div class="footer">
-            <p>Thank you for your business!</p>
-            <p>Generated on ${new Date().toLocaleString()}</p>
-          </div>
-          <script>window.print(); setTimeout(() => window.close(), 100);</script>
-        </body>
-      </html>
-    `;
-    pwin.document.write(html);
-    pwin.document.close();
+          </div>`,
+    });
   };
 
   // Transfer Modal

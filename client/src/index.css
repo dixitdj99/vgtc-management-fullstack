@@ -17,6 +17,14 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --bg-row-even: #FFFFFF;
   --bg-row-odd: #FAFBFC;
   --bg-row-hover: #F0F4FF;
+  /* Hover wash and selected state for chrome — sidebar items, ghost buttons.
+     Separate from --bg-row-hover, which belongs to table rows. */
+  --bg-hover: #F3F4F6;
+  --bg-active: #EEF2FF;
+  /* A field that sits ON chrome (the topbar search) rather than on a card. It
+     cannot use --bg-input: that matches the topbar exactly and the field
+     disappears into it. */
+  --bg-inset: #F3F4F6;
   --border: #E5E7EB;
   --border-row: #F0F1F3;
   --primary: #4F46E5;
@@ -48,6 +56,11 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --bg-row-even: #1E293B;
   --bg-row-odd: #182234;
   --bg-row-hover: #334155;
+  /* Translucent so one value reads correctly over both the sidebar (#0F172A)
+     and the topbar (#1E293B). */
+  --bg-hover: rgba(148, 163, 184, 0.13);
+  --bg-active: rgba(99, 102, 241, 0.20);
+  --bg-inset: #0F172A;
   --border: #334155;
   --border-row: #334155;
   --primary: #6366F1;
@@ -110,6 +123,9 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --bg-row-even: #FDF6E3;
   --bg-row-odd: #F8F1DE;
   --bg-row-hover: #EEE8D5;
+  --bg-hover: #EEE8D5;
+  --bg-active: rgba(181, 137, 0, 0.16);
+  --bg-inset: #EEE8D5;
   --border: #E0D7C3;
   --border-row: #E6DFCD;
   --primary: #B58900;
@@ -259,7 +275,7 @@ textarea {
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: #4B5563;
+  color: var(--text-sub);
   text-align: left;
   width: 100%;
   font-size: 13.5px;
@@ -272,15 +288,21 @@ textarea {
 }
 
 .nav-btn:hover {
-  background: #F3F4F6;
+  background: var(--bg-hover);
   color: var(--text);
 }
 
 .nav-btn.active {
-  background: #EEF2FF;
+  background: var(--bg-active);
   color: var(--primary);
   font-weight: 600;
   box-shadow: none;
+}
+
+/* Hovering the item you are already on should not wash out its selected tint. */
+.nav-btn.active:hover {
+  background: var(--bg-active);
+  color: var(--primary);
 }
 
 .nav-indicator {
@@ -320,7 +342,7 @@ textarea {
 }
 
 .collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-hover);
   color: var(--text-sub);
 }
 
@@ -353,38 +375,40 @@ textarea {
   transition: background 0.2s;
 }
 
-.topbar-search {
-  position: relative;
-  width: 280px;
-}
-
-.topbar-search input {
-  width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  padding: 8px 16px 8px 38px;
-  font-size: 12.5px;
-  color: var(--text);
-  outline: none;
-  transition: all 0.18s;
-}
-
-.topbar-search input:focus {
-  border-color: rgba(99, 102, 241, 0.4);
-}
-
-.topbar-search input::placeholder {
-  color: var(--text-muted);
-}
-
-.search-icon-wrap {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted);
+/* The topbar "Search" control — a button that opens the Ctrl+K palette, not a
+   real input. It sits on the topbar, so it needs --bg-inset: --bg-input is the
+   same colour as the topbar in every theme and the control would vanish. */
+.search-trigger {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  margin-right: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.search-trigger:hover {
+  border-color: var(--primary);
+  color: var(--text-sub);
+}
+
+.search-trigger kbd {
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 
 .topbar-left {
@@ -672,16 +696,19 @@ textarea {
   gap: 14px;
 }
 
+/* minmax(0, …) rather than a bare 1fr: a plain `1fr` track refuses to shrink
+   below its content, so one field with a wide control (a date input, a select)
+   pushed the other column down to a stub and spilled the row out of the modal. */
 .fg-2 {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .fg-3 {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .fg-4 {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 @media (max-width: 768px) {
@@ -697,11 +724,23 @@ textarea {
   min-width: 0;
 }
 
+/**
+ * A label sitting beside its input — but only while there is room for both.
+ *
+ * These rows are dropped into grids as narrow as a fifth of the page (the
+ * materials row) or half a 520px modal. At that width a fixed label leaves the
+ * input a stub. So the row wraps: the input keeps a flex-basis wide enough to
+ * be usable, and when label + input no longer fit, the input drops to its own
+ * line and the field turns into label-above-input by itself. No breakpoint to
+ * pick and nothing for a caller to override.
+ */
 .field-h {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-width: 0;
 }
 
 .field label {
@@ -724,6 +763,7 @@ textarea {
 
 .field-h label {
   width: 140px;
+  max-width: 100%;
   flex-shrink: 0;
   font-size: 13px;
   font-weight: 600;
@@ -737,11 +777,21 @@ textarea {
   gap: 6px;
 }
 
-.field-h .fi,
-.field-h select.fi,
-.field-h .fi-row,
+/* 150px basis is the wrap trigger: below label + gap + 150px the control moves
+   to the next line and takes the full width of the row. */
+.field-h > .fi,
+.field-h > select,
+.field-h > textarea,
+.field-h > .fi-row,
 .field-h > div {
-  flex: 1;
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+/* Controls the caller nested inside a wrapper (autocomplete, datalist) still
+   need to fill it. */
+.field-h .fi,
+.field-h .fi-row {
   min-width: 0;
 }
 
@@ -888,9 +938,10 @@ select.fi option {
   border: 1px solid var(--primary);
 }
 
+/* Was a white wash, which is invisible on a light background. */
 .btn-g:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.13);
+  background: var(--primary-glow);
+  border-color: var(--primary);
 }
 
 .btn-s {

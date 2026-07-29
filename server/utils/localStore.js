@@ -70,6 +70,26 @@ const localStore = {
         return docs[idx];
     },
 
+    /**
+     * Creates the document if it is absent, merges into it if present — the
+     * local equivalent of a Firestore `set(..., { merge: true })`. Needed for
+     * fixed-id singleton documents such as system_settings/global_config, where
+     * `update` throws on a fresh install that has never saved before.
+     */
+    upsert(collection, id, data) {
+        const docs = readCollection(collection);
+        const idx = docs.findIndex(d => d.id === id);
+        if (idx === -1) {
+            const doc = { id, ...data, createdAt: new Date().toISOString() };
+            docs.push(doc);
+            writeCollection(collection, docs);
+            return doc;
+        }
+        docs[idx] = { ...docs[idx], ...data, updatedAt: new Date().toISOString() };
+        writeCollection(collection, docs);
+        return docs[idx];
+    },
+
     delete(collection, id) {
         const docs = readCollection(collection);
         const filtered = docs.filter(d => d.id !== id);

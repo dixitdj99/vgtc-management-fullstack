@@ -38,6 +38,7 @@ const MODULES = [
   { key: 'mileage', label: 'Mileage Tracker' },
   { key: 'sell', label: 'Sell Management' },
   { key: 'loading_status', label: 'Loading Realtime' },
+  { key: 'attendance', label: 'Attendance' },
 ];
 
 const HIERARCHY = [

@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, 
+  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
   Users, Truck, Eye, EyeOff, ExternalLink, Fuel, Settings, Globe, Mail, Save, Building2, Server,
-  BarChart3, TrendingUp, Cloud, LayoutDashboard
+  BarChart3, TrendingUp, Cloud, LayoutDashboard, UserCircle
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import ProfitLossSheet from '../pages/admin/ProfitLossSheet';
 import AdminModule from '../modules/AdminModule';
+import StaffProfileModule from '../modules/StaffProfileModule';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
@@ -257,14 +258,6 @@ export default function AdminPage() {
 
   // ── State: System Settings ──
   const [sysSettings, setSysSettings] = useState({
-    nicEway: {
-      gstin: '06AAAAA0000A1Z5',
-      username: '',
-      password: '',
-      clientId: '',
-      clientSecret: '',
-      env: 'sandbox'
-    },
     smtp: {
       host: 'smtp.gmail.com',
       port: '587',
@@ -293,7 +286,6 @@ export default function AdminPage() {
         setSysSettings(s => ({
           ...s,
           ...res.data,
-          nicEway: { ...s.nicEway, ...(res.data.nicEway || {}) },
           smtp: { ...s.smtp, ...(res.data.smtp || {}) },
           org: { ...s.org, ...(res.data.org || {}) }
         }));
@@ -500,7 +492,7 @@ export default function AdminPage() {
             <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Settings size={22} color="#6366f1" /> System Settings &amp; Admin Hub
             </h1>
-            <p>Unified administration panel for users, permissions, fuel pumps, system statistics, and Govt E-Way API credentials.</p>
+            <p>Unified administration panel for users, permissions, fuel pumps, system statistics, and SMTP settings.</p>
           </div>
           <button className="btn btn-g btn-sm" onClick={fetchUsers}><RefreshCw size={14} className={loading ? 'ani-spin' : ''} /> Refresh</button>
         </div>
@@ -509,9 +501,10 @@ export default function AdminPage() {
         <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid var(--border)', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }}>
           {[
             { id: 'users', label: 'Users & Permissions', icon: Users, color: '#6366f1' },
+            { id: 'profiles', label: 'Driver & Staff Profiles', icon: UserCircle, color: '#6366f1' },
             { id: 'workers', label: 'Labour Workers', icon: Truck, color: '#10b981' },
             { id: 'fuel', label: 'Fuel Stations', icon: Fuel, color: '#3b82f6' },
-            { id: 'system', label: 'Govt E-Way API & SMTP Settings', icon: Globe, color: '#f59e0b' },
+            { id: 'system', label: 'SMTP Settings', icon: Globe, color: '#f59e0b' },
             { id: 'overview', label: 'System Overview & Fleet', icon: LayoutDashboard, color: '#8b5cf6' },
             { id: 'pl_sheet', label: 'Profit & Loss', icon: TrendingUp, color: '#ec4899' },
             { id: 'backup', label: 'Google Drive Backup', icon: Cloud, color: '#14b8a6' },
@@ -730,6 +723,10 @@ export default function AdminPage() {
         )}
 
         {/* ── TAB 2: LABOUR WORKERS ── */}
+        {/* Driver & staff records. These feed the attendance roll-call and the
+            driver dropdown on vouchers, so photos matter here. */}
+        {activeTab === 'profiles' && <StaffProfileModule role="admin" />}
+
         {activeTab === 'workers' && (
           <div className="card">
             <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -864,55 +861,6 @@ export default function AdminPage() {
         {/* ── TAB 4: SYSTEM & GOVT API SETTINGS ── */}
         {activeTab === 'system' && (
           <form onSubmit={handleSaveSysSettings} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* ── NIC Govt E-Way API Configuration Card ── */}
-            <div className="card">
-              <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div className="card-title-block">
-                  <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Globe size={18} /></div>
-                  <div className="card-title-text">
-                    <h3>Government NIC E-Way Portal Credentials</h3>
-                    <p>API integration settings for live ewaybillgst.gov.in verification and auto validity extension</p>
-                  </div>
-                </div>
-              </div>
-              <div style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field">
-                    <label>Company GSTIN *</label>
-                    <input className="fi" type="text" placeholder="06AAAAA0000A1Z5" value={sysSettings.nicEway.gstin} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, gstin: e.target.value.toUpperCase() } })} required />
-                  </div>
-
-                  <div className="field">
-                    <label>API Environment</label>
-                    <select className="fi" value={sysSettings.nicEway.env} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, env: e.target.value } })}>
-                      <option value="sandbox">Sandbox / Test Mode</option>
-                      <option value="production">Production (Live ewaybillgst.gov.in)</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label>E-Way Portal Username *</label>
-                    <input className="fi" type="text" placeholder="NIC E-Way Portal API Username" value={sysSettings.nicEway.username} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, username: e.target.value } })} />
-                  </div>
-
-                  <div className="field">
-                    <label>E-Way Portal Password *</label>
-                    <input className="fi" type="password" placeholder="••••••••" value={sysSettings.nicEway.password} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, password: e.target.value } })} />
-                  </div>
-
-                  <div className="field">
-                    <label>GSP Client ID (ClearTax / MasterIndia / NIC)</label>
-                    <input className="fi" type="text" placeholder="Client ID string" value={sysSettings.nicEway.clientId} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, clientId: e.target.value } })} />
-                  </div>
-
-                  <div className="field">
-                    <label>GSP Client Secret</label>
-                    <input className="fi" type="password" placeholder="Client secret string" value={sysSettings.nicEway.clientSecret} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, clientSecret: e.target.value } })} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* ── SMTP Email & OTP Configuration Card ── */}
             <div className="card">
               <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>

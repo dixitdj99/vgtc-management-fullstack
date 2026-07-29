@@ -137,6 +137,123 @@ const POSITIONS = [
   { id: 'SP', name: 'Spare Tyre', axle: 'spare' }
 ];
 
+const AXLE_LAYOUTS = {
+  '6': {
+    name: '6-Wheeler (2 Axles)',
+    axles: [
+      { type: 'steer', name: 'Front Axle', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
+      { type: 'drive', name: 'Rear Axle', positions: [{ id: 'RLO1', label: 'RLO' }, { id: 'RLI1', label: 'RLI' }, { id: 'RRI1', label: 'RRI' }, { id: 'RRO1', label: 'RRO' }] }
+    ]
+  },
+  '10': {
+    name: '10-Wheeler (3 Axles)',
+    axles: [
+      { type: 'steer', name: 'Front Axle', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
+      { type: 'drive', name: 'Rear Axle 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
+      { type: 'drive', name: 'Rear Axle 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] }
+    ]
+  },
+  '12': {
+    name: '12-Wheeler (4 Axles)',
+    axles: [
+      { type: 'steer', name: 'Front Steer 1', positions: [{ id: 'FL', label: 'FL1' }, { id: 'FR', label: 'FR1' }] },
+      { type: 'steer', name: 'Front Steer 2', positions: [{ id: 'FL2', label: 'FL2' }, { id: 'FR2', label: 'FR2' }] },
+      { type: 'drive', name: 'Rear Drive 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
+      { type: 'drive', name: 'Rear Drive 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] }
+    ]
+  },
+  '14': {
+    name: '14-Wheeler (4 Axles)',
+    axles: [
+      { type: 'steer', name: 'Front Steer', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
+      { type: 'lift', name: 'Pusher/Lift Axle', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
+      { type: 'drive', name: 'Rear Drive 1', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] },
+      { type: 'drive', name: 'Rear Drive 2', positions: [{ id: 'RLO3', label: 'RLO3' }, { id: 'RLI3', label: 'RLI3' }, { id: 'RRI3', label: 'RRI3' }, { id: 'RRO3', label: 'RRO3' }] }
+    ]
+  },
+  '18': {
+    name: '18-Wheeler (5 Axles - Trailer)',
+    axles: [
+      { type: 'steer', name: 'Tractor Steer', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
+      { type: 'drive', name: 'Tractor Drive 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
+      { type: 'drive', name: 'Tractor Drive 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] },
+      { type: 'trailer', name: 'Trailer Axle 1', positions: [{ id: 'TLO1', label: 'TLO1' }, { id: 'TLI1', label: 'TLI1' }, { id: 'TRI1', label: 'TRI1' }, { id: 'TRO1', label: 'TRO1' }] },
+      { type: 'trailer', name: 'Trailer Axle 2', positions: [{ id: 'TLO2', label: 'TLO2' }, { id: 'TLI2', label: 'TLI2' }, { id: 'TRI2', label: 'TRI2' }, { id: 'TRO2', label: 'TRO2' }] }
+    ]
+  },
+  '22': {
+    name: '22-Wheeler (6 Axles - Trailer)',
+    axles: [
+      { type: 'steer', name: 'Tractor Steer', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
+      { type: 'drive', name: 'Tractor Drive 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
+      { type: 'drive', name: 'Tractor Drive 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] },
+      { type: 'trailer', name: 'Trailer Axle 1', positions: [{ id: 'TLO1', label: 'TLO1' }, { id: 'TLI1', label: 'TLI1' }, { id: 'TRI1', label: 'TRI1' }, { id: 'TRO1', label: 'TRO1' }] },
+      { type: 'trailer', name: 'Trailer Axle 2', positions: [{ id: 'TLO2', label: 'TLO2' }, { id: 'TLI2', label: 'TLI2' }, { id: 'TRI2', label: 'TRI2' }, { id: 'TRO2', label: 'TRO2' }] },
+      { type: 'trailer', name: 'Trailer Axle 3', positions: [{ id: 'TLO3', label: 'TLO3' }, { id: 'TLI3', label: 'TLI3' }, { id: 'TRI3', label: 'TRI3' }, { id: 'TRO3', label: 'TRO3' }] }
+    ]
+  }
+};
+
+const getPositionsForLayout = (layoutId) => {
+  const layout = AXLE_LAYOUTS[layoutId] || AXLE_LAYOUTS['10'];
+  const posList = [];
+  layout.axles.forEach(axle => {
+    axle.positions.forEach(p => {
+      posList.push({ id: p.id, name: `${axle.name} - ${p.label}` });
+    });
+  });
+  posList.push({ id: 'SP', name: 'Spare Tyre' });
+  return posList;
+};
+
+const inferLayoutFromVehicle = (vehicle) => {
+  if (!vehicle) return '10';
+  const gw = parseFloat(vehicle.grossWeight) || 0;
+  if (gw > 0) {
+    if (gw <= 10000) return '6';
+    if (gw <= 20000) return '6';
+    if (gw <= 28500) return '10';
+    if (gw <= 37500) return '12';
+    if (gw <= 42500) return '14';
+    if (gw <= 48500) return '18';
+    return '22';
+  }
+  const modelStr = String(vehicle.model || '').trim();
+  const match = modelStr.match(/^(\d{2})/);
+  if (match) {
+    const tons = parseInt(match[1]);
+    if (tons <= 20) return '6';
+    if (tons <= 28) return '10';
+    if (tons <= 37) return '12';
+    if (tons <= 42) return '14';
+    if (tons <= 48) return '18';
+    return '22';
+  }
+  const type = String(vehicle.vehicleType || '').toLowerCase();
+  if (type.includes('trailer')) return '18';
+  if (type.includes('canter')) return '6';
+  return '10';
+};
+
+const getAxleHorizontalOffsets = (layoutId) => {
+  switch (layoutId) {
+    case '6':
+      return [50, 290];
+    case '10':
+      return [50, 250, 310];
+    case '12':
+      return [38, 92, 250, 310];
+    case '14':
+      return [50, 210, 265, 320];
+    case '18':
+      return [50, 245, 295, 585, 645];
+    case '22':
+      return [50, 245, 295, 545, 600, 655];
+    default:
+      return [50, 250, 310];
+  }
+};
+
 const fmtRs = n => '₹' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -151,6 +268,8 @@ export default function TyreModule() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [truckFilter, setTruckFilter] = useState('all');
+  
+  const [overrideLayoutId, setOverrideLayoutId] = useState('');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -182,6 +301,32 @@ export default function TyreModule() {
 
   const [selfVehiclesList, setSelfVehiclesList] = useState([]);
   const [vouchers, setVouchers] = useState([]);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  // Reset overrideLayoutId when truckFilter changes
+  useEffect(() => {
+    setOverrideLayoutId('');
+  }, [truckFilter]);
+
+  const selectedVehicle = useMemo(() => {
+    return selfVehiclesList.find(v => v.truckNo === truckFilter);
+  }, [selfVehiclesList, truckFilter]);
+
+  const inferredLayoutId = useMemo(() => {
+    return inferLayoutFromVehicle(selectedVehicle);
+  }, [selectedVehicle]);
+
+  const activeLayoutId = overrideLayoutId || inferredLayoutId;
+  const activeLayout = AXLE_LAYOUTS[activeLayoutId] || AXLE_LAYOUTS['10'];
+
+  const availablePositions = useMemo(() => {
+    const truckNo = fitForm.truckNo || '';
+    const selectedVeh = selfVehiclesList.find(v => v.truckNo === truckNo);
+    const layoutId = inferLayoutFromVehicle(selectedVeh);
+    return getPositionsForLayout(layoutId);
+  }, [fitForm.truckNo, selfVehiclesList]);
+
+
 
   useEffect(() => {
     fetchData();
@@ -197,7 +342,7 @@ export default function TyreModule() {
       ]);
       setTyres(tyresRes.data || []);
       const allVeh = vehiclesRes.data || [];
-      const selfVeh = allVeh.filter(v => v.ownershipType === 'self');
+      const selfVeh = allVeh;
       setSelfVehiclesList(selfVeh);
       setVehicles(selfVeh.map(v => v.truckNo));
       setVouchers(vouchersRes.data || []);
@@ -301,9 +446,29 @@ export default function TyreModule() {
     }
   };
 
+  const handleAutoFitApollo = async () => {
+    if (!window.confirm("This will automatically register and fit Apollo tyres to all empty tyre positions across all your self-owned vehicles. Do you want to proceed?")) return;
+    try {
+      setIsSeeding(true);
+      setError('');
+      const res = await ax.post('/tyres/auto-fit-apollo');
+      alert(`Auto-seeded successfully! Fitted ${res.data.count} Apollo tyres.`);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to auto-fit Apollo tyres.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   const openFitModal = (tyre, position = '') => {
     setSelectedTyre(tyre);
-    setFitForm(f => ({ ...f, position: position || 'FL' }));
+    const targetTruck = truckFilter === 'all' ? '' : truckFilter;
+    const selectedVeh = selfVehiclesList.find(v => v.truckNo === targetTruck);
+    const layoutId = inferLayoutFromVehicle(selectedVeh);
+    const posList = getPositionsForLayout(layoutId);
+    const defaultPos = position || (posList[0]?.id || 'FL');
+    setFitForm(f => ({ ...f, position: defaultPos, truckNo: targetTruck }));
     setIsFitModalOpen(true);
   };
 
@@ -398,13 +563,26 @@ export default function TyreModule() {
           <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>Tyre Management</h1>
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Track tyre life cycles, assignments, rotating positions, and running distances for Self Vehicles.</p>
         </div>
-        <button onClick={() => setIsAddModalOpen(true)} style={{ 
-          background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
-          borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
-          fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
-        }}>
-          <Plus size={18} /> Register New Tyre
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            onClick={handleAutoFitApollo} 
+            disabled={isSeeding}
+            style={{ 
+              background: 'transparent', color: 'var(--text)', border: '1px solid var(--border)', padding: '12px 24px', 
+              borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
+              fontSize: '14px', fontWeight: 800, cursor: 'pointer' 
+            }}
+          >
+            {isSeeding ? 'Fitting...' : 'Auto-fit Apollo Tyres'}
+          </button>
+          <button onClick={() => setIsAddModalOpen(true)} style={{ 
+            background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
+            borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
+            fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
+          }}>
+            <Plus size={18} /> Register New Tyre
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -509,171 +687,492 @@ export default function TyreModule() {
         {truckFilter === 'all' ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '16px', background: 'var(--bg-row-even)' }}>
             <Disc size={36} style={{ color: 'var(--text-muted)', marginBottom: '12px', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to render the 10-wheeler visual layout.</p>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to render its visual axle & chassis layout.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px 0' }}>
-            <div style={{ position: 'relative', width: '280px', background: 'rgba(0,0,0,0.02)', border: '2px solid var(--border)', borderRadius: '30px', padding: '40px 20px', display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div style={{ position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', color: 'white', fontSize: '9px', fontWeight: 800, padding: '3px 10px', borderRadius: '10px' }}>FRONT (CAB)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            {/* Chassis Layout Header & Override Selector */}
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-row-even)', border: '1px solid var(--border)', borderRadius: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)' }}>Detected Model:</span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', background: 'rgba(99,102,241,0.08)', padding: '4px 10px', borderRadius: '8px' }}>
+                  {selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model || 'Standard'}` : 'N/A'}
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>|</span>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+                  Inferred Layout: <strong style={{ color: '#10b981' }}>{AXLE_LAYOUTS[inferredLayoutId]?.name}</strong>
+                </span>
+              </div>
               
-              {/* Front Axle */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {['FL', 'FR'].map(pos => {
-                  const t = getTyreAtPosition(truckFilter, pos);
-                  return (
-                    <div key={pos} style={{ width: '80px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px' }}>{pos}</div>
-                      {t ? (
-                        <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '8px', padding: '8px 4px', minHeight: '64px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <div style={{ fontSize: '11px', fontWeight: 900 }}>{t.serialNo}</div>
-                          <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '2px' }}>{t.brand}</div>
-                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>{t.totalKmRun.toLocaleString()} km</div>
-                        </div>
-                      ) : (
-                        <div onClick={() => {
-                          const av = tyres.find(ty => ty.status === 'available');
-                          if (av) openFitModal(av, pos);
-                          else alert('No available tyres in stock. Please register a tyre first.');
-                        }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '8px', padding: '8px 4px', minHeight: '64px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                          <Plus size={14} />
-                          <span style={{ fontSize: '9px', fontWeight: 700 }}>Empty</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Rear Axle 1 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Left side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RLO1', 'RLI1'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RRI1', 'RRO1'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Rear Axle 2 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Left side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RLO2', 'RLI2'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RRI2', 'RRO2'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Spare Tyre */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
-                <div style={{ width: '80px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '3px' }}>SPARE (SP)</div>
-                  {(() => {
-                    const t = getTyreAtPosition(truckFilter, 'SP');
-                    return t ? (
-                      <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '8px', padding: '6px 4px', minHeight: '54px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 900 }}>{t.serialNo}</div>
-                        <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                      </div>
-                    ) : (
-                      <div onClick={() => {
-                        const av = tyres.find(ty => ty.status === 'available');
-                        if (av) openFitModal(av, 'SP');
-                        else alert('No available tyres in stock.');
-                      }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '8px', padding: '6px 4px', minHeight: '54px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                        <Plus size={12} />
-                      </div>
-                    );
-                  })()}
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-muted)' }}>Configure Axle Layout:</span>
+                <select 
+                  value={overrideLayoutId || inferredLayoutId} 
+                  onChange={e => setOverrideLayoutId(e.target.value)} 
+                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontWeight: 700, fontSize: '12px' }}
+                >
+                  {Object.entries(AXLE_LAYOUTS).map(([id, layout]) => (
+                    <option key={id} value={id}>{layout.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {(() => {
+              const isTrailer = activeLayoutId === '18' || activeLayoutId === '22';
+              const canvasWidth = isTrailer ? 740 : 390;
+              return (
+                <div style={{ width: '100%', overflowX: 'auto', padding: '15px 0', display: 'flex', justifyContent: 'center' }}>
+                  <div style={{ 
+                    position: 'relative', 
+                    width: `${canvasWidth}px`, 
+                    height: '240px', 
+                    background: 'var(--bg-card)', 
+                    border: '2px solid var(--border)', 
+                    borderRadius: '24px', 
+                    padding: '0', 
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
+                    flexShrink: 0,
+                    overflow: 'hidden'
+                  }}>
+                    {/* Parallel Steel Chassis Rails */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '110px',
+                      width: `${isTrailer ? 230 : 240}px`,
+                      top: '96px',
+                      height: '6px',
+                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-card) 100%)',
+                      border: '1px solid var(--border)',
+                      zIndex: 1
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      left: '110px',
+                      width: `${isTrailer ? 230 : 240}px`,
+                      top: '138px',
+                      height: '6px',
+                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-card) 100%)',
+                      border: '1px solid var(--border)',
+                      zIndex: 1
+                    }} />
+
+                    {/* Left Mirror */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '35px',
+                      top: '18px',
+                      width: '18px',
+                      height: '8px',
+                      background: 'var(--bg-th)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '3px',
+                      zIndex: 3
+                    }} />
+                    {/* Right Mirror */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '35px',
+                      bottom: '18px',
+                      width: '18px',
+                      height: '8px',
+                      background: 'var(--bg-th)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '3px',
+                      zIndex: 3
+                    }} />
+
+                    {/* Cabin Block */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '15px',
+                      top: '36px',
+                      width: '105px',
+                      height: '168px',
+                      background: 'linear-gradient(135deg, var(--bg-th) 0%, var(--bg-card) 100%)',
+                      border: '2px solid var(--border)',
+                      borderRadius: '24px 8px 8px 24px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                      zIndex: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingLeft: '14px',
+                      boxSizing: 'border-box'
+                    }}>
+                      {/* Glass Windshield */}
+                      <div style={{
+                        width: '16px',
+                        height: '136px',
+                        background: 'var(--bg-input)',
+                        borderRadius: '4px',
+                        border: '1px solid var(--border)',
+                        opacity: 0.95
+                      }} />
+                      {/* Roof hatch or cabin detail */}
+                      <div style={{
+                        width: '32px',
+                        height: '70px',
+                        marginLeft: '15px',
+                        background: 'var(--bg-card)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <span style={{ fontSize: '8px', fontWeight: 900, color: 'var(--text-muted)' }}>CAB</span>
+                      </div>
+                    </div>
+
+                    {/* Side Fuel Tanks */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '135px',
+                      top: '40px',
+                      width: '65px',
+                      height: '30px',
+                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-card) 100%)',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: '4px',
+                      zIndex: 2
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      left: '135px',
+                      bottom: '40px',
+                      width: '65px',
+                      height: '30px',
+                      background: 'linear-gradient(180deg, var(--bg-card) 0%, var(--bg-th) 100%)',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: '4px',
+                      zIndex: 2
+                    }} />
+
+                    {/* Fifth Wheel Coupling (Trailer only) */}
+                    {isTrailer && (
+                      <div style={{
+                        position: 'absolute',
+                        left: '243px',
+                        top: '108px',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, var(--bg-th) 0%, var(--bg-card) 100%)',
+                        border: '2px solid var(--border)',
+                        zIndex: 2
+                      }} />
+                    )}
+
+                    {/* Landing Gear Support (Trailer only) */}
+                    {isTrailer && (
+                      <>
+                        <div style={{
+                          position: 'absolute',
+                          left: '202px',
+                          top: '32px',
+                          bottom: '32px',
+                          width: '6px',
+                          background: 'var(--border)',
+                          zIndex: 3
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          left: '197px',
+                          top: '26px',
+                          width: '16px',
+                          height: '8px',
+                          background: 'var(--bg-th)',
+                          border: '1px solid var(--border)',
+                          zIndex: 4
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          left: '197px',
+                          bottom: '26px',
+                          width: '16px',
+                          height: '8px',
+                          background: 'var(--bg-th)',
+                          border: '1px solid var(--border)',
+                          zIndex: 4
+                        }} />
+                      </>
+                    )}
+
+                    {/* Cargo Body / Trailer Bed */}
+                    <div style={{
+                      position: 'absolute',
+                      left: isTrailer ? '185px' : '125px',
+                      top: isTrailer ? '32px' : '36px',
+                      width: isTrailer ? '535px' : '240px',
+                      height: isTrailer ? '176px' : '168px',
+                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-input) 100%)',
+                      border: '2px solid var(--border)',
+                      borderRadius: '6px 16px 16px 6px',
+                      zIndex: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxSizing: 'border-box'
+                    }}>
+                      {/* Container ridges styling */}
+                      <div style={{
+                        position: 'absolute',
+                        inset: '4px',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        borderRadius: '4px',
+                        background: isTrailer 
+                          ? 'repeating-linear-gradient(180deg, transparent, transparent 12px, var(--bg-card) 12px, var(--bg-card) 14px)'
+                          : 'repeating-linear-gradient(90deg, transparent, transparent 12px, var(--bg-card) 12px, var(--bg-card) 14px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        pointerEvents: 'none'
+                      }} />
+                      
+                      {/* Container badge */}
+                      <div style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        padding: '6px 16px',
+                        color: 'var(--text)',
+                        textAlign: 'center',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                        zIndex: 3
+                      }}>
+                        <div style={{ fontSize: '10px', fontWeight: 900, letterSpacing: '0.15em', color: 'var(--text)' }}>
+                          {isTrailer ? 'VGTC CARRIER' : 'VGTC EXPRESS'}
+                        </div>
+                        <div style={{ fontSize: '7.5px', fontWeight: 700, color: 'var(--text-muted)', marginTop: '2px', textTransform: 'uppercase' }}>
+                          {selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : truckFilter}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Axles and Wheels Rendering */}
+                    {activeLayout.axles.map((axle, axleIdx) => {
+                      const x = getAxleHorizontalOffsets(activeLayoutId)[axleIdx] || 50;
+                      const leftPos = axle.positions.filter(p => p.id.includes('L') || p.id === 'FL' || p.id === 'FL2');
+                      const rightPos = axle.positions.filter(p => p.id.includes('R') || p.id === 'FR' || p.id === 'FR2');
+                      
+                      return (
+                        <div key={axleIdx} style={{ position: 'absolute', left: `${x - 22}px`, top: '0', bottom: '0', width: '44px', zIndex: 4 }}>
+                          {/* Vertical Axle Shaft */}
+                          <div style={{
+                            position: 'absolute',
+                            left: '18px',
+                            top: '18px',
+                            bottom: '18px',
+                            width: '8px',
+                            background: 'var(--border)',
+                            zIndex: 0
+                          }} />
+                          
+                          {/* Center Casing */}
+                          <div style={{
+                            position: 'absolute',
+                            left: '14px',
+                            top: '112px',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            background: 'var(--bg-th)',
+                            border: '2px solid var(--border)',
+                            zIndex: 1
+                          }} />
+
+                          {/* Top (Left) Wheels */}
+                          {leftPos.map((pos, idx) => {
+                            const t = getTyreAtPosition(truckFilter, pos.id);
+                            const isFitted = !!t;
+                            const topVal = idx === 0 ? 38 : 58;
+                            return (
+                              <div 
+                                key={pos.id} 
+                                onClick={() => {
+                                  if (isFitted) openRemoveModal(t);
+                                  else {
+                                    const av = tyres.find(ty => ty.status === 'available');
+                                    if (av) openFitModal(av, pos.id);
+                                    else alert('No available tyres in stock. Please register a tyre first.');
+                                  }
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  left: '0',
+                                  top: `${topVal}px`,
+                                  width: '44px',
+                                  height: '18px',
+                                  borderRadius: '4px',
+                                  background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
+                                  border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
+                                  boxShadow: isFitted ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
+                                  color: isFitted ? '#fff' : 'var(--text-muted)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  zIndex: 2,
+                                  padding: '2px',
+                                  boxSizing: 'border-box'
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.transform = 'scale(1.08)';
+                                  if (!isFitted) {
+                                    e.currentTarget.style.borderColor = 'var(--primary)';
+                                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
+                                  }
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                  if (!isFitted) {
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                    e.currentTarget.style.background = 'var(--bg-th)';
+                                  }
+                                }}
+                              >
+                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+                                  <div style={{ fontSize: '7px', fontWeight: 900, opacity: 0.9, lineHeight: 1 }}>{pos.label}</div>
+                                  <div style={{ fontSize: '8px', fontWeight: 900, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '38px', lineHeight: 1, marginTop: '1px' }}>
+                                    {isFitted ? t.serialNo : 'Empty'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Bottom (Right) Wheels */}
+                          {rightPos.map((pos, idx) => {
+                            const t = getTyreAtPosition(truckFilter, pos.id);
+                            const isFitted = !!t;
+                            const bottomVal = idx === 0 ? 58 : 38;
+                            return (
+                              <div 
+                                key={pos.id} 
+                                onClick={() => {
+                                  if (isFitted) openRemoveModal(t);
+                                  else {
+                                    const av = tyres.find(ty => ty.status === 'available');
+                                    if (av) openFitModal(av, pos.id);
+                                    else alert('No available tyres in stock. Please register a tyre first.');
+                                  }
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  left: '0',
+                                  bottom: `${bottomVal}px`,
+                                  width: '44px',
+                                  height: '18px',
+                                  borderRadius: '4px',
+                                  background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
+                                  border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
+                                  boxShadow: isFitted ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
+                                  color: isFitted ? '#fff' : 'var(--text-muted)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  zIndex: 2,
+                                  padding: '2px',
+                                  boxSizing: 'border-box'
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.transform = 'scale(1.08)';
+                                  if (!isFitted) {
+                                    e.currentTarget.style.borderColor = 'var(--primary)';
+                                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
+                                  }
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                  if (!isFitted) {
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                    e.currentTarget.style.background = 'var(--bg-th)';
+                                  }
+                                }}
+                              >
+                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+                                  <div style={{ fontSize: '7px', fontWeight: 900, opacity: 0.9, lineHeight: 1 }}>{pos.label}</div>
+                                  <div style={{ fontSize: '8px', fontWeight: 900, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '38px', lineHeight: 1, marginTop: '1px' }}>
+                                    {isFitted ? t.serialNo : 'Empty'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+
+                    {/* Spare Tyre (SP) */}
+                    {(() => {
+                      const t = getTyreAtPosition(truckFilter, 'SP');
+                      const isFitted = !!t;
+                      const spareX = isTrailer ? 440 : 330;
+                      return (
+                        <div 
+                          onClick={() => {
+                            if (isFitted) openRemoveModal(t);
+                            else {
+                              const av = tyres.find(ty => ty.status === 'available');
+                              if (av) openFitModal(av, 'SP');
+                              else alert('No available tyres in stock. Please register a tyre first.');
+                            }
+                          }}
+                          style={{
+                            position: 'absolute',
+                            left: `${spareX}px`,
+                            top: '110px',
+                            width: '44px',
+                            height: '20px',
+                            borderRadius: '4px',
+                            background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
+                            border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
+                            boxShadow: isFitted ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
+                            color: isFitted ? '#fff' : 'var(--text-muted)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            zIndex: 4,
+                            padding: '2px',
+                            boxSizing: 'border-box'
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.transform = 'scale(1.08)';
+                            if (!isFitted) {
+                              e.currentTarget.style.borderColor = 'var(--primary)';
+                              e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
+                            }
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            if (!isFitted) {
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                              e.currentTarget.style.background = 'var(--bg-th)';
+                            }
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+                            <div style={{ fontSize: '7px', fontWeight: 900, opacity: 0.9 }}>SP</div>
+                            <div style={{ fontSize: '8px', fontWeight: 900, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '38px', marginTop: '1px' }}>
+                              {isFitted ? t.serialNo : 'Spare'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -824,23 +1323,23 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleAddSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Serial No. *</label>
                     <input className="fi" type="text" placeholder="e.g. MRF-84930129" value={addForm.serialNo} onChange={e => setAddForm({ ...addForm, serialNo: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Brand</label>
                     <select className="fi" value={addForm.brand} onChange={e => setAddForm({ ...addForm, brand: e.target.value })}>
                       {BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Size</label>
                     <select className="fi" value={addForm.size} onChange={e => setAddForm({ ...addForm, size: e.target.value })}>
                       {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Type</label>
                     <select className="fi" value={addForm.type} onChange={e => setAddForm({ ...addForm, type: e.target.value })}>
                       <option value="new">New Tyre</option>
@@ -848,15 +1347,15 @@ export default function TyreModule() {
                       <option value="old">Old / Used Tyre</option>
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Cost</label>
                     <input className="fi" type="number" placeholder="₹" value={addForm.purchasePrice} onChange={e => setAddForm({ ...addForm, purchasePrice: e.target.value })} />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Purchase Date</label>
                     <input className="fi" type="date" value={addForm.purchaseDate} onChange={e => setAddForm({ ...addForm, purchaseDate: e.target.value })} />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Notes</label>
                     <textarea className="fi" rows={2} placeholder="Optional purchase notes..." value={addForm.notes} onChange={e => setAddForm({ ...addForm, notes: e.target.value })} />
                   </div>
@@ -884,7 +1383,7 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleFitSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Truck No. *</label>
                     <AutocompleteInput 
                       value={fitForm.truckNo} 
@@ -894,17 +1393,17 @@ export default function TyreModule() {
                       required={true}
                     />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Position *</label>
                     <select className="fi" value={fitForm.position} onChange={e => setFitForm({ ...fitForm, position: e.target.value })}>
-                      {POSITIONS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                      {availablePositions.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Fit Odometer *</label>
                     <input className="fi" type="number" placeholder="KM" value={fitForm.fittedAtKm} onChange={e => setFitForm({ ...fitForm, fittedAtKm: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Fit Date *</label>
                     <input className="fi" type="date" value={fitForm.fittedDate} onChange={e => setFitForm({ ...fitForm, fittedDate: e.target.value })} required />
                   </div>
@@ -937,15 +1436,15 @@ export default function TyreModule() {
                       Fitted to <strong style={{ color: '#10b981' }}>{selectedTyre.fitment.truckNo}</strong> at position <strong>{selectedTyre.fitment.position}</strong> with Odometer <strong>{selectedTyre.fitment.fittedAtKm.toLocaleString()} KM</strong>.
                     </div>
                   )}
-                  <div className="field-h">
+                  <div className="field">
                     <label>Removal KM *</label>
                     <input className="fi" type="number" placeholder="KM" value={removeForm.removalKm} onChange={e => setRemoveForm({ ...removeForm, removalKm: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Removal Date *</label>
                     <input className="fi" type="date" value={removeForm.removalDate} onChange={e => setRemoveForm({ ...removeForm, removalDate: e.target.value })} required />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Next Status *</label>
                     <select className="fi" value={removeForm.nextStatus} onChange={e => setRemoveForm({ ...removeForm, nextStatus: e.target.value })}>
                       <option value="available">Available (Put back in stock)</option>
@@ -977,19 +1476,19 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleRetreadSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Retread Date *</label>
                     <input className="fi" type="date" value={retreadForm.retreadDate} onChange={e => setRetreadForm({ ...retreadForm, retreadDate: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Retread Cost *</label>
                     <input className="fi" type="number" placeholder="₹" value={retreadForm.retreadCost} onChange={e => setRetreadForm({ ...retreadForm, retreadCost: e.target.value })} required />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Retreader Vendor</label>
                     <input className="fi" type="text" placeholder="e.g. Apollo Retread Center" value={retreadForm.retreaderName} onChange={e => setRetreadForm({ ...retreadForm, retreaderName: e.target.value })} />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Notes</label>
                     <textarea className="fi" rows={2} placeholder="Retreading comments..." value={retreadForm.notes} onChange={e => setRetreadForm({ ...retreadForm, notes: e.target.value })} />
                   </div>
@@ -1017,11 +1516,11 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleScrapSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Scrap Date *</label>
                     <input className="fi" type="date" value={scrapForm.scrapDate} onChange={e => setScrapForm({ ...scrapForm, scrapDate: e.target.value })} required />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Reason / Notes</label>
                     <textarea className="fi" rows={3} placeholder="Provide details e.g. Side cut, worn out, tread wear limit..." value={scrapForm.notes} onChange={e => setScrapForm({ ...scrapForm, notes: e.target.value })} />
                   </div>

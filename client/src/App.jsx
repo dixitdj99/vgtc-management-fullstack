@@ -38,7 +38,6 @@ import TyreModule from './modules/TyreModule';
 import VendorModule from './modules/VendorModule';
 import TripProfitModule from './modules/TripProfitModule';
 import AttendanceModule from './modules/AttendanceModule';
-import EwayModule from './modules/EwayModule';
 import VehicleCreditDebitModule from './modules/VehicleCreditDebitModule';
 
 const THEMES = [
@@ -397,8 +396,7 @@ function AppInner() {
     { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'SOON' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'SOON' },
-    { id: 'eway_dump', label: 'E-Way Bills', Icon: FileCheck, color: '#10b981', section: 'jksuper', permKey: 'eway', badge: 'SOON' },
+    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'NEW' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -452,8 +450,7 @@ function AppInner() {
     { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'SOON' },
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'SOON' },
-    { id: 'eway_jharli', label: 'E-Way Bills', Icon: FileCheck, color: '#f59e0b', section: 'jharli', permKey: 'eway', badge: 'SOON' },
+    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'NEW' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -598,7 +595,6 @@ function AppInner() {
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
       {(id === 'attendance_dump' || id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
-      {(id === 'eway_dump' || id === 'eway_jharli' || id === 'eway_main') && <EwayModule />}
       {/* ── Generic (non-VGTC orgs) ── */}
       {id === 'lr_main' && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
       {id === 'voucher_main' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Bill'} brand="main" />}
@@ -693,7 +689,10 @@ function AppInner() {
                     }}
                   >
                     <span className="nav-indicator" style={{ background: color, opacity: active === id ? 1 : 0 }} />
-                    <Icon size={20} color={active === id ? (sub ? color : '#fff') : 'currentColor'} />
+                    {/* The active pill is a 7% tint of `color`, not a solid fill —
+                        a white icon on it is invisible in light mode and clashes
+                        with the accent-coloured label in dark. */}
+                    <Icon size={20} color={active === id ? color : 'currentColor'} />
                     {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
                     {!col && badge === 'NEW' && <span className="nav-badge-new">NEW</span>}
                     {!col && badge === 'SOON' && <span className="nav-badge-soon">SOON</span>}
@@ -717,7 +716,7 @@ function AppInner() {
                             border: 'none', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', fontSize: '12.5px',
                             fontWeight: active === id && subActive === s.id ? 600 : 500, transition: 'all 0.15s',
-                            color: active === id && subActive === s.id ? color : '#6B7280',
+                            color: active === id && subActive === s.id ? color : 'var(--text-muted)',
                           }}
                         >
                           <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', marginRight: '8px', opacity: active === id && subActive === s.id ? 1 : 0.4 }} />
@@ -733,7 +732,7 @@ function AppInner() {
 
             // Sidebar groups — module ids map by prefix; unknown ids fall through ungrouped
             const groupOf = (id) => {
-              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_|eway_)/.test(id)) return 'Operations';
+              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_)/.test(id)) return 'Operations';
               if (/^(balance_|cashbook_|pay_|trip_profit_|vehicle_credit_debit_)/.test(id)) return 'Money';
               if (/^(vehicles_|truck_dashboard|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
               return null;
@@ -802,11 +801,10 @@ function AppInner() {
           </div>
           <div className="topbar-right">
             {/* Command palette trigger */}
-            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#F3F4F6', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', marginRight: '8px' }}>
-              <Search size={13} color="#9CA3AF" />
-              <span style={{ fontSize: '12px', fontWeight: 500, color: '#9CA3AF' }}>Search</span>
-              <kbd style={{ fontSize: '9px', fontWeight: 700, color: '#9CA3AF', background: '#fff', border: '1px solid var(--border)', borderRadius: '4px', padding: '1px 5px' }}>Ctrl K</kbd>
+            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)" className="search-trigger">
+              <Search size={13} />
+              <span>Search</span>
+              <kbd>Ctrl K</kbd>
             </button>
             {/* Offline/sync indicator */}
             {(pendingSync > 0 || !isOnline) && (
@@ -913,14 +911,6 @@ function AppInner() {
                     {/* Notification List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
                       {[
-                        {
-                          id: 'n1',
-                          title: 'E-Way Bill Auto-Regeneration',
-                          desc: 'Auto-option to create a new e-way bill for expired or un-loaded vehicle orders.',
-                          time: 'Just now',
-                          icon: FileCheck,
-                          color: '#10b981',
-                        },
                         {
                           id: 'n2',
                           title: 'Trip Profitability Analysis',
