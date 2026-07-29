@@ -108,9 +108,15 @@ function PhotoPicker({ value, name, onChange }) {
     );
 }
 
-const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour', 'Tyre', 'Manual'];
-// Vendor-type profiles: no salary formula, no leaves
+// People only. Tyre / Manual firms moved to Admin → Firms & Vendors; fuel
+// pumps live under Admin → Fuel Stations. Same profiles collection behind all
+// three screens — this list only controls what THIS screen creates and shows.
+const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour'];
+// Vendor-type profiles: no salary formula, no leaves. Kept for rendering any
+// legacy vendor profile that still carries these types.
 const VENDOR_TYPES = ['Tyre', 'Manual'];
+// Managed on their own admin screens, never listed or created here.
+const NON_STAFF_TYPES = ['pump', 'tyre', 'manual', 'firm'];
 const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver'];
 
 const calculateMonthsAndDays = (joined, exit) => {
@@ -399,8 +405,8 @@ const StaffProfileModule = ({ role }) => {
     };
 
     const filtered = profiles.filter(p => {
-        // Exclude pump profiles — managed in Fuel Stations
-        if ((p.type || '').toLowerCase() === 'pump') return false;
+        // Pumps → Fuel Stations; Tyre/Manual/other firms → Firms & Vendors.
+        if (NON_STAFF_TYPES.includes((p.type || '').toLowerCase())) return false;
         if (filterType !== 'All' && p.type !== filterType) return false;
         const s = searchTerm.toLowerCase();
         return (p.name || '').toLowerCase().includes(s) ||

@@ -35,7 +35,8 @@ const STATUSES = ['present', 'absent', 'half_day', 'leave'];
 //   Labour        — tracked separately through the labour module, not here.
 // Defined as an exclusion so a new employee type added later is included by
 // default rather than silently vanishing from the roll-call.
-const NON_ATTENDING_TYPES = ['Tyre', 'Manual', 'Pump', 'Labour'];
+// 'Firm' — custom-category firms from Admin → Firms & Vendors, companies not people.
+const NON_ATTENDING_TYPES = ['Tyre', 'Manual', 'Pump', 'Labour', 'Firm'];
 const NON_ATTENDING_LOOKUP = new Set(NON_ATTENDING_TYPES.map(t => t.toLowerCase()));
 const isAttendingType = (type) => !NON_ATTENDING_LOOKUP.has(String(type || '').trim().toLowerCase());
 

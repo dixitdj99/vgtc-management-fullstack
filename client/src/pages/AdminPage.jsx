@@ -4,13 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
   Users, Truck, Eye, EyeOff, ExternalLink, Fuel, Settings, Globe, Mail, Save, Building2, Server,
-  BarChart3, TrendingUp, Cloud, LayoutDashboard, UserCircle
+  BarChart3, TrendingUp, Cloud, LayoutDashboard, UserCircle, Briefcase
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import ProfitLossSheet from '../pages/admin/ProfitLossSheet';
 import AdminModule from '../modules/AdminModule';
 import StaffProfileModule from '../modules/StaffProfileModule';
+import FuelStationManager from '../pages/admin/FuelStationManager';
+import FirmManager from '../pages/admin/FirmManager';
+import PartyMaster from '../modules/PartyMaster';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
@@ -296,10 +299,9 @@ export default function AdminPage() {
   });
   const [sysSaving, setSysSaving] = useState(false);
 
-  useEffect(() => { 
-    fetchUsers(); 
-    fetchWorkers(); 
-    fetchFuelStations(); 
+  useEffect(() => {
+    fetchUsers();
+    fetchWorkers();
     fetchSysSettings();
   }, []);
 
@@ -361,47 +363,9 @@ export default function AdminPage() {
   const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi', dump: 'Dump (JK Super General)' };
   const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#f59e0b', jkl: '#10b981', dump: '#f43f5e' };
 
-  // ── Fuel Stations ───────────────────────────────────────────
-  const [fuelStations, setFuelStations] = useState([]);
-  const [fuelForm, setFuelForm] = useState('');
-  const [fuelBusy, setFuelBusy] = useState(false);
-  const [fuelEditId, setFuelEditId] = useState(null);
-  const [fuelEditName, setFuelEditName] = useState('');
-
-  const fetchFuelStations = async () => {
-    try {
-      const all = (await ax.get('/profiles')).data;
-      setFuelStations(all.filter(p => p.type === 'pump'));
-    } catch {}
-  };
-
-  const handleAddFuel = async e => {
-    e.preventDefault();
-    if (!fuelForm.trim()) return;
-    setFuelBusy(true);
-    try {
-      await ax.post('/profiles', { name: fuelForm.trim(), type: 'pump' });
-      setFuelForm('');
-      fetchFuelStations();
-    } catch (err) { alert(err.response?.data?.error || 'Failed to add'); }
-    finally { setFuelBusy(false); }
-  };
-
-  const handleDeleteFuel = async id => {
-    if (!confirm('Delete this fuel station?')) return;
-    try { await ax.delete(`/profiles/${id}`); fetchFuelStations(); }
-    catch { alert('Delete failed'); }
-  };
-
-  const handleEditFuel = async id => {
-    if (!fuelEditName.trim()) return;
-    try {
-      await ax.put(`/profiles/${id}`, { name: fuelEditName.trim(), type: 'pump' });
-      setFuelEditId(null);
-      setFuelEditName('');
-      fetchFuelStations();
-    } catch { alert('Update failed'); }
-  };
+  // Fuel stations are managed by the full FuelStationManager component now
+  // (contact, rate, opening balance, bill-pending, statement export) — the
+  // name-only CRUD that lived here went with the old tab body.
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -526,6 +490,8 @@ export default function AdminPage() {
           {[
             { id: 'users', label: 'Users & Permissions', icon: Users, color: '#6366f1' },
             { id: 'profiles', label: 'Driver & Staff Profiles', icon: UserCircle, color: '#6366f1' },
+            { id: 'firms', label: 'Firms & Vendors', icon: Briefcase, color: '#10b981' },
+            { id: 'parties', label: 'Party Master', icon: Building2, color: '#8b5cf6' },
             { id: 'workers', label: 'Labour Workers', icon: Truck, color: '#10b981' },
             { id: 'fuel', label: 'Fuel Stations', icon: Fuel, color: '#3b82f6' },
             { id: 'system', label: 'SMTP Settings', icon: Globe, color: '#f59e0b' },
@@ -822,65 +788,16 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── TAB 3: FUEL STATIONS ── */}
-        {activeTab === 'fuel' && (
-          <div className="card">
-            <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
-              <div className="card-title-block">
-                <div className="card-icon" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}><Fuel size={17} /></div>
-                <div className="card-title-text">
-                  <h3>Fuel Stations Management</h3>
-                  <p>Manage diesel pump list shown in voucher &amp; LR forms</p>
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '24px', padding: '20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Add New Station</div>
-                <form onSubmit={handleAddFuel} style={{ display: 'flex', gap: '10px' }}>
-                  <input className="fi" type="text" placeholder="e.g. HP Petrol Pump, Jharli" value={fuelForm} onChange={e => setFuelForm(e.target.value)} required style={{ flex: 1 }} />
-                  <button type="submit" className="btn btn-p" disabled={fuelBusy} style={{ whiteSpace: 'nowrap' }}>
-                    {fuelBusy ? '...' : <><Plus size={13} /> Add</>}
-                  </button>
-                </form>
-              </div>
+        {/* ── TAB 3: FUEL STATIONS ──
+            The full manager (contact, rate, opening balance, bill-pending,
+            monthly statement export) replaces the old name-only list. */}
+        {activeTab === 'fuel' && <FuelStationManager />}
 
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Registered Stations ({fuelStations.length})</div>
-                {fuelStations.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '10px' }}>No fuel stations added yet.</div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-                    {fuelStations.map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Fuel size={16} color="#3b82f6" />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {fuelEditId === s.id ? (
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <input className="fi" type="text" value={fuelEditName} onChange={e => setFuelEditName(e.target.value)} style={{ flex: 1, height: '32px', fontSize: '13px' }} />
-                              <button className="btn btn-p btn-sm" onClick={() => handleEditFuel(s.id)}><Check size={12} /></button>
-                              <button className="btn btn-g btn-sm" onClick={() => { setFuelEditId(null); setFuelEditName(''); }}><X size={12} /></button>
-                            </div>
-                          ) : (
-                            <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{s.name}</div>
-                          )}
-                        </div>
-                        {fuelEditId !== s.id && (
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button className="btn btn-g btn-sm btn-icon" onClick={() => { setFuelEditId(s.id); setFuelEditName(s.name); }} title="Edit"><Users size={12} /></button>
-                            <button className="btn btn-d btn-sm btn-icon" onClick={() => handleDeleteFuel(s.id)} title="Remove"><Trash2 size={13} /></button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ── FIRMS & VENDORS — tyre sellers, manual vendors, other firms ── */}
+        {activeTab === 'firms' && <FirmManager />}
+
+        {/* ── PARTY MASTER ── */}
+        {activeTab === 'parties' && <PartyMaster />}
 
         {/* ── TAB 4: SYSTEM & GOVT API SETTINGS ── */}
         {activeTab === 'system' && (
