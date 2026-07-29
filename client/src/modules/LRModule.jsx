@@ -147,8 +147,21 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
   );
 }
 
-/* ── Print helper ── */
-function printReceipt(allRows, lrNo, allChallans = [], brand = '', signedBy = 'VGTC') {
+/**
+ * Print helper.
+ *
+ * There is deliberately no CHALLAN summary line in the header. It was built
+ * from `rows[0].billing` — the first material's challan — so an LR loading two
+ * materials against two different challans printed only one of them, and read
+ * as though the whole load sat on that one challan. It also showed the
+ * challan's own total bags, which is a different quantity from the bags loaded
+ * on this LR and sat right above a table column of the latter.
+ *
+ * Every material row already carries its own challan next to its own bag count,
+ * which is what reconciliation actually needs, and being the row's own data it
+ * cannot drift out of step with the table.
+ */
+function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
@@ -156,19 +169,6 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '', signedBy = 'V
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
   const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
   const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-
-  const challanNos = base.billing ? base.billing.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const challanDetailsText = challanNos.map(no => {
-    const match = (allChallans || []).find(c => c.challanNo === no);
-    if (!match) return no;
-    let qty = 0;
-    if (match.materials && match.materials.length > 0) {
-      qty = match.materials.reduce((sum, cm) => sum + (parseInt(cm.totalBags) || 0), 0);
-    } else {
-      qty = parseInt(match.quantity || match.bags || 0);
-    }
-    return qty ? `${no} (${qty} Bags)` : no;
-  }).join(', ');
 
   if (brand === 'jkl') {
     openReceiptWindow({
@@ -322,7 +322,6 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '', signedBy = 'V
         <div class="sec">
           <div class="line"><span class="lbl">Truck No</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
           <div class="line"><span class="lbl">Party Name</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
-          ${base.billing ? `<div class="line"><span class="lbl">${challanNos.length > 1 ? 'Challans' : 'Challan'}</span><span class="val" style="font-size: 9pt; font-weight: 800;">${challanDetailsText}</span></div>` : ''}
         </div>
 
         <table>
@@ -426,7 +425,6 @@ function printReceipt(allRows, lrNo, allChallans = [], brand = '', signedBy = 'V
         <div class="sec">
           <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13.5px;font-weight:900;">${base.truckNo}</span></div>
           <div class="line"><span class="lbl">Party Name</span><span class="val">${parties}</span></div>
-          ${base.billing ? `<div class="line"><span class="lbl">${challanNos.length > 1 ? 'Challans' : 'Challan'}</span><span class="val" style="font-size: 11px; font-weight: 800;">${challanDetailsText}</span></div>` : ''}
         </div>
 
         <div class="sec">
@@ -1580,7 +1578,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         billing: m.billing || payload.billing || 'No',
         partyName: m.partyName,
       }));
-      printReceipt(printedRows, res.data.lrNo, allChallans, brand, signedBy);
+      printReceipt(printedRows, res.data.lrNo, brand, signedBy);
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -2169,7 +2167,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
                         <td className="c">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans, brand, signedBy)}>
+                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, brand, signedBy)}>
                               <Printer size={14} />
                             </button>
                             {canEdit && (
