@@ -44,7 +44,9 @@ export default function PublicLoadingStatus() {
     if (!silent) setLoading(true);
     try {
       const endpoint = brand === 'jklakshmi' ? '/jkl/lr' : '/lr';
-      const res = await api.get(endpoint);
+      // _skipCache: polled every 10s below, and the default 3-minute GET cache
+      // would hold the board still between refreshes.
+      const res = await api.get(endpoint, { _skipCache: true });
       
       // Filter for today's data only
       const today = new Date().toISOString().split('T')[0];

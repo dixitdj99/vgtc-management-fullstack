@@ -423,8 +423,13 @@ export default function LabourLoadingStatus() {
     if (!token) return;
     if (!silent) setLoading(true);
     try {
+      // _skipCache: this is the live board. GETs are cached for 3 minutes by
+      // default, so the 10-second poll below was replaying the same response for
+      // eighteen ticks in a row — a truck added at the gate did not appear, and
+      // the new-loading beep never fired, until the entry happened to expire.
       const res = await api.get(`/labour/today?date=${selectedDate}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        _skipCache: true,
       });
       const data = res.data;
 

@@ -100,7 +100,9 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
         dump: '/lr',
       };
       const endpoint = endpointMap[brand] || '/kosli/lr';
-      const res = await api.get(endpoint);
+      // _skipCache: polled every 10s below, and the default 3-minute GET cache
+      // would hold the board still between refreshes.
+      const res = await api.get(endpoint, { _skipCache: true });
       const today = new Date().toISOString().split('T')[0];
       setReceipts(res.data.filter(r => r.date && r.date.split('T')[0] === today).reverse());
       setLastSync(new Date());

@@ -42,7 +42,10 @@ export default function MobileLoadingStatus({ plant, godown }) {
 
     const load = (silent) => {
         if (!silent) { setRows(null); setError(false); }
-        ax.get(endpoint, { params: { _t: Date.now() } }).then(r => {
+        // _skipCache rather than a _t cache-buster: the buster still wrote an
+        // entry to the GET cache on every 10s poll, and none of them was ever
+        // read again.
+        ax.get(endpoint, { _skipCache: true }).then(r => {
             const today = new Date().toISOString().split('T')[0];
             setRows((r.data || []).filter(x => x.date && x.date.split('T')[0] === today).reverse());
         }).catch(() => { setRows([]); setError(true); });
