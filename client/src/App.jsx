@@ -27,6 +27,10 @@ import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
 import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
+import {
+  detectWeatherAlert, loadAlerts, addAlert, markRead, markAllRead,
+  clearAlert, clearAll, unreadCount, playAlertChime,
+} from './utils/weatherAlerts';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import TruckDashboard from './modules/TruckDashboard';
 import DashboardHome from './modules/DashboardHome';
@@ -137,6 +141,9 @@ function AppInner() {
 
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [weather, setWeather] = useState({ temp: null, cond: 'Clear', code: 1000, isDay: true, advice: 'Loading weather...' });
+  // Rain/thunderstorm warnings raised from the same feed, kept in localStorage
+  // so read and cleared survive a reload.
+  const [wxAlerts, setWxAlerts] = useState(() => loadAlerts());
   const [currentHour, setCurrentHour] = useState(new Date().getHours());
   const city = 'Jharli, Jhajjar, Haryana';
 
@@ -197,7 +204,9 @@ function AppInner() {
       // Using WeatherAPI.com directly as requested
       const API_KEY = 'e98e8f62e87e49de8db164340262603';
       const city = 'Jharli, Jhajjar, Haryana';
-      const res = await ax.get(`https://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(city)}`);
+      // forecast.json returns the same `current` block plus the coming hours,
+      // which is what lets an alert be raised before the rain arrives.
+      const res = await ax.get(`https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(city)}&days=1&aqi=no&alerts=no`);
 
       if (res.data && res.data.current) {
         const cur = res.data.current;
@@ -240,6 +249,16 @@ function AppInner() {
         const icon = rawIcon ? (rawIcon.startsWith('//') ? 'https:' + rawIcon : rawIcon) : null;
 
         setWeather({ temp, cond, code, isDay, advice, icon });
+
+        // Raise a warning if the feed says rain, storm or ice — now or soon.
+        const alert = detectWeatherAlert(res.data);
+        if (alert) {
+          setWxAlerts(prev => {
+            const { list, added } = addAlert(prev, alert);
+            if (added) playAlertChime();
+            return added ? [...list] : prev;
+          });
+        }
       }
     } catch (err) {
       console.error('Weather fetch failed:', err.message);
@@ -883,7 +902,15 @@ function AppInner() {
                 }}
               >
                 <Bell size={16} />
-                {unreadNotif && (
+                {(unreadCount(wxAlerts) > 0 || unreadNotif) && (
+                  unreadCount(wxAlerts) > 0 ? (
+                    <span style={{
+                      position: 'absolute', top: '2px', right: '2px', minWidth: '15px', height: '15px',
+                      padding: '0 3px', borderRadius: '8px', background: '#EF4444', color: '#fff',
+                      fontSize: '9px', fontWeight: 900, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', boxShadow: '0 0 6px #EF4444',
+                    }}>{unreadCount(wxAlerts)}</span>
+                  ) : (
                   <span style={{
                     position: 'absolute',
                     top: '6px',
@@ -894,6 +921,7 @@ function AppInner() {
                     background: '#EF4444',
                     boxShadow: '0 0 6px #EF4444',
                   }} />
+                  )
                 )}
               </button>
 
@@ -943,6 +971,62 @@ function AppInner() {
 
                     {/* Notification List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
+
+                      {/* Weather warnings — newest first, above the release notes */}
+                      {wxAlerts.length > 0 && (
+                        <div style={{ borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: 'rgba(239,68,68,0.06)' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 900, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Weather Alerts ({wxAlerts.length})
+                            </span>
+                            <span style={{ display: 'flex', gap: '10px' }}>
+                              <button onClick={() => setWxAlerts([...markAllRead(wxAlerts)])}
+                                style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700 }}>
+                                Mark all read
+                              </button>
+                              <button onClick={() => setWxAlerts([...clearAll(wxAlerts)])}
+                                style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700 }}>
+                                Clear all
+                              </button>
+                            </span>
+                          </div>
+                          {wxAlerts.map(a => {
+                            const tone = a.severity === 'severe' ? '#ef4444' : a.severity === 'high' ? '#f59e0b' : '#6366f1';
+                            return (
+                              <div key={a.id} style={{
+                                padding: '10px 14px', borderBottom: '1px solid var(--border-row)',
+                                display: 'flex', gap: '10px', alignItems: 'flex-start',
+                                background: a.read ? 'transparent' : 'rgba(239,68,68,0.04)',
+                              }}>
+                                <span style={{ background: `${tone}18`, color: tone, padding: '6px', borderRadius: '8px', display: 'flex', flexShrink: 0 }}>
+                                  <CloudRain size={14} />
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {!a.read && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: tone, flexShrink: 0 }} />}
+                                    <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)' }}>{a.title}</span>
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.4 }}>{a.message}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 800, color: tone }}>{a.timeLabel}</span>
+                                    {!a.read && (
+                                      <button onClick={() => setWxAlerts([...markRead(wxAlerts, a.id)])}
+                                        style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                        Mark as read
+                                      </button>
+                                    )}
+                                    <button onClick={() => setWxAlerts([...clearAlert(wxAlerts, a.id)])}
+                                      style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                      Clear
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {[
                         {
                           id: 'n2',
