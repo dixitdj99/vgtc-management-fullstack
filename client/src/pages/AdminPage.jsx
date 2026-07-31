@@ -165,6 +165,8 @@ export default function AdminPage() {
   });
   const [formError, setFormError] = useState('');
   // Second pass of user creation: the emailed code and the id Stytch gave us.
+  // The user list is reference material, not the task — hidden until asked for.
+  const [showUsers, setShowUsers] = useState(false);
   const [otpMode, setOtpMode] = useState(false);
   const [methodId, setMethodId] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -360,7 +362,20 @@ export default function AdminPage() {
 
         {/* ── TAB 1: USERS & PERMISSIONS ── */}
         {activeTab === 'users' && (
-          <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {/* The form and the user list used to sit side by side, which left the
+                form — and the permission editor inside it — squeezed into 400px.
+                The list is the reference, not the task, so it moved behind a
+                button and the form got the full width. */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                {users.length} account{users.length === 1 ? '' : 's'} in this organisation
+              </div>
+              <button type="button" className={`btn btn-sm ${showUsers ? 'btn-p' : 'btn-g'}`}
+                onClick={() => setShowUsers(v => !v)} style={{ fontWeight: 800 }}>
+                <Users size={14} /> {showUsers ? 'Hide Users' : `Show Users (${users.length})`}
+              </button>
+            </div>
             {/* User Form (Create/Edit) */}
             <div className="card">
               <div className="card-header">
@@ -382,11 +397,13 @@ export default function AdminPage() {
               <div className="card-body">
                 <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate}
                   style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div className="field">
-                    <label>Full Name</label>
-                    <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {/* Account details read as a row on a wide card, wrapping to one
+                      column on a narrow screen. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div className="field">
+                      <label>Full Name</label>
+                      <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
+                    </div>
                     <div className="field">
                       <label><User size={11} /> Username</label>
                       <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
@@ -395,11 +412,11 @@ export default function AdminPage() {
                       <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
                       <input className="fi" type="text" placeholder={editTarget ? 'Leave blank to keep' : 'e.g. pass@123'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
                     </div>
-                  </div>
-
-                  <div className="field">
-                    <label>Email Address</label>
-                    <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
+                    <div className="field">
+                      <label>Email Address</label>
+                      <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} required={!editTarget} />
+                      {!editTarget && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>The verification code is sent here</div>}
+                    </div>
                   </div>
 
                   <div className="field">
@@ -470,7 +487,8 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Users Table */}
+            {/* Users Table — reference, shown on demand */}
+            {showUsers && (
             <div className="card">
               <div className="card-header">
                 <div className="card-title-block">
@@ -519,6 +537,7 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
