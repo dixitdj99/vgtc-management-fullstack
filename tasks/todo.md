@@ -577,3 +577,39 @@ existing data — not code bugs, missing migration.
 - Create the `CRON_SECRET` secret before deploying, or App Hosting will reject
   the config for referencing a missing secret.
 - Nothing is committed: 45+ changed files on `initial-branch`.
+
+## User permissions: enforced, then rebuilt (2026-07-31)
+
+Three things were measured before touching anything:
+
+- **Permissions were decoration on 38 of 39 routers.** Only attendanceRoutes
+  used `requirePermission`; everything else sat behind `requireAuth` alone, so a
+  user granted *view* on the cashbook could POST a deposit straight to the API.
+- **The catalogue had drifted from what the app enforces.** `attendance` was
+  missing from AdminPage, `lr_dump` from both admin screens (JK Super Loading
+  Receipt was ungrantable), and three `lr_*` keys were listed as current when
+  the nav had stopped using them.
+- **Three copies of the same editor** — AdminPage, AdminUserManagement, and a
+  dead OrganizationSettings imported by nothing.
+
+- [x] `middleware/permissionGate.js` — `gate(keys)` applied at the mounts in
+      index.js, so the whole mapping reads in one place and no handler can be
+      registered above a router's own middleware. Method picks the action
+      (GET→view, POST/PATCH→edit, DELETE→delete). Routers serving several
+      modules (e.g. /vouchers) pass if the user holds ANY of their keys.
+      25 mounts gated; auth/public/jobs/users deliberately left alone.
+- [x] The `view < edit < delete` ladder now lives once in auth.js
+      (`PERMISSION_LADDER` + `permits`) instead of being copied into the gate.
+- [x] `permissions/catalogue.js` — one list, all 27 nav keys present, legacy
+      keys flagged rather than dropped (App.jsx and LRModule still read them),
+      plus a dev-time drift warning.
+- [x] `components/PermissionEditor.jsx` — one editor for both screens: search,
+      changed-only filter, per-location and per-group bulk set, role presets,
+      copy-from-user, four levels, and a plain-language summary per location.
+      A location toggle now greys its modules instead of hiding them, so it
+      reads as the gate it is rather than looking like access was revoked.
+- [x] Deleted the dead OrganizationSettings.jsx.
+- [x] Verified: 63 tests pass (was 57) — view reads but cannot write, edit can
+      write, no-permission is refused, admin bypasses, a multi-key route accepts
+      any one key, and the catalogue covers every nav key. That last one is the
+      guard that would have caught the attendance/lr_dump gap.

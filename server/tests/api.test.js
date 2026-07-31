@@ -647,5 +647,87 @@ test('POST /invoices/generate refuses an entry that is not in the Balance Sheet'
     `expected the missing LR to be named, got ${JSON.stringify(res.data.missingLrs)}`);
 });
 
+// ── Permissions are enforced by the server, not just the browser ────────────
+//
+// Until the gate was added, only attendanceRoutes checked permissions: a user
+// granted *view* on the cashbook could POST a deposit straight to the API.
+// These sign their own tokens so a real user record is not needed.
+
+const asUser = (permissions, role = 'user') => jwt.sign(
+  { id: 'perm-test-user', role, orgId: 'vgtc', name: 'Perm Test', permissions },
+  SECRET, { expiresIn: '1h' }
+);
+
+function requestAs(token, method, path, body) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(BASE + path);
+    const req = http.request({
+      hostname: url.hostname, port: url.port, path: url.pathname + url.search, method,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-org-id': 'vgtc' },
+    }, (res) => {
+      let data = '';
+      res.on('data', c => (data += c));
+      res.on('end', () => resolve({ status: res.statusCode, data }));
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+const deposit = { amount: 1, remark: 'perm-test probe', date: '2026-07-31' };
+
+test('view permission allows reads but refuses writes', async () => {
+  const t = asUser({ cashbook: 'view' });
+  const read = await requestAs(t, 'GET', '/cashbook');
+  assert(read.status === 200, `expected 200 on read, got ${read.status}`);
+  const write = await requestAs(t, 'POST', '/cashbook/deposit', deposit);
+  assert(write.status === 403, `a view-only user must not be able to deposit — got ${write.status}`);
+});
+
+test('edit permission allows writes', async () => {
+  const t = asUser({ cashbook: 'edit' });
+  const write = await requestAs(t, 'POST', '/cashbook/deposit', deposit);
+  assert(write.status >= 200 && write.status < 300, `expected 2xx, got ${write.status} ${write.data}`);
+  try {
+    const id = JSON.parse(write.data).id;
+    if (id) cleanup.push(() => requestAs(asUser({}, 'admin'), 'DELETE', `/cashbook/${id}`));
+  } catch { /* nothing to clean */ }
+});
+
+test('no permission refuses even reads', async () => {
+  const t = asUser({});
+  const read = await requestAs(t, 'GET', '/cashbook');
+  assert(read.status === 403, `expected 403, got ${read.status}`);
+});
+
+test('admins bypass the gate', async () => {
+  const t = asUser({}, 'admin');
+  const read = await requestAs(t, 'GET', '/cashbook');
+  assert(read.status === 200, `admin read should pass, got ${read.status}`);
+});
+
+test('the gate accepts any one of a multi-key route', async () => {
+  // /vouchers answers for every voucher and balance module, so holding one is enough.
+  const t = asUser({ balance_kosli: 'view' });
+  const read = await requestAs(t, 'GET', '/vouchers');
+  assert(read.status === 200, `expected 200 holding balance_kosli, got ${read.status}`);
+});
+
+test('permission catalogue covers every nav key', async () => {
+  // The guard for the bug this replaced: `attendance` and `lr_dump` were
+  // enforced by the app but missing from the admin screens, so they could not
+  // be granted at all.
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '..', '..', 'client', 'src');
+  const nav = fs.readFileSync(path.join(root, 'App.jsx'), 'utf8');
+  const cat = fs.readFileSync(path.join(root, 'permissions', 'catalogue.js'), 'utf8');
+  const navKeys = [...new Set([...nav.matchAll(/permKey:\s*'([^']+)'/g)].map(m => m[1]))];
+  const catKeys = new Set([...cat.matchAll(/key:\s*'([^']+)'/g)].map(m => m[1]));
+  const missing = navKeys.filter(k => !catKeys.has(k));
+  assert(missing.length === 0, `nav keys missing from the catalogue: ${missing.join(', ')}`);
+});
+
 // Run
 runAll();

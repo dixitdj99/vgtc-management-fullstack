@@ -38,6 +38,9 @@ const profileRoutes = require('./routes/profileRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const { requireAuth } = require('./middleware/auth');
+// Permissions are enforced here, at the mounts, so the whole mapping reads in
+// one place. See middleware/permissionGate.js.
+const { gate } = require('./middleware/permissionGate');
 const auditRoutes = require('./routes/auditRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 
@@ -111,23 +114,23 @@ app.use(express.json({ limit: '10mb' }));
 
 const partyRoutes = require('./routes/partyRoutes');
 
-app.use('/api/kosli/lr', requireAuth, kosliLrRoutes);
-app.use('/api/jhajjar/lr', requireAuth, jhajjarLrRoutes);
-app.use('/api/bahadurgarh/lr', requireAuth, bahadurgarhLrRoutes);
-app.use('/api/vouchers', requireAuth, voucherRoutes);
+app.use('/api/kosli/lr', requireAuth, gate(['lr_dump','bill_kosli']), kosliLrRoutes);
+app.use('/api/jhajjar/lr', requireAuth, gate(['lr_dump','bill_jhajjar']), jhajjarLrRoutes);
+app.use('/api/bahadurgarh/lr', requireAuth, gate(['lr_dump','bill_bahadurgarh']), bahadurgarhLrRoutes);
+app.use('/api/vouchers', requireAuth, gate(['voucher_jkl_dump','voucher_jkl','voucher_jksuper','balance_kosli','balance_jhajjar','balance_bahadurgarh','balance_jksuper','balance_jkl_dump','balance_jkl']), voucherRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/cashbook', requireAuth, cashbookRoutes);
+app.use('/api/cashbook', requireAuth, gate('cashbook'), cashbookRoutes);
 // JK Super Dump stock. The router was written and required but never mounted,
 // so every /api/stock call 404'd while the four per-plant routers worked.
-app.use('/api/stock', requireAuth, stockRoutes);
-app.use('/api/kosli/stock', requireAuth, kosliStockRoutes);
-app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
-app.use('/api/bahadurgarh/stock', requireAuth, bahadurgarhStockRoutes);
-app.use('/api/sell', requireAuth, sellRoutes);
+app.use('/api/stock', requireAuth, gate(['stock_kosli','stock_jhajjar','stock_bahadurgarh']), stockRoutes);
+app.use('/api/kosli/stock', requireAuth, gate('stock_kosli'), kosliStockRoutes);
+app.use('/api/jhajjar/stock', requireAuth, gate('stock_jhajjar'), jhajjarStockRoutes);
+app.use('/api/bahadurgarh/stock', requireAuth, gate('stock_bahadurgarh'), bahadurgarhStockRoutes);
+app.use('/api/sell', requireAuth, gate('sell'), sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
-app.use('/api/lr', requireAuth, lrRoutes); // Legacy JK Super route
+app.use('/api/lr', requireAuth, gate(['lr_dump','bill_kosli','bill_jhajjar','bill_bahadurgarh']), lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
 app.use('/api/audit', auditRoutes);
@@ -146,21 +149,23 @@ app.get('/api/weather', async (req, res) => {
 });
 
 // JKL Routes
-app.use('/api/jkl/lr', requireAuth, jklLrRoutes);
-app.use('/api/jkl/stock', requireAuth, jklStockRoutes);
-app.use('/api/jkl/cashbook', requireAuth, jklCashbookRoutes);
-app.use('/api/vehicles', requireAuth, vehicleRoutes);
-app.use('/api/vehicle-advances', requireAuth, vehicleAdvanceRoutes);
-app.use('/api/freight-batches', requireAuth, freightBatchRoutes);
-app.use('/api/stock-transfers', requireAuth, stockTransferRoutes);
-app.use('/api/mileage', requireAuth, mileageRoutes);
+app.use('/api/jkl/lr', requireAuth, gate('lr_jkl'), jklLrRoutes);
+app.use('/api/jkl/stock', requireAuth, gate('stock_jkl'), jklStockRoutes);
+app.use('/api/jkl/cashbook', requireAuth, gate('cashbook'), jklCashbookRoutes);
+app.use('/api/vehicles', requireAuth, gate('vehicle'), vehicleRoutes);
+app.use('/api/vehicle-advances', requireAuth, gate(['pay','vehicle']), vehicleAdvanceRoutes);
+app.use('/api/freight-batches', requireAuth, gate('pay'), freightBatchRoutes);
+app.use('/api/stock-transfers', requireAuth, gate(['stock_kosli','stock_jhajjar','stock_bahadurgarh','stock_jkl']), stockTransferRoutes);
+app.use('/api/mileage', requireAuth, gate('mileage'), mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);
-app.use('/api/payments', requireAuth, paymentRoutes);
-app.use('/api/maintenance', requireAuth, maintenanceRoutes);
-app.use('/api/invoices', invoiceRoutes);
-app.use('/api/tolls', requireAuth, require('./routes/tollRoutes'));
-app.use('/api/tyres', requireAuth, require('./routes/tyreRoutes'));
-app.use('/api/vendors', requireAuth, require('./routes/vendorRoutes'));
+app.use('/api/payments', requireAuth, gate('pay'), paymentRoutes);
+app.use('/api/maintenance', requireAuth, gate('vehicle'), maintenanceRoutes);
+// requireAuth first: the gate reads req.user, and invoiceRoutes applies its own
+// auth internally, which would be too late for the gate to see it.
+app.use('/api/invoices', requireAuth, gate('invoice'), invoiceRoutes);
+app.use('/api/tolls', requireAuth, gate('vehicle'), require('./routes/tollRoutes'));
+app.use('/api/tyres', requireAuth, gate('vehicle'), require('./routes/tyreRoutes'));
+app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRoutes'));
 // attendanceRoutes applies requirePermission('attendance', …) internally, which
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
