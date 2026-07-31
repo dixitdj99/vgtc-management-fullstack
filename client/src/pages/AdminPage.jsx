@@ -282,6 +282,10 @@ export default function AdminPage() {
     email: '', isOtpEnabled: false, permissions: {}
   });
   const [formError, setFormError] = useState('');
+  // Second pass of user creation: the emailed code and the id Stytch gave us.
+  const [otpMode, setOtpMode] = useState(false);
+  const [methodId, setMethodId] = useState('');
+  const [otpCode, setOtpCode] = useState('');
 
   // ── State: System Settings ──
   const [sysSettings, setSysSettings] = useState({
@@ -373,14 +377,31 @@ export default function AdminPage() {
     catch { } finally { setLoading(false); }
   };
 
+  /**
+   * Creating a user takes two passes: send a code to the address, then create
+   * with that code. This posted straight to /users with neither, so the server
+   * answered "Email verification code is required" every single time.
+   */
   const handleCreate = async e => {
     e.preventDefault(); setFormError(''); setBusy(true);
     try {
-      await ax.post(API, form);
-      setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
+      if (!otpMode) {
+        const res = await ax.post(`${API}/send-otp`, { email: form.email });
+        setMethodId(res.data.methodId);
+        setOtpMode(true);
+        setFormError(`Verification code sent to ${form.email}. Enter it below to finish.`);
+        return;
+      }
+      await ax.post(API, { ...form, otpCode, methodId });
+      resetCreateForm();
       fetchUsers();
     } catch (e) { setFormError(e.response?.data?.error || 'Failed to create user'); }
     finally { setBusy(false); }
+  };
+
+  const resetCreateForm = () => {
+    setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
+    setOtpMode(false); setMethodId(''); setOtpCode(''); setFormError('');
   };
 
   const handleUpdate = async (id, data) => {
@@ -587,18 +608,19 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  <div style={{
-                    marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
-                    background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
-                      <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
+                  {/* The "Email OTP Security" tick box used to sit here. It offered a
+                      choice that did not exist: isOtpEnabled is never read at login, and
+                      every new user is verified by an emailed code regardless. */}
+                  {!editTarget && otpMode && (
+                    <div style={{ marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.05)' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Verification Code</div>
+                      <input className="fi" value={otpCode} onChange={e => setOtpCode(e.target.value.trim())}
+                        placeholder="6-digit code sent to the email above" required />
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4, marginTop: '6px' }}>
+                        Sent to {form.email}. The account is created once this is verified.
+                      </div>
                     </div>
-                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                      Requires two-step verification using a code sent to the email above.
-                    </div>
-                  </div>
+                  )}
 
                   <div style={{ marginTop: '8px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.05)' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
@@ -649,11 +671,11 @@ export default function AdminPage() {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                    {editTarget && (
-                      <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
+                    {(editTarget || otpMode) && (
+                      <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); resetCreateForm(); }}>Cancel</button>
                     )}
                     <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
-                      {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : <><Plus size={14} /> Create User</>)}
+                      {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : (otpMode ? <><Check size={14} /> Verify & Create User</> : <><Plus size={14} /> Send Verification Code</>))}
                     </button>
                   </div>
                 </form>
