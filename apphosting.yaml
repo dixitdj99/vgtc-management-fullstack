@@ -59,30 +59,9 @@ env:
     availability:
       - RUNTIME
 
-  # Stytch — emails the one-time code an admin must enter to create a user.
-  # The project id is an identifier, not a credential, so it sits here; the
-  # secret is in Secret Manager.
-  #
-  # STYTCH_API_URL matters: the code defaults to test.stytch.com, and this is a
-  # LIVE project, so it has to be set explicitly or every OTP call goes to the
-  # test host and fails.
-  #
-  # Until STYTCH_SECRET exists, isStytchConfigured() is false and the server
-  # falls back to a simulated OTP that accepts the constant 123456.
-  - variable: STYTCH_PROJECT_ID
-    value: "project-live-52b0362d-b4e8-4316-ada7-efead4b5c747"
-    availability:
-      - RUNTIME
-  - variable: STYTCH_API_URL
-    value: "https://api.stytch.com"
-    availability:
-      - RUNTIME
-
   # Reference secure variables stored in Cloud Secret Manager
   - variable: JWT_SECRET
     secret: JWT_SECRET
-  - variable: STYTCH_SECRET
-    secret: STYTCH_SECRET
   - variable: SMTP_PASS
     secret: SMTP_PASS
   - variable: GOOGLE_CREDENTIALS
