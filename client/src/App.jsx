@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X, Search, Building2, TrendingUp, ClipboardList, Bell, Sparkles, FileCheck } from 'lucide-react';
 import TruckLoader from './components/TruckLoader';
@@ -322,6 +322,23 @@ function AppInner() {
     // Ctrl+K / Cmd+K — command palette (window capture beats form-shortcut hooks)
     const [paletteOpen, setPaletteOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // The panel only closed via its own X. Clicking away left it hovering over
+  // whatever you were trying to reach, which is not how a popover should behave.
+  const notifRef = useRef(null);
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onDown = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setNotifOpen(false); };
+    // Capture phase, so a click on something that stops propagation still closes it.
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('touchstart', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('touchstart', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [notifOpen]);
   const [unreadNotif, setUnreadNotif] = useState(true);
     useEffect(() => {
         const handler = (e) => {
@@ -880,7 +897,7 @@ function AppInner() {
             </div>
 
             {/* Notifications Bell Icon */}
-            <div style={{ position: 'relative', marginRight: '10px' }}>
+            <div ref={notifRef} style={{ position: 'relative', marginRight: '10px' }}>
               <button
                 onClick={() => {
                   setNotifOpen(prev => !prev);
