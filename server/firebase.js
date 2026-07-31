@@ -18,7 +18,7 @@ try {
             throw e;
         }
     } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        // Load from environment variable (Netlify)
+        // Load from environment variable (cloud hosts without a key file)
         try {
             console.log('[Firebase] Attempting initialization via environment variable...');
             const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -57,9 +57,9 @@ try {
         }
     }
 } catch (error) {
-    if (process.env.NETLIFY) {
+    if (process.env.K_SERVICE) {
         console.error('[Firebase] Serverless Error: Cannot initialize cloud database.');
-        console.error('[Firebase] INSTRUCTIONS: Add your serviceAccountKey.json content to the "FIREBASE_SERVICE_ACCOUNT" environment variable in Netlify Site Settings.');
+        console.error('[Firebase] INSTRUCTIONS: App Hosting normally supplies Application Default Credentials. If they are unavailable, set FIREBASE_SERVICE_ACCOUNT to the contents of serviceAccountKey.json.');
     }
 
     // In production there is no safe fallback. The local JSON store lives on an

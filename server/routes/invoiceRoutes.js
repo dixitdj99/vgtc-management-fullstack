@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { db, admin, isAvailable } = require('../firebase');
-const { getEnvCol } = require('../utils/collectionUtils');
+const { getEnvCol, getCol: getTenantCol } = require('../utils/collectionUtils');
 const { requireAuth } = require('../middleware/auth');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const driveService = require('../utils/driveService');
+const voucherService = require('../services/voucherService');
 
 router.use(requireAuth, tenancyMiddleware);
 
@@ -12,6 +13,34 @@ const COL_INVOICES = 'invoices';
 const COL_PENDING = 'pending_invoice_items';
 
 const getCol = (base) => getEnvCol(base);
+
+// Matching rules live in one place so this router and the backfill script
+// cannot drift — a drifted rule silently marks the wrong voucher.
+const {
+    lrKeys, lrStrip, buildVoucherLrIndex, findVoucherForLr,
+    PLANT_VOUCHER_TYPES, scopeVouchersToPlant, isLrInvoicedOnVoucher, markVoucherLrs,
+} = require('../utils/invoiceLinking');
+
+// Remove every mark a bill left on the sheet. Keyed by billNo (not LR), so it
+// survives voucher LR edits and cross-voucher LR collisions.
+const unmarkBillFromVouchers = async (billNo, req) => {
+    const voucherCol = getTenantCol('vouchers', req);
+    const allVouchers = await voucherService.getAllVouchers(req.orgId, voucherCol);
+    const bill = String(billNo);
+    for (const v of allVouchers) {
+        const entries = Array.isArray(v.invoicedLrNos) ? v.invoicedLrNos : null;
+        const hasBill = entries ? entries.some(e => String(e.billNo) === bill)
+            : (v.invoiceGenerated && String(v.invoiceBillNo || '') === bill);
+        if (!hasBill) continue;
+        const remaining = (entries || []).filter(e => String(e.billNo) !== bill);
+        await voucherService.updateVoucher(v.id, {
+            invoicedLrNos: remaining,
+            invoiceGenerated: remaining.length > 0,
+            invoiceBillNo: remaining.length > 0 ? String(remaining[remaining.length - 1].billNo) : '',
+            invoiceDate: remaining.length > 0 ? (v.invoiceDate || '') : '',
+        }, voucherCol);
+    }
+};
 
 // ── GET /invoices — list all generated invoices ──
 router.get('/', async (req, res) => {
@@ -66,6 +95,44 @@ router.post('/generate', async (req, res) => {
         if (!billNo) return res.status(400).json({ error: 'Bill number required' });
         if (!items || items.length === 0) return res.status(400).json({ error: 'No items' });
 
+        // Plants whose config still has 'TBD' GSTIN/SAP/plant codes cannot produce
+        // a legal tax invoice yet — block until their formats are added.
+        const { PLANT_CONFIGS } = require('../config/plantConfig');
+        const plantCfg = PLANT_CONFIGS[plantKey];
+        if (!plantCfg) return res.status(400).json({ error: `Unknown plant: ${plantKey}` });
+        if ([plantCfg.consignorGSTIN, plantCfg.sapCode, plantCfg.plantCode].includes('TBD')) {
+            return res.status(400).json({ error: `${plantCfg.label} invoice format is not available yet` });
+        }
+
+        // The invoice is the final bill built FROM the balance sheet: every
+        // entry must have a voucher (of this plant's types) whose LR is not
+        // invoiced yet.
+        const voucherCol = getTenantCol('vouchers', req);
+        const allVouchersRaw = await voucherService.getAllVouchers(req.orgId, voucherCol);
+        const lrIndex = buildVoucherLrIndex(scopeVouchersToPlant(allVouchersRaw, plantKey));
+        const missingLrs = [];
+        const alreadyInvoicedLrs = [];
+        let blankCount = 0;
+        const toMark = new Map(); // voucher.id -> { voucher, lrNos }
+        for (const it of items) {
+            if (!String(it.lrNo || '').trim()) { blankCount++; continue; }
+            const v = findVoucherForLr(lrIndex, it.lrNo);
+            if (!v) { missingLrs.push(String(it.lrNo).trim()); continue; }
+            if (isLrInvoicedOnVoucher(v, it.lrNo)) { alreadyInvoicedLrs.push(String(it.lrNo).trim()); continue; }
+            const slot = toMark.get(v.id) || { voucher: v, lrNos: [] };
+            slot.lrNos.push(it.lrNo);
+            toMark.set(v.id, slot);
+        }
+        if (blankCount > 0) {
+            return res.status(400).json({ error: `${blankCount} entr${blankCount === 1 ? 'y has' : 'ies have'} no LR number — remove them from the bill first`, blankCount });
+        }
+        if (missingLrs.length > 0 || alreadyInvoicedLrs.length > 0) {
+            const parts = [];
+            if (missingLrs.length > 0) parts.push(`${missingLrs.length} entr${missingLrs.length === 1 ? 'y is' : 'ies are'} not in the Balance Sheet (add the voucher entry first): ${missingLrs.slice(0, 5).join(', ')}${missingLrs.length > 5 ? '…' : ''}`);
+            if (alreadyInvoicedLrs.length > 0) parts.push(`${alreadyInvoicedLrs.length} entr${alreadyInvoicedLrs.length === 1 ? 'y is' : 'ies are'} already invoiced in the Balance Sheet: ${alreadyInvoicedLrs.slice(0, 5).join(', ')}${alreadyInvoicedLrs.length > 5 ? '…' : ''}`);
+            return res.status(409).json({ error: parts.join('. '), missingLrs, alreadyInvoiced: alreadyInvoicedLrs });
+        }
+
         // Check duplicate bill number
         if (isAvailable()) {
             const existing = await db.collection(getCol(COL_INVOICES))
@@ -108,32 +175,44 @@ router.post('/generate', async (req, res) => {
         const totalGST = parseFloat((totalFreight * rate * 2 / 100).toFixed(2));
         const totalWithGST = parseFloat((totalFreight + totalGST).toFixed(2));
 
-        // Save to invoice registry
+        // Mark the balance-sheet entries (per LR) and save the registry doc as
+        // one unit: if either fails, roll the marks back so the sheet never
+        // claims a bill that does not exist. Skipped entirely in local mode —
+        // no registry doc would exist there to ever release the marks.
         if (isAvailable()) {
-            await db.collection(getCol(COL_INVOICES)).add({
-                billNo: String(billNo),
-                billDate: billDate || '',
-                plantKey: plantKey || 'jksuper_jharli',
-                type: type || 'Dump',
-                itemCount: items.length,
-                totalFreight: Math.round(totalFreight),
-                totalWithGST,
-                gstRate: rate,
-                status: 'generated',
-                items: items.map(it => ({
-                    consigneeName: it.consigneeName || '',
-                    destination: it.destination || '',
-                    truckNo: it.truckNo || '',
-                    lrNo: it.lrNo || '',
-                    invoiceNo: it.invoiceNo || '',
-                    invoiceDate: it.invoiceDate || '',
-                    billedQty: parseFloat(it.billedQty) || 0,
-                    recQty: parseFloat(it.recQty) || 0,
-                    ratePMT: parseFloat(it.ratePMT) || 0,
-                    shortQty: parseFloat(it.shortQty) || 0,
-                })),
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+            try {
+                for (const { voucher, lrNos } of toMark.values()) {
+                    await markVoucherLrs(voucher, lrNos, billNo, billDate, voucherCol);
+                }
+                await db.collection(getCol(COL_INVOICES)).add({
+                    billNo: String(billNo),
+                    billDate: billDate || '',
+                    plantKey: plantKey || 'jksuper_jharli',
+                    type: type || 'Dump',
+                    itemCount: items.length,
+                    totalFreight: Math.round(totalFreight),
+                    totalWithGST,
+                    gstRate: rate,
+                    status: 'generated',
+                    lrNos: items.map(it => String(it.lrNo || '').trim()).filter(Boolean),
+                    items: items.map(it => ({
+                        consigneeName: it.consigneeName || '',
+                        destination: it.destination || '',
+                        truckNo: it.truckNo || '',
+                        lrNo: it.lrNo || '',
+                        invoiceNo: it.invoiceNo || '',
+                        invoiceDate: it.invoiceDate || '',
+                        billedQty: parseFloat(it.billedQty) || 0,
+                        recQty: parseFloat(it.recQty) || 0,
+                        ratePMT: parseFloat(it.ratePMT) || 0,
+                        shortQty: parseFloat(it.shortQty) || 0,
+                    })),
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            } catch (e) {
+                await unmarkBillFromVouchers(billNo, req).catch(() => {});
+                throw e;
+            }
         }
 
         // Mark matched LRs as invoiced
@@ -327,6 +406,55 @@ router.put('/:id', async (req, res) => {
         if (status !== undefined) updateObj.status = status;
 
         if (items !== undefined) {
+            // Keep balance-sheet marks in sync with the edited item list:
+            // verify + mark LRs added to the bill, unmark LRs removed from it.
+            const inv = doc.data();
+            const bill = String(inv.billNo);
+            const voucherCol = getTenantCol('vouchers', req);
+            const allVouchersRaw = await voucherService.getAllVouchers(req.orgId, voucherCol);
+            const lrIndex = buildVoucherLrIndex(scopeVouchersToPlant(allVouchersRaw, inv.plantKey));
+
+            const oldKeys = new Set((inv.items || []).map(it => lrStrip(it.lrNo)).filter(Boolean));
+            const newKeys = new Set((items || []).map(it => lrStrip(it.lrNo)).filter(Boolean));
+
+            const missingLrs = [];
+            const alreadyInvoicedLrs = [];
+            const toMark = new Map();
+            for (const it of items || []) {
+                const key = lrStrip(it.lrNo);
+                if (!key || oldKeys.has(key)) continue; // unchanged entries stay as-is
+                const v = findVoucherForLr(lrIndex, it.lrNo);
+                if (!v) { missingLrs.push(String(it.lrNo).trim()); continue; }
+                if (isLrInvoicedOnVoucher(v, it.lrNo)) { alreadyInvoicedLrs.push(String(it.lrNo).trim()); continue; }
+                const slot = toMark.get(v.id) || { voucher: v, lrNos: [] };
+                slot.lrNos.push(it.lrNo);
+                toMark.set(v.id, slot);
+            }
+            if (missingLrs.length > 0 || alreadyInvoicedLrs.length > 0) {
+                const parts = [];
+                if (missingLrs.length > 0) parts.push(`${missingLrs.length} added entr${missingLrs.length === 1 ? 'y is' : 'ies are'} not in the Balance Sheet: ${missingLrs.slice(0, 5).join(', ')}`);
+                if (alreadyInvoicedLrs.length > 0) parts.push(`${alreadyInvoicedLrs.length} added entr${alreadyInvoicedLrs.length === 1 ? 'y is' : 'ies are'} already invoiced: ${alreadyInvoicedLrs.slice(0, 5).join(', ')}`);
+                return res.status(409).json({ error: parts.join('. '), missingLrs, alreadyInvoiced: alreadyInvoicedLrs });
+            }
+
+            // Unmark this bill's entries that were removed from the item list
+            for (const v of allVouchersRaw) {
+                const entries = Array.isArray(v.invoicedLrNos) ? v.invoicedLrNos : null;
+                if (!entries) continue;
+                const remaining = entries.filter(e => !(String(e.billNo) === bill && !newKeys.has(e.lr)));
+                if (remaining.length !== entries.length) {
+                    await voucherService.updateVoucher(v.id, {
+                        invoicedLrNos: remaining,
+                        invoiceGenerated: remaining.length > 0,
+                        invoiceBillNo: remaining.length > 0 ? String(remaining[remaining.length - 1].billNo) : '',
+                    }, voucherCol);
+                }
+            }
+            for (const { voucher, lrNos } of toMark.values()) {
+                await markVoucherLrs(voucher, lrNos, inv.billNo, billDate || inv.billDate, voucherCol);
+            }
+            updateObj.lrNos = (items || []).map(it => String(it.lrNo || '').trim()).filter(Boolean);
+
             const totalFreight = (items || []).reduce((s, it) =>
                 s + (parseFloat(it.billedQty) || 0) * (parseFloat(it.ratePMT) || 0), 0);
             const rate = gstRate || doc.data().gstRate || 6;
@@ -370,6 +498,14 @@ router.post('/delete', async (req, res) => {
         if (!id) return res.status(400).json({ error: 'No ID provided' });
         if (!isAvailable()) return res.json({ deleted: true });
         const col = getCol(COL_INVOICES);
+        const doc = await db.collection(col).doc(id).get();
+        if (!doc.exists) return res.json({ deleted: true });
+        const inv = doc.data();
+
+        // Free the balance-sheet entries BEFORE deleting the bill — if the
+        // unmark fails the bill stays and the delete can simply be retried,
+        // instead of leaving vouchers locked to a bill that no longer exists.
+        await unmarkBillFromVouchers(inv.billNo, req);
         await db.collection(col).doc(id).delete();
         res.json({ deleted: true });
     } catch (e) {

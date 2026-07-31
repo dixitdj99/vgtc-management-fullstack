@@ -107,6 +107,9 @@ ax.interceptors.request.use(async (config) => {
         // e.g. POST /vouchers → bust all GET /vouchers* entries
         const base = config.url.split('/').slice(0, 2).join('/');
         invalidateCache(base);
+        // Invoice generate/edit/delete also mark/unmark balance-sheet vouchers
+        // server-side — a stale voucher cache would mis-filter the next upload.
+        if (base === '/invoices') invalidateCache('/vouchers');
     }
 
     // ── Offline write queue ───────────────────────────────────────────────

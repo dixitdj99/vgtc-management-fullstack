@@ -59,6 +59,81 @@ router.post('/', async (req, res) => {
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+/* ── Sell cash movements ──────────────────────────────────────────────────────
+ *
+ * The cashbook records physical cash. Sell collects both cash and online
+ * payments, so a deposit is capped at the cash actually in hand — which is
+ * where online money is refused, since it never counts towards that figure.
+ *
+ * Registered above `/:id`, though the paths cannot collide: `/:id` matches a
+ * single segment and these are two.
+ */
+const cashbookService = require('../utils/cashbookService');
+const MOVES_COL = 'sell_cash_movements';
+const cashbookColFor = (brand) => (brand === 'jkl' ? 'jkl_cashbook' : 'cashbook');
+
+// GET /api/sell/cash-movements?brand=dump
+router.get('/cash-movements', async (req, res) => {
+    try {
+        const brand = req.query.brand || 'dump';
+        const [movements, cashInHand] = await Promise.all([
+            svc.getMovements(req.orgId, brand, getCol(MOVES_COL, req)),
+            svc.getCashInHand(req.orgId, brand, getCol(BASE_COL, req), getCol(MOVES_COL, req)),
+        ]);
+        res.json({ movements, cashInHand });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/sell/cash-movements
+router.post('/cash-movements', async (req, res) => {
+    try {
+        const brand = req.body.brand || 'dump';
+        const { type, amount, date, remark } = req.body;
+
+        // addMovement enforces the cap, so the cashbook entry is only written
+        // once the amount is known to be covered by cash in hand.
+        let cashbookEntryId = '';
+        if (type === 'to_cashbook') {
+            const entry = await cashbookService.addEntry(
+                req.orgId, 'deposit', amount,
+                `Sell Cash Deposit — ${remark || (brand === 'jkl' ? 'JK Lakshmi Sale' : 'Dump Sale')}`,
+                date, getCol(cashbookColFor(brand), req)
+            );
+            cashbookEntryId = entry?.id || '';
+        }
+
+        try {
+            const doc = await svc.addMovement(
+                req.orgId, { ...req.body, brand, cashbookEntryId },
+                getCol(BASE_COL, req), getCol(MOVES_COL, req)
+            );
+            res.status(201).json(doc);
+        } catch (inner) {
+            // The deposit was written but the movement was refused — roll it
+            // back rather than leave cash in the cashbook that Sell never lost.
+            if (cashbookEntryId) {
+                await cashbookService.deleteEntry(cashbookEntryId, getCol(cashbookColFor(brand), req)).catch(() => {});
+            }
+            throw inner;
+        }
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// DELETE /api/sell/cash-movements/:id
+router.delete('/cash-movements/:id', async (req, res) => {
+    try {
+        const move = await svc.getMovementById(req.params.id, getCol(MOVES_COL, req));
+        if (!move) return res.status(404).json({ error: 'Movement not found' });
+        if (move.type === 'to_cashbook') {
+            return res.status(400).json({
+                error: 'A cashbook deposit cannot be deleted from here — it would leave the cashbook entry orphaned. Reverse it in the Cashbook instead.',
+            });
+        }
+        await svc.deleteMovement(req.params.id, getCol(MOVES_COL, req));
+        res.json({ deleted: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PATCH /api/sell/:id
 router.patch('/:id', async (req, res) => {
     try {

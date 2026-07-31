@@ -12,7 +12,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
-import { openReceiptWindow } from '../utils/receiptPrint';
+import { openReceiptWindow, RECEIPT_WIDTH_MM } from '../utils/receiptPrint';
 import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 
 const PAGE_SIZE = 20;
@@ -162,7 +162,49 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
  * which is what reconciliation actually needs, and being the row's own data it
  * cannot drift out of step with the table.
  */
-function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
+/**
+ * An LR is one label: ${RECEIPT_WIDTH_MM}mm wide, as tall as its own content, never a second page.
+ *
+ * The shell's tear-off floor is switched off per-call (`fitContent`), but these
+ * rules make the slip independent of it — the body may not be stretched to a
+ * floor, nothing in it may grow to fill one, and the signature block is not
+ * allowed to be pushed to the bottom of one (that push, not the design, is what
+ * left a blank band down the middle and spilled the signature onto sheet 2).
+ * `max-width` rather than `width` so a printer that can only offer a wider page
+ * centres the slip at its true width instead of stretching it.
+ */
+const LR_FIT_CSS = `
+  body {
+    min-height: 0 !important; height: auto !important;
+    max-width: ${RECEIPT_WIDTH_MM}mm; margin: 0 auto !important;
+    /* The slip carries Hindi as well as English. Arial has no Devanagari, and
+       the fallback a browser picks on its own is not always a printable one. */
+    font-family: Arial, 'Nirmala UI', 'Noto Sans Devanagari', 'Mangal', Helvetica, sans-serif;
+  }
+  body > *, body > .container { flex: 0 0 auto !important; }
+  .container, .content-wrap, table, tr, .sig-section, .sig, .signed, .digital-sig-box {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+`;
+
+/**
+ * The slip is read at a loading gate by a driver who may not read English, so
+ * everything that tells him what to do is printed in both languages.
+ */
+const LOADING_TYPE_LABEL = {
+  'From Godown': 'From Godown · गोदाम से',
+  'Crossing': 'Crossing · क्रॉसिंग',
+  'Godown': 'From Godown · गोदाम से',   // legacy rows saved before the label changed
+};
+const loadingLabel = (t) => (t ? (LOADING_TYPE_LABEL[t] || String(t)) : '');
+
+const normTruck = (t) => String(t || '').toUpperCase().replace(/\s/g, '');
+
+/** Driver on record for the truck this LR was loaded onto, '' when none is set. */
+const driverForTruck = (truckNo, vehicles) =>
+  String((vehicles || []).find(v => normTruck(v.truckNo) === normTruck(truckNo))?.driverName || '').trim();
+
+function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = []) {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
@@ -170,12 +212,20 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
   const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
   const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  // The LR itself stores no driver — the truck does. An unassigned truck simply
+  // prints an empty signature line, the same as before.
+  const driverName = driverForTruck(base.truckNo, vehicles);
 
   if (brand === 'jkl') {
     openReceiptWindow({
       title: `LR #${lrNo}`,
       fontSize: '9.5pt',
-      styles: `
+      // An LR is a slip, not a roll receipt: the page is cut to the material
+      // table so a one-material LR is short and a six-material one is taller.
+      // The floor only guards against something absurdly short.
+      fitContent: true,
+      minHeightMm: 75,
+      styles: LR_FIT_CSS + `
       .hd {
         text-align: center;
         border-bottom: 2.5px solid #000;
@@ -264,7 +314,6 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-        margin-top: auto;
         padding-top: 3mm;
       }
       .sig-box {
@@ -273,9 +322,20 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
         font-weight: bold;
         border-top: 2px solid #000;
         padding-top: 1.5px;
-        width: 22mm;
+        /* Wide enough for a name under the line; the space above it is what the
+           driver actually signs on. */
+        min-width: 26mm;
         text-transform: uppercase;
         white-space: nowrap;
+      }
+      /* Printed under the role, so the slip says who signed even when the
+         signature itself is a scrawl. */
+      .sig-name {
+        display: block;
+        font-size: 8.5pt;
+        font-weight: 900;
+        text-transform: none;
+        margin-top: 0.5mm;
       }
       .digital-sig-box {
         border: 2px solid #000;
@@ -321,8 +381,9 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
         </div>
 
         <div class="sec">
-          <div class="line"><span class="lbl">Truck No</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
-          <div class="line"><span class="lbl">Party Name</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
+          <div class="line"><span class="lbl">Truck No · गाड़ी</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
+          ${driverName ? `<div class="line"><span class="lbl">Driver · चालक</span><span class="val" style="font-size: 9.5pt;">${driverName}</span></div>` : ''}
+          <div class="line"><span class="lbl">Party Name · पार्टी</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
         </div>
 
         <table>
@@ -338,6 +399,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
               <tr>
                 <td>
                   ${m.material}
+                  ${m.loadingType ? `<span style="font-size: 8pt; font-weight: 700; display: block; margin-top: 1px;">${loadingLabel(m.loadingType)}</span>` : ''}
                   ${m.billing && m.billing !== 'No' ? `<span style="font-size: 8pt; font-weight: 700; display: block; color: #000; margin-top: 1px;">Challan: ${m.billing}</span>` : ''}
                 </td>
                 <td style="text-align:center">${m.totalBags}</td>
@@ -354,7 +416,10 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
       </div>
 
       <div class="sig-section">
-        <div class="sig-box">Driver</div>
+        <div class="sig-box">
+          Driver · चालक
+          ${driverName ? `<span class="sig-name">${driverName}</span>` : ''}
+        </div>
         <div class="digital-sig-box">
           <span class="digital-sig-title">Digitally Signed</span>
           <span class="digital-sig-text">${signedBy}</span>
@@ -369,7 +434,8 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
   const materialRowsHtml = rows.map(m => `
     <tr>
       <td style="padding:4px 8px;border:1px solid #000;font-size:11px;font-weight:800;">
-        ${m.material}${m.loadingType && m.loadingType !== 'Godown' ? ` <span style="font-size:9.5px;font-weight:700;">(${m.loadingType})</span>` : ''}
+        ${m.material}
+        ${m.loadingType ? `<span style="font-size:9.5px;font-weight:700;display:block;margin-top:1px;">${loadingLabel(m.loadingType)}</span>` : ''}
         ${m.billing && m.billing !== 'No' ? `<span style="font-size:9.5px;font-weight:700;display:block;margin-top:1px;">Challan: ${m.billing}</span>` : ''}
       </td>
       <td style="padding:4px 8px;border:1px solid #000;text-align:center;font-size:11.5px;font-weight:800;">${m.totalBags}</td>
@@ -381,8 +447,11 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
     title: `LR #${lrNo}`,
     fontSize: '11px',
     lineHeight: '1.3',
-    styles: `
-        .content-wrap { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: flex-start; }
+    // Page cut to the material table — see the JKL variant above.
+    fitContent: true,
+    minHeightMm: 75,
+    styles: LR_FIT_CSS + `
+        .content-wrap { display: flex; flex-direction: column; justify-content: flex-start; }
         .hd { text-align: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
         .hd .co { font-size: 14.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15; }
         .hd .sub { font-size: 10px; margin-top: 2px; color: #000; font-weight: 800; }
@@ -405,8 +474,11 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
         table { width: 100%; border-collapse: collapse; margin-top: 0; }
         th { font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border: 1px solid #000; background: #ddd; text-align: left; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .tot-row td { font-weight: 900; font-size: 12.5px; background: #ddd; border-top: 2px solid #000; padding: 5px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .sig { display: flex; justify-content: space-between; margin-top: auto; padding-top: 10px; gap: 6px; }
+        .sig { display: flex; justify-content: space-between; padding-top: 10px; gap: 6px; }
         .sig-box { flex: 1; text-align: center; font-size: 9.5px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; text-transform: uppercase; white-space: nowrap; }
+        /* Printed under the role, so the slip says who signed even when the
+           signature itself is a scrawl. */
+        .sig-name { display: block; font-size: 10px; font-weight: 900; text-transform: none; margin-top: 1px; }
         .signed { margin-top: 6px; border: 1.5px solid #000; border-radius: 3px; padding: 3px 6px; text-align: center; }
         .signed-k { display: block; font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
         .signed-v { display: block; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.1; }
@@ -424,8 +496,9 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
         </div>
 
         <div class="sec">
-          <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13.5px;font-weight:900;">${base.truckNo}</span></div>
-          <div class="line"><span class="lbl">Party Name</span><span class="val">${parties}</span></div>
+          <div class="line"><span class="lbl">Truck No. · गाड़ी</span><span class="val" style="font-size:13.5px;font-weight:900;">${base.truckNo}</span></div>
+          ${driverName ? `<div class="line"><span class="lbl">Driver · चालक</span><span class="val">${driverName}</span></div>` : ''}
+          <div class="line"><span class="lbl">Party Name · पार्टी</span><span class="val">${parties}</span></div>
         </div>
 
         <div class="sec">
@@ -450,8 +523,11 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC') {
       </div>
 
       <div class="sig">
-        <div class="sig-box">Driver</div>
-        <div class="sig-box">Receiver</div>
+        <div class="sig-box">
+          Driver · चालक
+          ${driverName ? `<span class="sig-name">${driverName}</span>` : ''}
+        </div>
+        <div class="sig-box">Receiver · प्राप्तकर्ता</div>
       </div>
       <div class="signed">
         <span class="signed-k">Digitally Signed</span>
@@ -1586,7 +1662,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         billing: m.billing || payload.billing || 'No',
         partyName: m.partyName,
       }));
-      printReceipt(printedRows, res.data.lrNo, brand, signedBy);
+      printReceipt(printedRows, res.data.lrNo, brand, signedBy, vehicles);
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
@@ -2175,7 +2251,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
                         <td className="c">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, brand, signedBy)}>
+                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, brand, signedBy, vehicles)}>
                               <Printer size={14} />
                             </button>
                             {canEdit && (

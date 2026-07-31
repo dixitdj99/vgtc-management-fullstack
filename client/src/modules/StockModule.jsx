@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
   XCircle, AlertCircle, Clock, Trash2, RefreshCw, ChevronDown,
-  ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight, ArrowRightLeft, Users
+  ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight, ArrowRightLeft, Users,
+  PackageX, Droplets, Undo2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -159,8 +160,9 @@ function printChallan(c, orgName) {
   w.document.write(html); w.document.close();
 }
 
-function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
-  const available = added - lrUsed - sold - held;
+function MatCard({ mat, added, lrUsed, sold, held, pendingChallan, setFromGodown = 0, setAvailable = 0 }) {
+  // Bags that set in our godown are still on the yard but cannot be loaded.
+  const available = added - lrUsed - sold - held - setFromGodown;
   const col = getMatCol(mat);
   return (
     <div style={{
@@ -181,7 +183,7 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan }) {
           { label: 'Total In', val: (added || 0), color: 'var(--text)' },
           { label: 'Available', val: available, color: available < 0 ? 'var(--danger)' : col },
           { label: 'Challan Pending', val: (pendingChallan || 0), color: 'var(--warn)' },
-          { label: 'Sold', val: (sold || 0), color: 'var(--accent)' },
+          { label: 'Set Bags', val: (setAvailable || 0), color: setAvailable > 0 ? '#f43f5e' : 'var(--text-muted)' },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: 'center', padding: '10px 6px', background: 'var(--bg)', borderRadius: '10px', border: label === 'Available' ? `1px solid ${col}44` : '1px solid transparent' }}>
             <div style={{ fontSize: '18px', fontWeight: 900, color, lineHeight: 1 }}>
@@ -231,6 +233,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [challans, setChallans] = useState([]);
   const [lrs, setLrs] = useState([]);
   const [sales, setSales] = useState([]);
+  const [setStock, setSetStock] = useState([]); // water-damaged ("set") bags
   const [vehicles, setVehicles] = useState([]); // Added vehicles state
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(initialTab || 'overview'); // overview|history|migo|challan
@@ -262,6 +265,17 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  /* Set (water-damaged) bags */
+  const getEmptySetBag = (source = 'godown') => ({
+    source, material: MATS[0], quantity: '',
+    truckNo: '', lrNo: '', partyName: '',
+    date: new Date().toISOString().slice(0, 10), remark: '',
+  });
+  const [setBagForm, setSetBagForm] = useState(getEmptySetBag());
+  const [setBagSaving, setSetBagSaving] = useState(false);
+  const [setBagErr, setSetBagErr] = useState('');
+  const [setBagDelTarget, setSetBagDelTarget] = useState(null);
+
   // Update tab when initialTab prop changes from sidebar navigation
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -271,21 +285,25 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   useEffect(() => {
     setMigoForm(f => ({ ...f, material: MATS[0] }));
     setChalForm(f => ({ ...f, material: MATS[0] }));
+    // Plants do not share a material list, so a half-filled set-bag entry must
+    // not carry another plant's material across.
+    setSetBagForm(f => ({ ...f, material: MATS[0] }));
   }, [brand]);
 
   useEffect(() => { fetchAll(); fetchTransfers(); }, [brand]);
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [ad, ch, lr, vh, sl, matsRaw] = await Promise.all([
+      const [ad, ch, lr, vh, sl, matsRaw, st] = await Promise.all([
         ax.get(API + '/additions').then(r => r.data).catch(() => []),
         ax.get(API + '/challans').then(r => r.data).catch(() => []),
         ax.get(API_LR).then(r => r.data).catch(() => []),
         ax.get(`/vehicles`).then(r => r.data).catch(() => []),
         ax.get(`/sell?brand=${brand}`).then(r => r.data).catch(() => []),
-        ax.get(`${API}/materials/list`).then(r => r.data).catch(() => [])
+        ax.get(`${API}/materials/list`).then(r => r.data).catch(() => []),
+        ax.get(`${API}/set-stock`).then(r => r.data).catch(() => [])
       ]);
-      setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh); setSales(sl);
+      setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh); setSales(sl); setSetStock(st);
       if (matsRaw && matsRaw.length > 0) setMaterialObjs(matsRaw);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -316,6 +334,48 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     } catch (er) { setTransferErr(er.response?.data?.error || 'Transfer failed'); }
     finally { setTransferSaving(false); }
   };
+
+  /* ── Set (water-damaged) bags ── */
+  const handleSetSubmit = async (e) => {
+    e.preventDefault(); setSetBagErr('');
+    const qty = parseInt(setBagForm.quantity);
+    if (!qty || qty <= 0) { setSetBagErr('Enter how many bags'); return; }
+    if (setBagForm.source === 'party_return' && (!setBagForm.truckNo.trim() || !setBagForm.lrNo.trim())) {
+      setSetBagErr('Truck number and LR number are required for a party return'); return;
+    }
+    setSetBagSaving(true);
+    try {
+      await ax.post(`${API}/set-stock`, {
+        ...setBagForm,
+        quantity: qty,
+        direction: setBagForm.source === 'disposed' ? 'out' : 'in',
+      });
+      setSetBagForm(getEmptySetBag(setBagForm.source));
+      fetchAll();
+      // er.message too: a client-side fault is not a server refusal, and
+      // reporting everything as "Could not save" hid exactly that once.
+    } catch (er) { setSetBagErr(er.response?.data?.error || er.message || 'Could not save'); }
+    finally { setSetBagSaving(false); }
+  };
+
+  const handleSetDelete = async (row) => {
+    try {
+      await ax.delete(`${API}/set-stock/${row.id}`);
+      setSetBagDelTarget(null);
+      fetchAll();
+    } catch (er) { setSetBagErr(er.response?.data?.error || er.message || 'Could not delete'); }
+  };
+
+  /**
+   * LRs for the truck typed into the return form — the returned bags came back
+   * off one of them, and picking it fills in the party and material rather than
+   * making the operator retype what the LR already knows.
+   */
+  const returnLrOptions = useMemo(() => {
+    const t = String(setBagForm.truckNo || '').toUpperCase().replace(/\s/g, '');
+    if (!t) return [];
+    return lrs.filter(l => String(l.truckNo || '').toUpperCase().replace(/\s/g, '') === t);
+  }, [lrs, setBagForm.truckNo]);
 
   /* Party-wise summary */
   const partySummary = useMemo(() => {
@@ -391,7 +451,21 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           pending += Math.max(0, lrBags - covered); // only the uncovered remainder
         }
       });
-      const sold = sales.filter(s => s.material === mat).reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
+      // Sales of set bags leave the set stack, not this one.
+      const sold = sales.filter(s => s.material === mat && s.stockType !== 'set')
+        .reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
+
+      /**
+       * Bags pulled out of our own godown because they had set. They are still
+       * on the yard but cannot be loaded, so the good balance loses them.
+       *
+       * Party returns are deliberately NOT counted here: their LR already took
+       * those bags out through `lrUsed`, so charging the good stack again would
+       * count the same bags twice.
+       */
+      const setFromGodown = setStock
+        .filter(s => s.material === mat && s.source === 'godown' && s.direction !== 'out')
+        .reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
 
       let held = 0;
       challans.forEach(c => {
@@ -407,10 +481,38 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         }
       });
 
-      m[mat] = { added, lrUsed, sold, held, pendingChallan: pending, available: added - lrUsed - sold - held };
+      m[mat] = {
+        added, lrUsed, sold, held, setFromGodown,
+        pendingChallan: pending,
+        available: added - lrUsed - sold - held - setFromGodown,
+      };
     });
     return m;
-  }, [additions, challans, lrs, sales, MATS]);
+  }, [additions, challans, lrs, sales, setStock, MATS]);
+
+  /**
+   * The set stack, per material. Bags come in (found set here, or returned by a
+   * party) and leave by being sold cheap or written off.
+   */
+  const setStockMap = useMemo(() => {
+    const m = {};
+    MATS.forEach(mat => {
+      const rows = setStock.filter(s => s.material === mat);
+      const sum = (f) => rows.filter(f).reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
+      const fromGodown = sum(r => r.direction !== 'out' && r.source === 'godown');
+      const fromReturns = sum(r => r.direction !== 'out' && r.source === 'party_return');
+      const disposed = sum(r => r.direction === 'out');
+      const sold = sales.filter(s => s.material === mat && s.stockType === 'set')
+        .reduce((s, x) => s + (parseInt(x.quantity) || 0), 0);
+      m[mat] = {
+        fromGodown, fromReturns, disposed, sold,
+        available: fromGodown + fromReturns - disposed - sold,
+      };
+    });
+    return m;
+  }, [setStock, sales, MATS]);
+
+  const totalSetAvailable = MATS.reduce((s, mat) => s + (setStockMap[mat]?.available || 0), 0);
 
   const monthlyStats = useMemo(() => {
     const months = {};
@@ -733,6 +835,27 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         )}
       </AnimatePresence>
 
+      {/* Set-bag delete confirm */}
+      <AnimatePresence>
+        {setBagDelTarget && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }}
+              style={{ background: 'var(--bg-card)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '16px', padding: '26px 22px', width: '90%', maxWidth: '320px', textAlign: 'center' }}>
+              <AlertCircle size={28} color="var(--danger)" style={{ marginBottom: '12px' }} />
+              <div style={{ fontWeight: 800, color: 'var(--text)', marginBottom: '6px', fontSize: '14px' }}>Delete Set Bag Entry?</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                {setBagDelTarget.material} · {setBagDelTarget.quantity} bags · {setBagDelTarget.date}
+                {setBagDelTarget.source === 'godown' ? ' — these bags go back into loadable stock.' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                <button className="btn btn-g" onClick={() => setSetBagDelTarget(null)}>Cancel</button>
+                <button className="btn btn-d" onClick={() => handleSetDelete(setBagDelTarget)}><Trash2 size={13} /> Delete</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="page-hd">
         <div>
@@ -764,6 +887,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { label: 'Challan Created', val: totalHeld, color: 'var(--warn)', unit: 'bags' },
           { label: 'Open Challans', val: challans.filter(c => c.status === 'open' || c.status === 'partially_loaded').length, color: 'var(--primary)', unit: 'challans' },
           { label: 'LR Challan Pending', val: Object.values(stockMap).reduce((s, m) => s + (m.pendingChallan || 0), 0), color: '#f43f5e', unit: 'bags' },
+          { label: 'Set Bags (Not Loadable)', val: totalSetAvailable, color: '#f43f5e', unit: 'bags' },
         ].map(({ label, val, color, unit = 'bags' }) => (
           <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '150px' }}>
             <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
@@ -785,6 +909,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           { id: 'migo', label: 'MIGO (Stock Entry)', icon: <Plus size={13} />, restricted: true },
           { id: 'challan', label: 'Create Challan', icon: <Tag size={13} />, restricted: true },
           { id: 'transfer', label: 'Transfer Stock', icon: <ArrowRightLeft size={13} />, restricted: true },
+          { id: 'set_bags', label: 'Set Bags', icon: <PackageX size={13} /> },
           { id: 'party_summary', label: 'Party Summary', icon: <Users size={13} /> },
         ].map(({ id, label, icon, restricted }) => {
           if (restricted && !canEdit) return null;
@@ -808,7 +933,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: '12px' }}>
-            {MATS.map(mat => <MatCard key={mat} mat={mat} {...(stockMap[mat] || { added: 0, lrUsed: 0, sold: 0, held: 0 })} />)}
+            {MATS.map(mat => <MatCard key={mat} mat={mat} {...(stockMap[mat] || { added: 0, lrUsed: 0, sold: 0, held: 0 })} setAvailable={setStockMap[mat]?.available || 0} />)}
           </div>
 
           {/* Inline History in Overview */}
@@ -1364,6 +1489,217 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                       )}
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SET BAGS TAB ── */}
+      {tab === 'set_bags' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+          {/* Per-material set balance */}
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}><PackageX size={17} /></div>
+                <div className="card-title-text">
+                  <h3>Set Bags · {totalSetAvailable.toLocaleString('en-IN')} in stock</h3>
+                  <p>Water-damaged bags — held separately because they cannot be loaded, sold at a reduced price</p>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: '12px' }}>
+              {MATS.map(mat => {
+                const s = setStockMap[mat] || { fromGodown: 0, fromReturns: 0, disposed: 0, sold: 0, available: 0 };
+                return (
+                  <div key={mat} style={{
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px',
+                    padding: '14px 16px', borderTop: `3px solid ${s.available > 0 ? '#f43f5e' : 'var(--border)'}`,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '13.5px' }}>{mat}</span>
+                      <span style={{ fontSize: '20px', fontWeight: 900, color: s.available > 0 ? '#f43f5e' : 'var(--text-muted)' }}>
+                        {s.available.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '6px', fontSize: '11px' }}>
+                      {[
+                        ['From godown', s.fromGodown],
+                        ['Party returns', s.fromReturns],
+                        ['Sold', s.sold],
+                        ['Written off', s.disposed],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: '6px' }}>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>{label}</span>
+                          <span style={{ fontWeight: 800 }}>{(val || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Entry form */}
+          {canEdit && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}><Droplets size={17} /></div>
+                  <div className="card-title-text"><h3>Record Set Bags</h3><p>Found set in the godown, returned by a party, or written off</p></div>
+                </div>
+              </div>
+              <form onSubmit={handleSetSubmit} style={{ padding: '16px' }}>
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'godown', label: 'Found in godown', icon: <Droplets size={13} /> },
+                    { id: 'party_return', label: 'Returned by party', icon: <Undo2 size={13} /> },
+                    { id: 'disposed', label: 'Sold outside / written off', icon: <Trash2 size={13} /> },
+                  ].map(({ id, label, icon }) => (
+                    <button key={id} type="button" onClick={() => { setSetBagForm(getEmptySetBag(id)); setSetBagErr(''); }}
+                      style={{
+                        padding: '7px 14px', borderRadius: '9px', border: '1px solid', cursor: 'pointer', fontFamily: 'inherit',
+                        fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px',
+                        borderColor: setBagForm.source === id ? '#f43f5e' : 'var(--border)',
+                        background: setBagForm.source === id ? 'rgba(244,63,94,0.1)' : 'transparent',
+                        color: setBagForm.source === id ? '#f43f5e' : 'var(--text-muted)',
+                      }}>
+                      {icon}{label}
+                    </button>
+                  ))}
+                </div>
+
+                {setBagForm.source === 'godown' && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    These bags leave the loadable stock — <strong>Available</strong> drops by this many.
+                  </div>
+                )}
+                {setBagForm.source === 'party_return' && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    The load already left stock on its LR, so <strong>Available</strong> does not change — the bags only join the set stack.
+                  </div>
+                )}
+
+                <div className="fg fg-3" style={{ gap: '12px' }}>
+                  {setBagForm.source === 'party_return' && (
+                    <>
+                      {fi('Truck No. *', (
+                        <input className="fi" type="text" placeholder="e.g. HR55AB1234" value={setBagForm.truckNo}
+                          onChange={e => setSetBagForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value), lrNo: '' }))} required />
+                      ))}
+                      {fi('LR No. *', (
+                        <select className="fi" value={setBagForm.lrNo} required
+                          onChange={e => {
+                            const lr = returnLrOptions.find(l => String(l.lrNo) === e.target.value);
+                            setSetBagForm(f => ({
+                              ...f,
+                              lrNo: e.target.value,
+                              partyName: lr?.partyName || f.partyName,
+                              material: MATS.includes(lr?.material) ? lr.material : f.material,
+                            }));
+                          }}>
+                          <option value="">{returnLrOptions.length ? '— Select LR —' : 'Enter a truck number first'}</option>
+                          {returnLrOptions.map(l => (
+                            <option key={l.id || `${l.lrNo}-${l.material}`} value={l.lrNo}>
+                              #{l.lrNo} · {l.date} · {l.material} · {l.partyName || 'party n/a'}
+                            </option>
+                          ))}
+                        </select>
+                      ))}
+                      {fi('Party', (
+                        <input className="fi" type="text" placeholder="Party name" value={setBagForm.partyName}
+                          onChange={e => setSetBagForm(f => ({ ...f, partyName: e.target.value }))} />
+                      ))}
+                    </>
+                  )}
+                  {fi('Material', (
+                    <select className="fi" value={setBagForm.material} onChange={e => setSetBagForm(f => ({ ...f, material: e.target.value }))}>
+                      {MATS.map(m => <option key={m}>{m}</option>)}
+                    </select>
+                  ))}
+                  {fi('Bags *', (
+                    <input className="fi" type="number" min="1" placeholder="e.g. 40" value={setBagForm.quantity}
+                      onChange={e => setSetBagForm(f => ({ ...f, quantity: e.target.value }))} required />
+                  ))}
+                  {fi('Date', (
+                    <input className="fi" type="date" value={setBagForm.date}
+                      onChange={e => setSetBagForm(f => ({ ...f, date: e.target.value }))} />
+                  ))}
+                  {fi('Remark', (
+                    <input className="fi" type="text" placeholder="e.g. rain in godown corner" value={setBagForm.remark}
+                      onChange={e => setSetBagForm(f => ({ ...f, remark: e.target.value }))} />
+                  ), 2)}
+                </div>
+                {setBagErr && <div style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: 700, marginTop: '10px' }}>{setBagErr}</div>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
+                  <button type="submit" className="btn btn-a" disabled={setBagSaving} style={{ fontWeight: 800 }}>
+                    {setBagSaving ? 'Saving…' : <><Save size={14} /> Save Entry</>}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Ledger */}
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1' }}><FileText size={17} /></div>
+                <div className="card-title-text"><h3>Set Bag Entries</h3><p>{setStock.length} record(s)</p></div>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th style={TH}>Date</th>
+                    <th style={TH}>Type</th>
+                    <th style={TH}>Material</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Bags</th>
+                    <th style={TH}>Truck</th>
+                    <th style={TH}>LR No.</th>
+                    <th style={TH}>Party</th>
+                    <th style={TH}>Remark</th>
+                    {canEdit && <th style={{ ...TH, textAlign: 'center' }}>Action</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {setStock.length === 0 ? (
+                    <tr><td colSpan={canEdit ? 9 : 8} className="t-empty">No set bags recorded yet.</td></tr>
+                  ) : setStock.map(s => {
+                    const meta = s.direction === 'out'
+                      ? { label: 'Written off', color: 'var(--text-muted)' }
+                      : s.source === 'party_return'
+                        ? { label: 'Party return', color: '#f59e0b' }
+                        : { label: 'From godown', color: '#f43f5e' };
+                    return (
+                      <tr key={s.id}>
+                        <td style={TD}>{s.date}</td>
+                        <td style={TD}>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: meta.color, background: 'var(--bg)', padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>
+                            {meta.label}
+                          </span>
+                        </td>
+                        <td style={{ ...TD, fontWeight: 700 }}>{s.material}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: s.direction === 'out' ? 'var(--text-muted)' : '#f43f5e' }}>
+                          {s.direction === 'out' ? '−' : '+'}{(parseInt(s.quantity) || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 700 }}>{s.truckNo || '—'}</td>
+                        <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{s.lrNo ? `#${s.lrNo}` : '—'}</td>
+                        <td style={TD}>{s.partyName || '—'}</td>
+                        <td style={TD}>{s.remark || '—'}</td>
+                        {canEdit && (
+                          <td style={{ ...TD, textAlign: 'center' }}>
+                            <button className="btn btn-d btn-icon btn-sm" title="Delete entry" onClick={() => setSetBagDelTarget(s)}><Trash2 size={12} /></button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

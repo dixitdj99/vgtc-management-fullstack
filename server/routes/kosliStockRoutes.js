@@ -7,10 +7,18 @@ const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const SCOL = 'kosli_stock_additions';
 const CCOL = 'kosli_challans';
 const MCOL = 'kosli_materials';
+const SETCOL = 'kosli_set_stock';
 
 const sheetsService = require('../utils/sheetsService');
 
 router.use(tenancyMiddleware);
+
+/* ── Set (water-damaged) bags ──
+ * Registered after the tenancy middleware, not before: Express runs layers in
+ * registration order, so mounting these first meant they never got req.orgId
+ * and every query went to Firestore with an undefined constraint. */
+const { mountSetStockRoutes } = require('./setStockRoutes');
+mountSetStockRoutes(router, { setCol: SETCOL, materials: MCOL });
 
 /* ── Stock Additions ── */
 router.get('/additions', async (req, res) => {

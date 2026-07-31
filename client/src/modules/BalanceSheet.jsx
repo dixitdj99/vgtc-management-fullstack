@@ -272,6 +272,17 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
               {v.deliveries.map((d, di) => <span key={di} style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '11px' }}>#{d.lrNo || '—'}</span>)}
             </div>
           : <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span>}
+        {v.invoiceGenerated && (() => {
+          const bills = [...new Set((v.invoicedLrNos || []).map(e => String(e.billNo)))];
+          const label = bills.length ? bills.map(b => `#${b}`).join(', ') : (v.invoiceBillNo ? `#${v.invoiceBillNo}` : '');
+          const partial = v.deliveries?.length > 0 && (v.invoicedLrNos || []).length < v.deliveries.length;
+          return (
+            <span title={`Client invoice generated${label ? ` — Bill ${label}` : ''}${v.invoiceDate ? ` (${v.invoiceDate})` : ''}${partial ? ' — some deliveries not yet billed' : ''}`}
+              style={{ display: 'inline-block', fontSize: '9px', fontWeight: 900, color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '1px 5px', borderRadius: '6px', marginLeft: '4px', whiteSpace: 'nowrap' }}>
+              INV{label ? ` ${label}` : ''}{partial ? '*' : ''}
+            </span>
+          );
+        })()}
       </td>
       {isBillType && <td style={{ ...TD }}>{v.billNo || '—'}</td>}
       {isBillType && <td style={{ ...TD }}>{v.partyCode || '—'}</td>}

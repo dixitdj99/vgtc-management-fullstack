@@ -225,7 +225,23 @@ export default function AttendanceModule() {
     return c;
   }, [rows, edits]);
 
+  /**
+   * Two different questions, which used to share one answer.
+   *
+   * `pendingCount` is what the supervisor changed. A pre-selected suggestion is
+   * not a change — counting it meant every freshly opened date announced
+   * "2 changes not saved yet" and prompted on the way out, for marks nobody had
+   * made.
+   *
+   * `unsavedCount` is everything on screen that is not in the database yet,
+   * suggestions included. That is what still needs a Save press.
+   */
   const pendingCount = useMemo(
+    () => rows.filter(r => touched.has(r.profileId) && edits[r.profileId] !== r.status).length,
+    [rows, edits, touched]
+  );
+
+  const unsavedCount = useMemo(
     () => rows.filter(r => edits[r.profileId] && edits[r.profileId] !== r.status).length,
     [rows, edits]
   );
@@ -391,6 +407,7 @@ export default function AttendanceModule() {
           saving={saving}
           savedAt={savedAt}
           pendingCount={pendingCount}
+          unsavedCount={unsavedCount}
         />
       ) : (
         <MonthlyReport
@@ -411,7 +428,7 @@ export default function AttendanceModule() {
 function DailyRollCall({
   card, refreshing, rows, allRows, edits, touched, counts, canEdit, query, setQuery,
   selectedDate, setSelectedDate, shiftDate, cycleStatus, setStatus,
-  markAllPresent, resetToSuggested, handleSave, saving, savedAt, pendingCount,
+  markAllPresent, resetToSuggested, handleSave, saving, savedAt, pendingCount, unsavedCount,
 }) {
   const unresolved = allRows.filter(r => !edits[r.profileId]);
   const derivedCount = allRows.filter(r => r.suggestedBy === 'trip_data').length;
@@ -527,7 +544,9 @@ function DailyRollCall({
               ? <span style={{ color: '#10b981', fontWeight: 800 }}>Saved. {counts.present + counts.half_day + counts.leave + counts.absent} people recorded for {fmtDateLabel(selectedDate)}.</span>
               : pendingCount > 0
                 ? <><b style={{ color: 'var(--text)' }}>{pendingCount}</b> change{pendingCount === 1 ? '' : 's'} not saved yet</>
-                : 'Nothing changed since the last save'}
+                : unsavedCount > 0
+                  ? <>Nothing changed — <b style={{ color: 'var(--text)' }}>{unsavedCount}</b> suggested mark{unsavedCount === 1 ? '' : 's'} still need saving</>
+                  : 'Nothing changed since the last save'}
           </div>
           {/* Blocked while a new day loads — the marks on screen still belong to the old one. */}
           <button onClick={handleSave} disabled={saving || refreshing}
@@ -555,6 +574,13 @@ function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick })
   const unresolved = !status;
   const isDriver = row.type === 'Driver';
   const showDerivedBadge = isDriver && row.suggestedBy === 'trip_data' && !isTouched;
+  /**
+   * A default-suggested tile is a proposal, not a record. It used to render
+   * exactly like a confirmed Present, so non-drivers looked "already marked" on
+   * every date the supervisor opened. Only unsaved, untouched rows say so —
+   * once it is saved (`row.status`) or tapped, it is a real mark.
+   */
+  const showSuggestedBadge = row.suggestedBy === 'default' && !row.status && !isTouched;
 
   const borderColor = unresolved ? '#f59e0b' : s.color;
   const bg = unresolved ? 'rgba(245,158,11,0.07)' : s.bg;
@@ -622,6 +648,16 @@ function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick })
           }}>
             <Sparkles size={10} />
             {row.evidence.length} trip record{row.evidence.length === 1 ? '' : 's'}
+          </div>
+        )}
+
+        {showSuggestedBadge && (
+          <div title="Suggested by default, not saved yet — tap to change, then Save." style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+            fontWeight: 700, color: 'var(--text-muted)',
+          }}>
+            <Sparkles size={10} />
+            Suggested · सुझाव
           </div>
         )}
       </button>

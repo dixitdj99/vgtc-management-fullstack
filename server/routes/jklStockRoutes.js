@@ -10,7 +10,12 @@ router.use(tenancyMiddleware);
 const SCOL = 'jkl_stock_additions';
 const CCOL = 'jkl_challans';
 const MCOL = 'jkl_materials';
+const SETCOL = 'jkl_set_stock';
 const JKL_MATERIALS = ['PPC', 'OPC43', 'Pro+'];
+
+/* ── Set (water-damaged) bags ── */
+const { mountSetStockRoutes } = require('./setStockRoutes');
+mountSetStockRoutes(router, { setCol: SETCOL, materials: JKL_MATERIALS });
 
 // Init
 svc.init(CCOL);

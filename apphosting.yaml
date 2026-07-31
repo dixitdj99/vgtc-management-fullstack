@@ -66,8 +66,14 @@ env:
     secret: SMTP_PASS
   - variable: GOOGLE_CREDENTIALS
     secret: GOOGLE_CREDENTIALS
-  # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling /api/jobs/*
+  # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling
+  # /api/jobs/*. Held in Secret Manager, not here — a value committed to the repo
+  # is not a secret, and this one is the only thing standing between the public
+  # internet and the backup/alert jobs.
+  #   gcloud secrets create CRON_SECRET --replication-policy=automatic
+  #   printf '%s' "$(openssl rand -hex 24)" | gcloud secrets versions add CRON_SECRET --data-file=-
+  # Then set the same value on the Cloud Scheduler job's X-Cron-Secret header.
   - variable: CRON_SECRET
-    value: "vgtc-cron-secret-default-2026"
+    secret: CRON_SECRET
     availability:
       - RUNTIME

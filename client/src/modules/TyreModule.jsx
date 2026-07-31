@@ -123,83 +123,62 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
 
 const BRANDS = ['MRF', 'Apollo', 'JK Tyre', 'CEAT', 'Michelin', 'Bridgestone', 'Goodyear', 'Double Coin', 'Aeolus', 'Triangle', 'Other'];
 const SIZES = ['10.00R20', '295/80R22.5', '11R22.5', '12R22.5', '10.00-20', '7.50-16', 'Other'];
-const POSITIONS = [
-  { id: 'FL', name: 'Front Left', axle: 'front' },
-  { id: 'FR', name: 'Front Right', axle: 'front' },
-  { id: 'RLO1', name: 'Rear Left Outer 1', axle: 'rear1' },
-  { id: 'RLI1', name: 'Rear Left Inner 1', axle: 'rear1' },
-  { id: 'RRI1', name: 'Rear Right Inner 1', axle: 'rear1' },
-  { id: 'RRO1', name: 'Rear Right Outer 1', axle: 'rear1' },
-  { id: 'RLO2', name: 'Rear Left Outer 2', axle: 'rear2' },
-  { id: 'RLI2', name: 'Rear Left Inner 2', axle: 'rear2' },
-  { id: 'RRI2', name: 'Rear Right Inner 2', axle: 'rear2' },
-  { id: 'RRO2', name: 'Rear Right Outer 2', axle: 'rear2' },
-  { id: 'SP', name: 'Spare Tyre', axle: 'spare' }
-];
 
+// Fleet has only two vehicle types: 18-wheel trailers and 6-wheel canters.
+// Position ids (FL, RLO1, TLI2, SP...) are stored on tyre fitments — keep them
+// stable so existing fitment records keep rendering.
 const AXLE_LAYOUTS = {
-  '6': {
-    name: '6-Wheeler (2 Axles)',
-    axles: [
-      { type: 'steer', name: 'Front Axle', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
-      { type: 'drive', name: 'Rear Axle', positions: [{ id: 'RLO1', label: 'RLO' }, { id: 'RLI1', label: 'RLI' }, { id: 'RRI1', label: 'RRI' }, { id: 'RRO1', label: 'RRO' }] }
-    ]
-  },
-  '10': {
-    name: '10-Wheeler (3 Axles)',
-    axles: [
-      { type: 'steer', name: 'Front Axle', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
-      { type: 'drive', name: 'Rear Axle 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
-      { type: 'drive', name: 'Rear Axle 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] }
-    ]
-  },
-  '12': {
-    name: '12-Wheeler (4 Axles)',
-    axles: [
-      { type: 'steer', name: 'Front Steer 1', positions: [{ id: 'FL', label: 'FL1' }, { id: 'FR', label: 'FR1' }] },
-      { type: 'steer', name: 'Front Steer 2', positions: [{ id: 'FL2', label: 'FL2' }, { id: 'FR2', label: 'FR2' }] },
-      { type: 'drive', name: 'Rear Drive 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
-      { type: 'drive', name: 'Rear Drive 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] }
-    ]
-  },
-  '14': {
-    name: '14-Wheeler (4 Axles)',
-    axles: [
-      { type: 'steer', name: 'Front Steer', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
-      { type: 'lift', name: 'Pusher/Lift Axle', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
-      { type: 'drive', name: 'Rear Drive 1', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] },
-      { type: 'drive', name: 'Rear Drive 2', positions: [{ id: 'RLO3', label: 'RLO3' }, { id: 'RLI3', label: 'RLI3' }, { id: 'RRI3', label: 'RRI3' }, { id: 'RRO3', label: 'RRO3' }] }
-    ]
-  },
   '18': {
-    name: '18-Wheeler (5 Axles - Trailer)',
-    axles: [
-      { type: 'steer', name: 'Tractor Steer', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
-      { type: 'drive', name: 'Tractor Drive 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
-      { type: 'drive', name: 'Tractor Drive 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] },
-      { type: 'trailer', name: 'Trailer Axle 1', positions: [{ id: 'TLO1', label: 'TLO1' }, { id: 'TLI1', label: 'TLI1' }, { id: 'TRI1', label: 'TRI1' }, { id: 'TRO1', label: 'TRO1' }] },
-      { type: 'trailer', name: 'Trailer Axle 2', positions: [{ id: 'TLO2', label: 'TLO2' }, { id: 'TLI2', label: 'TLI2' }, { id: 'TRI2', label: 'TRI2' }, { id: 'TRO2', label: 'TRO2' }] }
+    name: 'Trailer — 18 Wheels',
+    short: 'Trailer 18W',
+    sections: [
+      {
+        name: 'Tractor (Front Unit)', icon: '🚚',
+        axles: [
+          { name: 'Steering Axle', left: ['FL'], right: ['FR'] },
+          { name: 'Drive Axle 1', left: ['RLO1', 'RLI1'], right: ['RRI1', 'RRO1'] },
+          { name: 'Drive Axle 2', left: ['RLO2', 'RLI2'], right: ['RRI2', 'RRO2'] },
+        ]
+      },
+      {
+        name: 'Trailer (Rear Unit)', icon: '🚛',
+        axles: [
+          { name: 'Trailer Axle 1', left: ['TLO1', 'TLI1'], right: ['TRI1', 'TRO1'] },
+          { name: 'Trailer Axle 2', left: ['TLO2', 'TLI2'], right: ['TRI2', 'TRO2'] },
+        ]
+      }
     ]
   },
-  '22': {
-    name: '22-Wheeler (6 Axles - Trailer)',
-    axles: [
-      { type: 'steer', name: 'Tractor Steer', positions: [{ id: 'FL', label: 'FL' }, { id: 'FR', label: 'FR' }] },
-      { type: 'drive', name: 'Tractor Drive 1', positions: [{ id: 'RLO1', label: 'RLO1' }, { id: 'RLI1', label: 'RLI1' }, { id: 'RRI1', label: 'RRI1' }, { id: 'RRO1', label: 'RRO1' }] },
-      { type: 'drive', name: 'Tractor Drive 2', positions: [{ id: 'RLO2', label: 'RLO2' }, { id: 'RLI2', label: 'RLI2' }, { id: 'RRI2', label: 'RRI2' }, { id: 'RRO2', label: 'RRO2' }] },
-      { type: 'trailer', name: 'Trailer Axle 1', positions: [{ id: 'TLO1', label: 'TLO1' }, { id: 'TLI1', label: 'TLI1' }, { id: 'TRI1', label: 'TRI1' }, { id: 'TRO1', label: 'TRO1' }] },
-      { type: 'trailer', name: 'Trailer Axle 2', positions: [{ id: 'TLO2', label: 'TLO2' }, { id: 'TLI2', label: 'TLI2' }, { id: 'TRI2', label: 'TRI2' }, { id: 'TRO2', label: 'TRO2' }] },
-      { type: 'trailer', name: 'Trailer Axle 3', positions: [{ id: 'TLO3', label: 'TLO3' }, { id: 'TLI3', label: 'TLI3' }, { id: 'TRI3', label: 'TRI3' }, { id: 'TRO3', label: 'TRO3' }] }
+  '6': {
+    name: 'Canter — 6 Wheels',
+    short: 'Canter 6W',
+    sections: [
+      {
+        name: 'Canter', icon: '🚚',
+        axles: [
+          { name: 'Steering Axle', left: ['FL'], right: ['FR'] },
+          { name: 'Rear Axle', left: ['RLO1', 'RLI1'], right: ['RRI1', 'RRO1'] },
+        ]
+      }
     ]
   }
 };
 
+// Human name for a wheel: single wheel = just the side; dual wheels = Outer/Inner.
+const wheelName = (side, idx, count) => {
+  if (count === 1) return side;
+  return idx === 0
+    ? (side === 'Left' ? 'Left Outer' : 'Right Inner')
+    : (side === 'Left' ? 'Left Inner' : 'Right Outer');
+};
+
 const getPositionsForLayout = (layoutId) => {
-  const layout = AXLE_LAYOUTS[layoutId] || AXLE_LAYOUTS['10'];
+  const layout = AXLE_LAYOUTS[layoutId] || AXLE_LAYOUTS['18'];
   const posList = [];
-  layout.axles.forEach(axle => {
-    axle.positions.forEach(p => {
-      posList.push({ id: p.id, name: `${axle.name} - ${p.label}` });
+  layout.sections.forEach(section => {
+    section.axles.forEach(axle => {
+      axle.left.forEach((id, i) => posList.push({ id, name: `${axle.name} — ${wheelName('Left', i, axle.left.length)}` }));
+      axle.right.forEach((id, i) => posList.push({ id, name: `${axle.name} — ${wheelName('Right', i, axle.right.length)}` }));
     });
   });
   posList.push({ id: 'SP', name: 'Spare Tyre' });
@@ -207,51 +186,13 @@ const getPositionsForLayout = (layoutId) => {
 };
 
 const inferLayoutFromVehicle = (vehicle) => {
-  if (!vehicle) return '10';
+  if (!vehicle) return '18';
+  const desc = `${vehicle.vehicleType || ''} ${vehicle.model || ''} ${vehicle.make || ''}`.toLowerCase();
+  if (desc.includes('canter') || desc.includes('6 wheel') || desc.includes('6w')) return '6';
+  if (desc.includes('trailer') || desc.includes('18')) return '18';
   const gw = parseFloat(vehicle.grossWeight) || 0;
-  if (gw > 0) {
-    if (gw <= 10000) return '6';
-    if (gw <= 20000) return '6';
-    if (gw <= 28500) return '10';
-    if (gw <= 37500) return '12';
-    if (gw <= 42500) return '14';
-    if (gw <= 48500) return '18';
-    return '22';
-  }
-  const modelStr = String(vehicle.model || '').trim();
-  const match = modelStr.match(/^(\d{2})/);
-  if (match) {
-    const tons = parseInt(match[1]);
-    if (tons <= 20) return '6';
-    if (tons <= 28) return '10';
-    if (tons <= 37) return '12';
-    if (tons <= 42) return '14';
-    if (tons <= 48) return '18';
-    return '22';
-  }
-  const type = String(vehicle.vehicleType || '').toLowerCase();
-  if (type.includes('trailer')) return '18';
-  if (type.includes('canter')) return '6';
-  return '10';
-};
-
-const getAxleHorizontalOffsets = (layoutId) => {
-  switch (layoutId) {
-    case '6':
-      return [50, 290];
-    case '10':
-      return [50, 250, 310];
-    case '12':
-      return [38, 92, 250, 310];
-    case '14':
-      return [50, 210, 265, 320];
-    case '18':
-      return [50, 245, 295, 585, 645];
-    case '22':
-      return [50, 245, 295, 545, 600, 655];
-    default:
-      return [50, 250, 310];
-  }
+  if (gw > 0 && gw <= 16000) return '6';
+  return '18';
 };
 
 const fmtRs = n => '₹' + Math.round(n).toLocaleString('en-IN');
@@ -301,7 +242,6 @@ export default function TyreModule() {
 
   const [selfVehiclesList, setSelfVehiclesList] = useState([]);
   const [vouchers, setVouchers] = useState([]);
-  const [isSeeding, setIsSeeding] = useState(false);
 
   // Reset overrideLayoutId when truckFilter changes
   useEffect(() => {
@@ -317,14 +257,18 @@ export default function TyreModule() {
   }, [selectedVehicle]);
 
   const activeLayoutId = overrideLayoutId || inferredLayoutId;
-  const activeLayout = AXLE_LAYOUTS[activeLayoutId] || AXLE_LAYOUTS['10'];
+  const activeLayout = AXLE_LAYOUTS[activeLayoutId] || AXLE_LAYOUTS['18'];
 
   const availablePositions = useMemo(() => {
     const truckNo = fitForm.truckNo || '';
+    // When fitting the truck shown on the axle map, honour the layout toggle —
+    // otherwise a wheel clicked on an overridden layout (e.g. TLO1) would not
+    // exist in the modal's position list.
+    if (truckNo && truckNo === truckFilter) return getPositionsForLayout(activeLayoutId);
     const selectedVeh = selfVehiclesList.find(v => v.truckNo === truckNo);
     const layoutId = inferLayoutFromVehicle(selectedVeh);
     return getPositionsForLayout(layoutId);
-  }, [fitForm.truckNo, selfVehiclesList]);
+  }, [fitForm.truckNo, selfVehiclesList, truckFilter, activeLayoutId]);
 
 
 
@@ -342,7 +286,11 @@ export default function TyreModule() {
       ]);
       setTyres(tyresRes.data || []);
       const allVeh = vehiclesRes.data || [];
-      const selfVeh = allVeh;
+      // Own fleet only — market/vendor vehicles are managed in Market Vehicles,
+      // their tyres are not ours to track. Same rule as MileageModule.
+      const selfVeh = allVeh.filter(v =>
+        v.ownershipType === 'self' || (v.ownerName || '').toLowerCase().includes('vikas')
+      );
       setSelfVehiclesList(selfVeh);
       setVehicles(selfVeh.map(v => v.truckNo));
       setVouchers(vouchersRes.data || []);
@@ -446,26 +394,13 @@ export default function TyreModule() {
     }
   };
 
-  const handleAutoFitApollo = async () => {
-    if (!window.confirm("This will automatically register and fit Apollo tyres to all empty tyre positions across all your self-owned vehicles. Do you want to proceed?")) return;
-    try {
-      setIsSeeding(true);
-      setError('');
-      const res = await ax.post('/tyres/auto-fit-apollo');
-      alert(`Auto-seeded successfully! Fitted ${res.data.count} Apollo tyres.`);
-      fetchData();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to auto-fit Apollo tyres.');
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
   const openFitModal = (tyre, position = '') => {
     setSelectedTyre(tyre);
     const targetTruck = truckFilter === 'all' ? '' : truckFilter;
-    const selectedVeh = selfVehiclesList.find(v => v.truckNo === targetTruck);
-    const layoutId = inferLayoutFromVehicle(selectedVeh);
+    // Same layout rule as availablePositions: the map's truck follows the toggle.
+    const layoutId = targetTruck
+      ? activeLayoutId
+      : inferLayoutFromVehicle(selfVehiclesList.find(v => v.truckNo === targetTruck));
     const posList = getPositionsForLayout(layoutId);
     const defaultPos = position || (posList[0]?.id || 'FL');
     setFitForm(f => ({ ...f, position: defaultPos, truckNo: targetTruck }));
@@ -496,6 +431,66 @@ export default function TyreModule() {
     return tyres.find(t => t.status === 'fitted' && t.fitment?.truckNo === truck && t.fitment?.position === pos);
   };
 
+  // ── Axle map helpers ──
+  const positionNameMap = useMemo(() => {
+    const m = {};
+    getPositionsForLayout(activeLayoutId).forEach(p => { m[p.id] = p.name; });
+    return m;
+  }, [activeLayoutId]);
+
+  const layoutPositionIds = useMemo(() => {
+    const ids = [];
+    activeLayout.sections.forEach(s => s.axles.forEach(a => ids.push(...a.left, ...a.right)));
+    ids.push('SP');
+    return ids;
+  }, [activeLayout]);
+
+  // Road wheels only — the spare is reported separately so an "18-wheeler"
+  // never reads as "x / 19".
+  const fittedOnLayoutCount = useMemo(() => (
+    truckFilter === 'all' ? 0 : layoutPositionIds.filter(id => id !== 'SP' && getTyreAtPosition(truckFilter, id)).length
+  ), [layoutPositionIds, truckFilter, tyres]);
+
+  // Fitments recorded on positions that existed in the old 10/12/14/22-wheel
+  // layouts — still real data, so surface them instead of hiding.
+  const unmappedFitments = useMemo(() => (
+    truckFilter === 'all' ? [] : tyres.filter(t =>
+      t.status === 'fitted' && t.fitment?.truckNo === truckFilter && !layoutPositionIds.includes(t.fitment.position))
+  ), [tyres, truckFilter, layoutPositionIds]);
+
+  const handleWheelClick = (posId) => {
+    const t = getTyreAtPosition(truckFilter, posId);
+    if (t) { openRemoveModal(t); return; }
+    const av = tyres.find(ty => ty.status === 'available');
+    if (av) openFitModal(av, posId);
+    else alert('No available tyres in stock. Please register a tyre first.');
+  };
+
+  const renderWheel = (posId) => {
+    const t = getTyreAtPosition(truckFilter, posId);
+    const isFitted = !!t;
+    const posName = positionNameMap[posId] || posId;
+    return (
+      <div key={posId} onClick={() => handleWheelClick(posId)}
+        title={isFitted ? `${posName} — ${t.serialNo} (${t.brand}). Click to remove.` : `${posName} — empty. Click to fit a tyre.`}
+        style={{
+          width: '96px', padding: '6px 8px', borderRadius: '10px', textAlign: 'center', cursor: 'pointer',
+          background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
+          border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
+          boxShadow: isFitted ? '0 2px 8px rgba(16,185,129,0.25)' : 'none',
+          color: isFitted ? '#fff' : 'var(--text-muted)',
+          transition: 'transform 0.12s ease', boxSizing: 'border-box'
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+      >
+        <div style={{ fontSize: '9px', fontWeight: 900, opacity: 0.7, letterSpacing: '0.05em' }}>{posId}</div>
+        <div style={{ fontSize: '12px', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isFitted ? t.serialNo : 'EMPTY'}</div>
+        <div style={{ fontSize: '9px', fontWeight: 700, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isFitted ? t.brand : 'tap to fit'}</div>
+      </div>
+    );
+  };
+
   // Filter logic
   const filteredTyres = tyres.filter(t => {
     const matchesSearch = t.serialNo.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -507,6 +502,13 @@ export default function TyreModule() {
 
   // Self Vehicles Set
   const selfTruckSet = useMemo(() => new Set(selfVehiclesList.map(v => v.truckNo)), [selfVehiclesList]);
+
+  // Fitments recorded on trucks that are not in the own fleet (market vehicles,
+  // deleted vehicles, typos). They no longer appear in the dropdown/ledger/KPIs,
+  // so surface them explicitly instead of letting them vanish.
+  const outsideFleetFitments = useMemo(() => (
+    tyres.filter(t => t.status === 'fitted' && t.fitment?.truckNo && !selfTruckSet.has(t.fitment.truckNo))
+  ), [tyres, selfTruckSet]);
 
   // Calculate Tyre Expenses ONLY for Self Vehicles
   const selfTyreExpenses = useMemo(() => {
@@ -547,12 +549,8 @@ export default function TyreModule() {
     };
   }, [vouchers, tyres, selfTruckSet]);
 
-  // Unique self trucks & fitted trucks for filter dropdown
+  // Own-fleet trucks for the axle-map dropdown (market vehicles excluded)
   const selfTrucksList = useMemo(() => selfVehiclesList.map(v => v.truckNo).sort(), [selfVehiclesList]);
-  const fittedTrucks = useMemo(() => {
-    const fitted = tyres.filter(t => t.status === 'fitted').map(t => t.fitment?.truckNo).filter(Boolean);
-    return [...new Set([...selfTrucksList, ...fitted])].sort();
-  }, [tyres, selfTrucksList]);
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
@@ -564,18 +562,7 @@ export default function TyreModule() {
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Track tyre life cycles, assignments, rotating positions, and running distances for Self Vehicles.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button 
-            onClick={handleAutoFitApollo} 
-            disabled={isSeeding}
-            style={{ 
-              background: 'transparent', color: 'var(--text)', border: '1px solid var(--border)', padding: '12px 24px', 
-              borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
-              fontSize: '14px', fontWeight: 800, cursor: 'pointer' 
-            }}
-          >
-            {isSeeding ? 'Fitting...' : 'Auto-fit Apollo Tyres'}
-          </button>
-          <button onClick={() => setIsAddModalOpen(true)} style={{ 
+          <button onClick={() => setIsAddModalOpen(true)} style={{
             background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
             borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
             fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
@@ -618,6 +605,7 @@ export default function TyreModule() {
                 <tr style={{ background: 'var(--bg-th)', borderBottom: '2px solid var(--border)' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Truck No.</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Make / Model</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Type</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Fitted Tyres</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Voucher Tyre Exp.</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Tyre Cost</th>
@@ -635,6 +623,11 @@ export default function TyreModule() {
                       <td style={{ padding: '10px 14px', fontWeight: 900, color: 'var(--primary)' }}>{v.truckNo}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{v.make} {v.model ? `(${v.model})` : ''}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)' }}>
+                          {AXLE_LAYOUTS[inferLayoutFromVehicle(v)]?.short}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                         <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: fittedCount > 0 ? 'rgba(16,185,129,0.1)' : 'var(--bg-th)', color: fittedCount > 0 ? '#10b981' : 'var(--text-muted)' }}>
                           {fittedCount} Tyres
                         </span>
@@ -642,8 +635,12 @@ export default function TyreModule() {
                       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(vExp)}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 900, color: '#10b981' }}>{fmtRs(totalExp)}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <button 
-                          onClick={() => setTruckFilter(v.truckNo)}
+                        <button
+                          onClick={() => {
+                            setTruckFilter(v.truckNo);
+                            // Same normalisation as the truck dropdown — a truck view only shows fitted tyres
+                            if (statusFilter !== 'all' && statusFilter !== 'fitted') setStatusFilter('all');
+                          }}
                           style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}
                         >
                           View Axle Map
@@ -679,7 +676,7 @@ export default function TyreModule() {
               style={{ padding: '8px 16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontWeight: 600 }}
             >
               <option value="all">— Select Vehicle —</option>
-              {fittedTrucks.map(truck => <option key={truck} value={truck}>{truck}</option>)}
+              {selfTrucksList.map(truck => <option key={truck} value={truck}>{truck}</option>)}
             </select>
           </div>
         </div>
@@ -687,492 +684,109 @@ export default function TyreModule() {
         {truckFilter === 'all' ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '16px', background: 'var(--bg-row-even)' }}>
             <Disc size={36} style={{ color: 'var(--text-muted)', marginBottom: '12px', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to render its visual axle & chassis layout.</p>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to see its tyre layout.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            {/* Chassis Layout Header & Override Selector */}
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-row-even)', border: '1px solid var(--border)', borderRadius: '14px', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)' }}>Detected Model:</span>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', background: 'rgba(99,102,241,0.08)', padding: '4px 10px', borderRadius: '8px' }}>
-                  {selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model || 'Standard'}` : 'N/A'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Vehicle info + layout toggle + fitted summary */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-row-even)', border: '1px solid var(--border)', borderRadius: '14px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '14px', fontWeight: 900, color: 'var(--primary)' }}>{truckFilter}</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {selectedVehicle ? `${selectedVehicle.make || ''} ${selectedVehicle.model || ''}`.trim() : ''}
                 </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>|</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
-                  Inferred Layout: <strong style={{ color: '#10b981' }}>{AXLE_LAYOUTS[inferredLayoutId]?.name}</strong>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '4px 10px', borderRadius: '8px' }}>
+                  {fittedOnLayoutCount} / {layoutPositionIds.length - 1} wheels fitted
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: getTyreAtPosition(truckFilter, 'SP') ? '#10b981' : 'var(--text-muted)', background: 'var(--bg-th)', padding: '4px 10px', borderRadius: '8px' }}>
+                  Spare: {getTyreAtPosition(truckFilter, 'SP') ? 'fitted' : 'empty'}
                 </span>
               </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-muted)' }}>Configure Axle Layout:</span>
-                <select 
-                  value={overrideLayoutId || inferredLayoutId} 
-                  onChange={e => setOverrideLayoutId(e.target.value)} 
-                  style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontWeight: 700, fontSize: '12px' }}
-                >
-                  {Object.entries(AXLE_LAYOUTS).map(([id, layout]) => (
-                    <option key={id} value={id}>{layout.name}</option>
-                  ))}
-                </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>Vehicle Type:</span>
+                {['18', '6'].map(id => { const layout = AXLE_LAYOUTS[id]; return (
+                  <button key={id} onClick={() => setOverrideLayoutId(id)} style={{
+                    padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                    border: activeLayoutId === id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                    background: activeLayoutId === id ? 'rgba(99,102,241,0.1)' : 'var(--bg-input)',
+                    color: activeLayoutId === id ? 'var(--primary)' : 'var(--text-muted)'
+                  }}>
+                    {layout.name}
+                  </button>
+                ); })}
               </div>
             </div>
 
-            {(() => {
-              const isTrailer = activeLayoutId === '18' || activeLayoutId === '22';
-              const canvasWidth = isTrailer ? 740 : 390;
-              return (
-                <div style={{ width: '100%', overflowX: 'auto', padding: '15px 0', display: 'flex', justifyContent: 'center' }}>
-                  <div style={{ 
-                    position: 'relative', 
-                    width: `${canvasWidth}px`, 
-                    height: '240px', 
-                    background: 'var(--bg-card)', 
-                    border: '2px solid var(--border)', 
-                    borderRadius: '24px', 
-                    padding: '0', 
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
-                    flexShrink: 0,
-                    overflow: 'hidden'
-                  }}>
-                    {/* Parallel Steel Chassis Rails */}
-                    <div style={{
-                      position: 'absolute',
-                      left: '110px',
-                      width: `${isTrailer ? 230 : 240}px`,
-                      top: '96px',
-                      height: '6px',
-                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-card) 100%)',
-                      border: '1px solid var(--border)',
-                      zIndex: 1
-                    }} />
-                    <div style={{
-                      position: 'absolute',
-                      left: '110px',
-                      width: `${isTrailer ? 230 : 240}px`,
-                      top: '138px',
-                      height: '6px',
-                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-card) 100%)',
-                      border: '1px solid var(--border)',
-                      zIndex: 1
-                    }} />
+            {/* Legend */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '26px', height: '14px', borderRadius: '4px', background: 'linear-gradient(180deg,#1e293b,#0f172a)', border: '2px solid #10b981', display: 'inline-block' }} />
+                Fitted — click to remove
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '26px', height: '14px', borderRadius: '4px', background: 'var(--bg-th)', border: '2px dashed var(--border)', display: 'inline-block' }} />
+                Empty — click to fit
+              </span>
+              <span>Top row = left side of truck · bottom row = right side · front is on the left</span>
+            </div>
 
-                    {/* Left Mirror */}
-                    <div style={{
-                      position: 'absolute',
-                      left: '35px',
-                      top: '18px',
-                      width: '18px',
-                      height: '8px',
-                      background: 'var(--bg-th)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '3px',
-                      zIndex: 3
-                    }} />
-                    {/* Right Mirror */}
-                    <div style={{
-                      position: 'absolute',
-                      left: '35px',
-                      bottom: '18px',
-                      width: '18px',
-                      height: '8px',
-                      background: 'var(--bg-th)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '3px',
-                      zIndex: 3
-                    }} />
+            {/* Axle schematic — front of vehicle on the left */}
+            <div style={{ overflowX: 'auto', paddingBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: '16px', minWidth: 'min-content' }}>
 
-                    {/* Cabin Block */}
-                    <div style={{
-                      position: 'absolute',
-                      left: '15px',
-                      top: '36px',
-                      width: '105px',
-                      height: '168px',
-                      background: 'linear-gradient(135deg, var(--bg-th) 0%, var(--bg-card) 100%)',
-                      border: '2px solid var(--border)',
-                      borderRadius: '24px 8px 8px 24px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                      zIndex: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      paddingLeft: '14px',
-                      boxSizing: 'border-box'
-                    }}>
-                      {/* Glass Windshield */}
-                      <div style={{
-                        width: '16px',
-                        height: '136px',
-                        background: 'var(--bg-input)',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border)',
-                        opacity: 0.95
-                      }} />
-                      {/* Roof hatch or cabin detail */}
-                      <div style={{
-                        width: '32px',
-                        height: '70px',
-                        marginLeft: '15px',
-                        background: 'var(--bg-card)',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <span style={{ fontSize: '8px', fontWeight: 900, color: 'var(--text-muted)' }}>CAB</span>
-                      </div>
-                    </div>
-
-                    {/* Side Fuel Tanks */}
-                    <div style={{
-                      position: 'absolute',
-                      left: '135px',
-                      top: '40px',
-                      width: '65px',
-                      height: '30px',
-                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-card) 100%)',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: '4px',
-                      zIndex: 2
-                    }} />
-                    <div style={{
-                      position: 'absolute',
-                      left: '135px',
-                      bottom: '40px',
-                      width: '65px',
-                      height: '30px',
-                      background: 'linear-gradient(180deg, var(--bg-card) 0%, var(--bg-th) 100%)',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: '4px',
-                      zIndex: 2
-                    }} />
-
-                    {/* Fifth Wheel Coupling (Trailer only) */}
-                    {isTrailer && (
-                      <div style={{
-                        position: 'absolute',
-                        left: '243px',
-                        top: '108px',
-                        width: '24px',
-                        height: '24px',
-                        borderRadius: '50%',
-                        background: 'radial-gradient(circle, var(--bg-th) 0%, var(--bg-card) 100%)',
-                        border: '2px solid var(--border)',
-                        zIndex: 2
-                      }} />
-                    )}
-
-                    {/* Landing Gear Support (Trailer only) */}
-                    {isTrailer && (
-                      <>
-                        <div style={{
-                          position: 'absolute',
-                          left: '202px',
-                          top: '32px',
-                          bottom: '32px',
-                          width: '6px',
-                          background: 'var(--border)',
-                          zIndex: 3
-                        }} />
-                        <div style={{
-                          position: 'absolute',
-                          left: '197px',
-                          top: '26px',
-                          width: '16px',
-                          height: '8px',
-                          background: 'var(--bg-th)',
-                          border: '1px solid var(--border)',
-                          zIndex: 4
-                        }} />
-                        <div style={{
-                          position: 'absolute',
-                          left: '197px',
-                          bottom: '26px',
-                          width: '16px',
-                          height: '8px',
-                          background: 'var(--bg-th)',
-                          border: '1px solid var(--border)',
-                          zIndex: 4
-                        }} />
-                      </>
-                    )}
-
-                    {/* Cargo Body / Trailer Bed */}
-                    <div style={{
-                      position: 'absolute',
-                      left: isTrailer ? '185px' : '125px',
-                      top: isTrailer ? '32px' : '36px',
-                      width: isTrailer ? '535px' : '240px',
-                      height: isTrailer ? '176px' : '168px',
-                      background: 'linear-gradient(180deg, var(--bg-th) 0%, var(--bg-input) 100%)',
-                      border: '2px solid var(--border)',
-                      borderRadius: '6px 16px 16px 6px',
-                      zIndex: 2,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxSizing: 'border-box'
-                    }}>
-                      {/* Container ridges styling */}
-                      <div style={{
-                        position: 'absolute',
-                        inset: '4px',
-                        border: '1px solid rgba(255,255,255,0.05)',
-                        borderRadius: '4px',
-                        background: isTrailer 
-                          ? 'repeating-linear-gradient(180deg, transparent, transparent 12px, var(--bg-card) 12px, var(--bg-card) 14px)'
-                          : 'repeating-linear-gradient(90deg, transparent, transparent 12px, var(--bg-card) 12px, var(--bg-card) 14px)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none'
-                      }} />
-                      
-                      {/* Container badge */}
-                      <div style={{
-                        background: 'var(--bg-card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                        padding: '6px 16px',
-                        color: 'var(--text)',
-                        textAlign: 'center',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                        zIndex: 3
-                      }}>
-                        <div style={{ fontSize: '10px', fontWeight: 900, letterSpacing: '0.15em', color: 'var(--text)' }}>
-                          {isTrailer ? 'VGTC CARRIER' : 'VGTC EXPRESS'}
-                        </div>
-                        <div style={{ fontSize: '7.5px', fontWeight: 700, color: 'var(--text-muted)', marginTop: '2px', textTransform: 'uppercase' }}>
-                          {selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : truckFilter}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Axles and Wheels Rendering */}
-                    {activeLayout.axles.map((axle, axleIdx) => {
-                      const x = getAxleHorizontalOffsets(activeLayoutId)[axleIdx] || 50;
-                      const leftPos = axle.positions.filter(p => p.id.includes('L') || p.id === 'FL' || p.id === 'FL2');
-                      const rightPos = axle.positions.filter(p => p.id.includes('R') || p.id === 'FR' || p.id === 'FR2');
-                      
-                      return (
-                        <div key={axleIdx} style={{ position: 'absolute', left: `${x - 22}px`, top: '0', bottom: '0', width: '44px', zIndex: 4 }}>
-                          {/* Vertical Axle Shaft */}
-                          <div style={{
-                            position: 'absolute',
-                            left: '18px',
-                            top: '18px',
-                            bottom: '18px',
-                            width: '8px',
-                            background: 'var(--border)',
-                            zIndex: 0
-                          }} />
-                          
-                          {/* Center Casing */}
-                          <div style={{
-                            position: 'absolute',
-                            left: '14px',
-                            top: '112px',
-                            width: '16px',
-                            height: '16px',
-                            borderRadius: '50%',
-                            background: 'var(--bg-th)',
-                            border: '2px solid var(--border)',
-                            zIndex: 1
-                          }} />
-
-                          {/* Top (Left) Wheels */}
-                          {leftPos.map((pos, idx) => {
-                            const t = getTyreAtPosition(truckFilter, pos.id);
-                            const isFitted = !!t;
-                            const topVal = idx === 0 ? 38 : 58;
-                            return (
-                              <div 
-                                key={pos.id} 
-                                onClick={() => {
-                                  if (isFitted) openRemoveModal(t);
-                                  else {
-                                    const av = tyres.find(ty => ty.status === 'available');
-                                    if (av) openFitModal(av, pos.id);
-                                    else alert('No available tyres in stock. Please register a tyre first.');
-                                  }
-                                }}
-                                style={{
-                                  position: 'absolute',
-                                  left: '0',
-                                  top: `${topVal}px`,
-                                  width: '44px',
-                                  height: '18px',
-                                  borderRadius: '4px',
-                                  background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
-                                  border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
-                                  boxShadow: isFitted ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
-                                  color: isFitted ? '#fff' : 'var(--text-muted)',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease',
-                                  zIndex: 2,
-                                  padding: '2px',
-                                  boxSizing: 'border-box'
-                                }}
-                                onMouseEnter={e => {
-                                  e.currentTarget.style.transform = 'scale(1.08)';
-                                  if (!isFitted) {
-                                    e.currentTarget.style.borderColor = 'var(--primary)';
-                                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
-                                  }
-                                }}
-                                onMouseLeave={e => {
-                                  e.currentTarget.style.transform = 'scale(1)';
-                                  if (!isFitted) {
-                                    e.currentTarget.style.borderColor = 'var(--border)';
-                                    e.currentTarget.style.background = 'var(--bg-th)';
-                                  }
-                                }}
-                              >
-                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
-                                  <div style={{ fontSize: '7px', fontWeight: 900, opacity: 0.9, lineHeight: 1 }}>{pos.label}</div>
-                                  <div style={{ fontSize: '8px', fontWeight: 900, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '38px', lineHeight: 1, marginTop: '1px' }}>
-                                    {isFitted ? t.serialNo : 'Empty'}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* Bottom (Right) Wheels */}
-                          {rightPos.map((pos, idx) => {
-                            const t = getTyreAtPosition(truckFilter, pos.id);
-                            const isFitted = !!t;
-                            const bottomVal = idx === 0 ? 58 : 38;
-                            return (
-                              <div 
-                                key={pos.id} 
-                                onClick={() => {
-                                  if (isFitted) openRemoveModal(t);
-                                  else {
-                                    const av = tyres.find(ty => ty.status === 'available');
-                                    if (av) openFitModal(av, pos.id);
-                                    else alert('No available tyres in stock. Please register a tyre first.');
-                                  }
-                                }}
-                                style={{
-                                  position: 'absolute',
-                                  left: '0',
-                                  bottom: `${bottomVal}px`,
-                                  width: '44px',
-                                  height: '18px',
-                                  borderRadius: '4px',
-                                  background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
-                                  border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
-                                  boxShadow: isFitted ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
-                                  color: isFitted ? '#fff' : 'var(--text-muted)',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease',
-                                  zIndex: 2,
-                                  padding: '2px',
-                                  boxSizing: 'border-box'
-                                }}
-                                onMouseEnter={e => {
-                                  e.currentTarget.style.transform = 'scale(1.08)';
-                                  if (!isFitted) {
-                                    e.currentTarget.style.borderColor = 'var(--primary)';
-                                    e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
-                                  }
-                                }}
-                                onMouseLeave={e => {
-                                  e.currentTarget.style.transform = 'scale(1)';
-                                  if (!isFitted) {
-                                    e.currentTarget.style.borderColor = 'var(--border)';
-                                    e.currentTarget.style.background = 'var(--bg-th)';
-                                  }
-                                }}
-                              >
-                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
-                                  <div style={{ fontSize: '7px', fontWeight: 900, opacity: 0.9, lineHeight: 1 }}>{pos.label}</div>
-                                  <div style={{ fontSize: '8px', fontWeight: 900, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '38px', lineHeight: 1, marginTop: '1px' }}>
-                                    {isFitted ? t.serialNo : 'Empty'}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-
-                    {/* Spare Tyre (SP) */}
-                    {(() => {
-                      const t = getTyreAtPosition(truckFilter, 'SP');
-                      const isFitted = !!t;
-                      const spareX = isTrailer ? 440 : 330;
-                      return (
-                        <div 
-                          onClick={() => {
-                            if (isFitted) openRemoveModal(t);
-                            else {
-                              const av = tyres.find(ty => ty.status === 'available');
-                              if (av) openFitModal(av, 'SP');
-                              else alert('No available tyres in stock. Please register a tyre first.');
-                            }
-                          }}
-                          style={{
-                            position: 'absolute',
-                            left: `${spareX}px`,
-                            top: '110px',
-                            width: '44px',
-                            height: '20px',
-                            borderRadius: '4px',
-                            background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
-                            border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
-                            boxShadow: isFitted ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
-                            color: isFitted ? '#fff' : 'var(--text-muted)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            zIndex: 4,
-                            padding: '2px',
-                            boxSizing: 'border-box'
-                          }}
-                          onMouseEnter={e => {
-                            e.currentTarget.style.transform = 'scale(1.08)';
-                            if (!isFitted) {
-                              e.currentTarget.style.borderColor = 'var(--primary)';
-                              e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
-                            }
-                          }}
-                          onMouseLeave={e => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            if (!isFitted) {
-                              e.currentTarget.style.borderColor = 'var(--border)';
-                              e.currentTarget.style.background = 'var(--bg-th)';
-                            }
-                          }}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
-                            <div style={{ fontSize: '7px', fontWeight: 900, opacity: 0.9 }}>SP</div>
-                            <div style={{ fontSize: '8px', fontWeight: 900, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '38px', marginTop: '1px' }}>
-                              {isFitted ? t.serialNo : 'Spare'}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 4px' }}>
+                  <span style={{ fontSize: '20px' }}>🚚</span>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: 'var(--text-muted)', letterSpacing: '0.1em', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>FRONT</span>
                 </div>
-              );
-            })()}
+
+                {activeLayout.sections.map(section => (
+                  <div key={section.name} style={{ border: '2px solid var(--border)', borderRadius: '16px', padding: '14px 18px', background: 'var(--bg-row-even)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '12px', textAlign: 'center' }}>
+                      {section.icon} {section.name}
+                    </div>
+                    <div style={{ display: 'flex', gap: '22px' }}>
+                      {section.axles.map(axle => (
+                        <div key={axle.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {axle.left.map(id => renderWheel(id))}
+                          </div>
+                          <div style={{ width: '10px', height: '30px', borderRadius: '5px', background: 'var(--border)' }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {axle.right.map(id => renderWheel(id))}
+                          </div>
+                          <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text)', marginTop: '6px', whiteSpace: 'nowrap' }}>{axle.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ border: '2px dashed var(--border)', borderRadius: '16px', padding: '14px 18px', background: 'var(--bg-row-even)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Spare</div>
+                  {renderWheel('SP')}
+                </div>
+              </div>
+            </div>
+
+            {/* Tyres fitted on positions that are not part of the selected layout */}
+            {unmappedFitments.length > 0 && (
+              <div style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
+                <strong>{unmappedFitments.length} fitted tyre(s) are on positions outside the selected layout:</strong>{' '}
+                {unmappedFitments.map(t => `${t.serialNo} (${t.fitment.position})`).join(', ')}.
+                If the vehicle type above is wrong, switch the toggle — otherwise use the tyre cards below to remove and refit them.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fitments recorded on trucks that are not in the own fleet */}
+        {outsideFleetFitments.length > 0 && (
+          <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
+            <strong>{outsideFleetFitments.length} fitted tyre(s) are recorded on trucks outside your own fleet:</strong>{' '}
+            {outsideFleetFitments.slice(0, 10).map(t => `${t.serialNo} (${t.fitment.truckNo})`).join(', ')}
+            {outsideFleetFitments.length > 10 ? ` +${outsideFleetFitments.length - 10} more` : ''}.
+            These trucks are not listed above — set the tyre list below to "All" / "Fitted" to find and remove them.
           </div>
         )}
       </div>

@@ -9,14 +9,58 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+// `available: false` plants still have 'TBD' GSTIN/SAP/plant codes in server plantConfig.js —
+// generating them would print "TBD" on a legal tax invoice, so they stay locked until
+// their custom formats are added.
 const PLANT_OPTIONS = [
-  { key: 'jksuper_jharli', label: 'JK Super Dump 1022', lrBrand: 'dump', gstRate: 9, invoiceType: 'Dump', description: 'Only Dump entries (blank SALES DOC TYPE)' },
-  { key: 'jksuper_trade', label: 'JK Super Trade 1022', lrBrand: 'dump', gstRate: 9, invoiceType: 'Factory Trade', description: 'Only Factory Trade Sale entries' },
-  { key: 'jksuper_nontrade', label: 'JK Super Non-Trade 1022', lrBrand: 'dump', gstRate: 9, invoiceType: 'Non-Trade', description: 'Only Factory Non-Trade entries' },
-  { key: 'jklakshmi_jharli', label: 'JK Lakshmi 1022', lrBrand: 'jkl', gstRate: 6, invoiceType: 'all', description: 'All entry types' },
-  { key: 'kosli_dump', label: 'Kosli Dump', lrBrand: 'kosli', gstRate: 6, invoiceType: 'all', description: 'All entry types' },
-  { key: 'jhajjar_dump', label: 'Jhajjar Dump', lrBrand: 'jhajjar', gstRate: 6, invoiceType: 'all', description: 'All entry types' },
+  { key: 'jksuper_jharli', label: 'JK Super Dump 1022', lrBrand: 'dump', gstRate: 9, invoiceType: 'Dump', description: 'Only Dump entries (blank SALES DOC TYPE)', available: true, voucherTypes: ['Dump', 'JK_Super'] },
+  { key: 'jksuper_trade', label: 'JK Super Trade 1022', lrBrand: 'dump', gstRate: 9, invoiceType: 'Factory Trade', description: 'Only Factory Trade Sale entries', available: true, voucherTypes: ['Dump', 'JK_Super'] },
+  { key: 'jksuper_nontrade', label: 'JK Super Non-Trade 1022', lrBrand: 'dump', gstRate: 9, invoiceType: 'Non-Trade', description: 'Only Factory Non-Trade entries', available: true, voucherTypes: ['Dump', 'JK_Super'] },
+  { key: 'jklakshmi_jharli', label: 'JK Lakshmi 1022', lrBrand: 'jkl', gstRate: 6, invoiceType: 'all', description: 'Custom format — coming soon', available: false, voucherTypes: ['JK_Lakshmi'] },
+  { key: 'kosli_dump', label: 'Kosli Dump', lrBrand: 'kosli', gstRate: 6, invoiceType: 'all', description: 'Custom format — coming soon', available: false, voucherTypes: ['Kosli_Bill'] },
+  { key: 'jhajjar_dump', label: 'Jhajjar Dump', lrBrand: 'jhajjar', gstRate: 6, invoiceType: 'all', description: 'Custom format — coming soon', available: false, voucherTypes: ['Jajjhar_Bill'] },
 ];
+
+// LR numbers appear as "1022/1234" in the plant Excel but as "1234" on
+// balance-sheet vouchers — compare trimmed value AND the part after the slash.
+const lrKeys = (raw) => {
+  const s = String(raw || '').trim().toUpperCase();
+  if (!s) return [];
+  const stripped = s.replace(/.*\//, '').trim();
+  return stripped && stripped !== s ? [s, stripped] : [s];
+};
+
+const buildVoucherLrIndex = (vouchers) => {
+  const index = new Map();
+  (vouchers || []).forEach(v => {
+    const lrs = [v.lrNo, ...(v.deliveries || []).map(d => d.lrNo)];
+    lrs.forEach(lr => lrKeys(lr).forEach(k => { if (!index.has(k)) index.set(k, v); }));
+  });
+  return index;
+};
+
+const findVoucherForLr = (index, lrNo) => {
+  for (const k of lrKeys(lrNo)) {
+    const v = index.get(k);
+    if (v) return v;
+  }
+  return null;
+};
+
+const lrStrip = (raw) => {
+  const keys = lrKeys(raw);
+  return keys.length ? keys[keys.length - 1] : '';
+};
+
+// Billing is per-LR: multi-delivery vouchers carry invoicedLrNos [{lr, billNo}],
+// so only the specific LR being billed counts as "already invoiced".
+const isLrInvoicedOnVoucher = (v, lrNo) => {
+  if (Array.isArray(v.invoicedLrNos)) {
+    const key = lrStrip(lrNo);
+    return v.invoicedLrNos.some(e => e.lr === key);
+  }
+  return !!v.invoiceGenerated;
+};
 
 const TH = { padding: '6px 8px', fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', textAlign: 'left', whiteSpace: 'nowrap' };
 const TD = { padding: '5px 8px', fontSize: '11px', color: 'var(--text-sub)', borderBottom: '1px solid var(--border-row)' };
@@ -28,9 +72,13 @@ export default function InvoiceModule({ brand = 'dump' }) {
   const fileInputRef = useRef(null);
 
   // ── Core State ──
+  // Default to the first available plant; brand-specific defaults resume once
+  // those plants get real configs.
   const [plantKey, setPlantKey] = useState(() => {
-    if (brand === 'jkl') return 'jklakshmi_jharli';
-    return 'jksuper_jharli';
+    const preferred = brand === 'jkl' ? 'jklakshmi_jharli' : 'jksuper_jharli';
+    const opt = PLANT_OPTIONS.find(p => p.key === preferred);
+    if (opt?.available) return preferred;
+    return PLANT_OPTIONS.find(p => p.available)?.key || 'jksuper_jharli';
   });
   const [view, setView] = useState('upload'); // upload | editor | generate | history
   const [billNoStart, setBillNoStart] = useState('');
@@ -41,6 +89,10 @@ export default function InvoiceModule({ brand = 'dump' }) {
   const [invoices, setInvoices] = useState([]); // [{billNo, type, gstRate, items:[], expanded}]
   const [pendingItems, setPendingItems] = useState([]);
   const [savedPending, setSavedPending] = useState([]);
+
+  // Entries removed because they have no balance-sheet voucher yet
+  const [missingBsItems, setMissingBsItems] = useState([]);
+  const [showMissingModal, setShowMissingModal] = useState(false);
 
   // ── Generate State ──
   const [generating, setGenerating] = useState(false);
@@ -181,12 +233,19 @@ export default function InvoiceModule({ brand = 'dump' }) {
             selectedItems = [...dump, ...trade, ...nonTrade];
           }
 
-          // Remove already-invoiced AND already-pending entries
+          // Remove already-invoiced AND already-pending entries.
+          // NOTE: if any of these fetches fail we skip ALL client-side filtering
+          // (no false "not in Balance Sheet" from a transient error) — the
+          // server verifies again on generate either way.
           let alreadyInvoiced = 0;
+          let notInBs = [];
+          let bsInvoicedCount = 0;
+          let blankLrCount = 0;
           try {
-            const [histRes, pendRes] = await Promise.all([
+            const [histRes, pendRes, vouchRes] = await Promise.all([
               ax.get('/invoices'),
               ax.get('/invoices/pending'),
+              ax.get('/vouchers'),
             ]);
             // Collect all LRs that are already invoiced
             const invoicedLRs = new Set();
@@ -198,6 +257,24 @@ export default function InvoiceModule({ brand = 'dump' }) {
             const before = selectedItems.length;
             selectedItems = selectedItems.filter(it => !it.lrNo || !invoicedLRs.has(it.lrNo));
             alreadyInvoiced = before - selectedItems.length;
+
+            // Rows without an LR number can never match a voucher — drop them
+            const withLr = selectedItems.filter(it => String(it.lrNo || '').trim());
+            blankLrCount = selectedItems.length - withLr.length;
+            selectedItems = withLr;
+
+            // Balance-sheet check: an entry can only be billed if a voucher of
+            // this plant's types exists and this LR is not invoiced already.
+            const bsVouchers = (vouchRes.data || []).filter(v => !selectedPlant.voucherTypes || selectedPlant.voucherTypes.includes(v.type));
+            const bsIndex = buildVoucherLrIndex(bsVouchers);
+            const inBs = [];
+            selectedItems.forEach(it => {
+              const v = findVoucherForLr(bsIndex, it.lrNo);
+              if (!v) notInBs.push(it);
+              else if (isLrInvoicedOnVoucher(v, it.lrNo)) bsInvoicedCount++;
+              else inBs.push(it);
+            });
+            selectedItems = inBs;
 
             // Filter pending: remove already invoiced AND already saved pending
             const filteredPending = pending.filter(it => it.lrNo && !invoicedLRs.has(it.lrNo) && !pendingLRs.has(it.lrNo));
@@ -221,14 +298,19 @@ export default function InvoiceModule({ brand = 'dump' }) {
 
           setInvoices(invs);
           setPendingItems(wantType === 'Dump' ? pending : []);
+          setMissingBsItems(notInBs);
           setResults([]);
           setView('editor');
 
           const msg = [`${selectedItems.length} new entries → ${invs.length} invoice(s)`];
           if (alreadyInvoiced > 0) msg.push(`${alreadyInvoiced} entries skipped (already invoiced)`);
+          if (bsInvoicedCount > 0) msg.push(`${bsInvoicedCount} entries skipped (already invoiced in Balance Sheet)`);
+          if (blankLrCount > 0) msg.push(`${blankLrCount} rows without LR number skipped`);
+          if (notInBs.length > 0) msg.push(`${notInBs.length} entries not in Balance Sheet (removed — add voucher first)`);
           if (pending.length > 0 && wantType === 'Dump') msg.push(`${pending.length} pending (not in Sheet2)`);
           if (skippedCount > 0) msg.push(`${skippedCount} other type entries skipped`);
           alert(`${selectedPlant.label}\n${msg.join('\n')}`);
+          if (notInBs.length > 0) setShowMissingModal(true);
 
         } else {
           // Generic format
@@ -251,15 +333,37 @@ export default function InvoiceModule({ brand = 'dump' }) {
               shortQty: n(['short']),
             };
           });
-          // Remove already-invoiced entries
+          // Remove already-invoiced entries + balance-sheet check. If the
+          // fetches fail we skip filtering — the server verifies on generate.
           let genSkipped = 0;
+          let genNotInBs = [];
+          let genBsInvoiced = 0;
+          let genBlankLr = 0;
           try {
-            const hRes = await ax.get('/invoices');
+            const [hRes, vRes] = await Promise.all([
+              ax.get('/invoices'),
+              ax.get('/vouchers'),
+            ]);
             const invLRs = new Set();
             (hRes.data || []).forEach(inv => (inv.items || []).forEach(it => { if (it.lrNo) invLRs.add(it.lrNo); }));
             const before = parsed.length;
             parsed = parsed.filter(it => !it.lrNo || !invLRs.has(it.lrNo));
             genSkipped = before - parsed.length;
+
+            const withLr = parsed.filter(it => String(it.lrNo || '').trim());
+            genBlankLr = parsed.length - withLr.length;
+            parsed = withLr;
+
+            const bsVouchers = (vRes.data || []).filter(v => !selectedPlant.voucherTypes || selectedPlant.voucherTypes.includes(v.type));
+            const bsIndex = buildVoucherLrIndex(bsVouchers);
+            const inBs = [];
+            parsed.forEach(it => {
+              const v = findVoucherForLr(bsIndex, it.lrNo);
+              if (!v) genNotInBs.push(it);
+              else if (isLrInvoicedOnVoucher(v, it.lrNo)) genBsInvoiced++;
+              else inBs.push(it);
+            });
+            parsed = inBs;
           } catch {}
 
           let bc = parseInt(billNoStart) || 1;
@@ -270,11 +374,16 @@ export default function InvoiceModule({ brand = 'dump' }) {
           }
           setInvoices(invs);
           setPendingItems([]);
+          setMissingBsItems(genNotInBs);
           setResults([]);
           setView('editor');
           const gMsg = [`${parsed.length} entries → ${invs.length} invoice(s)`];
           if (genSkipped > 0) gMsg.push(`${genSkipped} already invoiced (skipped)`);
+          if (genBsInvoiced > 0) gMsg.push(`${genBsInvoiced} already invoiced in Balance Sheet (skipped)`);
+          if (genBlankLr > 0) gMsg.push(`${genBlankLr} rows without LR number skipped`);
+          if (genNotInBs.length > 0) gMsg.push(`${genNotInBs.length} entries not in Balance Sheet (removed — add voucher first)`);
           alert(gMsg.join('\n'));
+          if (genNotInBs.length > 0) setShowMissingModal(true);
         }
       } catch (err) {
         console.error('Excel parse error:', err);
@@ -306,14 +415,33 @@ export default function InvoiceModule({ brand = 'dump' }) {
     });
   };
 
-  const addPendingToInvoice = (pendingIdx, invIdx) => {
+  // Pending entries never went through the upload-time balance-sheet filter,
+  // so check before they enter a bill. On fetch failure allow it — the server
+  // verifies again on generate.
+  const checkLrInBalanceSheet = async (lrNo) => {
+    if (!String(lrNo || '').trim()) return { ok: false, reason: 'has no LR number' };
+    try {
+      const res = await ax.get('/vouchers');
+      const vs = (res.data || []).filter(v => !selectedPlant.voucherTypes || selectedPlant.voucherTypes.includes(v.type));
+      const v = findVoucherForLr(buildVoucherLrIndex(vs), lrNo);
+      if (!v) return { ok: false, reason: 'is not in the Balance Sheet — add the voucher entry first' };
+      if (isLrInvoicedOnVoucher(v, lrNo)) return { ok: false, reason: 'is already invoiced in the Balance Sheet' };
+      return { ok: true };
+    } catch { return { ok: true }; }
+  };
+
+  const addPendingToInvoice = async (pendingIdx, invIdx) => {
     const item = pendingItems[pendingIdx];
     if (!item) return;
+    const chk = await checkLrInBalanceSheet(item.lrNo);
+    if (!chk.ok) return alert(`LR ${item.lrNo || '(blank)'} ${chk.reason}.`);
     setInvoices(p => p.map((inv, i) => i === invIdx ? { ...inv, items: [...inv.items, item] } : inv));
     setPendingItems(p => p.filter((_, i) => i !== pendingIdx));
   };
 
-  const addSavedPendingToInvoice = (pendingItem, invIdx) => {
+  const addSavedPendingToInvoice = async (pendingItem, invIdx) => {
+    const chk = await checkLrInBalanceSheet(pendingItem.lrNo);
+    if (!chk.ok) return alert(`LR ${pendingItem.lrNo || '(blank)'} ${chk.reason}.`);
     setInvoices(p => p.map((inv, i) => i === invIdx ? { ...inv, items: [...inv.items, pendingItem] } : inv));
     setSavedPending(p => p.filter(x => x.id !== pendingItem.id));
     // Delete from Firestore
@@ -381,9 +509,40 @@ export default function InvoiceModule({ brand = 'dump' }) {
         res.push({ billNo: inv.billNo, type: inv.type, status: 'success', pdfUrl: url, matchedLRs: matchedIds.length });
       } catch (err) {
         let msg = err.message;
+        let body = null;
         if (err.response?.data instanceof Blob) {
-          try { msg = JSON.parse(await err.response.data.text()).error || msg; } catch {}
-        } else if (err.response?.data?.error) msg = err.response.data.error;
+          try { body = JSON.parse(await err.response.data.text()); msg = body.error || msg; } catch {}
+        } else if (err.response?.data) { body = err.response.data; msg = body.error || msg; }
+
+        // Rows without an LR number can never pass verification — drop them
+        if (body?.blankCount) {
+          setInvoices(p => p
+            .map(x => x.billNo === inv.billNo ? { ...x, items: x.items.filter(it => String(it.lrNo || '').trim()) } : x)
+            .filter(x => x.items.length > 0));
+          msg += ' — rows without LR number were removed; generate again.';
+        }
+
+        // Server rejected entries that are missing from / already invoiced in
+        // the balance sheet — pull them out of the bill so a retry can succeed.
+        const missingLrs = body?.missingLrs || [];
+        const dupLrs = body?.alreadyInvoiced || [];
+        const badKeySet = new Set([...missingLrs, ...dupLrs].flatMap(l => lrKeys(l)));
+        if (badKeySet.size > 0) {
+          const isBad = (it) => lrKeys(it.lrNo).some(k => badKeySet.has(k));
+          const missKeySet = new Set(missingLrs.flatMap(l => lrKeys(l)));
+          const removedMissing = inv.items.filter(it => lrKeys(it.lrNo).some(k => missKeySet.has(k)));
+          setInvoices(p => p
+            .map(x => x.billNo === inv.billNo ? { ...x, items: x.items.filter(it => !isBad(it)) } : x)
+            .filter(x => x.items.length > 0));
+          if (removedMissing.length > 0) {
+            setMissingBsItems(prev => {
+              const have = new Set(prev.flatMap(it => lrKeys(it.lrNo)));
+              return [...prev, ...removedMissing.filter(it => !lrKeys(it.lrNo).some(k => have.has(k)))];
+            });
+            setShowMissingModal(true);
+          }
+          msg += ' — these entries were removed from the bill; generate again.';
+        }
         res.push({ billNo: inv.billNo, type: inv.type, status: 'failed', error: msg });
       }
     }
@@ -494,7 +653,6 @@ export default function InvoiceModule({ brand = 'dump' }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h1 style={{ margin: 0 }}>Generate Invoice</h1>
-              <span className="nav-badge-soon">COMING SOON</span>
             </div>
             <p style={{ margin: 0 }}>Transportation Freight Bill — Tax Invoice</p>
           </div>
@@ -504,32 +662,13 @@ export default function InvoiceModule({ brand = 'dump' }) {
         </div>
       </div>
 
-      {/* Coming Soon Alert Banner */}
-      <div style={{
-        marginBottom: '20px',
-        padding: '14px 18px',
-        borderRadius: '12px',
-        background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.08))',
-        border: '1px solid rgba(245, 158, 11, 0.3)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '12px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ background: '#f59e0b', color: 'white', padding: '6px 12px', borderRadius: '20px', fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', shrink: 0 }}>
-            Coming Soon
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
-              ⚡ Direct Tax Invoice Automation Engine
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Direct automated PDF tax invoice creation with NIC portal integration is under final preparation. Excel template processing is enabled in the interim below.
-            </div>
-          </div>
+      {/* JK Lakshmi entry point falls back to JK Super until its format exists */}
+      {brand === 'jkl' && !PLANT_OPTIONS.find(p => p.key === 'jklakshmi_jharli')?.available && (
+        <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
+          <strong>JK Lakshmi invoice format is not available yet</strong> — a JK Super format is pre-selected instead.
+          The JK Lakshmi option unlocks once its plant details (GSTIN / SAP / plant code) are added.
         </div>
-      </div>
+      )}
 
       {/* Tab Bar */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '20px' }}>
@@ -564,15 +703,20 @@ export default function InvoiceModule({ brand = 'dump' }) {
                 </div>
                 <div style={{ padding: '12px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
                   {PLANT_OPTIONS.map(p => (
-                    <div key={p.key} onClick={() => setPlantKey(p.key)}
+                    <div key={p.key} onClick={() => { if (p.available) setPlantKey(p.key); }}
+                      title={p.available ? undefined : `${p.label} (Coming Soon)`}
                       style={{
-                        padding: '12px 14px', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s',
+                        padding: '12px 14px', borderRadius: '10px', transition: 'all 0.15s',
+                        cursor: p.available ? 'pointer' : 'not-allowed',
+                        opacity: p.available ? 1 : 0.45,
+                        filter: p.available ? 'none' : 'grayscale(70%)',
                         border: plantKey === p.key ? '2px solid var(--primary)' : '1px solid var(--border)',
                         background: plantKey === p.key ? 'rgba(59,130,246,0.06)' : 'var(--bg)',
                       }}>
                       <div style={{ fontWeight: 800, fontSize: '13px', marginBottom: '4px', color: plantKey === p.key ? 'var(--primary)' : 'var(--text)' }}>{p.label}</div>
                       <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{p.description}</div>
                       <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
+                        {!p.available && <span className="nav-badge-soon">SOON</span>}
                         <span style={{ fontSize: '9px', fontWeight: 700, color: 'white', background: typeBg(p.invoiceType === 'all' ? 'Mixed' : p.invoiceType), padding: '1px 6px', borderRadius: '8px' }}>{p.invoiceType === 'all' ? 'ALL' : p.invoiceType}</span>
                         <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-th)', padding: '1px 6px', borderRadius: '8px' }}>GST {p.gstRate}%</span>
                       </div>
@@ -657,7 +801,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <select className="fi" value={plantKey} onChange={e => setPlantKey(e.target.value)} style={{ width: '160px', fontSize: '11px' }}>
-                  {PLANT_OPTIONS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                  {PLANT_OPTIONS.filter(p => p.available).map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
                 </select>
                 <input className="fi" type="date" value={billDate} onChange={e => setBillDate(e.target.value)} style={{ width: '130px', fontSize: '11px' }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg)', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)' }}>
@@ -677,7 +821,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                       newInvs.push({ billNo: String(bc++), type, gstRate: gst, items: allItems.slice(i, i + pb), expanded: newInvs.length === 0 });
                     }
                     setInvoices(newInvs);
-                  }} style={{ fontSize: '9px', padding: '2px 6px', whiteSpace: 'nowrap' }}>Re-split</button>
+                  }} disabled={generating} style={{ fontSize: '9px', padding: '2px 6px', whiteSpace: 'nowrap' }}>Re-split</button>
                 </div>
                 {editingInvoiceId ? (
                   <button className="btn btn-a" onClick={handleSaveEdit} style={{ fontSize: '12px' }}>
@@ -690,6 +834,22 @@ export default function InvoiceModule({ brand = 'dump' }) {
                 )}
               </div>
             </div>
+
+            {/* Entries with no balance-sheet voucher — excluded from bills */}
+            {missingBsItems.length > 0 && (
+              <div style={{ padding: '12px 16px', borderRadius: '12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', fontSize: '12px', color: 'var(--text)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ color: 'var(--danger)' }}>{missingBsItems.length} entr{missingBsItems.length === 1 ? 'y' : 'ies'} not in Balance Sheet — removed from the bills.</strong>{' '}
+                    Add the voucher entry in the Balance Sheet first, then upload the Excel again.
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-g btn-sm" onClick={() => setShowMissingModal(true)} style={{ fontSize: '11px' }}>View List</button>
+                    <button className="btn btn-sm" onClick={() => setMissingBsItems([])} style={{ fontSize: '11px', border: '1px solid var(--border)', background: 'transparent' }}>Dismiss</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Invoice Cards */}
             {invoices.map((inv, gi) => {
@@ -704,7 +864,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                       <span style={{ fontSize: '10px', fontWeight: 700, color: 'white', background: typeBg(inv.type), padding: '2px 8px', borderRadius: '10px' }}>{inv.type}</span>
                       <span style={{ fontWeight: 800 }}>Bill #</span>
                       <input className="fi" type="text" value={inv.billNo} onClick={e => e.stopPropagation()}
-                        onChange={e => updateBillNo(gi, e.target.value)}
+                        onChange={e => updateBillNo(gi, e.target.value)} disabled={generating}
                         style={{ width: '60px', fontSize: '12px', padding: '2px 6px', fontWeight: 800, textAlign: 'center' }} />
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{inv.items.length} entries</span>
                     </div>
@@ -991,6 +1151,53 @@ export default function InvoiceModule({ brand = 'dump' }) {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Popup: entries with no balance-sheet voucher */}
+      <AnimatePresence>
+        {showMissingModal && missingBsItems.length > 0 && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              style={{ background: 'var(--bg-card)', borderRadius: '16px', width: '100%', maxWidth: '620px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={18} style={{ color: 'var(--danger)' }} />
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>{missingBsItems.length} Entr{missingBsItems.length === 1 ? 'y' : 'ies'} Not in Balance Sheet</h3>
+                </div>
+                <button type="button" onClick={() => setShowMissingModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+              </div>
+              <div style={{ padding: '16px 20px' }}>
+                <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-sub)' }}>
+                  These entries have <strong>no voucher in the Balance Sheet</strong>, so they were <strong>removed from the bill list</strong>.
+                  First add each trip as a voucher entry in the Balance Sheet, then upload the Excel again — they will be included automatically.
+                </p>
+                <div style={{ maxHeight: '40vh', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr>
+                        <th style={TH}>#</th><th style={TH}>LR No</th><th style={TH}>Truck</th><th style={TH}>Destination</th><th style={TH}>Qty (MT)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missingBsItems.map((it, i) => (
+                        <tr key={`${it.lrNo}-${i}`}>
+                          <td style={TD}>{i + 1}</td>
+                          <td style={{ ...TD, fontFamily: 'monospace', fontWeight: 800, color: 'var(--danger)' }}>{it.lrNo || '—'}</td>
+                          <td style={TD}>{it.truckNo || '—'}</td>
+                          <td style={TD}>{it.destination || '—'}</td>
+                          <td style={TD}>{it.billedQty || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: 'var(--bg-row-even)' }}>
+                <button type="button" className="btn btn-g" style={{ fontWeight: 800 }} onClick={() => setShowMissingModal(false)}>OK, I&apos;ll Add Them First</button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

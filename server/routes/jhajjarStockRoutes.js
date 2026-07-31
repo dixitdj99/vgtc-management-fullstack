@@ -11,6 +11,11 @@ router.use(requireAuth, tenancyMiddleware);
 const SCOL = 'jhajjar_stock_additions';
 const CCOL = 'jhajjar_challans';
 const MCOL = 'jhajjar_materials';
+const SETCOL = 'jhajjar_set_stock';
+
+/* ── Set (water-damaged) bags ── */
+const { mountSetStockRoutes } = require('./setStockRoutes');
+mountSetStockRoutes(router, { setCol: SETCOL, materials: MCOL });
 
 const sheetsService = require('../utils/sheetsService');
 

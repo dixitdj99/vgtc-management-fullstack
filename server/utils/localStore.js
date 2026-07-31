@@ -8,7 +8,8 @@ const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
 
-const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.LAMBDA_TASK_ROOT);
+// Hosts with a read-only application directory; only /tmp is writable there.
+const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.K_SERVICE || process.env.AWS_EXECUTION_ENV || process.env.LAMBDA_TASK_ROOT);
 const DATA_DIR = IS_LAMBDA
     ? '/tmp/vgtc-data'
     : path.join(__dirname, '..', 'data');

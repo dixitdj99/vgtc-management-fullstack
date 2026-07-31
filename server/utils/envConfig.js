@@ -3,28 +3,28 @@
  *
  * Controls which "tier" the server is running in:
  *   local      → your developer machine (writes to dev_ collections)
- *   beta       → Netlify branch/preview deploy (writes to beta_ collections)
- *   production → Netlify main deploy (writes to bare collections)
+ *   beta       → a staging deploy (writes to beta_ collections)
+ *   production → the live deploy (writes to bare collections)
  *
- * Set APP_ENV in your .env (local) or Netlify environment variables (cloud).
+ * Set APP_ENV in your .env (local) or in apphosting.yaml (cloud).
  * If APP_ENV is not set:
- *   - On Netlify (NETLIFY=true) → defaults to 'production' (safe fallback)
- *   - Otherwise               → defaults to 'local'
+ *   - On a cloud host (K_SERVICE set) → defaults to 'production' (safe fallback)
+ *   - Otherwise                       → defaults to 'local'
  */
 
 const VALID_ENVS = ['local', 'beta', 'production'];
 
 const _raw = process.env.APP_ENV;
-const _netlify = !!process.env.NETLIFY;
+const _cloud = !!process.env.K_SERVICE;
 
 let ENV;
 if (_raw && VALID_ENVS.includes(_raw)) {
     ENV = _raw;
-} else if (_netlify) {
+} else if (_cloud) {
     // Safe fallback on cloud: if APP_ENV is missing, treat as production
     // (no prefix = production collections). Log a warning.
-    console.warn('[EnvConfig] WARNING: APP_ENV not set on Netlify. Defaulting to "production".');
-    console.warn('[EnvConfig] Set APP_ENV=production explicitly in Netlify Site Settings.');
+    console.warn('[EnvConfig] WARNING: APP_ENV not set on the cloud host. Defaulting to "production".');
+    console.warn('[EnvConfig] Set APP_ENV=production explicitly in apphosting.yaml.');
     ENV = 'production';
 } else {
     // Safe fallback locally: treat as local dev (prefixed collections)

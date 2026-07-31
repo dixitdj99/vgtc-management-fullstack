@@ -86,14 +86,4 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Auto-fit Apollo tyres to all vehicles
-router.post('/auto-fit-apollo', async (req, res) => {
-  try {
-    const result = await tyreService.autoFitApollo(req.orgId);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 module.exports = router;

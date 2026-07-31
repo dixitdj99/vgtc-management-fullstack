@@ -11,6 +11,11 @@ router.use(requireAuth, tenancyMiddleware);
 const SCOL = 'bahadurgarh_stock_additions';
 const CCOL = 'bahadurgarh_challans';
 const MCOL = 'bahadurgarh_materials';
+const SETCOL = 'bahadurgarh_set_stock';
+
+/* ── Set (water-damaged) bags ── */
+const { mountSetStockRoutes } = require('./setStockRoutes');
+mountSetStockRoutes(router, { setCol: SETCOL, materials: MCOL });
 
 const sheetsService = require('../utils/sheetsService');
 

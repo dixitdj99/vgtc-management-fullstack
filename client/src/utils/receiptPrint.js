@@ -16,6 +16,14 @@
  *
  * MIN_HEIGHT_MM is a floor, not a target. A two-line receipt still feeds a full
  * slip so there is something to tear off.
+ *
+ * That floor used to be put on the body, which made it two things at once: the
+ * paper feed AND the height the content was laid out in. A short slip was then
+ * stretched to the floor and its `margin-top: auto` signature block was pushed
+ * to the bottom of it, leaving a hand-span of white down the middle of the
+ * page. `fitContent` separates them — the content box is left at its natural
+ * height (so the signature follows the last row) and the floor applies only to
+ * the page. Callers that want a true tear-off tail leave it off.
  */
 
 export const RECEIPT_WIDTH_MM = 79;
@@ -24,7 +32,7 @@ export const RECEIPT_MIN_HEIGHT_MM = 150;
 /** The `@page` rule lives alone in this element so the script can replace it wholesale. */
 const PAGE_STYLE_ID = 'receipt-page-size';
 
-const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
+const shellCss = ({ width, minHeight, padding, fontSize, lineHeight, fitContent }) => `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { background: #fff; }
   body {
@@ -39,7 +47,7 @@ const shellCss = ({ width, minHeight, padding, fontSize, lineHeight }) => `
      * and adapts by itself when it is something else.
      */
     width: 100%;
-    min-height: ${minHeight}mm;
+    ${fitContent ? '' : `min-height: ${minHeight}mm;`}
     padding: ${padding};
     margin: 0;
     display: flex;
@@ -106,11 +114,15 @@ const autoHeightScript = ({ width, minHeight }) => `
       document.body.getBoundingClientRect().height,
       document.body.scrollHeight
     );
-    // scrollHeight is a whole number of pixels, so a slip sitting exactly on the
-    // ${minHeight}mm floor measures a shade over it and would round up to a
-    // pointless extra millimetre. Half a millimetre of slack absorbs that; the
-    // slip's own bottom padding covers the rounding either way.
-    return Math.max(${minHeight}, Math.ceil(px / PX_PER_MM - 0.5));
+    // Always round UP, with a hair of slack on top.
+    //
+    // This used to round down by up to half a millimetre to avoid asking for a
+    // pointless extra millimetre. But the page it produces is the page the
+    // content has to fit in: shave a fraction off and the last sliver of the
+    // slip — which is the signature block, sitting at the very bottom — is
+    // pushed onto a second sheet. A blank millimetre is cheap; a second label
+    // carrying nothing but the signature is not.
+    return Math.max(${minHeight}, Math.ceil(px / PX_PER_MM + 0.4));
   }
 
   function fit() {
@@ -156,7 +168,10 @@ const autoHeightScript = ({ width, minHeight }) => `
  * @param {string} [o.padding]    slip padding, default 3mm
  * @param {string} [o.fontSize]   base font size, default 9pt
  * @param {string} [o.lineHeight] base line height, default 1.35
- * @param {number} [o.minHeightMm]
+ * @param {number} [o.minHeightMm] page floor; the page never feeds shorter
+ * @param {boolean} [o.fitContent] lay the content out at its natural height
+ *                                 instead of stretching it to the floor, so
+ *                                 the page is exactly as long as the slip
  */
 export function openReceiptWindow({
     title,
@@ -167,8 +182,9 @@ export function openReceiptWindow({
     lineHeight = '1.35',
     minHeightMm = RECEIPT_MIN_HEIGHT_MM,
     width = RECEIPT_WIDTH_MM,
+    fitContent = false,
 }) {
-    const opts = { width, minHeight: minHeightMm, padding, fontSize, lineHeight };
+    const opts = { width, minHeight: minHeightMm, padding, fontSize, lineHeight, fitContent };
 
     const html = `<!DOCTYPE html>
 <html>
@@ -186,8 +202,26 @@ ${body}
 </body>
 </html>`;
 
-    // Roughly the slip at screen scale, so the preview looks like the paper.
-    const w = window.open('', '_blank', 'width=420,height=760');
+    /**
+     * Sized for Chrome's print dialog, not for the slip.
+     *
+     * The window used to open at roughly slip width so the page behind the
+     * dialog looked like the paper. But the dialog opens *inside* this window
+     * and lays its settings pane out at a fixed width, so at 420px there was
+     * nothing left for the preview — it collapsed to a sliver at the edge and
+     * the operator could not see what was about to be printed.
+     *
+     * The slip is pinned to its own width on screen, so a wider window changes
+     * nothing about the receipt or the height it is measured at.
+     */
+    const scr = window.screen || {};
+    const availW = scr.availWidth || 1040;
+    const availH = scr.availHeight || 880;
+    const winW = Math.min(1040, availW - 60);
+    const winH = Math.min(880, availH - 60);
+    const left = Math.max(0, Math.round((availW - winW) / 2));
+    const top = Math.max(0, Math.round((availH - winH) / 2));
+    const w = window.open('', '_blank', `width=${winW},height=${winH},left=${left},top=${top}`);
     if (!w) {
         alert('Allow pop-ups for this site to print the receipt.');
         return null;

@@ -269,7 +269,7 @@ const AdminModule = () => {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <Info size={16} color="#f59e0b" style={{ marginTop: '2px' }} />
                             <div style={{ fontSize: '12px', color: 'var(--text-sub)', lineHeight: '1.5' }}>
-                                <strong>Production Hint:</strong> If you are deploying to Render/Netlify, ensure you have added the <code>GOOGLE_CREDENTIALS</code> environment variable with the content of your JSON file.
+                                <strong>Production Hint:</strong> On Firebase App Hosting, <code>GOOGLE_CREDENTIALS</code> is supplied from Cloud Secret Manager — see <code>apphosting.yaml</code>.
                             </div>
                         </div>
                     </div>

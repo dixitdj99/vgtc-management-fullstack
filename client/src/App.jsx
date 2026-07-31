@@ -347,6 +347,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -357,6 +358,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -367,6 +369,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -393,7 +396,7 @@ function AppInner() {
       ]
     },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'SOON' },
+    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'NEW' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay', badge: 'NEW' },
     { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'NEW' },
@@ -422,6 +425,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -447,7 +451,7 @@ function AppInner() {
       ]
     },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
-    { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'SOON' },
+    { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'NEW' },
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay', badge: 'NEW' },
     { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'NEW' },
@@ -965,10 +969,10 @@ function AppInner() {
                         {
                           id: 'n5',
                           title: 'Tax Invoice Generator',
-                          desc: 'Automated direct tax billing module is under final preparation (Coming Soon).',
-                          time: 'Upcoming',
+                          desc: 'Generate Invoice is live — upload the plant Excel and create JK Super freight bills. More invoice formats coming.',
+                          time: 'New',
                           icon: FileText,
-                          color: '#f59e0b',
+                          color: '#10b981',
                         },
                       ].map((n) => {
                         const IconComponent = n.icon;

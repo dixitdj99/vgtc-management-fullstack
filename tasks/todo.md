@@ -218,3 +218,362 @@ defects that pre-date it:
   Firestore merge-set.
 
 The Admin "Govt E-Way API & SMTP Settings" tab is now "SMTP Settings".
+
+## Generate Invoice enabled (2026-07-30)
+
+- [x] Nav: `invoice_dump` / `invoice_jharli` badge `SOON` -> `NEW` (buttons were hard-disabled)
+- [x] InvoiceModule: removed COMING SOON chip + amber banner
+- [x] PLANT_OPTIONS: `available` flag — JK Super Dump/Trade/Non-Trade live; JK Lakshmi,
+      Kosli, Jhajjar greyed "SOON" (plantConfig.js still 'TBD' GSTIN/SAP/plant codes;
+      would print TBD on legal invoice)
+- [x] Server guard: POST /invoices/generate rejects plants with 'TBD' config
+- [x] Notification n5 updated to "live"
+- [x] Verified: client build OK, server tests 43/43
+
+Later: custom formats per plant (user will supply). Fill PLANT_CONFIGS with real
+GSTIN/SAP/plant codes, flip `available: true`. Handling-charges bill format
+(samples/Jk super handling.pdf, SAC 996713, monthly depot) has sample but no code.
+Balance sheet -> invoice wiring does not exist yet — invoices only from plant Excel upload.
+
+## Tyre Management rework (2026-07-30)
+
+- [x] "Auto-fit Apollo Tyres" removed end-to-end (client button/handler, POST /tyres/auto-fit-apollo, tyreService.autoFitApollo)
+- [x] Module shows own fleet only: vehicles filtered ownershipType==='self' || ownerName contains 'vikas' (same rule as Mileage)
+- [x] AXLE_LAYOUTS trimmed to '18' Trailer + '6' Canter (position ids unchanged so old fitments still map)
+- [x] Axle map rewritten: flat schematic (Tractor/Trailer sections, named axles, big wheel chips, legend, wheels-fitted + spare badges) replacing pixel-art truck
+- [x] Fleet ledger: vehicle Type badge column (Trailer 18W / Canter 6W)
+- [x] Ultracode review (22 agents) → fixed: fit-modal positions honor layout toggle; orphan fitments (market/deleted/typo trucks) get amber signpost; View Axle Map normalizes statusFilter; misleading "old positions" copy; toggle order 18 before 6; invoice editor dropdown gated to available plants; JK Lakshmi entry shows fallback notice
+- [x] Verified: client build OK, server tests 43/43
+
+## Invoice <-> Balance Sheet linking (2026-07-30)
+
+- [x] POST /invoices/generate verifies every entry against balance-sheet vouchers
+      (type-scoped per plant, per-LR via invoicedLrNos [{lr,billNo}]); 409 with
+      missingLrs/alreadyInvoiced; 400 on blank-LR rows
+- [x] Marks vouchers per-LR before registry write, rollback on failure; registry
+      doc now stores lrNos[] (revives the legacy dup-LR backstop)
+- [x] POST /invoices/delete unmarks by billNo BEFORE deleting the doc (retry-safe,
+      survives voucher LR edits)
+- [x] PUT /invoices/:id syncs marks: added LRs verified+marked, removed LRs unmarked
+- [x] Local mode: no marking (consistent with skipped registry)
+- [x] Client upload (both branches): type-scoped per-LR pre-filter, blank-LR strip,
+      popup modal + editor panel for missing entries; fetch failure = skip filtering
+      (server enforces), never false "not in Balance Sheet"
+- [x] Generate 409 handler removes rejected/blank entries from the bill; bill no +
+      re-split locked while generating
+- [x] Pending-entry add paths now balance-sheet-checked before entering a bill
+- [x] api.js: /invoices writes also bust /vouchers cache
+- [x] BalanceSheet: green INV #bill badge (multi-bill, partial * for multi-delivery)
+- [x] Ultracode review round: 39 agents, 30 confirmed findings -> all root causes fixed
+- [x] Verified: client build OK, server tests 43/43, invoiceRoutes loads
+
+Known limits (pre-existing, untouched): no Firestore transaction around
+verify->mark (concurrent generates could race); legacy {base}/invoice/generate
+endpoints bypass voucher checks (client no longer uses them); /invoices registry
+is env-scoped while vouchers are sandbox-scoped.
+
+## LR print — page cut to content (2026-07-30)
+
+- [x] Root cause: receiptPrint shell put the 150mm floor on `body`, so it was
+      both the paper feed AND the content box. A short LR was stretched to
+      150mm and its `margin-top:auto` signature pushed to the bottom → the
+      blank band in the middle of the slip.
+- [x] receiptPrint.js: new `fitContent` option — content laid out at natural
+      height, floor applies to the page only. Voucher/Sell unchanged (still
+      feed a full tear-off slip).
+- [x] LRModule: both print variants (JKL + Dump) use fitContent, floor 75mm
+      (≈ a one-material LR, so a script failure still prints whole slip).
+      More materials → taller page, signature always right under the table.
+- [x] Paper size auto-set at print: the existing auto-height script rewrites
+      `@page { size: 79mm <measured>mm }` before opening the dialog; now that
+      the measurement is the real content height, the dialog opens already on
+      the correct paper.
+- [x] Verified: generated CSS has no body min-height for LR (voucher keeps
+      150mm), client build OK.
+
+### LR print — follow-up after real print showed 2 sheets
+
+Print still came out 79x150 with the signature alone on sheet 2. Two further
+causes, both fixed in the template/shell rather than left to the `fitContent`
+flag:
+
+- [x] `margin-top: auto` on the signature blocks (both LR variants) is what
+      pushed them to the bottom of whatever height the body had. Removed —
+      the block now sits directly under the TOTAL row, padding only.
+- [x] New `LR_FIT_CSS` prepended to both LR templates (template styles are
+      injected after the shell, so they win): `body { min-height: 0 !important;
+      height: auto !important; max-width: 79mm; margin: 0 auto }`, no flex
+      child may grow, and `break-inside: avoid` on the slip parts. The slip is
+      79mm wide and content-tall regardless of the shell.
+- [x] receiptPrint auto-height rounded DOWN up to 0.5mm, so an exact-fit page
+      shaved the last sliver — the signature — onto a second sheet. Now rounds
+      up with 0.4mm slack. Also protects Voucher/Sell from the same spill.
+- [x] Verified: shell emits no body min-height for LR, template override lands
+      after the shell, no `margin-top: auto` left in either LR template, new
+      rounding in the bundle, client build OK.
+
+Not fixable in code: destination LABEL advertises fixed 79x150mm media, so
+Chrome snaps the shorter page up to the label. Set the driver media to
+continuous/custom length to get a short feed.
+
+### Print window + Sell receipt size
+
+- [x] Print popup was opened at slip width (420px), but Chrome renders the print
+      dialog inside that window with a fixed-width settings pane — the preview
+      collapsed to a sliver. Window is now sized for the dialog and centred,
+      clamped to the screen (1040x880 max, 980x820 fallback). The slip is pinned
+      to its own width on screen, so nothing about the receipt or its measured
+      height changes.
+- [x] Sell receipt is now 79mm x 100mm (`minHeightMm: 100`, was the shared 150mm
+      default). Its stamp/footer block stays bottom-anchored to that height; a
+      longer receipt grows past it on the SAME page instead of spilling.
+- [x] Verified: @page and body both 100mm for Sell, popup sizing across screen
+      sizes, client build OK, server tests 43/43.
+
+## Attendance — default-Present staff read as already marked (2026-07-30)
+
+Reported: two Office Staff show Present on every date, and the footer says
+"2 changes not saved yet" before anything is touched.
+
+Not a data bug — attendanceService.getRoster suggests Present for every
+non-Driver profile on every date (drivers need trip/fuel evidence). The
+suggestion was rendered identically to a saved mark and counted as an edit.
+
+Decision (user): keep the default-Present suggestion, label it as one.
+
+- [x] Split the counts: `pendingCount` = rows the supervisor actually touched
+      (drives the footer text AND the leave-the-date confirm, which used to
+      prompt about marks nobody made); `unsavedCount` = everything on screen
+      not yet in the DB, suggestions included.
+- [x] Footer now distinguishes "N changes not saved yet" from
+      "Nothing changed — N suggested marks still need saving".
+- [x] Tile shows a "Suggested · सुझाव" badge for untouched, unsaved default
+      suggestions, so it no longer looks like a confirmed Present.
+- [x] Save behaviour unchanged — suggestions still save; `source` still
+      records derived vs manual.
+- [x] Verified: client build OK.
+
+## LR receipt — bilingual loading type, driver name, named signature (2026-07-30)
+
+- [x] Loading type now printed on every material row in BOTH templates (JKL and
+      Dump), English + Hindi: "From Godown · गोदाम से" / "Crossing · क्रॉसिंग".
+      Legacy rows saved as 'Godown' map to the same label. The Dump template
+      used to hide it whenever it was Godown; it is always shown now.
+- [x] Driver name resolved from the truck number against /vehicles
+      (`driverForTruck`, whitespace/case-insensitive match). The LR itself
+      stores no driver, so this reads the vehicle record.
+- [x] Driver shown as its own line in the details box ("Driver · चालक") and
+      printed under the signature line ("Driver · चालक" + name), so the slip
+      records who signed. Truck/Party labels also bilingual; Dump receiver box
+      reads "Receiver · प्राप्तकर्ता".
+- [x] Trucks with no driver on record print the plain signature line as before.
+- [x] Devanagari font fallback added (Nirmala UI / Noto Sans Devanagari /
+      Mangal) — Arial has no Devanagari glyphs.
+- [x] Verified: 11 markup/CSS assertions pass, client build OK.
+
+Note: driver names come from Fleet Management. Trucks with a blank driverName
+print no name until one is set there.
+
+## Stock — Set (water-damaged) bags (2026-07-30)
+
+Bags that get wet and set hard are still in stock but cannot be loaded; they are
+kept as a separate stack and sold cheap. Parties also refuse and return set bags
+from a delivery. Neither had anywhere to live, so `Available` overstated what
+could actually be loaded.
+
+- [x] New per-brand collections: `set_stock`, `jkl_set_stock`, `kosli_set_stock`,
+      `jhajjar_set_stock`, `bahadurgarh_set_stock`
+- [x] `stockService.getSetStock/addSetStock/deleteSetStock` — positive qty, valid
+      material, truck + LR mandatory on a party return; quantities always
+      positive with `direction: in|out` (write-off is an 'out' row)
+- [x] `routes/setStockRoutes.js` — one `mountSetStockRoutes(router, {setCol,
+      materials})` helper mounted by all five stock routers instead of five
+      copies of the same three handlers
+- [x] Sales carry `stockType: 'good' | 'set'` (`sellService.addSale`), defaulting
+      to 'good' so every pre-existing sale keeps counting against good stock
+- [x] Balance rules (StockModule): `sold` counts good-stack sales only;
+      `available = added − lrUsed − sold − held − setFromGodown`; party returns
+      never touch good stock (their LR already consumed those bags)
+- [x] New "Set Bags" tab on all four stock plants: per-material balance cards,
+      three entry modes (found in godown / returned by party / written off),
+      and a ledger with delete. The return form takes truck no + LR no, and
+      picking the LR auto-fills party and material from it.
+- [x] Overview: per-material "Set Bags" figure + a fleet-wide KPI
+- [x] Sell: Good/Set toggle on the form, SET badge in the ledger
+- [x] Verified: 15 balance-rule cases pass (godown vs return vs sale vs
+      write-off vs legacy sales vs delete), service validation exercised
+      against Firestore incl. truck/party normalisation and cleanup, all five
+      routers load, routes registered, client build OK, server tests 43/43
+
+Not included: Google Sheets mirroring of set-bag rows. Sell only has screens for
+the dump and JKL brands, so Kosli/Jhajjar/Bahadurgarh drain the set stack via
+the "written off" entry until Sell covers them.
+
+### Set Bags — fixes after first live test (2026-07-30)
+
+- [x] Entry not saving: the payload still spread the pre-rename `setForm`, which
+      no longer existed — a runtime ReferenceError, invisible to the build. Now
+      `...setBagForm`. Catch blocks also include `er.message` so a client fault
+      stops masquerading as a server refusal.
+- [x] `POST /api/jkl/stock/set-stock` 404: verified against a booted instance
+      with a real token — the route answers 200/201 in current code, so the 404
+      was a stale server process (dev server needs a restart when new route
+      files are added).
+- [x] Real bug found while proving that: in `kosliStockRoutes.js` the set-stock
+      mount sat ABOVE `router.use(tenancyMiddleware)`. Express runs layers in
+      registration order, so those handlers never received `req.orgId` and every
+      Kosli call failed (GET 500 / POST 400, "Cannot use undefined as a
+      Firestore value"). Mount moved below the middleware.
+- [x] `getSetStock`/`addSetStock` now reject a missing orgId with a clear
+      message instead of letting `undefined` reach a Firestore query.
+- [x] Verified end to end on all four plants with an authenticated probe against
+      the real app: GET 200 + POST 201 + DELETE 200 on jkl, kosli, jhajjar and
+      bahadurgarh; all probe rows removed afterwards (0 left in every
+      collection). Client build OK, server tests 43/43.
+
+## Sell — online recipient accounts + cash-only cashbook (2026-07-30)
+
+Online payments recorded nothing about whose account received the money, and
+"Transfer to Cashbook" posted any typed amount straight to /cashbook/deposit —
+so online money could be deposited as if it were physical cash.
+
+- [x] `sales.onlineAccount` — set only for online payments, cleared on a cash
+      sale (`accountFor` in sellService) so a form switched to cash cannot leave
+      a stale account behind
+- [x] New `sell_cash_movements` collection (single collection + `brand`, like
+      `sales`): `{type: 'to_cashbook'|'withdrawal', amount, date, remark,
+      cashbookEntryId}`
+- [x] The rule, server-side in `getCashInHand`: cash in hand = paid CASH sales −
+      all movements. Online sales are absent by construction, which is what
+      makes them undepositable
+- [x] `GET/POST/DELETE /api/sell/cash-movements` — POST caps against cash in
+      hand and names the shortfall; `to_cashbook` writes the cashbook deposit
+      itself and rolls it back if the movement is then refused; DELETE refuses a
+      `to_cashbook` row (would orphan the cashbook entry)
+- [x] Client: "Transfer to Cashbook" replaced by a **Cash** modal — Add to
+      Cashbook / Withdraw Cash, both showing and capped by cash in hand;
+      withdrawal creates no cashbook entry
+- [x] Sale form asks "Sent to Account" for online payments (free text +
+      `<datalist>` of profiles and previously used names); marking a pending
+      sale paid online now prompts for the account too
+- [x] New views: Online Receipts grouped by account (older rows surface as
+      "Account not recorded"), and a Cash Movements ledger. Cash in Hand tile
+      added to the summary strip
+- [x] Verified: 16 end-to-end API checks pass (cash raises / online does not /
+      over-cap refused with cashbook untouched / deposit creates entry /
+      withdrawal does not / delete rules), all probe data cleaned up, identifier
+      sweep clean, client build OK, server tests 43/43
+
+## Trip Profit Analysis — own fleet, latest month, full filters (2026-07-30)
+
+- [x] Own fleet only: vouchers are filtered to self trucks before any profit is
+      computed. Self = `ownershipType === 'self'` OR owner name contains
+      'vikas' — the same rule Mileage and Tyre use, so trucks registered before
+      the flag existed do not silently vanish from the screen.
+- [x] Market trucks dropped along with the commission branch (`firmRevenue` is
+      now simply the trip net). On a market truck the firm earns a commission,
+      not a trip margin — a different question from the one this screen answers.
+      OWN/MARKET badge removed; the trip type badge took its place.
+- [x] Opens on the newest month that has trips instead of all time. Set once via
+      an effect, so choosing "All Months" afterwards sticks.
+- [x] Filters for every dimension: Month, Truck, Type, Party, Destination, plus
+      the existing search and sort, and a "Clear filters" button that returns to
+      the latest month. Header states the fleet size and the period on screen.
+- [x] Verified: 10 logic cases pass (legacy-name truck included, market and
+      unknown-ownership trucks excluded, zero-freight trips excluded, months
+      ordered newest first, default month, per-dimension filtering); client
+      build OK.
+
+## Netlify removal + platform cleanup (2026-07-30)
+
+Netlify is no longer used; the app deploys on Firebase App Hosting
+(apphosting.yaml, K_SERVICE). Netlify was still woven through runtime code.
+
+- [x] Deleted `netlify/` (incl. its own functions bundle), `netlify.toml` and
+      `client/public/_redirects` (a Netlify-format file whose SPA fallback the
+      Express catch-all already provides). Dropped the `serverless-http`
+      dependency from both package.json files.
+- [x] Runtime checks retargeted rather than blindly deleted — every
+      `process.env.NETLIFY` became `K_SERVICE` so the behaviour it guarded
+      still applies on the host actually in use:
+      · `index.js` serverless-cron detection, and `app.listen` is no longer
+        skipped (that guard only existed for Netlify functions)
+      · `localStore.js` read-only-filesystem detection (/tmp data dir)
+      · `envConfig.js` "APP_ENV missing on cloud → production" safe fallback
+      · `firebase.js` credential error hint, `authRoutes` environment label
+- [x] Stock migration `stockService.init()` now always runs (it was skipped for
+      Netlify's read-only filesystem).
+- [x] Wording fixed in sw.js, main.jsx, AdminModule, both client .env files,
+      server/.env.example, and server/.env (comments only — verified every
+      non-comment line byte-identical before/after).
+- [x] **`/api/stock` mounted.** `stockRoutes` was required at index.js:15 and
+      never mounted, so every dump-stock call 404'd — including the Set Bags
+      routes added there. The four per-plant routers were fine.
+- [x] Deleted dead `client/src/components/LRPrint.jsx` (0 importers, carried a
+      conflicting fixed 100x113mm @page rule).
+
+## Test suite: self-booting + coverage for the new areas
+
+- [x] The suite required a server someone had already started, on a port whose
+      JWT secret happened to match a hardcoded one — a clean checkout failed
+      every test for reasons unrelated to the code. It now starts its own
+      server when nothing is listening (passing the secret it signs with) and
+      stops it on exit, including on crash/SIGINT.
+- [x] 14 new tests over the areas changed this session and previously untested:
+      set bags (godown vs party return, truck normalisation, bad material,
+      Kosli org-scoping — which guards the mount-order bug), the dump stock
+      mount, sell online-account storage + cash-in-hand cap + withdrawal not
+      touching the cashbook, tyres reachable and auto-fit-apollo gone, and
+      invoice refusal for TBD plants and for entries missing from the Balance
+      Sheet.
+- [x] Verified: 57 passed / 0 failed (was 43), all test data cleaned up
+      afterwards, client build clean, server boots clean on a free port with
+      /api/auth/status 200 and /api/stock/additions correctly 401 without a
+      token.
+
+## Production readiness fixes (2026-07-30)
+
+Two of the new features would have produced wrong numbers on day one against
+existing data — not code bugs, missing migration.
+
+- [x] `server/utils/invoiceLinking.js` — the LR↔voucher matching rules (slash
+      stripping, plant→voucher-type scoping, per-LR `invoicedLrNos`) extracted
+      out of invoiceRoutes so the route and the backfill script cannot drift.
+      A drifted rule silently marks the wrong voucher.
+- [x] `server/scripts/backfillInvoiceAndSellCash.js` — dry run by default,
+      `--apply` to write, idempotent, prints the tier it is pointed at:
+      · **Invoices → vouchers.** Bills raised before the link existed left no
+        mark, so the server would re-bill them (only the upload screen's
+        client-side filter stood in the way). Writes `lrNos` on old invoice docs
+        (the duplicate guard queries it) and marks each matched voucher. LRs
+        with no voucher are reported, not invented.
+      · **Sell cash opening balance.** Cash in hand counts every paid cash sale
+        minus movements, and the movements collection is new — so cash banked
+        months ago still read as in the box. Writes one opening adjustment per
+        brand to bring it to the real figure (0 by default,
+        `--cash-dump=` / `--cash-jkl=` to set one). Recorded as a withdrawal so
+        it can never be mistaken for revenue; skipped if any movement exists.
+- [x] `apphosting.yaml`: `CRON_SECRET` moved from a committed literal to a
+      Secret Manager reference, with the gcloud commands to create it. It fails
+      closed (jobRoutes rejects when unset), so an un-created secret disables
+      the jobs rather than exposing them.
+
+### Verified
+- Backfill dry run on dev found the real problem: JKL showed ₹16,500 of
+  long-banked cash as "in hand". Applied → ₹0; re-run is a clean no-op.
+- Step 1 proved on a seeded legacy invoice: `1022/BF-TEST-77` matched voucher
+  `BF-TEST-77` across the slash, voucher marked, invoice `lrNos` written, and a
+  second bill for the same LR then returned **409 already invoiced**. Test data
+  removed afterwards (dev invoices back to 0).
+- Fleet audit on the production `vehicles` collection: 75 vehicles — 20 self,
+  52 market, 4 unclear. Three are `ownershipType: "dummy"` / "MARKET OWNER"
+  (correctly excluded). **HR47G3246 has no ownership set at all** and will be
+  missing from Trip Profit, Mileage and Tyre until it is set.
+- 57 tests pass, client build clean, invoiceRoutes helpers all resolve.
+
+### Still needs you before deploy
+- `apphosting.yaml` `SMTP_USER` is still `your-email@gmail.com` — OTP login,
+  password reset and daily alerts stay disabled until it is a real address.
+- Create the `CRON_SECRET` secret before deploying, or App Hosting will reject
+  the config for referencing a missing secret.
+- Nothing is committed: 45+ changed files on `initial-branch`.

@@ -11,8 +11,13 @@ router.use(requireAuth, tenancyMiddleware);
 const SCOL = 'stock_additions';
 const CCOL = 'challans';
 const MCOL = 'materials';
+const SETCOL = 'set_stock';
 
 const sheetsService = require('../utils/sheetsService');
+const { mountSetStockRoutes } = require('./setStockRoutes');
+
+/* ── Set (water-damaged) bags ── */
+mountSetStockRoutes(router, { setCol: SETCOL, materials: MCOL });
 
 /* ── Stock Additions ── */
 router.get('/additions', async (req, res) => {

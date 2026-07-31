@@ -12,7 +12,7 @@ const voucherRoutes = require('./routes/voucherRoutes');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const cashbookRoutes = require('./routes/cashbookRoutes');
-const stockRoutes = require('./routes/stockRoutes'); // Legacy
+const stockRoutes = require('./routes/stockRoutes'); // JK Super Dump stock
 const kosliLrRoutes = require('./routes/kosliLrRoutes');
 const jhajjarLrRoutes = require('./routes/jhajjarLrRoutes');
 const kosliStockRoutes = require('./routes/kosliStockRoutes');
@@ -41,10 +41,8 @@ const { requireAuth } = require('./middleware/auth');
 const auditRoutes = require('./routes/auditRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 
-// Run migrations on startup (local only — Netlify filesystem is read-only)
-if (!process.env.NETLIFY) {
-    stockService.init();
-}
+// Run migrations on startup.
+stockService.init();
 
 const helmet = require('helmet');
 const app = express();
@@ -120,6 +118,9 @@ app.use('/api/vouchers', requireAuth, voucherRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/cashbook', requireAuth, cashbookRoutes);
+// JK Super Dump stock. The router was written and required but never mounted,
+// so every /api/stock call 404'd while the four per-plant routers worked.
+app.use('/api/stock', requireAuth, stockRoutes);
 app.use('/api/kosli/stock', requireAuth, kosliStockRoutes);
 app.use('/api/jhajjar/stock', requireAuth, jhajjarStockRoutes);
 app.use('/api/bahadurgarh/stock', requireAuth, bahadurgarhStockRoutes);
@@ -267,27 +268,25 @@ process.on('uncaughtException', (err) => {
 // and App Hosting (K_SERVICE) scale to zero, so timers registered here would
 // never fire — and with more than one warm instance they would fire twice.
 // Those hosts use Cloud Scheduler against /api/jobs/* instead; see jobRoutes.js.
-const IS_SERVERLESS = !!(process.env.K_SERVICE || process.env.NETLIFY);
+const IS_SERVERLESS = !!process.env.K_SERVICE;
 const CRON_TZ = process.env.CRON_TIMEZONE || 'Asia/Kolkata';
 
-if (!process.env.NETLIFY) {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
 
-        if (IS_SERVERLESS) {
-            console.log('[Cron] Serverless host detected — in-process schedules disabled.');
-            console.log('[Cron] Trigger jobs via Cloud Scheduler: POST /api/jobs/weekly-backup, /api/jobs/daily-alerts');
-            return;
-        }
+    if (IS_SERVERLESS) {
+        console.log('[Cron] Serverless host detected — in-process schedules disabled.');
+        console.log('[Cron] Trigger jobs via Cloud Scheduler: POST /api/jobs/weekly-backup, /api/jobs/daily-alerts');
+        return;
+    }
 
-        // Weekly Drive backup: every Sunday at 00:00
-        cron.schedule('0 0 * * 0', () => jobs.weeklyBackup(), { timezone: CRON_TZ });
+    // Weekly Drive backup: every Sunday at 00:00
+    cron.schedule('0 0 * * 0', () => jobs.weeklyBackup(), { timezone: CRON_TZ });
 
-        // Daily fleet alerts: every day at 09:00
-        cron.schedule('0 9 * * *', () => jobs.dailyAlerts(), { timezone: CRON_TZ });
+    // Daily fleet alerts: every day at 09:00
+    cron.schedule('0 9 * * *', () => jobs.dailyAlerts(), { timezone: CRON_TZ });
 
-        console.log(`[Cron] In-process schedules registered (timezone: ${CRON_TZ}).`);
-    });
-}
+    console.log(`[Cron] In-process schedules registered (timezone: ${CRON_TZ}).`);
+});
 
 module.exports = app;

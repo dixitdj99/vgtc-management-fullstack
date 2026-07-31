@@ -35,7 +35,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // API calls → NetworkFirst with offline fallback
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/functions/')) {
+  if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(API_CACHE, request));
     return;
   }

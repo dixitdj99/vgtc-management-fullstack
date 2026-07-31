@@ -43,7 +43,7 @@ if ('serviceWorker' in navigator && !import.meta.env.DEV) {
         console.log('[VGTC] Service Worker registered');
 
         // ── Update detection ──────────────────────────────────────────────
-        // When a new SW is found (new Netlify deploy), notify the user
+        // When a new SW is found (a new deploy), notify the user
         const notifyUpdate = () => {
           window.dispatchEvent(new CustomEvent('sw-update-available'));
         };
