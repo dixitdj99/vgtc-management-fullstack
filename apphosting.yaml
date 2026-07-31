@@ -70,7 +70,7 @@ env:
   # Until STYTCH_SECRET exists, isStytchConfigured() is false and the server
   # falls back to a simulated OTP that accepts the constant 123456.
   - variable: STYTCH_PROJECT_ID
-    value: "project-live-52b0362d-b4e8-4316-ada7-efead4b5c747"
+    value: "project-live-2d2df9ff-68e0-43e9-a2fa-544c1573f5c2"
     availability:
       - RUNTIME
   - variable: STYTCH_API_URL
