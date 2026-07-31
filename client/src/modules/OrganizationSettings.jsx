@@ -214,6 +214,12 @@ export default function OrganizationSettings({ orgOnly = false }) {
     const [showUserCreate, setShowUserCreate] = useState(false);
     const [userForm, setUserForm] = useState({ name: '', username: '', password: '', email: '', role: 'user', permissions: {}, isOtpEnabled: false, isSandbox: false });
     const [userSaving, setUserSaving] = useState(false);
+    // Creating a user is a two-step flow: an emailed code has to be verified
+    // first. This screen posted straight to /users with no code, so the server
+    // rejected every attempt with "Email verification code is required".
+    const [userOtpMode, setUserOtpMode] = useState(false);
+    const [userMethodId, setUserMethodId] = useState('');
+    const [userOtpCode, setUserOtpCode] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
 
     // Role template state
@@ -331,6 +337,8 @@ export default function OrganizationSettings({ orgOnly = false }) {
         setEditingUser(u.id);
         setUserForm({ name: u.name || '', username: u.username || '', password: '', email: u.email || '', role: u.role || 'user', permissions: u.permissions || {}, isOtpEnabled: !!u.isOtpEnabled, isSandbox: !!u.isSandbox });
         setShowUserCreate(false);
+        // A half-finished verification must not carry into an edit.
+        setUserOtpMode(false); setUserMethodId(''); setUserOtpCode('');
     };
 
     const startCreateUser = () => {
@@ -354,11 +362,27 @@ export default function OrganizationSettings({ orgOnly = false }) {
                     setUserSaving(false);
                     return;
                 }
-                await ax.post('/users', userForm);
+                if (!userForm.email) {
+                    setMessage({ type: 'error', text: 'Email is required — the verification code is sent to it' });
+                    setUserSaving(false);
+                    return;
+                }
+                if (!userOtpMode) {
+                    // Step 1: send the code, then wait for it to be entered.
+                    const res = await ax.post('/users/send-otp', { email: userForm.email });
+                    setUserMethodId(res.data.methodId);
+                    setUserOtpMode(true);
+                    setMessage({ type: 'success', text: `Verification code sent to ${userForm.email}. Enter it below to finish.` });
+                    setUserSaving(false);
+                    return;
+                }
+                // Step 2: verify and create.
+                await ax.post('/users', { ...userForm, otpCode: userOtpCode, methodId: userMethodId });
                 setMessage({ type: 'success', text: 'User created successfully' });
             }
             setEditingUser(null);
             setShowUserCreate(false);
+            setUserOtpMode(false); setUserMethodId(''); setUserOtpCode('');
             await fetchOverview();
         } catch (e) {
             setMessage({ type: 'error', text: e.response?.data?.error || 'Failed to save user' });
@@ -680,7 +704,7 @@ export default function OrganizationSettings({ orgOnly = false }) {
                                         <div style={{ padding: '20px', borderRadius: '14px', border: '1px solid var(--border)', background: 'var(--bg-input)' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                                 <div style={{ fontSize: '13px', fontWeight: 900 }}>{editingUser ? 'Edit User' : 'Create New User'}</div>
-                                                <button type="button" onClick={() => { setEditingUser(null); setShowUserCreate(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>
+                                                <button type="button" onClick={() => { setEditingUser(null); setShowUserCreate(false); setUserOtpMode(false); setUserMethodId(''); setUserOtpCode(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>
                                             </div>
                                             <div className="fg fg-2" style={{ marginBottom: '14px' }}>
                                                 <div className="field-h"><label>Name *</label><input className="fi" value={userForm.name} onChange={e => setUserForm(f => ({ ...f, name: e.target.value }))} required /></div>
@@ -701,14 +725,22 @@ export default function OrganizationSettings({ orgOnly = false }) {
                                                 <div className="field-h" style={{ gridColumn: '1 / -1' }}>
                                                     <label>Security</label>
                                                     <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                                                        <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', cursor: 'pointer' }}>
-                                                            <input type="checkbox" checked={userForm.isOtpEnabled} onChange={e => setUserForm(f => ({ ...f, isOtpEnabled: e.target.checked }))} /> OTP Enabled
-                                                        </label>
+                                                        {/* "OTP Enabled" used to live here. It was never read at login —
+                                                            every new user is verified by an emailed code regardless — so
+                                                            the tick box only implied a choice that did not exist. */}
                                                         <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', cursor: 'pointer' }}>
                                                             <input type="checkbox" checked={userForm.isSandbox} onChange={e => setUserForm(f => ({ ...f, isSandbox: e.target.checked }))} /> Sandbox Mode
                                                         </label>
                                                     </div>
                                                 </div>
+                                                {!editingUser && userOtpMode && (
+                                                    <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                                                        <label>Verification Code</label>
+                                                        <input className="fi" value={userOtpCode} placeholder="6-digit code emailed to the user"
+                                                            onChange={e => setUserOtpCode(e.target.value.trim())}
+                                                            style={{ border: '1px solid var(--primary)' }} />
+                                                    </div>
+                                                )}
                                             </div>
                                             {userForm.role !== 'admin' && (
                                                 <div style={{ marginBottom: '14px' }}>
@@ -717,7 +749,7 @@ export default function OrganizationSettings({ orgOnly = false }) {
                                                 </div>
                                             )}
                                             <button type="button" className="btn btn-p" onClick={handleUserSave} disabled={userSaving} style={{ width: '100%' }}>
-                                                {userSaving ? <><RefreshCw size={14} className="ani-spin" /> Saving...</> : <><Save size={14} /> {editingUser ? 'Update User' : 'Create User'}</>}
+                                                {userSaving ? <><RefreshCw size={14} className="ani-spin" /> Saving...</> : <><Save size={14} /> {editingUser ? 'Update User' : (userOtpMode ? 'Verify & Create User' : 'Send Verification Code')}</>}
                                             </button>
                                         </div>
                                     </div>
