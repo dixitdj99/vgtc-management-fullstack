@@ -972,6 +972,23 @@ function AppInner() {
                     {/* Notification List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
 
+                      {/* Weather status, always shown. With no warnings there was
+                          nothing in the panel to say the watch was even running —
+                          silence read as "not working" rather than "all clear". */}
+                      {wxAlerts.length === 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', padding: '6px', borderRadius: '8px', display: 'flex', flexShrink: 0 }}>
+                            <Cloud size={14} />
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>No weather warnings</div>
+                            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                              {weather.cond || '—'}{weather.temp !== null ? ` · ${weather.temp}°C` : ''} at Jharli · watching for rain and storms
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Weather warnings — newest first, above the release notes */}
                       {wxAlerts.length > 0 && (
                         <div style={{ borderBottom: '1px solid var(--border)' }}>
