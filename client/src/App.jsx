@@ -571,7 +571,9 @@ function AppInner() {
   const renderModule = (id, sub = '') => (
     <>
       {id === 'admin_settings' && <AdminPage />}
-      {id === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} />}
+      {/* FILTERED_NAV carries the label, icon and colour of every module this
+          user may open — the dashboard shows them as cards to navigate by. */}
+      {id === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} navItems={FILTERED_NAV} />}
       {id === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : godown === 'bahadurgarh' ? 'bahadurgarh' : 'kosli'} />}
       {(id === 'lr_jkl' || id === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
       {id === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}

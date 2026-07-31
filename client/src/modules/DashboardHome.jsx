@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../auth/AuthContext';
 import {
     Receipt, FileText, BookOpen, Wallet, AlertTriangle, TrendingUp,
-    Truck, ArrowRight, Plus, RefreshCw, Activity, Gauge, IndianRupee
+    Truck, ArrowRight, Plus, RefreshCw, Activity, Gauge, IndianRupee, LayoutGrid
 } from 'lucide-react';
 import useDashboardData from '../hooks/useDashboardData';
 
@@ -40,8 +40,58 @@ function KpiCard({ icon: Icon, label, value, sub, color, loading, error, onRetry
     );
 }
 
-export default function DashboardHome({ filteredNavIds = new Set() }) {
+/**
+ * The modules this user may open, as cards.
+ *
+ * Recent Activity and Fleet Alerts told an operator what had happened; they did
+ * not help them get anywhere. This is the same list the sidebar holds, laid out
+ * so the next task is one click away — and it is built from the user's own
+ * permissions, so two people see two different dashboards.
+ */
+function ModuleGrid({ navItems, onOpen }) {
+    if (!navItems.length) {
+        return (
+            <div style={{ padding: '28px 20px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                No modules have been granted to this account yet — ask an admin for access.
+            </div>
+        );
+    }
+    return (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px', padding: '14px' }}>
+            {navItems.map(n => {
+                const Icon = n.Icon;
+                const color = n.color || '#6366f1';
+                return (
+                    <button key={n.id} onClick={() => onOpen(n)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left',
+                            padding: '12px 14px', borderRadius: '12px', cursor: 'pointer',
+                            border: '1px solid var(--border)', background: 'var(--bg-card)',
+                            fontFamily: 'inherit', transition: 'transform 0.12s, border-color 0.12s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = color; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
+                        <span style={{ background: `${color}18`, color, padding: '9px', borderRadius: '10px', display: 'flex', flexShrink: 0 }}>
+                            {Icon ? <Icon size={17} /> : <LayoutGrid size={17} />}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 800, color: 'var(--text)' }}>{n.label}</span>
+                            {n.sub?.length > 0 && (
+                                <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                    {n.sub.length} sections
+                                </span>
+                            )}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+export default function DashboardHome({ filteredNavIds = new Set(), navItems = [] }) {
     const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
     const { cfg, lrs, vouchers, cashbook, maintAlerts, vehicles, kpis, recentActivity, refetch } = useDashboardData();
     const { todayLrCount, outstanding, cashInHand, fleetAlerts } = kpis;
     const { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles } = refetch;
@@ -94,6 +144,22 @@ export default function DashboardHome({ filteredNavIds = new Set() }) {
                     onClick={filteredNavIds.has(cfg.ids.vehicles) ? () => navTo(cfg.ids.vehicles) : undefined} />
             </div>
 
+            {/* Modules this account can open. Replaces the activity and alert
+                panels for everyone but an admin, who keeps them below. */}
+            <div className="card" style={{ marginBottom: '16px' }}>
+                <div className="card-header">
+                    <div className="card-title-block">
+                        <div className="card-icon ci-indigo"><LayoutGrid size={17} /></div>
+                        <div className="card-title-text">
+                            <h3>Your Modules</h3>
+                            <p>{navItems.length} available to you — tap to open</p>
+                        </div>
+                    </div>
+                </div>
+                <ModuleGrid navItems={navItems} onOpen={n => navTo(n.id, n.sub?.[0]?.id || '')} />
+            </div>
+
+            {isAdmin && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
                 {/* Recent activity */}
                 <div className="card">
@@ -156,6 +222,7 @@ export default function DashboardHome({ filteredNavIds = new Set() }) {
                     </div>
                 </div>
             </div>
+            )}
         </div>
     );
 }
