@@ -30,6 +30,8 @@ import AdminLayout from './pages/admin/AdminLayout';
 import {
   detectWeatherAlert, loadAlerts, addAlert, markRead, markAllRead,
   clearAlert, clearAll, unreadCount, playAlertChime,
+  loadUpdateState, visibleUpdates, markUpdateRead, markAllUpdatesRead,
+  clearUpdate, clearAllUpdates, unreadUpdateCount,
 } from './utils/weatherAlerts';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import TruckDashboard from './modules/TruckDashboard';
@@ -58,6 +60,43 @@ const ENV_BANNER = APP_ENV === 'production' ? null
     ? { label: 'BETA', bg: '#f97316', glow: 'rgba(249,115,22,0.4)' }
     : { label: 'LOCAL DEV', bg: '#eab308', glow: 'rgba(234,179,8,0.4)' };
 
+
+// Release notes shown in the notification panel. Lifted out of the JSX so the
+// panel can store which of them have been read or cleared.
+const UPDATE_ITEMS = [
+  {
+    id: 'n2',
+    title: 'Trip Profitability Analysis',
+    desc: 'Track freight revenue vs driver advances, diesel, and maintenance expenses per trip.',
+    time: 'Today',
+    icon: TrendingUp,
+    color: '#6366f1',
+  },
+  {
+    id: 'n3',
+    title: 'Tyre & Vendor Management',
+    desc: 'Full tyre lifecycle tracking (serial #, retreads) and market vendor ledger.',
+    time: 'Yesterday',
+    icon: Disc,
+    color: '#f59e0b',
+  },
+  {
+    id: 'n4',
+    title: 'Labour & Attendance Portal',
+    desc: 'Realtime truck loading status + daily staff attendance marking.',
+    time: '2 days ago',
+    icon: ClipboardList,
+    color: '#ec4899',
+  },
+  {
+    id: 'n5',
+    title: 'Tax Invoice Generator',
+    desc: 'Generate Invoice is live — upload the plant Excel and create JK Super freight bills. More invoice formats coming.',
+    time: 'New',
+    icon: FileText,
+    color: '#10b981',
+  }
+];
 
 function AppInner() {
   const { user, logout, ready, plant, godown } = useAuth();
@@ -144,6 +183,7 @@ function AppInner() {
   // Rain/thunderstorm warnings raised from the same feed, kept in localStorage
   // so read and cleared survive a reload.
   const [wxAlerts, setWxAlerts] = useState(() => loadAlerts());
+  const [updateState, setUpdateState] = useState(() => loadUpdateState());
   const [currentHour, setCurrentHour] = useState(new Date().getHours());
   const city = 'Jharli, Jhajjar, Haryana';
 
@@ -919,14 +959,14 @@ function AppInner() {
                 }}
               >
                 <Bell size={16} />
-                {(unreadCount(wxAlerts) > 0 || unreadNotif) && (
-                  unreadCount(wxAlerts) > 0 ? (
+                {(unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 || unreadNotif) && (
+                  unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 ? (
                     <span style={{
                       position: 'absolute', top: '2px', right: '2px', minWidth: '15px', height: '15px',
                       padding: '0 3px', borderRadius: '8px', background: '#EF4444', color: '#fff',
                       fontSize: '9px', fontWeight: 900, display: 'flex', alignItems: 'center',
                       justifyContent: 'center', boxShadow: '0 0 6px #EF4444',
-                    }}>{unreadCount(wxAlerts)}</span>
+                    }}>{unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState)}</span>
                   ) : (
                   <span style={{
                     position: 'absolute',
@@ -976,7 +1016,25 @@ function AppInner() {
                       background: 'var(--bg-th)',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
-                        <Sparkles size={15} color="#6366f1" /> What's New & Updates
+                        <Sparkles size={15} color="#6366f1" /> Notifications
+                      </div>
+                      {/* Acts on everything in the panel — clearing only the weather
+                          would leave it looking just as full. */}
+                      <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto', marginRight: '10px' }}>
+                        <button onClick={() => {
+                            setWxAlerts([...markAllRead(wxAlerts)]);
+                            setUpdateState({ ...markAllUpdatesRead(updateState, UPDATE_ITEMS) });
+                          }}
+                          style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700 }}>
+                          Mark all read
+                        </button>
+                        <button onClick={() => {
+                            setWxAlerts([...clearAll(wxAlerts)]);
+                            setUpdateState({ ...clearAllUpdates(updateState, UPDATE_ITEMS) });
+                          }}
+                          style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 800 }}>
+                          Clear all
+                        </button>
                       </div>
                       <button
                         onClick={() => setNotifOpen(false)}
@@ -1061,40 +1119,7 @@ function AppInner() {
                         </div>
                       )}
 
-                      {[
-                        {
-                          id: 'n2',
-                          title: 'Trip Profitability Analysis',
-                          desc: 'Track freight revenue vs driver advances, diesel, and maintenance expenses per trip.',
-                          time: 'Today',
-                          icon: TrendingUp,
-                          color: '#6366f1',
-                        },
-                        {
-                          id: 'n3',
-                          title: 'Tyre & Vendor Management',
-                          desc: 'Full tyre lifecycle tracking (serial #, retreads) and market vendor ledger.',
-                          time: 'Yesterday',
-                          icon: Disc,
-                          color: '#f59e0b',
-                        },
-                        {
-                          id: 'n4',
-                          title: 'Labour & Attendance Portal',
-                          desc: 'Realtime truck loading status + daily staff attendance marking.',
-                          time: '2 days ago',
-                          icon: ClipboardList,
-                          color: '#ec4899',
-                        },
-                        {
-                          id: 'n5',
-                          title: 'Tax Invoice Generator',
-                          desc: 'Generate Invoice is live — upload the plant Excel and create JK Super freight bills. More invoice formats coming.',
-                          time: 'New',
-                          icon: FileText,
-                          color: '#10b981',
-                        },
-                      ].map((n) => {
+                      {visibleUpdates(UPDATE_ITEMS, updateState).map((n) => {
                         const IconComponent = n.icon;
                         return (
                           <div
@@ -1123,14 +1148,35 @@ function AppInner() {
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>{n.title}</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                                  {!n.read && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: n.color, flexShrink: 0 }} />}
+                                  {n.title}
+                                </span>
                                 <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>{n.time}</span>
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.35 }}>{n.desc}</div>
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                                {!n.read && (
+                                  <button onClick={() => setUpdateState({ ...markUpdateRead(updateState, n.id) })}
+                                    style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                    Mark as read
+                                  </button>
+                                )}
+                                <button onClick={() => setUpdateState({ ...clearUpdate(updateState, n.id) })}
+                                  style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                  Clear
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
                       })}
+
+                      {wxAlerts.length === 0 && visibleUpdates(UPDATE_ITEMS, updateState).length === 0 && (
+                        <div style={{ padding: '26px 20px', textAlign: 'center', fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          Nothing left here. New weather warnings will still arrive.
+                        </div>
+                      )}
                     </div>
 
                     {/* Footer */}
@@ -1367,6 +1413,7 @@ function AppInner() {
     </div>
   );
 }
+
 
 export default function App() {
   return (

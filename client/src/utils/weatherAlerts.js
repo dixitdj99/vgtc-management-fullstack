@@ -182,3 +182,47 @@ export function playAlertChime() {
     setTimeout(() => ctx.close().catch(() => {}), 1200);
   } catch { /* audio blocked — the panel still shows the alert */ }
 }
+
+/* ── The "What's New" items ───────────────────────────────────────────────────
+ *
+ * These are release notes written in code, so only their read/cleared state is
+ * stored. Before this they could not be dismissed at all: the panel kept the
+ * same five entries for ever, which is why "clear all" has to cover them too —
+ * clearing only the weather leaves a panel that still looks full.
+ */
+
+const UPDATES_KEY = 'vgtc-updates-state';
+
+const loadUpdateState = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(UPDATES_KEY) || '{}');
+    return { read: raw.read || [], cleared: raw.cleared || [] };
+  } catch { return { read: [], cleared: [] }; }
+};
+
+const saveUpdateState = (state) => {
+  try { localStorage.setItem(UPDATES_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+  return state;
+};
+
+export { loadUpdateState };
+
+/** Items still worth showing, each carrying its own read flag. */
+export const visibleUpdates = (items, state) =>
+  items.filter(i => !state.cleared.includes(i.id))
+       .map(i => ({ ...i, read: state.read.includes(i.id) }));
+
+export const markUpdateRead = (state, id) =>
+  saveUpdateState({ ...state, read: [...new Set([...state.read, id])] });
+
+export const markAllUpdatesRead = (state, items) =>
+  saveUpdateState({ ...state, read: [...new Set([...state.read, ...items.map(i => i.id)])] });
+
+export const clearUpdate = (state, id) =>
+  saveUpdateState({ ...state, cleared: [...new Set([...state.cleared, id])] });
+
+export const clearAllUpdates = (state, items) =>
+  saveUpdateState({ ...state, cleared: [...new Set([...state.cleared, ...items.map(i => i.id)])] });
+
+export const unreadUpdateCount = (items, state) =>
+  visibleUpdates(items, state).filter(i => !i.read).length;
