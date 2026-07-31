@@ -261,13 +261,16 @@ function ModuleRow({ moduleKey, value, onChange, dimmed = false, changed = false
             <button key={l.value || 'none'} type="button" title={l.hint}
               onClick={() => onChange(moduleKey, l.value)}
               style={{
-                minWidth: '30px', padding: '3px 7px', borderRadius: '6px', cursor: 'pointer',
+                // Spelled out rather than V/E/D — an abbreviation on a control
+                // that decides who can delete records is a bad place to save space.
+                minWidth: '62px', padding: '4px 9px', borderRadius: '6px', cursor: 'pointer',
                 border: `1px solid ${active ? l.color : 'var(--border)'}`,
                 background: active ? l.color : 'transparent',
                 color: active ? '#fff' : 'var(--text-muted)',
-                fontSize: '10px', fontWeight: 800, fontFamily: 'inherit',
+                fontSize: '10.5px', fontWeight: 800, fontFamily: 'inherit',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
               }}>
-              {active ? <Check size={10} style={{ verticalAlign: '-1px' }} /> : null} {l.short}
+              {active && <Check size={10} />} {l.label}
             </button>
           );
         })}

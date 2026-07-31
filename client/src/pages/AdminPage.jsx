@@ -371,12 +371,22 @@ export default function AdminPage() {
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>
                 {users.length} account{users.length === 1 ? '' : 's'} in this organisation
               </div>
-              <button type="button" className={`btn btn-sm ${showUsers ? 'btn-p' : 'btn-g'}`}
-                onClick={() => setShowUsers(v => !v)} style={{ fontWeight: 800 }}>
-                <Users size={14} /> {showUsers ? 'Hide Users' : `Show Users (${users.length})`}
+              {/* The label names what the button does next, not the mechanic —
+                  "Hide Users" left no obvious way back to creating one. */}
+              <button type="button" className={`btn btn-sm ${showUsers ? 'btn-a' : 'btn-g'}`}
+                onClick={() => {
+                  if (showUsers) { setEditTarget(null); resetCreateForm(); }
+                  setShowUsers(v => !v);
+                }} style={{ fontWeight: 800 }}>
+                {showUsers
+                  ? <><Plus size={14} /> Create User</>
+                  : <><Users size={14} /> Show Users ({users.length})</>}
               </button>
             </div>
             {/* User Form (Create/Edit) */}
+            {/* One panel at a time: opening the list closes the form, and editing
+                someone from the list brings the form back with them loaded. */}
+            {!showUsers && (
             <div className="card">
               <div className="card-header">
                 <div className="card-title-block">
@@ -487,6 +497,8 @@ export default function AdminPage() {
               </div>
             </div>
 
+            )}
+
             {/* Users Table — reference, shown on demand */}
             {showUsers && (
             <div className="card">
@@ -521,6 +533,7 @@ export default function AdminPage() {
                         return (
                           <UserRow key={u.id} u={u} i={i} RIcon={RIcon} isMe={isMe}
                             onEdit={() => {
+                              setShowUsers(false);
                               setEditTarget(u);
                               setForm({
                                 name: u.name, username: u.username, password: '', role: u.role,
