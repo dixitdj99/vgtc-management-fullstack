@@ -86,32 +86,66 @@ Roughly ₹1,500–2,500/month for the connector and the reserved address. **If 
 is not worth it, use a GSP instead** — most host the integration themselves, so
 the whitelisted IP is theirs, not yours.
 
-## Step 4 — Store the secrets
+## Step 4 — Store the secrets, then add the config
 
-**Create the secrets first, then uncomment them in `apphosting.yaml` — in that
-order.** App Hosting resolves every `secret:` reference at deploy time and fails
-the entire rollout if one is missing, so a secret named before it exists blocks
-every unrelated change from reaching production until it is created or the line
-is removed. The four EWB entries in `apphosting.yaml` are commented out for
-exactly this reason.
+**`apphosting.yaml` deliberately contains no `EWB_*` entries at all.** They were
+added ahead of the credentials and it cost two failed production rollouts: App
+Hosting validates the whole file at deploy time, so a broken or unresolvable
+entry does not merely leave the feed switched off — it blocks every unrelated
+change from reaching production, with no error visible from the repo.
+
+So: create the secrets, confirm them, then add the config, and **verify that
+deploy lands before adding anything else**.
 
 ```bash
 firebase apphosting:secrets:set EWB_CLIENT_ID     --project vgtc-management
 firebase apphosting:secrets:set EWB_CLIENT_SECRET --project vgtc-management
 firebase apphosting:secrets:set EWB_PASSWORD      --project vgtc-management
 firebase apphosting:secrets:set EWB_PUBLIC_KEY    --project vgtc-management
-```
 
-Confirm each one landed before touching the yaml:
-
-```bash
+# each must print versions, not a 404
 firebase apphosting:secrets:describe EWB_CLIENT_ID --project vgtc-management
 ```
 
-Then uncomment the four `EWB_*` secret blocks in `apphosting.yaml`, set
-`EWB_GSTIN`, `EWB_USERNAME` and `EWB_BASE_URL`, and finally flip
-`EWB_ENABLED: "true"`. Until that last flag flips, the server makes no outbound
-call at all.
+Only then append to the `env:` block. Give every variable a **non-empty**
+value — an empty `value: ""` is untested here and is the remaining suspect from
+those failed rollouts:
+
+```yaml
+  - variable: EWB_ENABLED
+    value: "true"
+    availability:
+      - RUNTIME
+  - variable: EWB_BASE_URL          # sandbox is a different host
+    value: "https://api.ewaybillgst.gov.in"
+    availability:
+      - RUNTIME
+  - variable: EWB_GSTIN
+    value: "06XXXXXXXXXXXXX"        # VGTC's own GSTIN
+    availability:
+      - RUNTIME
+  - variable: EWB_USERNAME
+    value: "the-api-username"
+    availability:
+      - RUNTIME
+  - variable: EWB_CLIENT_ID
+    secret: EWB_CLIENT_ID
+  - variable: EWB_CLIENT_SECRET
+    secret: EWB_CLIENT_SECRET
+  - variable: EWB_PASSWORD
+    secret: EWB_PASSWORD
+  - variable: EWB_PUBLIC_KEY
+    secret: EWB_PUBLIC_KEY
+```
+
+Push, then confirm the new bundle is actually being served before moving on:
+
+```bash
+curl -s https://vgtc.site/ | grep -o 'index-[A-Za-z0-9_-]*\.js'
+```
+
+Until `EWB_ENABLED` is `"true"` and the rest resolve, the server makes no
+outbound call at all and the challan panel reads "not connected".
 
 ## Step 5 — Schedule the sync
 
