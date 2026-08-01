@@ -216,6 +216,13 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
   // prints an empty signature line, the same as before.
   const driverName = driverForTruck(base.truckNo, vehicles);
 
+  // The printed JK Laxmi slip splits bags the way the paper book does:
+  // crossing loads on one line, godown loads on another.
+  const bagsWhere = (pred) => rows.filter(pred).reduce((sum, r) => sum + (parseInt(r.totalBags) || 0), 0);
+  const isCrossing = (r) => String(r.loadingType || '').toLowerCase().includes('crossing');
+  const crossingBags = bagsWhere(isCrossing);
+  const godownOutBags = bagsWhere(r => !isCrossing(r));
+
   if (brand === 'jkl') {
     openReceiptWindow({
       title: `LR #${lrNo}`,
@@ -233,10 +240,28 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
         margin-bottom: 2mm;
       }
       .hd .co {
-        font-size: 12.5pt;
+        /* Hindi is the company's own name on the paper slip, so it leads. */
+        font-size: 14pt;
         font-weight: 900;
+        letter-spacing: 0.2px;
+      }
+      .hd .co-en {
+        font-size: 8.5pt;
+        font-weight: 800;
+        letter-spacing: 1px;
         text-transform: uppercase;
-        letter-spacing: 0.3px;
+        margin-top: 0.3mm;
+      }
+      .hd .slip {
+        font-size: 9pt;
+        font-weight: 900;
+        letter-spacing: 0.4px;
+        margin-top: 0.8mm;
+      }
+      .val.dotted {
+        border-bottom: 1px dotted #000;
+        min-width: 22mm;
+        display: inline-block;
       }
       .hd .sub {
         font-size: 8pt;
@@ -371,27 +396,30 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
     <div class="container">
       <div>
         <div class="hd">
-          <div class="co">Vikas Goods Transport</div>
-          <div class="sub">Jharli, Jhajjar | 9416319445</div>
+          <div class="co">जे0 के0 लक्ष्मी सीमेंट लि0</div>
+          <div class="co-en">J.K. LAXMI</div>
+          <div class="sub">M.: 9416319445, 9728954901, 9728284849</div>
+          <div class="slip">LOADING SLIP · लोडिंग स्लिप</div>
         </div>
 
         <div class="lr-row">
-          <span>LR # ${lrNo}</span>
-          <span>Date: ${fmtDate}</span>
+          <span>नं0 / No. ${lrNo}</span>
+          <span>दिनांक / Date: ${fmtDate}</span>
         </div>
 
         <div class="sec">
-          <div class="line"><span class="lbl">Truck No · गाड़ी</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
-          ${driverName ? `<div class="line"><span class="lbl">Driver · चालक</span><span class="val" style="font-size: 9.5pt;">${driverName}</span></div>` : ''}
-          <div class="line"><span class="lbl">Party Name · पार्टी</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
+          <div class="line"><span class="lbl">गाड़ी नं0 / Truck No.</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
+          ${driverName ? `<div class="line"><span class="lbl">चालक / Driver</span><span class="val" style="font-size: 9.5pt;">${driverName}</span></div>` : ''}
+          <div class="line"><span class="lbl">पार्टी / Party</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
+          <div class="line"><span class="lbl">वजन / Weight</span><span class="val" style="font-size: 9.5pt;">${totalWeight} MT</span></div>
         </div>
 
         <table>
           <thead>
             <tr>
-              <th>Material</th>
-              <th style="text-align:center; width: 14mm;">Bags</th>
-              <th style="text-align:right; width: 18mm;">Wt (MT)</th>
+              <th>सामान / Material</th>
+              <th style="text-align:center; width: 14mm;">बैग / Bags</th>
+              <th style="text-align:right; width: 18mm;">वजन / Wt</th>
             </tr>
           </thead>
           <tbody>
@@ -407,21 +435,30 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
               </tr>
             `).join('')}
             <tr class="tot-row">
-              <td>TOTAL</td>
+              <td>कुल / TOTAL</td>
               <td style="text-align:center">${totalBags}</td>
               <td style="text-align:right">${totalWeight}</td>
             </tr>
           </tbody>
         </table>
+
+        <!-- The bag lines from the paper book. "गोदाम In" has no entry in the
+             system, so it prints as a dotted line to fill in by hand. -->
+        <div class="sec">
+          <div class="line"><span class="lbl">बैग क्रॉसिंग / Bag Crossing</span><span class="val">${crossingBags || '—'}</span></div>
+          <div class="line"><span class="lbl">बैग गोदाम Out / Godown Out</span><span class="val">${godownOutBags || '—'}</span></div>
+          <div class="line"><span class="lbl">बैग गोदाम In / Godown In</span><span class="val dotted">&nbsp;</span></div>
+          <div class="line"><span class="lbl">कुल बैग / Total Bags</span><span class="val" style="font-weight: 900;">${totalBags}</span></div>
+        </div>
       </div>
 
       <div class="sig-section">
         <div class="sig-box">
-          Driver · चालक
+          चालक / Driver
           ${driverName ? `<span class="sig-name">${driverName}</span>` : ''}
         </div>
         <div class="digital-sig-box">
-          <span class="digital-sig-title">Digitally Signed</span>
+          <span class="digital-sig-title">हस्ताक्षर / Signature</span>
           <span class="digital-sig-text">${signedBy}</span>
           <span class="digital-sig-footer">Auth. Signatory</span>
         </div>
