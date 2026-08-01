@@ -216,13 +216,6 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
   // prints an empty signature line, the same as before.
   const driverName = driverForTruck(base.truckNo, vehicles);
 
-  // The printed JK Laxmi slip splits bags the way the paper book does:
-  // crossing loads on one line, godown loads on another.
-  const bagsWhere = (pred) => rows.filter(pred).reduce((sum, r) => sum + (parseInt(r.totalBags) || 0), 0);
-  const isCrossing = (r) => String(r.loadingType || '').toLowerCase().includes('crossing');
-  const crossingBags = bagsWhere(isCrossing);
-  const godownOutBags = bagsWhere(r => !isCrossing(r));
-
   if (brand === 'jkl') {
     openReceiptWindow({
       title: `LR #${lrNo}`,
@@ -240,28 +233,16 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
         margin-bottom: 2mm;
       }
       .hd .co {
-        /* Hindi is the company's own name on the paper slip, so it leads. */
-        font-size: 14pt;
+        font-size: 12.5pt;
         font-weight: 900;
-        letter-spacing: 0.2px;
-      }
-      .hd .co-en {
-        font-size: 8.5pt;
-        font-weight: 800;
-        letter-spacing: 1px;
         text-transform: uppercase;
-        margin-top: 0.3mm;
+        letter-spacing: 0.3px;
       }
       .hd .slip {
         font-size: 9pt;
         font-weight: 900;
         letter-spacing: 0.4px;
         margin-top: 0.8mm;
-      }
-      .val.dotted {
-        border-bottom: 1px dotted #000;
-        min-width: 22mm;
-        display: inline-block;
       }
       .hd .sub {
         font-size: 8pt;
@@ -396,9 +377,8 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
     <div class="container">
       <div>
         <div class="hd">
-          <div class="co">जे0 के0 लक्ष्मी सीमेंट लि0</div>
-          <div class="co-en">J.K. LAXMI</div>
-          <div class="sub">M.: 9416319445, 9728954901, 9728284849</div>
+          <div class="co">Vikas Goods Transport</div>
+          <div class="sub">Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</div>
           <div class="slip">LOADING SLIP · लोडिंग स्लिप</div>
         </div>
 
@@ -441,15 +421,6 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
             </tr>
           </tbody>
         </table>
-
-        <!-- The bag lines from the paper book. "गोदाम In" has no entry in the
-             system, so it prints as a dotted line to fill in by hand. -->
-        <div class="sec">
-          <div class="line"><span class="lbl">बैग क्रॉसिंग / Bag Crossing</span><span class="val">${crossingBags || '—'}</span></div>
-          <div class="line"><span class="lbl">बैग गोदाम Out / Godown Out</span><span class="val">${godownOutBags || '—'}</span></div>
-          <div class="line"><span class="lbl">बैग गोदाम In / Godown In</span><span class="val dotted">&nbsp;</span></div>
-          <div class="line"><span class="lbl">कुल बैग / Total Bags</span><span class="val" style="font-weight: 900;">${totalBags}</span></div>
-        </div>
       </div>
 
       <div class="sig-section">
