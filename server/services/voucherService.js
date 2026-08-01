@@ -79,6 +79,28 @@ const updateVoucher = async (id, data, col = COLLECTION_VOUCHERS) => {
         ...(data.partyName !== undefined ? { partyName: normalizePartyName(data.partyName || '') } : {})
     };
 
+    /**
+     * `isOnlinePaid` is a bare flag with no record of what was paid, so it only
+     * means anything while the amount stays put. Raise an already-paid online
+     * advance from 3,000 to 8,000 and the flag survives: the extra 5,000 is owed
+     * to the driver but Pay → Online reports everything settled, and nobody sees
+     * it again.
+     *
+     * So a changed amount retires the mark. Not when the caller sets the flag in
+     * the same patch — that is someone recording payment of the new amount, and
+     * their explicit intent wins.
+     */
+    if (payload.advanceOnline !== undefined && payload.isOnlinePaid === undefined) {
+        const current = await getVoucherById(id, col);
+        const before = parseFloat(current?.advanceOnline) || 0;
+        const after = parseFloat(payload.advanceOnline) || 0;
+        if (current?.isOnlinePaid && before !== after) {
+            payload.isOnlinePaid = false;
+            payload.onlinePaidDate = null;
+            console.log(`[Voucher] Online advance on ${id} changed ${before} -> ${after}; clearing the paid mark so it returns to the pay list.`);
+        }
+    }
+
     if (firebaseAvailable()) {
         await db.collection(col).doc(id).update({
             ...payload,

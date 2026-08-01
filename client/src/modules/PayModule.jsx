@@ -11,7 +11,6 @@ import ColumnFilter from '../components/ColumnFilter';
 import VehicleCreditDebitModule from './VehicleCreditDebitModule';
 
 const API_V = '/vouchers';
-const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill'];
 
 function calcNet(v, vehicle) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -120,11 +119,6 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     advances.filter(a => !a.isCleared && !a.isGpsRent && !(a.remark || '').toLowerCase().includes('gps rent')).reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0),
   [advances]);
 
-  // Every voucher type is still fetched, but no longer to decide what to show —
-  // only to resolve the trip ids a batch refers to. The list is driven by what
-  // clerks have sent from the balance sheets.
-  const getTypesForBrand = () => [...TYPES];
-
   const fetchBatches = async () => {
     try { setBatches((await ax.get('/freight-batches', { params: { open: 1 }, _skipCache: true })).data || []); }
     catch { setBatches([]); }
@@ -231,12 +225,19 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     }
   };
 
+  /**
+   * One request for every voucher, rather than one per type.
+   *
+   * The old version asked for six named types, and GET /vouchers/:type scans the
+   * whole org collection and filters in memory — so six calls meant six full
+   * scans to assemble a list that is just "all of them". Worse, a voucher whose
+   * type was outside that hard-coded six was invisible here: its online advance
+   * never appeared in the pay list, and nothing said so.
+   */
   const fetchVouchers = async () => {
     try {
-      const typesToFetch = getTypesForBrand();
-      const promises = typesToFetch.map(t => ax.get(API_V + '/' + t).then(r => r.data).catch(() => []));
-      const results = await Promise.all(promises);
-      setVouchers(results.flat());
+      const res = await ax.get(API_V);
+      setVouchers(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error('Failed to fetch vouchers for payment module', err);
     }
@@ -804,7 +805,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
                           <td style={{ ...TD, fontWeight: 700, color: 'var(--accent)' }}>{fmtDate(v.onlinePaidDate)}</td>
                           <td style={{ ...TD, textAlign: 'center' }}>
-                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }} onClick={() => togglePaid(v.id, true)}>Undo</button>
+                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }} onClick={() => markUnpaid(v.id)}>Undo</button>
                           </td>
                         </tr>
                       ))}
