@@ -163,6 +163,10 @@ app.use('/api/maintenance', requireAuth, gate('vehicle'), maintenanceRoutes);
 // requireAuth first: the gate reads req.user, and invoiceRoutes applies its own
 // auth internally, which would be too late for the gate to see it.
 app.use('/api/invoices', requireAuth, gate('invoice'), invoiceRoutes);
+// Files a copy of whatever a module just printed. No permission gate beyond
+// requireAuth: it archives what the user was already allowed to produce, and
+// gating it per module would mean a lookup table that drifts from the modules.
+app.use('/api/archive', requireAuth, require('./routes/archiveRoutes'));
 // One NIC feed serves every plant's challan screen, so it gates on any stock key
 // rather than a plant-specific one.
 app.use('/api/eway', requireAuth, gate(['stock_kosli','stock_jhajjar','stock_bahadurgarh','stock_jkl']), require('./routes/ewayRoutes'));

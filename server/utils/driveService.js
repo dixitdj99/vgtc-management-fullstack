@@ -172,6 +172,70 @@ async function uploadBuffer(buffer, fileName, folderId, mimeType = 'application/
     return res.data.id;
 }
 
+/** Drive query strings are not parameterised, so a quote in a name breaks them. */
+const escapeQ = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+/**
+ * Writes a file, replacing any existing one of the same name in that folder.
+ *
+ * Drive happily keeps several files with identical names, so without this a
+ * voucher reprinted twenty times would leave twenty copies and nobody could
+ * tell which was current. The name is the document's identity here.
+ *
+ * @returns {Promise<{id: string, replaced: boolean}>}
+ */
+async function upsertBuffer(buffer, fileName, folderId, mimeType = 'application/pdf') {
+    const { Readable } = require('stream');
+    const drive = await getDriveClient();
+
+    const existing = await drive.files.list({
+        q: `name = '${escapeQ(fileName)}' and '${folderId}' in parents and trashed = false`,
+        fields: 'files(id)',
+        spaces: 'drive',
+    });
+
+    const body = new Readable();
+    body.push(buffer);
+    body.push(null);
+    const media = { mimeType, body };
+
+    const hit = existing.data.files && existing.data.files[0];
+    if (hit) {
+        await drive.files.update({ fileId: hit.id, media, fields: 'id' });
+        return { id: hit.id, replaced: true };
+    }
+    const res = await drive.files.create({
+        resource: { name: fileName, parents: [folderId] },
+        media,
+        fields: 'id',
+    });
+    return { id: res.data.id, replaced: false };
+}
+
+/**
+ * Resolves (and creates) a nested path under a root folder.
+ *
+ * The ids are cached for the life of the process: the weekly job writes dozens
+ * of files into the same handful of folders, and without this each one costs a
+ * Drive round trip to look the folder up again.
+ *
+ * @param {string[]} segments e.g. ['Vouchers', 'Documents', 'Kosli', '2026-08']
+ * @returns {Promise<string>} the deepest folder's id
+ */
+const folderCache = new Map();
+async function ensurePath(segments, rootName = 'VGTC_Backups') {
+    const parts = [rootName, ...segments.filter(Boolean).map(String)];
+    let parentId = null;
+    let key = '';
+    for (const name of parts) {
+        key = key ? `${key}/${name}` : name;
+        if (folderCache.has(key)) { parentId = folderCache.get(key); continue; }
+        parentId = await getOrCreateFolder(name, parentId);
+        folderCache.set(key, parentId);
+    }
+    return parentId;
+}
+
 async function logActivity(moduleName, status, details = '', error = null) {
     if (!isAvailable()) return;
     try {
@@ -201,4 +265,4 @@ async function getLogs(limit = 20) {
     }
 }
 
-module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getAuthClient, getOrCreateFolder, uploadFile, uploadBuffer, logActivity, getLogs };
+module.exports = { isAuthorized, isConfigured, getAuthUrl, saveToken, getAuthClient, getOrCreateFolder, ensurePath, uploadFile, uploadBuffer, upsertBuffer, logActivity, getLogs };

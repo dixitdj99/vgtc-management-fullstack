@@ -11,7 +11,9 @@ import {
   PackageX, Droplets, Undo2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
+import { printHtml } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 import EwayBillPanel from '../components/EwayBillPanel';
 
@@ -157,8 +159,14 @@ function printChallan(c, orgName) {
   </div>
   <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
   </body></html>`;
-  const w = window.open('', '_blank', 'width=800,height=600');
-  w.document.write(html); w.document.close();
+  printHtml(html, {
+    width: 800, height: 600,
+    archive: {
+      module: 'Stock', kind: 'Documents',
+      name: archiveName('Challan', c.challanNo, c.truckNo, c.date),
+      meta: { challanNo: c.challanNo, truckNo: c.truckNo, date: c.date, partyName: c.partyName },
+    },
+  });
 }
 
 function MatCard({ mat, added, lrUsed, sold, held, pendingChallan, setFromGodown = 0, setAvailable = 0 }) {
@@ -780,28 +788,22 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     return rows;
   }, [additions, lrs, sales, filters]);
 
-  const exportChallanExcel = () => exportToExcel(
-    buildChallanExportRows(filteredChallans).map(row => ({
-      ChallanNo: row.challanNo,
-      Date: row.date,
-      Truck: row.truckNo,
-      Material: row.material,
-      Quantity: row.quantity,
-      Loading_Details: row.loadingDetails,
-      Party: row.partyName,
-      Status: row.status,
-      Remark: row.remark
-    })),
-    `Challans_${new Date().toISOString().slice(0, 10)}`
-  );
-  const exportChallanPDF = () => exportToPDF(
-    buildChallanExportRows(filteredChallans),
-    'Challan List',
-    ['challanNo', 'date', 'truckNo', 'material', 'quantity', 'loadingDetails', 'partyName', 'status', 'remark']
-  );
+  // Whole records both ways — the challan export was losing the bill number,
+  // party code and loaded-bag counts, and the history its running balance.
+  const challanExportRows = () => buildExportRows(buildChallanExportRows(filteredChallans), {
+    order: ['challanNo', 'date', 'truckNo', 'partyName', 'material', 'quantity', 'loadingDetails', 'status'],
+  });
+  const historyExportRows = () => buildExportRows(historyRows, {
+    order: ['date', 'displayType', 'label', 'truckNo', 'material', 'credit', 'debit'],
+  });
 
-  const exportHistoryExcel = () => exportToExcel(historyRows.map(r => ({ Date: r.date, Type: r.displayType, Details: r.label, Truck: r.truckNo, Material: r.material, In_Bags: r.credit, Out_Bags: r.debit })), `Stock_History_${new Date().toISOString().slice(0, 10)}`);
-  const exportHistoryPDF = () => exportToPDF(historyRows, 'Stock History', ['date', 'displayType', 'label', 'truckNo', 'material', 'credit', 'debit']);
+  const exportChallanExcel = () => exportToExcel(challanExportRows(), `Challans_${new Date().toISOString().slice(0, 10)}`);
+  const exportChallanPDF = () => exportToPDF(challanExportRows(), 'Challan List', null, {
+    archive: { module: 'Stock', name: archiveName('Challan List', new Date().toISOString().slice(0, 10)) },
+  });
+
+  const exportHistoryExcel = () => exportToExcel(historyExportRows(), `Stock_History_${new Date().toISOString().slice(0, 10)}`);
+  const exportHistoryPDF = () => exportToPDF(historyExportRows(), 'Stock History');
 
   const renderHistoryTable = (rows) => (
     <div className="tbl-wrap">

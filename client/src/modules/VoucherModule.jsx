@@ -6,12 +6,13 @@ import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
-import { openReceiptWindow } from '../utils/receiptPrint';
+import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
 
 const PAGE_SIZE = 20;
@@ -118,8 +119,19 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'))
         .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', note: e.remark, val: e.amount })));
 
+    // One archive descriptor for all three voucher layouts — same document,
+    // whichever way it is drawn.
+    const archive = {
+        module: 'Vouchers',
+        kind: isBill ? 'Statements' : 'Documents',
+        plant: (v.type || '').replace(/_/g, ' ') || 'Other',
+        name: archiveName('Voucher', v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join('-') : v.id?.slice(0, 6)), v.truckNo, v.date),
+        meta: { lrNo: v.lrNo, truckNo: v.truckNo, date: v.date, type: v.type },
+    };
+
     if (brand === 'jklakshmi') {
         openReceiptWindow({
+            archive,
             title: `Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join(',') : '')}`,
             fontSize: '9.5pt',
             styles: `
@@ -500,6 +512,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
 </div>`;
 
         openReceiptWindow({
+            archive,
             title: `Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join(',') : '')}`,
             fontSize: '10px',
             styles: `
@@ -606,8 +619,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         return;
     }
 
-    const win = window.open('', '_blank', 'width=850,height=600');
-    win.document.write(html); win.document.close();
+    printHtml(html, { width: 850, height: 600, archive });
 }
 
 /* ── Extra money ── */
@@ -1364,8 +1376,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         total: filtered.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
     }), [filtered]);
 
-    const exportVoucherExcel = () => exportToExcel(filtered.map(v => ({ LR: v.lrNo, Date: v.date, Truck: v.truckNo, Dest: v.destination, Weight: v.weight, Bags: v.bags, Rate: v.rate, Pump: getPumpDisplay(v.pump), Diesel_Adv: v.advanceDiesel, Cash_Adv: v.advanceCash, Online_Adv: v.advanceOnline, Munshi: v.munshi, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0) })), `Vouchers_${vType}_${new Date().toISOString().slice(0, 10)}`);
-    const exportVoucherPDF = () => exportToPDF(filtered, `${vType.replace('_', ' ')} Vouchers`, ['lrNo', 'date', 'truckNo', 'destination', 'weight', 'bags', 'rate', 'pump', 'advanceDiesel', 'advanceCash', 'advanceOnline', 'total']);
+    // Everything the voucher holds, including the deductions the old thirteen
+    // columns omitted — commission, tyre work, every extra payment and its
+    // remark, and the multi-delivery breakdown.
+    const voucherExportRows = () => buildExportRows(filtered, {
+        order: ['lrNo', 'date', 'truckNo', 'partyName', 'destination', 'weight', 'bags', 'rate'],
+        computed: {
+            Pump: v => getPumpDisplay(v.pump),
+            Gross: v => Math.round(calcGrossV(v)),
+            'Net Payable': v => Math.round(getNet(v).net),
+        },
+    });
+    const exportVoucherExcel = () => exportToExcel(voucherExportRows(), `Vouchers_${vType}_${new Date().toISOString().slice(0, 10)}`);
+    const exportVoucherPDF = () => exportToPDF(voucherExportRows(), `${vType.replace('_', ' ')} Vouchers`, null, {
+        archive: {
+            module: 'Vouchers',
+            plant: vType.replace(/_/g, ' '),
+            name: archiveName('Vouchers Export', vType, new Date().toISOString().slice(0, 10)),
+        },
+    });
 
     return (
         <>

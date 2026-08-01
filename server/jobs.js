@@ -113,10 +113,43 @@ function ewaySync() {
     });
 }
 
+/**
+ * A weekly copy of every list in the app, as Excel and PDF, into each module's
+ * own Drive folder. Separate from weekly-backup, which files the per-document
+ * PDFs — this one is the data behind them.
+ */
+function weeklyLists() {
+    return runExclusive('weekly-lists', async () => {
+        const driveService = require('./utils/driveService');
+        if (!(await driveService.isAuthorized().catch(() => false))) {
+            return { skipped: true, reason: 'Google Drive is not connected' };
+        }
+
+        const { db } = require('./firebase');
+        const listBackupService = require('./utils/listBackupService');
+
+        const orgsSnapshot = await db.collection('organizations').get();
+        const results = [];
+        for (const doc of orgsSnapshot.docs) {
+            const org = doc.data();
+            const orgId = org.id || org.orgId;
+            if (!orgId) continue;
+            try {
+                results.push({ orgId, ...(await listBackupService.backupAllLists(orgId)) });
+            } catch (err) {
+                console.error(`[Jobs] Weekly list backup failed for org "${orgId}":`, err && err.message);
+                results.push({ orgId, error: err && err.message });
+            }
+        }
+        return { orgs: results.length, results };
+    });
+}
+
 const JOBS = {
     'weekly-backup': weeklyBackup,
+    'weekly-lists': weeklyLists,
     'daily-alerts': dailyAlerts,
     'eway-sync': ewaySync,
 };
 
-module.exports = { JOBS, weeklyBackup, dailyAlerts, ewaySync };
+module.exports = { JOBS, weeklyBackup, weeklyLists, dailyAlerts, ewaySync };

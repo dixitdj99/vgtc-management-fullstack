@@ -183,6 +183,7 @@ export function openReceiptWindow({
     minHeightMm = RECEIPT_MIN_HEIGHT_MM,
     width = RECEIPT_WIDTH_MM,
     fitContent = false,
+    archive = null,
 }) {
     const opts = { width, minHeight: minHeightMm, padding, fontSize, lineHeight, fitContent };
 
@@ -228,5 +229,49 @@ ${body}
     }
     w.document.write(html);
     w.document.close();
+
+    // File the identical HTML. After the window opens, so a slow or unreachable
+    // Drive cannot delay the slip appearing.
+    if (archive) fileCopy(html, archive);
+    return w;
+}
+
+/**
+ * Archive a document that builds its own page rather than going through
+ * openReceiptWindow — the balance-sheet statements, the challan, the fleet
+ * dashboard, and the list exports.
+ *
+ * @param {string} html the exact markup handed to the print window
+ * @param {object} archive see archiveDoc()
+ */
+export function fileCopy(html, archive) {
+    if (!archive) return;
+    import('./archiveDoc')
+        .then(({ archiveDoc }) => archiveDoc({ ...archive, html }))
+        .catch(() => { /* the copy is best-effort; printing already succeeded */ });
+}
+
+/**
+ * Opens an arbitrary HTML document for printing and files the same markup.
+ *
+ * The six places that called window.open + document.write directly each had
+ * their own idea of window size and none of them archived anything. One funnel
+ * means adding a document type cannot quietly skip the archive.
+ *
+ * @param {string} html complete document markup
+ * @param {object} [o]
+ * @param {number} [o.width] window width in px
+ * @param {number} [o.height] window height in px
+ * @param {object} [o.archive] see archiveDoc(); omit to print without filing
+ */
+export function printHtml(html, { width = 1000, height = 700, archive = null } = {}) {
+    const w = window.open('', '_blank', `width=${width},height=${height}`);
+    if (!w) {
+        alert('Allow pop-ups for this site to print.');
+        return null;
+    }
+    w.document.write(html);
+    w.document.close();
+    if (archive) fileCopy(html, archive);
     return w;
 }

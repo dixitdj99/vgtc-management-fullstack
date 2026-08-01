@@ -8,8 +8,9 @@ import {
   IndianRupee, Package, User, FileText, Calendar, Weight,
   CreditCard, Banknote, ReceiptText, ArrowRightLeft
 } from 'lucide-react';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
-import { openReceiptWindow } from '../utils/receiptPrint';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
+import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 
@@ -228,6 +229,12 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
 
   const printReceipt = (s) => {
     openReceiptWindow({
+      archive: {
+        module: 'Sell', kind: 'Documents',
+        plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
+        name: archiveName('Sale', s.date, s.customerName, s.id?.slice(0, 6)),
+        meta: { customerName: s.customerName, date: s.date, amount: s.totalAmount },
+      },
       title: `Receipt - ${s.customerName}`,
       fontSize: '9.5pt',
       // 79mm x 100mm slip. The stamp/footer block is deliberately bottom-anchored,
@@ -673,7 +680,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
               <div className="card-title-text"><h3>Transaction Ledger</h3><p>{filteredSales.length} entries</p></div>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn-icon" title="Export Excel" onClick={() => exportToExcel(filteredSales, `Sales_Ledger_${brand}`)}><Download size={15} /></button>
+                <button className="btn-icon" title="Export Excel" onClick={() => exportToExcel(buildExportRows(filteredSales, { order: ['date', 'partyName', 'material', 'bags', 'rate', 'amount', 'paymentMode'] }), `Sales_Ledger_${brand}`)}><Download size={15} /></button>
             </div>
           </div>
 

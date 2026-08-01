@@ -1127,6 +1127,140 @@ test('voucher: an unpaid online advance is visible however the voucher is typed'
   } finally { await del('/vouchers/' + id); }
 });
 
+/* ── Dump godowns: hidden modules vs the permissions they share ───────────── */
+
+test('dump godowns hide the head-office modules but keep the permissions behind them', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '..', '..', 'client', 'src');
+  const app = fs.readFileSync(path.join(root, 'App.jsx'), 'utf8');
+  const cat = fs.readFileSync(path.join(root, 'permissions', 'catalogue.js'), 'utf8');
+
+  const hidden = new Set([...app.matchAll(/^\s*'([a-z_]+)',\s*\/\/ /gm)].map(m => m[1]));
+  for (const id of ['cashbook_dump', 'pay_dump', 'trip_profit_dump', 'vehicles_dump',
+    'diesel_dump', 'mileage_dump', 'tyres_dump', 'vendors_dump', 'invoice_dump']) {
+    assert(hidden.has(id), `${id} should be hidden at the dump godowns`);
+  }
+
+  // The trap this guards. Hiding a module is not revoking its permission: the
+  // screens that remain at a dump read through these, and dropping one empties
+  // the truck lists or the voucher's odometer lookup with no obvious cause.
+  const shared = cat.match(/const DUMP_SHARED = \[([^\]]+)\]/);
+  assert(shared, 'DUMP_SHARED is not defined in the catalogue');
+  const keys = [...shared[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  for (const [key, why] of [
+    ['vehicle', 'the truck list on every LR, voucher and balance sheet'],
+    ['mileage', "the voucher form's /mileage/last-km lookup"],
+    ['pay', 'the freight batches a balance sheet reads'],
+  ]) {
+    assert(keys.includes(key), `DUMP_SHARED dropped "${key}" — that breaks ${why}`);
+  }
+
+  // And the ones that genuinely have no reader left should be gone.
+  for (const key of ['cashbook', 'diesel', 'invoice']) {
+    assert(!keys.includes(key), `DUMP_SHARED still offers "${key}", whose module is hidden here`);
+  }
+});
+
+/* ── Exports and the Drive archive ────────────────────────────────────────── */
+
+test('export rows keep every field, including one only some records carry', async () => {
+  // The whole point. Exports used to take a hand-picked column list, so a
+  // voucher's commission, tyre work and extra payments never left the app.
+  const { toRows } = require('../utils/listBackupService');
+  const { headers, rows } = toRows([
+    { lrNo: '1', truckNo: 'HR47G9999', commission: 500 },
+    { lrNo: '2', truckNo: 'HR63B8291', tyrePuncture: 100, billNo: 'B-9' },
+  ]);
+  for (const col of ['Lr No', 'Truck No', 'Commission', 'Tyre Puncture', 'Bill No']) {
+    assert(headers.includes(col), `"${col}" was dropped — headers: ${headers.join(', ')}`);
+  }
+  assert(rows.length === 2, `expected 2 rows, got ${rows.length}`);
+  // A field the first record lacks must still be blank rather than missing.
+  assert(rows[0][headers.indexOf('Bill No')] === '', 'a absent field should be blank, not skipped');
+});
+
+test('export rows flatten nested detail instead of printing [object Object]', async () => {
+  const { toRows } = require('../utils/listBackupService');
+  const { headers, rows } = toRows([{
+    lrNo: '1',
+    extras: [{ amount: 500, remark: 'grease' }, { amount: 200, remark: 'dhaba' }],
+    deliveries: [{ lrNo: '9', destination: 'Sohna' }],
+  }]);
+  const extras = String(rows[0][headers.indexOf('Extras')]);
+  assert(extras.includes('500') && extras.includes('grease'),
+    `extras lost their detail: ${extras}`);
+  assert(!extras.includes('[object'), `extras were not flattened: ${extras}`);
+  const dl = String(rows[0][headers.indexOf('Deliveries')]);
+  assert(dl.includes('Sohna'), `deliveries lost their detail: ${dl}`);
+});
+
+test('archive folders give every module its own tree', async () => {
+  const { folderPath } = require('../utils/archiveService');
+  const when = new Date('2026-08-02T00:00:00Z');
+
+  const lr = folderPath({ module: 'Loading Receipts', kind: 'Documents', plant: 'JK Lakshmi', when });
+  assert(lr.join('/') === 'Loading Receipts/Documents/JK Lakshmi/2026-08', `LR path: ${lr.join('/')}`);
+
+  const bs = folderPath({ module: 'Balance Sheet', kind: 'Statements', when });
+  assert(bs.join('/') === 'Balance Sheet/Statements/2026-08', `statement path: ${bs.join('/')}`);
+
+  // An unknown module must land somewhere real rather than create junk folders
+  // from whatever a caller passed.
+  const junk = folderPath({ module: 'Nonsense', kind: 'Nonsense', when });
+  assert(junk[0] === 'Other' && junk[1] === 'Documents', `unknown module path: ${junk.join('/')}`);
+
+  // A name that would nest a folder or break a Drive query gets neutralised.
+  const { safeName } = require('../utils/archiveService');
+  assert(!safeName('LR/12*3?').includes('/'), 'a slash in a name would silently nest a folder');
+});
+
+test('archiving refuses what it should and never throws at the caller', async () => {
+  const archiveService = require('../utils/archiveService');
+
+  const noHtml = await archiveService.archive({ module: 'Vouchers', name: 'x', html: '' });
+  assert(noHtml.archived === false, 'an empty document should not be filed');
+
+  const huge = await archiveService.archive({
+    module: 'Vouchers', name: 'x', html: 'a'.repeat(archiveService.MAX_HTML_BYTES + 1),
+  });
+  assert(huge.archived === false && /too large/i.test(huge.reason), `oversized: ${JSON.stringify(huge)}`);
+
+  // Drive is not connected in the test environment: that is a reported outcome,
+  // not an error, or a printed slip would surface a red banner.
+  const ok = await archiveService.archive({ module: 'Vouchers', name: 'x', html: '<p>hi</p>' });
+  assert(ok.archived === false && /not connected/i.test(ok.reason || ''), `unauthorised: ${JSON.stringify(ok)}`);
+});
+
+test('the archive endpoint answers 200 whether or not Drive is up', async () => {
+  const res = await post('/archive', { module: 'Vouchers', name: 'probe', html: '<p>x</p>' });
+  assert(res.status === 200, `expected 200, got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(res.data.archived === false, `expected archived:false without Drive, got ${JSON.stringify(res.data)}`);
+
+  const status = await get('/archive/status');
+  assert(status.status === 200 && 'authorized' in status.data, 'status should report Drive connectivity');
+});
+
+test('weekly-lists is registered and covers every module folder', async () => {
+  const { JOBS } = require('../jobs');
+  assert(typeof JOBS['weekly-lists'] === 'function', 'weekly-lists must be in the JOBS registry');
+  const result = await JOBS['weekly-lists']();
+  assert(result.status === 'ok', `job should succeed, got ${JSON.stringify(result)}`);
+  assert(result.result?.skipped === true, 'it should skip without Drive, not attempt uploads');
+
+  const { LISTS, isoWeek } = require('../utils/listBackupService');
+  const { MODULES } = require('../utils/archiveService');
+  for (const l of LISTS) {
+    assert(MODULES.has(l.module), `"${l.label}" files under unknown module "${l.module}"`);
+  }
+  // The lists nobody was backing up before.
+  const covered = LISTS.map(l => l.collection);
+  for (const c of ['challans', 'cashbook_entries', 'sales', 'invoices', 'tyres', 'vehicle_advances']) {
+    assert(covered.includes(c), `"${c}" is still not backed up anywhere`);
+  }
+  assert(/^\d{4}-W\d{2}$/.test(isoWeek(new Date('2026-08-02'))), `week key: ${isoWeek(new Date('2026-08-02'))}`);
+});
+
 /* ── Column filters ───────────────────────────────────────────────────────── */
 
 test('column filter: picking a value does not collapse the option list', async () => {

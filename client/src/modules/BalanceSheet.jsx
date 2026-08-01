@@ -6,7 +6,9 @@ import {
   CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock, Banknote, ArrowRight
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
+import { printHtml } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import { extrasPayload } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
 
@@ -85,6 +87,21 @@ function monthLabel(ym) {
 }
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+/**
+ * A balance-sheet row as an export row: everything the voucher carries, plus
+ * the four figures the sheet works out and never stores. Shared by the monthly
+ * export and the All-Over sheet so the two cannot disagree.
+ */
+export const balanceExportRows = (rows, vehicle) => buildExportRows(rows, {
+  order: ['date', 'lrNo', 'truckNo', 'billNo', 'partyCode', 'partyName', 'destination', 'weight', 'rate'],
+  computed: {
+    Gross: v => Math.round(calcGross(v)),
+    'Net Balance': v => Math.round(calcNet(v, vehicle)),
+    Outstanding: v => Math.round(Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0))),
+    Status: v => (Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)) <= 0 ? 'Paid' : 'Pending'),
+  },
+});
 
 export const TH = {
   padding: '10px 14px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
@@ -167,8 +184,15 @@ function doPrintMonthlyPL(ym, rows, tabName, orgName, vehicle) {
   </tr></tfoot></table>
   <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
   </body></html>`;
-  const w = window.open('', '_blank', 'width=1000,height=700');
-  w.document.write(html); w.document.close();
+  printHtml(html, {
+    width: 1000, height: 700,
+    archive: {
+      module: 'Balance Sheet', kind: 'Statements',
+      plant: (tabName || '').replace(/_/g, ' '),
+      name: archiveName('Monthly P&L', tabName, ym),
+      meta: { month: ym, type: tabName, trips: rows.length },
+    },
+  });
 }
 
 /* ── Print Driver (used from both selection bar and month header) ── */
@@ -232,8 +256,15 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
   <div class="sig"><div class="sl">Driver</div><div class="sl">Authorised Sign</div></div>
   <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
   </body></html>`;
-  const w = window.open('', '_blank', 'width=1000,height=640');
-  w.document.write(html); w.document.close();
+  printHtml(html, {
+    width: 1000, height: 640,
+    archive: {
+      module: 'Balance Sheet', kind: 'Statements',
+      plant: (tabName || '').replace(/_/g, ' '),
+      name: archiveName('Statement', truckNo, label),
+      meta: { truckNo, period: label, type: tabName, trips: rows.length },
+    },
+  });
 }
 
 /* ── Editable Row ── */
@@ -624,9 +655,12 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             </button>
           )}
           <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
-          {/* Export buttons */}
-          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(rows.map(v => ({ Date: v.date, LR: v.lrNo, Dest: v.destination || v.partyName, Weight: v.weight, Rate: v.rate, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0), Diesel: v.advanceDiesel, Cash: v.advanceCash, Online: v.advanceOnline, Munshi: v.munshi, Shortage: v.shortage, Net: calcNet(v, vehicle), Paid: v.paidBalance, Status: Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)) <= 0 ? 'Paid' : 'Pending', 'Payment Date': v.paymentClearedDate || '—' })), `Balance_${selTruck}_${ym}`)}><Download size={12} /> Excel</button>
-          <button className="btn btn-g btn-sm" onClick={() => exportToPDF(rows, `Balance Sheet: ${selTruck} (${monthLabel(ym)})`, ['date', 'lrNo', 'destination', 'weight', 'rate', 'total', 'advanceDiesel', 'advanceCash', 'advanceOnline', 'munshi', 'shortage', 'Net', 'paidBalance', 'paymentClearedDate'])}><Printer size={12} /> PDF</button>
+          {/* Export buttons — every field on the record, plus the figures the
+              sheet derives. The old hand-picked lists dropped commission, tyre,
+              extra money and outstanding without saying so. */}
+          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(balanceExportRows(rows, vehicle), `Balance_${selTruck}_${ym}`)}><Download size={12} /> Excel</button>
+          <button className="btn btn-g btn-sm" onClick={() => exportToPDF(balanceExportRows(rows, vehicle), `Balance Sheet: ${selTruck} (${monthLabel(ym)})`, null,
+            { archive: { module: 'Balance Sheet', plant: (tabName || '').replace(/_/g, ' '), name: archiveName('Export', tabName, selTruck, ym) } })}><Printer size={12} /> PDF</button>
         </div>
       </div>
 
@@ -1032,6 +1066,11 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
 
     return filtered;
   }, [allTrucks, truckGroups, filters, vehicles]);
+
+  // Already whole — every field the summary carries, rounded for the sheet.
+  const overviewExportRows = useMemo(() => buildExportRows(truckSummaries, {
+    order: ['truck', 'trips', 'gross', 'net', 'paid', 'outstanding', 'status', 'gpsType'],
+  }), [truckSummaries]);
 
   /**
    * An entry can go to Pay only if it still owes something and has not already
@@ -1589,8 +1628,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               {Object.keys(filters).length > 0 && (
                 <button className="btn btn-sm btn-g" style={{ height: '32px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear Filters</button>
               )}
-              <button className="btn btn-g btn-sm" onClick={() => exportToExcel(truckSummaries.map(t => ({ Truck: t.truck, Trips: t.trips, Gross: t.gross, Net: t.net, Paid: t.paid, Outstanding: t.outstanding, Status: t.outstanding <= 0 ? 'Cleared' : 'Pending' })), `Balance_Overview_${tab}`)}><Download size={13} /> Excel</button>
-              <button className="btn btn-g btn-sm" onClick={() => exportToPDF(truckSummaries, `Balance Sheet Overview - ${tab.replace('_', ' ')}`, ['truck', 'trips', 'gross', 'net', 'paid', 'outstanding'])}><Printer size={13} /> PDF</button>
+              <button className="btn btn-g btn-sm" onClick={() => exportToExcel(overviewExportRows, `Balance_Overview_${tab}`)}><Download size={13} /> Excel</button>
+              <button className="btn btn-g btn-sm" onClick={() => exportToPDF(overviewExportRows, `Balance Sheet Overview - ${tab.replace('_', ' ')}`)}><Printer size={13} /> PDF</button>
             </div>
           </div>
           <div className="tbl-wrap">

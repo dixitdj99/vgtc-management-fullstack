@@ -14,6 +14,11 @@
  *     --uri="https://<your-host>/api/jobs/daily-alerts" --http-method=POST \
  *     --headers="X-Cron-Secret=<value of the CRON_SECRET secret>"
  *
+ *   gcloud scheduler jobs create http vgtc-weekly-lists \
+ *     --schedule="30 0 * * 0" --time-zone="Asia/Kolkata" \
+ *     --uri="https://<your-host>/api/jobs/weekly-lists" --http-method=POST \
+ *     --headers="X-Cron-Secret=<value of the CRON_SECRET secret>"
+ *
  *   gcloud scheduler jobs create http vgtc-eway-sync \
  *     --schedule="*\/30 6-22 * * *" --time-zone="Asia/Kolkata" \
  *     --uri="https://<your-host>/api/jobs/eway-sync" --http-method=POST \

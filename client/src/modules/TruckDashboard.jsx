@@ -5,7 +5,9 @@ import {
   Truck, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, Clock,
   ChevronUp, ChevronDown, Download, Printer, Search, X
 } from 'lucide-react';
-import { exportToExcel } from '../utils/exportUtils';
+import { exportToExcel, buildExportRows } from '../utils/exportUtils';
+import { printHtml } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 
 const TH = {
@@ -85,8 +87,14 @@ function doPrintDashboard(rows, orgName) {
   </tr></tfoot></table>
   <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
   </body></html>`;
-  const w = window.open('', '_blank', 'width=1100,height=700');
-  w.document.write(html); w.document.close();
+  printHtml(html, {
+    width: 1100, height: 700,
+    archive: {
+      module: 'Fleet', kind: 'Statements',
+      name: archiveName('Fleet Dashboard', new Date().toISOString().slice(0, 10)),
+      meta: { trucks: rows.length },
+    },
+  });
 }
 
 export default function TruckDashboard({ role, permissions }) {
@@ -223,13 +231,9 @@ export default function TruckDashboard({ role, permissions }) {
             {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={12} /></button>}
           </div>
           <button className="btn btn-g btn-sm" onClick={() => doPrintDashboard(sorted, 'VIKAS GOODS TRANSPORT CO.')}><Printer size={13} /> Print</button>
-          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(sorted.map(r => ({
-            'Truck No.': r.truckNo, 'Owner': r.ownerName, 'Trips': r.trips,
-            'Total Weight (MT)': r.totalWeight.toFixed(2), 'Total Gross (Rs.)': Math.round(r.totalGross),
-            'Total Net (Rs.)': Math.round(r.totalNet), 'Total Deductions': Math.round(r.totalDeductions),
-            'Avg Margin %': r.avgMargin.toFixed(1), 'Outstanding (Rs.)': Math.round(r.outstanding),
-            'Status': r.status, 'Last Trip': r.lastTrip
-          })), 'Truck_Dashboard')}><Download size={13} /> Excel</button>
+          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(buildExportRows(sorted, {
+            order: ['truckNo', 'ownerName', 'trips', 'totalWeight', 'totalGross', 'totalNet', 'totalDeductions', 'avgMargin', 'outstanding', 'status', 'lastTrip'],
+          }), 'Truck_Dashboard')}><Download size={13} /> Excel</button>
         </div>
       </div>
 

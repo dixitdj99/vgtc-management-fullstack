@@ -124,16 +124,29 @@ export default function FuelStationManager() {
     const inMonth = d => (d || '').slice(0, 7) === stmtMonth;
     const entries = pumpVouchersOf(s.name).filter(v => inMonth(v.date));
     const pays = payments.filter(p => (p.profileId === s.id || p.profileName === s.name) && inMonth(p.date));
+    // A statement of two different record types, so the columns are composed by
+    // hand rather than dumped — a union of voucher and payment fields would be
+    // mostly blanks. The diesel detail is carried through so nothing about the
+    // fill itself is lost.
     const rows = [
       ...entries.map(v => ({
         Date: v.date, Kind: 'Diesel', Truck: v.truckNo || '', LR: v.lrNo || '', Sheet: (v.type || '').replace(/_/g, ' '),
         Amount: v.advanceDiesel === 'FULL' ? 'FULL (cost pending)' : amtOf(v),
         Status: v.dieselBillPaymentId ? 'Settled' : v.isDieselVerified ? 'Verified' : 'Unverified',
+        Litres: v.dieselActualLitres || '',
+        Booked: v.advanceDiesel || '',
+        Full_Tank: v.isFullTank ? 'Yes' : '',
+        Verified_On: v.dieselVerifiedAt ? String(v.dieselVerifiedAt).slice(0, 10) : '',
+        Verified_By: v.dieselVerifiedBy || '',
+        Party: v.partyName || '',
+        Remark: '',
       })),
       ...pays.map(p => ({
         Date: p.date, Kind: 'Payment', Truck: '', LR: '', Sheet: p.paymentMethod || '',
         Amount: -(parseFloat(p.amount) || 0),
         Status: p.remark || '',
+        Litres: '', Booked: '', Full_Tank: '', Verified_On: '', Verified_By: '', Party: '',
+        Remark: p.remark || '',
       })),
     ].sort((a, b) => String(a.Date).localeCompare(String(b.Date)));
     if (!rows.length) { alert(`Nothing recorded for ${s.name} in ${stmtMonth}.`); return; }

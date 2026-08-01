@@ -8,7 +8,7 @@ import {
   User, Truck, RotateCcw, Users
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
@@ -673,25 +673,17 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     cash_out: filteredCashOuts,
   };
 
-  const handleExportExcel = () => {
-    exportToExcel(activeRows.map(r => ({
-      Date: r.date,
-      Description: r.label || r.remark,
-      Type: r.badge,
-      Credit: r.credit || 0,
-      Debit: r.debit || 0,
-      Amount: r.amount,
-      Balance: r.balance !== undefined ? r.balance : '',
-      TruckNo: r.truckNo || '',
-      LRNo: r.lrNo || ''
-    })), `${tab}_export_${new Date().toISOString().slice(0, 10)}`);
-  };
+  // Every field on the ledger row. The old lists dropped who took the cash, the
+  // remark behind it, and whether a cash-out had been returned.
+  const cashbookExportRows = () => buildExportRows(
+    activeRows.map(r => ({ ...r, label: r.label || r.remark })),
+    { order: ['date', 'label', 'badge', 'entityType', 'entityName', 'credit', 'debit', 'amount', 'balance', 'truckNo', 'lrNo', 'remark'] },
+  );
 
-  const handleExportPDF = () => {
-    const cols = ['date', 'label', 'badge', 'credit', 'debit', 'balance'];
-    const safeData = activeRows.map(r => ({ ...r, label: r.label || r.remark }));
-    exportToPDF(safeData, `Cashbook - ${tab}`, cols);
-  };
+  const handleExportExcel = () => exportToExcel(cashbookExportRows(), `${tab}_export_${new Date().toISOString().slice(0, 10)}`);
+  const handleExportPDF = () => exportToPDF(cashbookExportRows(), `Cashbook - ${tab}`, null, {
+    archive: { module: 'Cashbook', name: `Cashbook ${tab} ${new Date().toISOString().slice(0, 10)}` },
+  });
 
   return (
     <div>

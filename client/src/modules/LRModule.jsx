@@ -7,12 +7,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import { openReceiptWindow, RECEIPT_WIDTH_MM } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 
 const PAGE_SIZE = 20;
@@ -216,8 +217,18 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
   // prints an empty signature line, the same as before.
   const driverName = driverForTruck(base.truckNo, vehicles);
 
+  // Filed under the plant it belongs to, keyed on the LR number so a reprint
+  // replaces the copy rather than adding another.
+  const archive = {
+    module: 'Loading Receipts', kind: 'Documents',
+    plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
+    name: archiveName('LR', lrNo, base.truckNo, base.date),
+    meta: { lrNo, truckNo: base.truckNo, date: base.date, partyName: base.partyName },
+  };
+
   if (brand === 'jkl') {
     openReceiptWindow({
+      archive,
       title: `LR #${lrNo}`,
       fontSize: '9.5pt',
       // An LR is a slip, not a roll receipt: the page is cut to the material
@@ -452,6 +463,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
   `).join('');
 
   openReceiptWindow({
+    archive,
     title: `LR #${lrNo}`,
     fontSize: '11px',
     lineHeight: '1.3',
@@ -1699,13 +1711,20 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     return filteredReceipts.slice(start, start + PAGE_SIZE);
   }, [filteredReceipts, currentPage]);
 
-  const exportExcel = () => {
-    exportToExcel(filteredReceipts.map(r => ({ LR_No: r.lrNo, Date: r.date, Truck: r.truckNo, Material: r.material, Weight_MT: r.weight, Bags: r.totalBags, Party: r.partyName, Challan: r.billing || '' })), `Receipts_${new Date().toISOString().slice(0, 10)} `);
-  };
+  // Every field on the receipt — the old eight-column list left out loading
+  // type, destination, driver, challan status and the material breakdown.
+  const lrExportRows = () => buildExportRows(filteredReceipts, {
+    order: ['lrNo', 'date', 'truckNo', 'partyName', 'destination', 'material', 'totalBags', 'weight', 'loadingType', 'billing'],
+  });
 
-  const dlPDF = () => {
-    exportToPDF(filteredReceipts, 'Loading Receipts', ['lrNo', 'date', 'truckNo', 'material', 'weight', 'totalBags', 'partyName', 'billing']);
-  };
+  const exportExcel = () => exportToExcel(lrExportRows(), `Receipts_${new Date().toISOString().slice(0, 10)}`);
+  const dlPDF = () => exportToPDF(lrExportRows(), 'Loading Receipts', null, {
+    archive: {
+      module: 'Loading Receipts',
+      plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
+      name: archiveName('Receipts Export', new Date().toISOString().slice(0, 10)),
+    },
+  });
 
   return (
     <>
