@@ -31,6 +31,25 @@ export const LEVEL_VALUES = LEVELS.map(l => l.value);
  * Locations mirror the plant/godown split the nav enforces. `plantKey` and
  * `godownKey` are what get written into allowedPlants / allowedGodowns.
  */
+/**
+ * What the three JK Super dumps offer.
+ *
+ * Cashbook, Diesel Control and Generate Invoice are gone: those modules are
+ * hidden at Kosli, Jhajjar and Bahadurgarh (see HIDDEN_AT_DUMP_GODOWNS in
+ * App.jsx) and nothing that remains reads through their APIs, so offering the
+ * permission would grant a screen the user cannot reach.
+ *
+ * `vehicle`, `mileage` and `pay` stay, even though their modules are hidden too,
+ * because the screens that remain depend on them and revoking would break real
+ * work rather than tidy the menu:
+ *   vehicle  — the truck list on every LR, voucher and balance sheet, market
+ *              vehicles included; also Fleet Dashboard, which is still shown
+ *   mileage  — the voucher form's last-odometer lookup, /mileage/last-km
+ *   pay      — the freight batches a balance sheet reads, and Vehicle Credit
+ *              & Debit, which is still shown
+ */
+const DUMP_SHARED = ['pay', 'balance_all', 'vehicle', 'mileage', 'sell', 'attendance', 'loading_status'];
+
 export const LOCATIONS = [
   {
     id: 'jharli',
@@ -52,7 +71,7 @@ export const LOCATIONS = [
     godownKey: 'kosli',
     groups: [
       { id: 'kosli_plant', label: 'Kosli Plant Modules', modules: ['lr_dump', 'bill_kosli', 'balance_kosli', 'stock_kosli'] },
-      { id: 'kosli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'kosli_shared', label: 'Shared Utilities', modules: DUMP_SHARED },
     ],
   },
   {
@@ -63,7 +82,7 @@ export const LOCATIONS = [
     godownKey: 'jhajjar',
     groups: [
       { id: 'jhajjar_plant', label: 'Jhajjar Plant Modules', modules: ['lr_dump', 'bill_jhajjar', 'balance_jhajjar', 'stock_jhajjar'] },
-      { id: 'jhajjar_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'jhajjar_shared', label: 'Shared Utilities', modules: DUMP_SHARED },
     ],
   },
   {
@@ -74,7 +93,7 @@ export const LOCATIONS = [
     godownKey: 'bahadurgarh',
     groups: [
       { id: 'bahadurgarh_plant', label: 'Bahadurgarh Plant Modules', modules: ['lr_dump', 'bill_bahadurgarh', 'balance_bahadurgarh', 'stock_bahadurgarh'] },
-      { id: 'bahadurgarh_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'bahadurgarh_shared', label: 'Shared Utilities', modules: DUMP_SHARED },
     ],
   },
 ];

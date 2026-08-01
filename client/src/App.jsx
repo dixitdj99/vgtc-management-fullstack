@@ -61,6 +61,31 @@ const ENV_BANNER = APP_ENV === 'production' ? null
     ? { label: 'BETA', bg: '#f97316', glow: 'rgba(249,115,22,0.4)' }
     : { label: 'LOCAL DEV', bg: '#eab308', glow: 'rgba(234,179,8,0.4)' };
 
+/**
+ * Kosli, Jhajjar and Bahadurgarh are loading sites. Every module below is run
+ * for all three by one clerk working from Jharli, so putting them on these
+ * sidebars only offers a screen nobody there is meant to use.
+ *
+ * This hides the nav entry and nothing else. The APIs behind these modules stay
+ * reachable on purpose, because the screens that remain read through them: a
+ * voucher and an LR need the vehicle list (which includes market vehicles), the
+ * voucher form looks up the last odometer reading through /mileage, and the
+ * balance sheet reads the freight batches. Hiding a module is not the same as
+ * revoking the permission it shares, and treating them as the same thing would
+ * empty the truck dropdowns here.
+ */
+const DUMP_GODOWNS = new Set(['kosli', 'jhajjar', 'bahadurgarh']);
+const HIDDEN_AT_DUMP_GODOWNS = new Set([
+  'cashbook_dump',      // Cashbook
+  'pay_dump',           // Pay
+  'trip_profit_dump',   // Trip Profit Analysis
+  'vehicles_dump',      // Fleet Management
+  'diesel_dump',        // Diesel Control
+  'mileage_dump',       // Mileage Tracker
+  'tyres_dump',         // Tyre Management
+  'vendors_dump',       // Market Vehicles
+  'invoice_dump',       // Generate Invoice
+]);
 
 // Release notes shown in the notification panel. Lifted out of the JSX so the
 // panel can store which of them have been read or cleared.
@@ -572,6 +597,10 @@ function AppInner() {
       if (nid.includes('kosli') && godown !== 'kosli') return false;
       if (nid.includes('jhajjar') && godown !== 'jhajjar') return false;
       if (nid.includes('bahadurgarh') && godown !== 'bahadurgarh') return false;
+      // Kosli, Jhajjar and Bahadurgarh are loading sites. The money and fleet
+      // side for all three is run by one clerk from Jharli, so those modules are
+      // not on the sidebar here — see HIDDEN_AT_DUMP_GODOWNS.
+      if (DUMP_GODOWNS.has(godown) && HIDDEN_AT_DUMP_GODOWNS.has(n.id)) return false;
     }
     
     if (n.sub && n.sub.length === 0) return false;
@@ -595,6 +624,25 @@ function AppInner() {
   const DASHBOARD_ITEM = { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard, color: '#6366f1' };
   const FULL_NAV = [DASHBOARD_ITEM, ...FILTERED_NAV];
   const filteredNavIds = new Set(FULL_NAV.map(n => n.id));
+
+  /**
+   * Send the user home if the module they were last on is no longer theirs.
+   *
+   * `active` is restored from localStorage, and renderModule matches on the id
+   * directly — so without this a clerk who was on Pay before it was hidden for
+   * their location would still land on Pay, off the menu, every morning. The
+   * same applies after a permission is revoked.
+   *
+   * Keyed on a joined string rather than the Set, whose identity changes every
+   * render.
+   */
+  const navKey = FULL_NAV.map(n => n.id).join(',');
+  useEffect(() => {
+    if (!ready || !user) return;                       // nav is empty until both land
+    if (active === 'dashboard' || active === 'admin_settings') return;
+    if (!filteredNavIds.has(active)) setActive('dashboard');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user, active, navKey]);
 
   // Command palette registry — flattened nav + quick actions
   const navCommand = (id, subId) =>
