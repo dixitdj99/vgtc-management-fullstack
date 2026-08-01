@@ -1127,6 +1127,52 @@ test('voucher: an unpaid online advance is visible however the voucher is typed'
   } finally { await del('/vouchers/' + id); }
 });
 
+/* ── Column filters ───────────────────────────────────────────────────────── */
+
+test('column filter: picking a value does not collapse the option list', async () => {
+  // Every table passes the rows it is already showing, which are filtered. Once
+  // a value was ticked those rows held only that value, so the dropdown shrank
+  // to a single option and there was no way to add a second or switch without
+  // clearing first.
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'components', 'ColumnFilter.jsx');
+  const fs = require('fs');
+  const src = fs.readFileSync(p, 'utf8');
+  const start = src.indexOf('export function nextOptions');
+  assert(start !== -1, 'nextOptions is not exported from ColumnFilter.jsx');
+  let i = src.indexOf('{', src.indexOf(')', start)), depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) break;
+  }
+  // eslint-disable-next-line no-new-func
+  const nextOptions = new Function(
+    `${src.slice(start, i + 1).replace('export function', 'function')}\nreturn nextOptions;`)();
+
+  // Unfiltered first paint: the whole fleet.
+  let store = nextOptions({ key: null, opts: [] },
+    { colKey: 'truckNo', fromData: ['HR47G9999', 'HR63B8291', 'RJ14GA1234'], trustData: true });
+  assert(store.opts.length === 3, `expected 3 trucks, got ${store.opts.length}`);
+
+  // One ticked — the caller now only shows that truck's rows.
+  store = nextOptions(store, { colKey: 'truckNo', fromData: ['HR47G9999'], trustData: false });
+  assert(store.opts.length === 3,
+    `the list collapsed to ${store.opts.length} — the user cannot pick a second truck`);
+
+  // A trip for a truck we had not seen still appears.
+  store = nextOptions(store, { colKey: 'truckNo', fromData: ['HR47G9999', 'HR55X1111'], trustData: false });
+  assert(store.opts.includes('HR55X1111'), 'a genuinely new value must still get in');
+
+  // Cleared: believe the data again, so stale values do not linger for ever.
+  store = nextOptions(store, { colKey: 'truckNo', fromData: ['HR47G9999', 'HR63B8291'], trustData: true });
+  assert(store.opts.length === 2, `expected the list to reset to 2, got ${store.opts.length}`);
+
+  // A different column shares nothing with the last one.
+  store = nextOptions(store, { colKey: 'partyName', fromData: ['Sai Building'], trustData: false });
+  assert(store.opts.length === 1 && store.opts[0] === 'Sai Building',
+    `switching column leaked old values: ${store.opts.join(', ')}`);
+});
+
 /* ── All-Over Balance Sheet ───────────────────────────────────────────────── */
 
 const loadAllBalance = () => {
