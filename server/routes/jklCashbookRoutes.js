@@ -47,7 +47,15 @@ router.post('/cash-out', async (req, res) => {
 // POST /api/jkl/cashbook/cash-out-linked
 router.post('/cash-out-linked', async (req, res) => {
     const { amount, remark, date, entityType, entityId, entityName } = req.body;
-    if (!entityType || !entityId) return res.status(400).json({ error: 'Entity required' });
+    // A `custom` entity is someone not on the roster — a labourer, a mechanic —
+    // so it carries a name and no id. Everything else must still be a real
+    // record, or the cash-out links to nothing.
+    if (!entityType) return res.status(400).json({ error: 'Entity required' });
+    if (entityType === 'custom') {
+        if (!String(entityName || '').trim()) return res.status(400).json({ error: 'Name required' });
+    } else if (!entityId) {
+        return res.status(400).json({ error: 'Entity required' });
+    }
     try {
         const col = getCol(BASE_COL, req);
         const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, col, {

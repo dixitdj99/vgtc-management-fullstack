@@ -46,15 +46,30 @@ const DelConfirm = ({ id, label, apiCb, onClose, onDone }) => {
   );
 };
 
+// Sentinel for "someone not on the roster". Not an entity key, so it cannot
+// collide with a real `type::id`.
+const CUSTOM_KEY = '__custom__';
+
 const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles }) => {
-  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: '' });
+  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: '', customName: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
   const isDeposit = type === 'deposit';
 
+  const isCustom = form.entityKey === CUSTOM_KEY;
+
+  /**
+   * Not everyone paid out of the cashbook is on the roster — a labourer for the
+   * day, a mechanic, someone's brother collecting on their behalf. A custom
+   * entry carries the name and no id, so it records who took the money without
+   * inventing a profile that then has to be maintained.
+   */
   const parseEntityKey = (key) => {
     if (!key) return {};
+    if (key === CUSTOM_KEY) {
+      return { entityType: 'custom', entityId: '', entityName: form.customName.trim() };
+    }
     const [entityType, entityId] = key.split('::');
     let entityName = '';
     if (entityType === 'driver') entityName = drivers.find(d => d.id === entityId)?.name || '';
@@ -67,6 +82,9 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
     setErr('');
     if (markInvalidFields(formRef.current)) return;
     if (!form.amount || parseFloat(form.amount) <= 0) { setErr('Enter a valid amount'); return; }
+    // An unnamed custom entry is the one thing worse than no entry: cash out of
+    // the book with nobody attached to it.
+    if (isCustom && !form.customName.trim()) { setErr('Enter the name of whoever took the cash'); return; }
     setIsConfirming(true);
   };
   const handleFormRequest = e => { e.preventDefault(); requestSave(); };
@@ -87,7 +105,7 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
         await ax.post(apiCb + (isDeposit ? '/deposit' : '/cash-out'), form);
       }
       rememberSticky('cashbook.date', form.date);
-      setForm({ amount: '', date: form.date, remark: '', entityKey: '' }); onSave();
+      setForm({ amount: '', date: form.date, remark: '', entityKey: '', customName: '' }); onSave();
     }
     catch (e) { setErr(e.response?.data?.error || 'Error'); }
     finally { setSaving(false); }
@@ -123,7 +141,15 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
                 {staffList.length > 0 && <optgroup label="Staff Members">
                   {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
                 </optgroup>}
+                <option value={CUSTOM_KEY}>— Someone else (type a name) —</option>
               </select>
+            </div>
+          )}
+          {!isDeposit && isCustom && (
+            <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+              <label>Name *</label>
+              <input className="fi" type="text" autoFocus placeholder="e.g. Ramesh (labour), mechanic, Sai Traders"
+                value={form.customName} onChange={e => setForm(f => ({ ...f, customName: e.target.value }))} />
             </div>
           )}
           <div className="field-h">
