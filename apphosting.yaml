@@ -100,5 +100,41 @@ env:
     value: "vgtc-cron-secret-default-2026"
     availability:
       - RUNTIME
+
+  # ── NIC e-way bill API ──────────────────────────────────────────────────────
+  # Fills the Stock → Challan form from the bills the cement plants assign to
+  # VGTC as transporter. Until every value below exists the feed is inert: the
+  # server makes no outbound call and the challan panel says "not connected".
+  #
+  # Setup, including the static egress IP NIC requires for whitelisting, is in
+  # docs/eway-bill-api-setup.md. Flip EWB_ENABLED to "true" only once the
+  # secrets are in place and the IP is whitelisted.
+  - variable: EWB_ENABLED
+    value: "false"
     availability:
       - RUNTIME
+  # Sandbox is a different host — see the setup doc. Getting this wrong sends
+  # production credentials to the test system, which simply rejects them.
+  - variable: EWB_BASE_URL
+    value: "https://api.ewaybillgst.gov.in"
+    availability:
+      - RUNTIME
+  # VGTC's own GSTIN, as registered on the e-way bill portal. An identifier
+  # rather than a credential, so it sits here.
+  - variable: EWB_GSTIN
+    value: ""
+    availability:
+      - RUNTIME
+  - variable: EWB_USERNAME
+    value: ""
+    availability:
+      - RUNTIME
+  - variable: EWB_CLIENT_ID
+    secret: EWB_CLIENT_ID
+  - variable: EWB_CLIENT_SECRET
+    secret: EWB_CLIENT_SECRET
+  - variable: EWB_PASSWORD
+    secret: EWB_PASSWORD
+  # NIC's RSA public key, used to encrypt the password and app_key at login.
+  - variable: EWB_PUBLIC_KEY
+    secret: EWB_PUBLIC_KEY

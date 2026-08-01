@@ -804,5 +804,325 @@ test('extras: the PDF still reads vouchers that predate the list', async () => {
   assert(printableExtras({}).length === 0, 'a voucher with no extras should print none');
 });
 
+/* ── E-way bill feed ─────────────────────────────────────────────────────────
+ *
+ * NIC credentials take weeks to arrive, so none of this can be proved against
+ * the real system yet. What can be proved is the part that would silently
+ * create a challan against the wrong truck: the response envelope, and the
+ * mapping from an e-way bill to the eight form fields.
+ */
+
+test('ewb: a NIC response round-trips through sek, rek and the HMAC', async () => {
+  const crypto = require('crypto');
+  const { _internal } = require('../utils/ewbClient');
+
+  const sessionKey = crypto.randomBytes(32);
+  const rek = crypto.randomBytes(32);
+  const payload = { ewbNo: 151000256262, docNo: 'TA120' };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+
+  const body = {
+    rek: _internal.aesEncrypt(rek, sessionKey),
+    data: _internal.aesEncrypt(Buffer.from(payloadB64), rek),
+    hmac: crypto.createHmac('sha256', rek).update(payloadB64).digest('base64'),
+  };
+
+  const out = _internal.decryptResponse(body, sessionKey);
+  assert(out.ewbNo === 151000256262, `ewbNo lost in transit: ${out.ewbNo}`);
+  assert(out.docNo === 'TA120', `docNo lost in transit: ${out.docNo}`);
+});
+
+test('ewb: a tampered response is refused, not parsed', async () => {
+  const crypto = require('crypto');
+  const { _internal } = require('../utils/ewbClient');
+
+  const sessionKey = crypto.randomBytes(32);
+  const rek = crypto.randomBytes(32);
+  const payloadB64 = Buffer.from(JSON.stringify({ ewbNo: 1 })).toString('base64');
+
+  const body = {
+    rek: _internal.aesEncrypt(rek, sessionKey),
+    data: _internal.aesEncrypt(Buffer.from(payloadB64), rek),
+    // The HMAC of a different payload — what a swapped response looks like.
+    hmac: crypto.createHmac('sha256', rek).update('not-the-payload').digest('base64'),
+  };
+
+  let threw = false;
+  try { _internal.decryptResponse(body, sessionKey); } catch { threw = true; }
+  assert(threw, 'a failed HMAC must throw — returning the data would create a challan from it');
+});
+
+/** A GetEwayBill response shaped like the NIC sample, with cement on it. */
+const ewbFixture = (over = {}) => ({
+  ewbNo: 151000256262,
+  docNo: '7330200286',
+  docDate: '01/08/2026',
+  fromTrdName: 'JK Cement Plant',
+  toTrdName: 'Sai Building Material',
+  toGstin: '06ALDPA4968K1ZZ',
+  toPlace: 'Sohna',
+  totInvValue: 19100.0,
+  validUpto: '03/08/2026 11:59:00 PM',
+  itemList: [{ productName: 'JK SUPER PPC CEMENT', hsnCode: 252329, quantity: 2.5, qtyUnit: 'MT' }],
+  VehiclListDetails: [{ vehicleNo: 'HR47G9999' }],
+  ...over,
+});
+
+const MATS = ['PPC', 'OPC43', 'Adstar', 'OPC FS', 'OPC53 FS', 'Weather'];
+
+test('ewb: a bill fills seven of the eight challan fields', async () => {
+  const { toChallanDraft } = require('../utils/ewbService');
+  const d = toChallanDraft(ewbFixture(), { materials: MATS });
+
+  assert(d.truckNo === 'HR47G9999', `truck: ${d.truckNo}`);
+  assert(d.material === 'PPC', `"JK SUPER PPC CEMENT" should match PPC, got ${d.material}`);
+  assert(d.quantity === 50, `2.5 MT is 50 bags, got ${d.quantity}`);
+  assert(d.partyName === 'Sai Building Material', `party: ${d.partyName}`);
+  assert(d.partyCode === '06ALDPA4968K1ZZ', `party code: ${d.partyCode}`);
+  assert(d.billNo === '7330200286', `bill no: ${d.billNo}`);
+  assert(d.date === '2026-08-01', `01/08/2026 should become 2026-08-01, got ${d.date}`);
+  assert(d.needsReview.length === 0, `nothing should need review: ${d.needsReview.join(', ')}`);
+});
+
+test('ewb: bags pass through unconverted when the plant already counted bags', async () => {
+  const { toChallanDraft } = require('../utils/ewbService');
+  const d = toChallanDraft(
+    ewbFixture({ itemList: [{ productName: 'PPC', quantity: 50, qtyUnit: 'BAGS' }] }),
+    { materials: MATS });
+  // The MT rule would have turned 50 bags into 1000 — the worst kind of wrong,
+  // because it looks like a real number.
+  assert(d.quantity === 50, `50 bags should stay 50, got ${d.quantity}`);
+});
+
+test('ewb: a longer material name wins over a shorter one it contains', async () => {
+  const { _internal } = require('../utils/ewbService');
+  assert(_internal.matchMaterial('OPC 53 FS CEMENT', MATS) === 'OPC53 FS',
+    'OPC53 FS must not lose to OPC FS');
+  assert(_internal.matchMaterial('OPC 43 GRADE', MATS) === 'OPC43', 'OPC43 not matched');
+});
+
+test('ewb: a bill with no Part-B vehicle says so instead of guessing', async () => {
+  const { toChallanDraft } = require('../utils/ewbService');
+  const d = toChallanDraft(ewbFixture({ VehiclListDetails: [] }), { materials: MATS });
+  assert(d.truckNo === '', `truck should be blank, got "${d.truckNo}"`);
+  assert(d.needsReview.some(r => /Part-B|truck/i.test(r)), `expected a truck warning: ${d.needsReview}`);
+});
+
+test('ewb: an unrecognised product is flagged rather than mapped to something', async () => {
+  const { toChallanDraft } = require('../utils/ewbService');
+  const d = toChallanDraft(
+    ewbFixture({ itemList: [{ productName: 'WHITE PUTTY', quantity: 1, qtyUnit: 'MT' }] }),
+    { materials: MATS });
+  assert(d.material === '', `should not have picked a material, got ${d.material}`);
+  assert(d.needsReview.some(r => /WHITE PUTTY/.test(r)), `expected it named: ${d.needsReview}`);
+});
+
+test('ewb: Part-B updates mean the latest vehicle is the current one', async () => {
+  const { _internal } = require('../utils/ewbService');
+  const no = _internal.currentVehicle({
+    VehiclListDetails: [{ vehicleNo: 'HR47G9999' }, { vehicleNo: 'HR63B8291' }],
+  });
+  assert(no === 'HR63B8291', `should take the last vehicle, got ${no}`);
+});
+
+test('ewb: a multi-item bill maps to materials[] for createChallan', async () => {
+  const { toChallanDraft } = require('../utils/ewbService');
+  const d = toChallanDraft(ewbFixture({
+    itemList: [
+      { productName: 'PPC', quantity: 2, qtyUnit: 'MT' },
+      { productName: 'OPC 43', quantity: 1, qtyUnit: 'MT' },
+    ],
+  }), { materials: MATS });
+  assert(d.materials.length === 2, `expected 2 materials, got ${d.materials.length}`);
+  assert(d.quantity === 60, `2 MT + 1 MT is 60 bags, got ${d.quantity}`);
+});
+
+test('ewb: re-syncing the same bill does not create a second draft', async () => {
+  // The whole point of keying on ewbNo. A half-hourly sync over the same day
+  // would otherwise stack up a fresh copy of every load.
+  const store = require('../utils/ewbStore');
+  const col = 'test_eway_bills_' + Math.abs(Date.now() % 100000);
+  const bill = { ewbNo: '151000256262', docNo: 'TA120', detail: ewbFixture() };
+
+  const first = await store.upsertBill('vgtc', bill, col);
+  const second = await store.upsertBill('vgtc', bill, col);
+  assert(first.created === true, 'first sync should create the bill');
+  assert(second.created === false, 'second sync must not create it again');
+
+  const list = await store.listBills('vgtc', col);
+  assert(list.length === 1, `expected 1 stored bill, got ${list.length}`);
+});
+
+test('ewb: a resync does not drag a used bill back into the pending list', async () => {
+  const store = require('../utils/ewbStore');
+  const col = 'test_eway_used_' + Math.abs(Date.now() % 100000);
+  const bill = { ewbNo: '151000999999', docNo: 'TA999', detail: ewbFixture() };
+
+  await store.upsertBill('vgtc', bill, col);
+  await store.setStatus('vgtc', '151000999999', 'used', col, 'challan-1');
+  await store.upsertBill('vgtc', bill, col); // the next scheduled sync
+
+  const pending = await store.listBills('vgtc', col, 'pending');
+  assert(pending.length === 0, 'a used bill must not come back as pending');
+});
+
+test('ewb: with no credentials the feed is inert, not broken', async () => {
+  const client = require('../utils/ewbClient');
+  assert(client.isConfigured() === false, 'the test env has no EWB credentials');
+  assert(client.missingConfig().length > 0, 'missingConfig should name what is absent');
+
+  // 200 with configured:false — the yard sees "not connected", not a red error.
+  const res = await get('/eway/pending');
+  assert(res.status === 200, `expected 200, got ${res.status}`);
+  assert(res.data.configured === false, `expected configured:false, got ${JSON.stringify(res.data)}`);
+  assert(Array.isArray(res.data.bills) && res.data.bills.length === 0, 'bills should be empty');
+
+  const status = await get('/eway/status');
+  assert(status.status === 200 && status.data.configured === false, 'status should report unconfigured');
+  assert(Array.isArray(status.data.missing) && status.data.missing.length > 0,
+    'status should name the missing configuration');
+});
+
+test('ewb: the whole wire protocol works against a NIC that encrypts for real', async () => {
+  // Authenticate, decrypt sek, call two methods, verify two HMACs, map the
+  // result. Without NIC credentials this is the closest thing to proof that
+  // the transport is right, and it is the layer nothing else can check.
+  const { startFakeNic } = require('./fakeNic');
+  const nic = await startFakeNic();
+  try {
+    const ewbService = require('../utils/ewbService');
+    assert(ewbService.isConfigured(), 'the fake NIC should have configured the client');
+
+    const list = await ewbService.listForTransporter(new Date());
+    assert(list.length === 1 && String(list[0].ewbNo) === '151000256262', `list: ${JSON.stringify(list)}`);
+
+    const detail = await ewbService.getDetail('151000256262');
+    const draft = ewbService.toChallanDraft(detail, { materials: MATS });
+    assert(draft.truckNo === 'HR47G9999', `truck: ${draft.truckNo}`);
+    assert(draft.quantity === 50, `bags: ${draft.quantity}`);
+    assert(draft.needsReview.length === 0, `needsReview: ${draft.needsReview.join(', ')}`);
+  } finally { nic.close(); }
+});
+
+test('ewb: a bill listed on both polled days is fetched once, not twice', async () => {
+  // The fake returns the same bill for today and yesterday, which is exactly
+  // what happens to a load generated late in the evening. Fetching its detail
+  // twice would double every sync's NIC calls for no new information.
+  const { startFakeNic } = require('./fakeNic');
+  const nic = await startFakeNic();
+  try {
+    const ewbSync = require('../utils/ewbSync');
+    const col = 'test_eway_dedupe_' + Math.abs(Date.now() % 100000);
+    const r = await ewbSync.syncOrg('vgtc', { billsCol: col });
+    assert(r.errors.length === 0, `sync errored: ${r.errors.join(' | ')}`);
+    assert(nic.detailCalls() === 1, `expected 1 detail call, got ${nic.detailCalls()}`);
+    assert(r.added === 1 && r.refreshed === 0, `expected 1 added 0 refreshed, got ${JSON.stringify(r)}`);
+
+    // And a second sync should not fetch it again at all — it already has a vehicle.
+    const again = await ewbSync.syncOrg('vgtc', { billsCol: col });
+    assert(nic.detailCalls() === 1, `a resync refetched the detail: ${nic.detailCalls()} calls`);
+    assert(again.added === 0, `resync should add nothing, got ${JSON.stringify(again)}`);
+  } finally { nic.close(); }
+});
+
+test('ewb: the sync job is registered and no-ops without credentials', async () => {
+  const { JOBS } = require('../jobs');
+  assert(typeof JOBS['eway-sync'] === 'function', 'eway-sync must be in the JOBS registry');
+  const result = await JOBS['eway-sync']();
+  assert(result.status === 'ok', `job should succeed, got ${JSON.stringify(result)}`);
+  assert(result.result?.skipped === true, 'it should skip, not attempt a call');
+});
+
+/* ── Online advances ──────────────────────────────────────────────────────── */
+
+test('voucher: raising a paid online advance puts it back on the pay list', async () => {
+  // `isOnlinePaid` is a bare flag with no record of the amount behind it. Paying
+  // 3,000 and then raising the advance to 8,000 used to leave the flag standing,
+  // so the extra 5,000 was owed to the driver while Pay -> Online showed nothing.
+  const made = await post('/vouchers', {
+    lrNo: '99801', date: '2026-08-01', truckNo: 'HR47G9999', partyName: 'Test',
+    weight: '25', rate: '700', advanceOnline: '3000', type: 'Dump', brand: 'dump',
+  });
+  assert(made.status === 201, `create failed: ${made.status}`);
+  const id = made.data.id;
+
+  try {
+    await patch('/vouchers/' + id, { isOnlinePaid: true, onlinePaidDate: '2026-08-01' });
+    await patch('/vouchers/' + id, { advanceOnline: '8000' });
+
+    const after = (await get('/vouchers')).data.find(v => v.id === id);
+    assert(parseFloat(after.advanceOnline) === 8000, `amount: ${after.advanceOnline}`);
+    assert(after.isOnlinePaid === false, 'the paid mark should have been cleared by the amount change');
+    assert(!after.onlinePaidDate, `paid date should be cleared, got ${after.onlinePaidDate}`);
+  } finally { await del('/vouchers/' + id); }
+});
+
+test('voucher: recording payment of a new amount in one patch is respected', async () => {
+  // The clearing rule must not fight someone who changes the amount and marks it
+  // paid together — that is a deliberate record of paying the new figure.
+  const made = await post('/vouchers', {
+    lrNo: '99802', date: '2026-08-01', truckNo: 'HR47G9999', partyName: 'Test',
+    weight: '25', rate: '700', advanceOnline: '3000', type: 'Dump', brand: 'dump',
+  });
+  const id = made.data.id;
+  try {
+    await patch('/vouchers/' + id, { isOnlinePaid: true, onlinePaidDate: '2026-08-01' });
+    await patch('/vouchers/' + id, { advanceOnline: '8000', isOnlinePaid: true, onlinePaidDate: '2026-08-02' });
+
+    const after = (await get('/vouchers')).data.find(v => v.id === id);
+    assert(after.isOnlinePaid === true, 'an explicit isOnlinePaid in the same patch must win');
+  } finally { await del('/vouchers/' + id); }
+});
+
+test('voucher: an unpaid online advance is visible however the voucher is typed', async () => {
+  // The pay screen used to ask for six named types, so anything else — a legacy
+  // record, a future plant — carried an invisible advance.
+  const made = await post('/vouchers', {
+    lrNo: '99803', date: '2026-08-01', truckNo: 'HR47G9999', partyName: 'Test',
+    weight: '25', rate: '700', advanceOnline: '4000', type: '', brand: 'dump',
+  });
+  const id = made.data.id;
+  try {
+    const all = (await get('/vouchers')).data;
+    const seen = all.find(v => v.id === id);
+    assert(seen, 'GET /vouchers must return it regardless of type');
+    assert(parseFloat(seen.advanceOnline) > 0 && !seen.isOnlinePaid, 'it should count as unpaid');
+  } finally { await del('/vouchers/' + id); }
+});
+
+/* ── Cashbook: paying someone who is not on the roster ────────────────────── */
+
+test('cashbook: a custom cash-out records the name without a roster profile', async () => {
+  // Labourers, mechanics and one-off collectors have no driver or staff record,
+  // and inventing one just to pay them leaves a profile nobody maintains.
+  const res = await post('/cashbook/cash-out-linked', {
+    amount: 500, date: '2026-08-01', remark: 'unloading labour',
+    entityType: 'custom', entityId: '', entityName: 'Ramesh (labour)',
+  });
+  assert(res.status === 201, `expected 201, got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(res.data.entityName === 'Ramesh (labour)', `name lost: ${JSON.stringify(res.data)}`);
+  assert(res.data.entityType === 'custom', `type lost: ${res.data.entityType}`);
+
+  if (res.data.id) await del('/cashbook/' + res.data.id);
+});
+
+test('cashbook: a custom cash-out with no name is refused', async () => {
+  // Cash leaving the book with nobody attached to it is the one outcome worse
+  // than not recording it at all.
+  const res = await post('/cashbook/cash-out-linked', {
+    amount: 500, date: '2026-08-01', entityType: 'custom', entityId: '', entityName: '   ',
+  });
+  assert(res.status === 400, `expected 400, got ${res.status}`);
+});
+
+test('cashbook: a roster cash-out still needs a real entity id', async () => {
+  // Relaxing the guard for `custom` must not relax it for drivers and staff,
+  // whose entries create a linked advance against a profile id.
+  const res = await post('/cashbook/cash-out-linked', {
+    amount: 500, date: '2026-08-01', entityType: 'driver', entityId: '', entityName: 'Someone',
+  });
+  assert(res.status === 400, `expected 400, got ${res.status}`);
+});
+
 // Run
 runAll();

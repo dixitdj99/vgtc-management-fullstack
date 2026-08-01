@@ -72,9 +72,51 @@ function dailyAlerts() {
     });
 }
 
+/**
+ * Pulls the e-way bills the cement plants have assigned to VGTC, so the yard
+ * can create a challan by tapping one instead of typing eight fields.
+ *
+ * Silent no-op until the NIC credentials exist — an unconfigured feed is the
+ * normal state for a fresh install, not a failure worth alerting on.
+ */
+function ewaySync() {
+    return runExclusive('eway-sync', async () => {
+        const ewbService = require('./utils/ewbService');
+        if (!ewbService.isConfigured()) {
+            return { skipped: true, reason: 'e-way bill API is not configured' };
+        }
+
+        const { db } = require('./firebase');
+        const ewbSync = require('./utils/ewbSync');
+        const ewbStore = require('./utils/ewbStore');
+
+        const orgsSnapshot = await db.collection('organizations').get();
+        const orgs = orgsSnapshot.docs.map(doc => doc.data());
+
+        const results = [];
+        for (const org of orgs) {
+            const orgId = org.id || org.orgId;
+            if (!orgId) continue;
+            try {
+                const r = await ewbSync.syncOrg(orgId, {
+                    billsCol: getEnvCol('eway_bills'),
+                    stateCol: getEnvCol(ewbStore.STATE_COL),
+                });
+                results.push({ orgId, ...r });
+            } catch (err) {
+                // One org's bad credentials must not stop the rest of the sync.
+                console.error(`[Jobs] E-way bill sync failed for org "${orgId}":`, err && err.message);
+                results.push({ orgId, error: err && err.message });
+            }
+        }
+        return { orgs: results.length, results };
+    });
+}
+
 const JOBS = {
     'weekly-backup': weeklyBackup,
     'daily-alerts': dailyAlerts,
+    'eway-sync': ewaySync,
 };
 
-module.exports = { JOBS, weeklyBackup, dailyAlerts };
+module.exports = { JOBS, weeklyBackup, dailyAlerts, ewaySync };

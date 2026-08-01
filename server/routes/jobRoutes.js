@@ -14,6 +14,11 @@
  *     --uri="https://<your-host>/api/jobs/daily-alerts" --http-method=POST \
  *     --headers="X-Cron-Secret=<value of the CRON_SECRET secret>"
  *
+ *   gcloud scheduler jobs create http vgtc-eway-sync \
+ *     --schedule="*\/30 6-22 * * *" --time-zone="Asia/Kolkata" \
+ *     --uri="https://<your-host>/api/jobs/eway-sync" --http-method=POST \
+ *     --headers="X-Cron-Secret=<value of the CRON_SECRET secret>"
+ *
  * Auth is a shared secret in the X-Cron-Secret header, compared in constant
  * time. It fails closed: if CRON_SECRET is unset, every request is rejected.
  */

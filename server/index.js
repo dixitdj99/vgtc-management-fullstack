@@ -163,6 +163,9 @@ app.use('/api/maintenance', requireAuth, gate('vehicle'), maintenanceRoutes);
 // requireAuth first: the gate reads req.user, and invoiceRoutes applies its own
 // auth internally, which would be too late for the gate to see it.
 app.use('/api/invoices', requireAuth, gate('invoice'), invoiceRoutes);
+// One NIC feed serves every plant's challan screen, so it gates on any stock key
+// rather than a plant-specific one.
+app.use('/api/eway', requireAuth, gate(['stock_kosli','stock_jhajjar','stock_bahadurgarh','stock_jkl']), require('./routes/ewayRoutes'));
 app.use('/api/tolls', requireAuth, gate('vehicle'), require('./routes/tollRoutes'));
 app.use('/api/tyres', requireAuth, gate('vehicle'), require('./routes/tyreRoutes'));
 app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRoutes'));

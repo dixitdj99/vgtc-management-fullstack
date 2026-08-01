@@ -13,6 +13,7 @@ import {
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import EwayBillPanel from '../components/EwayBillPanel';
 
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -603,6 +604,32 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [isConfirmingChallan, setIsConfirmingChallan] = useState(false);
   const [challanWarning, setChallanWarning] = useState('');
 
+  /* ── E-way bill → challan ──
+     The bill the operator tapped, so the challan that comes out of it can be
+     recorded against it and the bill stops being offered. Cleared whenever the
+     form is emptied, or a later challan would be credited to the wrong load. */
+  const [ewbSource, setEwbSource] = useState(null);
+  const [ewbRefresh, setEwbRefresh] = useState(0);
+
+  const applyEwbDraft = (ewbNo, draft) => {
+    setChalForm(f => ({
+      ...f,
+      // LR number is VGTC's own and is deliberately left for the operator.
+      truckNo: draft.truckNo ? cleanTruckNo(draft.truckNo) : f.truckNo,
+      material: draft.material || f.material,
+      quantity: draft.quantity ? String(draft.quantity) : f.quantity,
+      partyName: draft.partyName ? resolvePartyName(draft.partyName, partySuggestions) : f.partyName,
+      partyCode: draft.partyCode || f.partyCode,
+      billNo: draft.billNo || f.billNo,
+      date: draft.date || f.date,
+      remark: draft.remark || f.remark,
+    }));
+    setEwbSource(ewbNo);
+    setErr('');
+    // The form sits below the panel; on a phone it is off screen entirely.
+    setTimeout(() => document.getElementById('challan-lr-input')?.focus(), 50);
+  };
+
   const triggerChallan = e => {
     e.preventDefault(); setErr('');
     if (!chalForm.lrNo) { setErr('LR Number required'); return; }
@@ -667,6 +694,17 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               quantity: toDeduct
            });
         }
+      }
+
+      // Retire the e-way bill this came from, so the next sync stops offering it.
+      // Deliberately after the challan exists and deliberately swallowed: the
+      // challan is saved either way, and a failure here only means the bill is
+      // offered once more, which the operator can hide.
+      if (ewbSource) {
+        await ax.post(`/eway/${ewbSource}/status`, { status: 'used', challanId: res.data.id })
+          .catch(e => console.error('[EWB] Could not mark bill as used:', e.message));
+        setEwbSource(null);
+        setEwbRefresh(n => n + 1);
       }
 
       setChalForm(getEmptyChal()); fetchAll();
@@ -1136,6 +1174,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* ── CHALLAN TAB ── */}
       {tab === 'challan' && (
         <div>
+          <EwayBillPanel materials={MATS} onApply={applyEwbDraft} refreshKey={ewbRefresh} />
           <div className="card" style={{ marginBottom: '14px' }}>
             <div className="card-header"><div className="card-title-block">
               <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}><Tag size={17} /></div>
@@ -1144,9 +1183,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             <form onSubmit={triggerChallan} style={{ padding: '18px 20px' }}>
               <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
                 <div className="field-h">
-                  <label>LR Number *</label>
+                  <label>LR Number *{ewbSource && <span style={{ color: '#10b981', marginLeft: '6px', textTransform: 'none', fontWeight: 700 }}>— rest filled from EWB {ewbSource}</span>}</label>
                   <div style={{ position: 'relative', width: '100%' }}>
-                    <input className="fi" type="text" placeholder="Enter LR number" required list="stock-lr-list"
+                    <input id="challan-lr-input" className="fi" type="text" placeholder="Enter LR number" required list="stock-lr-list"
                       value={chalForm.lrNo || ''} onChange={e => setChalForm(f => ({ ...f, lrNo: e.target.value }))} />
                     <datalist id="stock-lr-list">
                       {lrs.map(l => <option key={l.id} value={l.lrNo} />)}
