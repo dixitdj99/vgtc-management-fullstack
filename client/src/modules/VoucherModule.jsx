@@ -578,7 +578,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     ${deliveryTableHTML}
 
     <table class="money">
-      <tr><td style="font-weight:700">Gross ${hasDeliveries ? '(Σ)' : `(${v.weight}×${v.rate})`}</td><td class="amt">${fmtRsP(n.gross)}</td></tr>
+      <tr><td style="font-weight:700">Gross ${hasDeliveries ? `(${v.deliveries.length} destinations)` : `(${v.weight}×${v.rate})`}</td><td class="amt">${fmtRsP(n.gross)}</td></tr>
       ${deductionRows.map(d => `<tr class="ded"><td>${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</td><td class="amt">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
       ${deductionRows.length > 0 && !n.dieselPending ? `<tr class="tot"><td>Total Deductions</td><td class="amt">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
     </table>
@@ -1941,8 +1941,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.weight || '—'}</span>)}
-                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px' }}>
-                                                        Σ {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0).toFixed(2)}
+                                                    {/* The lines above are one destination each; this is the load.
+                                                        Spelled out — a sigma reads as noise to anyone who did not
+                                                        put it there. */}
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                                                        Total {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0).toFixed(2)}
                                                     </span>
                                                 </div>
                                                 : v.weight}
@@ -1951,8 +1954,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px', fontWeight: 700 }}>{d.bags || '—'}</span>)}
-                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px' }}>
-                                                        Σ {v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0).toLocaleString('en-IN')}
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                                                        Total {v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0).toLocaleString('en-IN')}
                                                     </span>
                                                 </div>
                                                 : <><div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>

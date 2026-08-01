@@ -311,8 +311,10 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
         {editing ? FI('weight', '60px') : (v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
               {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '10px' }}>{d.weight}</span>)}
-              <span style={{ fontWeight: 900, color: 'var(--accent)', fontSize: '11px', borderTop: '1px solid var(--border)', paddingTop: '1px' }}>
-                Σ {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0), 0).toFixed(2)}
+              {/* Same wording as the voucher list — the sigma meant "total" and
+                  only read that way to whoever wrote it. */}
+              <span style={{ fontWeight: 900, color: 'var(--accent)', fontSize: '11px', borderTop: '1px solid var(--border)', paddingTop: '1px', whiteSpace: 'nowrap' }}>
+                Total {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0), 0).toFixed(2)}
               </span>
             </div>
           : (v.weight || '—'))}
