@@ -1033,6 +1033,43 @@ test('ewb: the sync job is registered and no-ops without credentials', async () 
   assert(result.result?.skipped === true, 'it should skip, not attempt a call');
 });
 
+test('apphosting.yaml is valid, including duplicate keys', async () => {
+  // A duplicate `availability:` under CRON_SECRET made App Hosting reject the
+  // whole file, so two rollouts failed and production sat on an old bundle with
+  // no error visible from the repo. A plain YAML load does NOT catch this — it
+  // keeps the last duplicate and calls the file fine — so this parses by hand.
+  const fs = require('fs');
+  const path = require('path');
+  const text = fs.readFileSync(path.join(__dirname, '..', '..', 'apphosting.yaml'), 'utf8');
+
+  const entries = [];
+  let current = null;
+  for (const [i, raw] of text.split(/\r?\n/).entries()) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    const item = line.match(/^ {2}- (\w[\w-]*):/);
+    if (item) { current = { keys: [item[1]], line: i + 1 }; entries.push(current); continue; }
+    const key = line.match(/^ {4}(\w[\w-]*):/);
+    if (key && current) current.keys.push(key[1]);
+  }
+
+  assert(entries.length > 0, 'no env entries were parsed — the check itself is broken');
+  for (const e of entries) {
+    const dupes = e.keys.filter((k, i) => e.keys.indexOf(k) !== i);
+    assert(!dupes.length, `apphosting.yaml line ${e.line}: duplicate key(s) ${[...new Set(dupes)].join(', ')}`);
+  }
+
+  // Every env entry has to resolve to something, or the rollout fails the same
+  // silent way. An empty value is the other shape that has caused trouble here.
+  const envEntries = entries.filter(e => e.keys[0] === 'variable');
+  for (const e of envEntries) {
+    assert(e.keys.includes('value') || e.keys.includes('secret'),
+      `apphosting.yaml line ${e.line}: env entry has neither a value nor a secret`);
+  }
+  const named = [...text.matchAll(/^ {2}- variable: (\w+)/gm)].map(m => m[1]);
+  assert(named.includes('JWT_SECRET'), 'JWT_SECRET missing — the server refuses to start without it');
+});
+
 /* ── Online advances ──────────────────────────────────────────────────────── */
 
 test('voucher: raising a paid online advance puts it back on the pay list', async () => {
@@ -1088,6 +1125,97 @@ test('voucher: an unpaid online advance is visible however the voucher is typed'
     assert(seen, 'GET /vouchers must return it regardless of type');
     assert(parseFloat(seen.advanceOnline) > 0 && !seen.isOnlinePaid, 'it should count as unpaid');
   } finally { await del('/vouchers/' + id); }
+});
+
+/* ── All-Over Balance Sheet ───────────────────────────────────────────────── */
+
+const loadAllBalance = () => {
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx');
+  // The module imports React and BalanceSheet, which cannot load here. The two
+  // pure functions under test are plain JS, so pull them out and evaluate those.
+  const fs = require('fs');
+  const src = fs.readFileSync(p, 'utf8');
+  const grab = (name) => {
+    const start = src.indexOf(`export function ${name}`);
+    assert(start !== -1, `${name} is not exported from AllBalanceSheet.jsx`);
+    // Skip the parameter list before hunting for the body — a default like
+    // `permissions = {}` otherwise looks exactly like the opening brace.
+    let i = src.indexOf('(', start), parens = 0;
+    for (; i < src.length; i++) {
+      if (src[i] === '(') parens++;
+      else if (src[i] === ')' && --parens === 0) { i++; break; }
+    }
+    let depth = 0;
+    i = src.indexOf('{', i);
+    const bodyStart = i;
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) break;
+    }
+    assert(bodyStart !== -1 && i < src.length, `could not read the body of ${name}`);
+    return src.slice(start, i + 1).replace('export function', 'function');
+  };
+  const meta = src.slice(src.indexOf('export const TYPE_META'), src.indexOf('const fmtRs'))
+    .replace('export const', 'const');
+  // eslint-disable-next-line no-new-func
+  return new Function(`${meta}\n${grab('visibleTypes')}\n${grab('groupIntoBatches')}\nreturn { TYPE_META, visibleTypes, groupIntoBatches };`)();
+};
+
+test('all-balance: every voucher type maps to a balance permission', async () => {
+  // A type missing from the map is invisible on the combined sheet, and nothing
+  // says so — the same shape of bug as the pay screen's hard-coded six.
+  const { TYPE_META } = loadAllBalance();
+  const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
+  const missing = TYPES.filter(t => !TYPE_META[t]);
+  assert(!missing.length, `types missing from TYPE_META: ${missing.join(', ')}`);
+
+  const fs = require('fs');
+  const path = require('path');
+  const cat = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'permissions', 'catalogue.js'), 'utf8');
+  const catKeys = new Set([...cat.matchAll(/key:\s*'([^']+)'/g)].map(m => m[1]));
+  for (const [type, meta] of Object.entries(TYPE_META)) {
+    assert(catKeys.has(meta.permKey), `${type} maps to ${meta.permKey}, which is not in the catalogue`);
+  }
+  assert(catKeys.has('balance_all'), 'balance_all must be in the catalogue for the nav entry to be grantable');
+});
+
+test('all-balance: the combined sheet shows only plants the user already holds', async () => {
+  // It is a convenience over the six sheets, not a way around them.
+  const { visibleTypes } = loadAllBalance();
+  assert(visibleTypes('admin', {}).length === 6, 'admin should see all six');
+
+  const clerk = visibleTypes('user', { balance_kosli: 'view', balance_jkl: 'edit' });
+  assert(clerk.length === 2, `expected 2 types, got ${clerk.join(', ')}`);
+  assert(clerk.includes('Kosli_Bill') && clerk.includes('JK_Lakshmi'), `wrong types: ${clerk.join(', ')}`);
+
+  // balance_all on its own grants the screen, not the data behind it.
+  assert(visibleTypes('user', { balance_all: 'edit' }).length === 0,
+    'balance_all alone must not reveal any plant');
+});
+
+test('all-balance: a mixed selection becomes one batch per plant and truck', async () => {
+  // A batch belongs to a truck within a plant. Getting this wrong files a trip
+  // under the wrong plant, and the sheet it came from never shows it as gone.
+  const { groupIntoBatches } = loadAllBalance();
+  const batches = groupIntoBatches([
+    { id: 'a', type: 'Kosli_Bill', truckNo: 'HR47G9999', date: '2026-07-02' },
+    { id: 'b', type: 'Kosli_Bill', truckNo: 'HR47G9999', date: '2026-07-20' },
+    { id: 'c', type: 'JK_Lakshmi', truckNo: 'HR47G9999', date: '2026-07-11' },
+    { id: 'd', type: 'Kosli_Bill', truckNo: 'HR63B8291', date: '2026-07-05' },
+  ]);
+  assert(batches.length === 3, `expected 3 batches, got ${batches.length}`);
+
+  const same = batches.find(b => b.type === 'Kosli_Bill' && b.truckNo === 'HR47G9999');
+  assert(same.voucherIds.length === 2, `expected 2 trips together, got ${same.voucherIds.length}`);
+  // The period is taken from what was actually ticked, not from a preset.
+  assert(same.periodFrom === '2026-07-02' && same.periodTo === '2026-07-20',
+    `period wrong: ${same.periodFrom}..${same.periodTo}`);
+
+  const other = batches.find(b => b.type === 'JK_Lakshmi');
+  assert(other.voucherIds.length === 1 && other.voucherIds[0] === 'c', 'the other plant must be its own batch');
+  assert(batches.every(b => b.type && b.truckNo && b.voucherIds.length),
+    'every batch needs a type, a truck and trips — the API rejects it otherwise');
 });
 
 /* ── Cashbook: paying someone who is not on the roster ────────────────────── */

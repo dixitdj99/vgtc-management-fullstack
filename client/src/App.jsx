@@ -10,6 +10,7 @@ import AdminPage from './pages/AdminPage';
 import LRModule from './modules/LRModule';
 import VoucherModule from './modules/VoucherModule';
 import BalanceSheet from './modules/BalanceSheet';
+import AllBalanceSheet from './modules/AllBalanceSheet';
 import CashbookModule from './modules/CashbookModule';
 import StockModule from './modules/StockModule';
 import VehicleModule from './modules/VehicleModule';
@@ -416,6 +417,9 @@ function AppInner() {
         { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
+    // The read-across sheet. Two entries because the nav filters strictly on
+    // section, and this one belongs under both plants — same component.
+    { id: 'balance_all_dump', label: 'All Balance Sheet', Icon: BarChart3, color: '#0ea5e9', section: 'jksuper', permKey: 'balance_all' },
     {
       id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli', sub: [
         { id: 'overview', label: 'Overview' },
@@ -494,6 +498,7 @@ function AppInner() {
         { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
+    { id: 'balance_all_jharli', label: 'All Balance Sheet', Icon: BarChart3, color: '#0ea5e9', section: 'jharli', permKey: 'balance_all' },
     {
       id: 'stock_jharli', label: 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jharli', permKey: 'stock_jkl', sub: [
         { id: 'overview', label: 'Overview' },
@@ -656,6 +661,9 @@ function AppInner() {
       {id === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
       {id === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
       {id === 'balance_jharli' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
+      {/* One component, two nav ids — the sheet reads across every plant the
+          user is allowed, so it does not vary by which section they came from. */}
+      {(id === 'balance_all_dump' || id === 'balance_all_jharli') && <AllBalanceSheet role={user.role} permissions={user.permissions} />}
       {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
       {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule />}

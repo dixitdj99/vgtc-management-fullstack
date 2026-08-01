@@ -13,7 +13,12 @@ import ColumnFilter from '../components/ColumnFilter';
 const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
 
-function calcNet(v, vehicle) {
+/**
+ * The deduction rules, exported so the All-Over sheet computes identical
+ * figures rather than a second copy that drifts. A combined view that disagrees
+ * with the sheets it summarises is worse than no combined view.
+ */
+export function calcNet(v, vehicle) {
   const gross = v.deliveries?.length > 0
     ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0) * (parseFloat(d.rate)||0), 0)
     : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -35,7 +40,7 @@ function calcNet(v, vehicle) {
   }
   return net;
 }
-function calcGross(v) {
+export function calcGross(v) {
   if (v.deliveries?.length > 0)
     return v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0) * (parseFloat(d.rate)||0), 0);
   return (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -52,6 +57,28 @@ function daysAgo(dateStr) {
   return Math.floor((Date.now() - new Date(dateStr)) / 86400000);
 }
 
+/**
+ * Why a trip is not fit to be sent to Pay.
+ *
+ * Sending an unsettled entry pushes an incomplete figure into Pay, and once it
+ * is paid the balance sheet is wrong with no obvious sign why — so it is caught
+ * here rather than discovered later.
+ *
+ * Module scope so the All-Over sheet applies the same bar. It was a useCallback
+ * with no dependencies; nothing about it was ever per-render.
+ *
+ * @returns {string[]} empty when the trip is ready
+ */
+export function payBlockers(v) {
+  const problems = [];
+  const dieselVal = parseFloat(v.advanceDiesel);
+  const hasDiesel = (!isNaN(dieselVal) && dieselVal > 0) || v.advanceDiesel === 'FULL' || v.isFullTank;
+  if (hasDiesel && !v.isDieselVerified) problems.push('Diesel not verified');
+  if ((parseFloat(v.advanceOnline) || 0) > 0 && !v.isOnlinePaid) problems.push('Online advance not paid');
+  if (!(parseFloat(v.rate) > 0)) problems.push('Rate not entered');
+  return problems;
+}
+
 function monthLabel(ym) {
   const [y, m] = ym.split('-');
   return new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -59,12 +86,12 @@ function monthLabel(ym) {
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-const TH = {
+export const TH = {
   padding: '10px 14px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
   textTransform: 'uppercase', letterSpacing: '0.07em', background: 'var(--bg-th)',
   borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap'
 };
-const TD = { padding: '9px 12px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
+export const TD = { padding: '9px 12px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
 const TDF = { ...TD, fontWeight: 800, color: 'var(--text)', background: 'var(--bg-tf)', borderTop: '2px solid var(--border)' };
 
 /* ── Monthly P&L Report ── */
@@ -210,7 +237,14 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
 }
 
 /* ── Editable Row ── */
-function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL, onVerifyDiesel }) {
+/**
+ * @param {React.ReactNode} [leadCells] extra <td>s inserted after the row number.
+ *   The per-plant sheets pass nothing — they are already scoped to one plant and
+ *   one truck. The All-Over sheet passes Plant and Truck, which is the only way
+ *   its rows differ, so it can share this row rather than keep a second copy of
+ *   editing, deleting, WhatsApp and diesel verification.
+ */
+export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL, onVerifyDiesel, leadCells = null }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -274,6 +308,7 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
           style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
       </td>
       <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
+      {leadCells}
       <td style={{ ...TD }}>{v.date}</td>
       <td style={{ ...TD }}>
         {v.deliveries?.length > 0
@@ -1008,21 +1043,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     [selVehicle, sentVoucherIds],
   );
 
-  /**
-   * An entry is not fit to be paid until its numbers are settled. Sending it
-   * anyway pushes an incomplete figure into Pay, and once paid the balance
-   * sheet is wrong with no obvious sign why — so it is blocked here rather than
-   * discovered later.
-   */
-  const payBlockers = useCallback((v) => {
-    const problems = [];
-    const dieselVal = parseFloat(v.advanceDiesel);
-    const hasDiesel = (!isNaN(dieselVal) && dieselVal > 0) || v.advanceDiesel === 'FULL' || v.isFullTank;
-    if (hasDiesel && !v.isDieselVerified) problems.push('Diesel not verified');
-    if ((parseFloat(v.advanceOnline) || 0) > 0 && !v.isOnlinePaid) problems.push('Online advance not paid');
-    if (!(parseFloat(v.rate) > 0)) problems.push('Rate not entered');
-    return problems;
-  }, []);
+  // payBlockers now lives at module scope — see the top of this file.
 
   // Raised instead of sending when any ticked entry is not ready.
   const [sendBlocked, setSendBlocked] = useState(null);

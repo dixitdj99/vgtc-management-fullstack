@@ -41,7 +41,7 @@ export const LOCATIONS = [
       { id: 'jkl_dump', label: 'JK Lakshmi Dump', modules: ['voucher_jkl_dump', 'balance_jkl_dump', 'stock_jkl'] },
       { id: 'jkl_factory', label: 'JK Lakshmi Factory', modules: ['lr_jkl', 'voucher_jkl', 'balance_jkl'] },
       { id: 'jksuper_factory', label: 'JK Super Factory', modules: ['voucher_jksuper', 'balance_jksuper'] },
-      { id: 'jharli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'jharli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
     ],
   },
   {
@@ -52,7 +52,7 @@ export const LOCATIONS = [
     godownKey: 'kosli',
     groups: [
       { id: 'kosli_plant', label: 'Kosli Plant Modules', modules: ['lr_dump', 'bill_kosli', 'balance_kosli', 'stock_kosli'] },
-      { id: 'kosli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'kosli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
     ],
   },
   {
@@ -63,7 +63,7 @@ export const LOCATIONS = [
     godownKey: 'jhajjar',
     groups: [
       { id: 'jhajjar_plant', label: 'Jhajjar Plant Modules', modules: ['lr_dump', 'bill_jhajjar', 'balance_jhajjar', 'stock_jhajjar'] },
-      { id: 'jhajjar_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'jhajjar_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
     ],
   },
   {
@@ -74,7 +74,7 @@ export const LOCATIONS = [
     godownKey: 'bahadurgarh',
     groups: [
       { id: 'bahadurgarh_plant', label: 'Bahadurgarh Plant Modules', modules: ['lr_dump', 'bill_bahadurgarh', 'balance_bahadurgarh', 'stock_bahadurgarh'] },
-      { id: 'bahadurgarh_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'bahadurgarh_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
     ],
   },
 ];
@@ -95,6 +95,9 @@ export const MODULES = [
   { key: 'balance_jksuper', label: 'Balance — JK Super' },
   { key: 'balance_jkl_dump', label: 'Balance — JKL Dump' },
   { key: 'balance_jkl', label: 'Balance — JK Lakshmi' },
+  // Grants the combined read-across screen, not the plants on it: rows are still
+  // limited to the balance_* keys above, so this alone shows an empty sheet.
+  { key: 'balance_all', label: 'Balance — All Plants (combined)' },
   { key: 'stock_kosli', label: 'Kosli Stock' },
   { key: 'stock_jhajjar', label: 'Jhajjar Stock' },
   { key: 'stock_bahadurgarh', label: 'Bahadurgarh Stock' },
