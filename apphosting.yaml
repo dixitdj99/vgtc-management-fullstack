@@ -100,5 +100,8 @@ env:
     value: "vgtc-cron-secret-default-2026"
     availability:
       - RUNTIME
-    availability:
-      - RUNTIME
+# `availability` was listed twice under CRON_SECRET above. App Hosting validates
+# this file before it builds anything and rejects duplicate keys outright, so the
+# whole rollout failed with "Invalid apphosting.yaml" and production silently
+# stayed on the previous bundle. Note that a plain yaml.safe_load does NOT catch
+# this — it keeps the last duplicate and reports the file as fine.
