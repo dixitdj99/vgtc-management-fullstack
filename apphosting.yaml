@@ -129,12 +129,22 @@ env:
     value: ""
     availability:
       - RUNTIME
-  - variable: EWB_CLIENT_ID
-    secret: EWB_CLIENT_ID
-  - variable: EWB_CLIENT_SECRET
-    secret: EWB_CLIENT_SECRET
-  - variable: EWB_PASSWORD
-    secret: EWB_PASSWORD
+  #
+  # The four credentials below are COMMENTED OUT ON PURPOSE. App Hosting resolves
+  # every `secret:` reference at deploy time and fails the whole rollout if one is
+  # missing — so naming a secret before creating it does not merely leave a
+  # feature off, it blocks every unrelated change behind it. That is exactly what
+  # happened when these were added ahead of the credentials.
+  #
+  # Uncomment them as step 4 of docs/eway-bill-api-setup.md, AFTER running
+  # `firebase apphosting:secrets:set` for all four — not before.
+  #
+  # - variable: EWB_CLIENT_ID
+  #   secret: EWB_CLIENT_ID
+  # - variable: EWB_CLIENT_SECRET
+  #   secret: EWB_CLIENT_SECRET
+  # - variable: EWB_PASSWORD
+  #   secret: EWB_PASSWORD
   # NIC's RSA public key, used to encrypt the password and app_key at login.
-  - variable: EWB_PUBLIC_KEY
-    secret: EWB_PUBLIC_KEY
+  # - variable: EWB_PUBLIC_KEY
+  #   secret: EWB_PUBLIC_KEY

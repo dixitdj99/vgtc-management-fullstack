@@ -88,6 +88,13 @@ the whitelisted IP is theirs, not yours.
 
 ## Step 4 — Store the secrets
 
+**Create the secrets first, then uncomment them in `apphosting.yaml` — in that
+order.** App Hosting resolves every `secret:` reference at deploy time and fails
+the entire rollout if one is missing, so a secret named before it exists blocks
+every unrelated change from reaching production until it is created or the line
+is removed. The four EWB entries in `apphosting.yaml` are commented out for
+exactly this reason.
+
 ```bash
 firebase apphosting:secrets:set EWB_CLIENT_ID     --project vgtc-management
 firebase apphosting:secrets:set EWB_CLIENT_SECRET --project vgtc-management
@@ -95,9 +102,16 @@ firebase apphosting:secrets:set EWB_PASSWORD      --project vgtc-management
 firebase apphosting:secrets:set EWB_PUBLIC_KEY    --project vgtc-management
 ```
 
-Then in `apphosting.yaml` set `EWB_GSTIN`, `EWB_USERNAME`, `EWB_BASE_URL`, and
-finally `EWB_ENABLED: "true"`. Until that last flag flips, the server makes no
-outbound call at all.
+Confirm each one landed before touching the yaml:
+
+```bash
+firebase apphosting:secrets:describe EWB_CLIENT_ID --project vgtc-management
+```
+
+Then uncomment the four `EWB_*` secret blocks in `apphosting.yaml`, set
+`EWB_GSTIN`, `EWB_USERNAME` and `EWB_BASE_URL`, and finally flip
+`EWB_ENABLED: "true"`. Until that last flag flips, the server makes no outbound
+call at all.
 
 ## Step 5 — Schedule the sync
 
