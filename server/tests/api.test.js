@@ -729,5 +729,80 @@ test('permission catalogue covers every nav key', async () => {
   assert(missing.length === 0, `nav keys missing from the catalogue: ${missing.join(', ')}`);
 });
 
+/* ── Voucher extra-money lines ──────────────────────────────────────────────
+ *
+ * A voucher can now carry several extras, each with its own remark, while
+ * `extraCash` stays the total. Every net calculation in the app still reads
+ * that one field, so these tests guard the invariant the whole design rests
+ * on: the total must never drift from the list.
+ */
+
+// The client helper is an ES module; load it the way the bundler would.
+const loadClientExtras = () => {
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'utils', 'voucherExtras.js');
+  return import(pathToFileURL(p).href);
+};
+
+test('extras: a voucher saved before the list reads back as one line', async () => {
+  const { readExtras } = await loadClientExtras();
+  const rows = readExtras({ extraCash: '500', extraCashRemark: 'grease ke paise' });
+  assert(rows.length === 1, `expected 1 line, got ${rows.length}`);
+  assert(rows[0].amount === '500', `amount lost: ${rows[0].amount}`);
+  assert(rows[0].remark === 'grease ke paise', `remark lost: ${rows[0].remark}`);
+});
+
+test('extras: extraCash stays the total of the list', async () => {
+  const { extrasPayload } = await loadClientExtras();
+  const out = extrasPayload([
+    { amount: '500', remark: 'grease' },
+    { amount: 200, remark: 'dhaba' },
+  ]);
+  assert(out.extraCash === 700, `total should be 700, got ${out.extraCash}`);
+  assert(out.extras.length === 2, `expected 2 extras, got ${out.extras.length}`);
+  assert(out.extraCashRemark === 'grease; dhaba', `remarks not joined: ${out.extraCashRemark}`);
+});
+
+test('extras: clearing the last line clears the legacy pair too', async () => {
+  const { extrasPayload } = await loadClientExtras();
+  const out = extrasPayload([]);
+  // A stale extraCash here would keep deducting money the user just removed.
+  assert(out.extraCash === '', `extraCash should be blank, got ${JSON.stringify(out.extraCash)}`);
+  assert(out.extraCashRemark === '', `remark should be blank, got ${out.extraCashRemark}`);
+  assert(out.extras.length === 0, 'extras should be empty');
+});
+
+test('extras: blank rows an open form leaves behind are dropped', async () => {
+  const { extrasPayload } = await loadClientExtras();
+  const out = extrasPayload([{ amount: '300', remark: 'toll' }, { amount: '', remark: '' }]);
+  assert(out.extras.length === 1, `expected 1 kept row, got ${out.extras.length}`);
+  assert(out.extraCash === 300, `total should be 300, got ${out.extraCash}`);
+});
+
+test('extras: splitting one amount into two does not change what is owed', async () => {
+  const { extrasPayload, readExtras, extrasTotal } = await loadClientExtras();
+  const before = { extraCash: '700', extraCashRemark: 'grease and dhaba' };
+  const after = { ...before, ...extrasPayload([{ amount: 500, remark: 'grease' }, { amount: 200, remark: 'dhaba' }]) };
+  assert(extrasTotal(readExtras(after)) === extrasTotal(readExtras(before)),
+    'the deduction changed when the amount was split into two lines');
+});
+
+test('extras: the PDF prints one row per extra, remark kept off the label', async () => {
+  const { printableExtras } = require('../utils/voucherExtras');
+  const rows = printableExtras({ extras: [{ amount: 500, remark: 'grease' }, { amount: 200, remark: '' }] });
+  assert(rows.length === 2, `expected 2 rows, got ${rows.length}`);
+  assert(rows[0].remark === 'grease', `remark lost: ${rows[0].remark}`);
+  // A remark with no money behind it is a note, not a deduction.
+  const noMoney = printableExtras({ extras: [{ amount: 0, remark: 'just a note' }] });
+  assert(noMoney.length === 0, `a zero-amount extra should not print, got ${noMoney.length}`);
+});
+
+test('extras: the PDF still reads vouchers that predate the list', async () => {
+  const { printableExtras } = require('../utils/voucherExtras');
+  const rows = printableExtras({ extraCash: '450', extraCashRemark: 'extra diye hai grees ke' });
+  assert(rows.length === 1 && rows[0].amount === 450, `legacy extra not read: ${JSON.stringify(rows)}`);
+  assert(printableExtras({}).length === 0, 'a voucher with no extras should print none');
+});
+
 // Run
 runAll();

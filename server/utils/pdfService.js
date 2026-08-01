@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit-table');
 const fs = require('fs');
 const path = require('path');
+const { printableExtras } = require('./voucherExtras');
 
 const NONE_PUMP = 'None';
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
@@ -140,8 +141,10 @@ async function generateVoucherPDF(v, outputPath) {
         { label: 'Commission',        value: commission },
         { label: 'Tyre Puncture',     value: tyrePuncture },
         { label: 'Tyre Greasing & Air', value: tyreGreasing },
-        { label: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, value: extraCash },
-    ].filter(d => d.value > 0 || d.isPending);
+    ].filter(d => d.value > 0 || d.isPending)
+        // One row per extra, remark carried as a note. Folded into the label it
+        // ran under the amount, which is printed at the same y.
+        .concat(printableExtras(v).map(e => ({ label: 'Extra Cash', note: e.remark, value: e.amount })));
 
     return new Promise((resolve, reject) => {
         if (isBill) {
@@ -387,6 +390,12 @@ async function generateVoucherPDF(v, outputPath) {
             doc.fontSize(9).font('Helvetica').fillColor('#000').text(d.label, M + 6, y);
             doc.font('Helvetica-Bold').text(d.isPending ? 'FULL (Pending)' : `- Rs.${d.value.toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
             y += 13;
+            if (d.note) {
+                // Half the column, so a long remark wraps instead of running into
+                // the amount printed above it.
+                doc.fontSize(7).font('Helvetica').fillColor('#000').text(d.note, M + 10, y - 2, { width: (CW - 20) / 2 });
+                y += Math.max(9, doc.heightOfString(d.note, { width: (CW - 20) / 2 })) + 1;
+            }
         });
 
         if (deductions.length > 0 && !dieselPending) {

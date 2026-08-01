@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { extrasPayload } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
@@ -231,7 +232,15 @@ function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissi
   const hasVehicleExp = (parseFloat(v.commission) || 0) + (parseFloat(v.tyrePuncture) || 0) + (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.extraCash) || 0) > 0;
   const executeSave = async () => {
     setSaving(true); setIsConfirming(false);
-    try { await ax.patch(API_V + '/' + v.id, form); setEditing(false); onSave(); }
+    // The sheet edits Extra as one lump figure, but a voucher can hold several
+    // extra lines each with its own remark. Collapse them to one line only when
+    // that figure was actually touched — otherwise saving some other column here
+    // would quietly flatten the driver's remarks.
+    const extraTouched = String(form.extraCash ?? '') !== String(v.extraCash ?? '');
+    const payload = extraTouched
+      ? { ...form, ...extrasPayload([{ amount: form.extraCash, remark: form.extraCashRemark }]) }
+      : form;
+    try { await ax.patch(API_V + '/' + v.id, payload); setEditing(false); onSave(); }
     catch { alert('Save failed'); } finally { setSaving(false); }
   };
   const S = (k, val) => setForm(f => ({ ...f, [k]: val }));

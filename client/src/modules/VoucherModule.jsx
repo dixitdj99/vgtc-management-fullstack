@@ -12,6 +12,7 @@ import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import { openReceiptWindow } from '../utils/receiptPrint';
+import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
 
 const PAGE_SIZE = 20;
 
@@ -75,7 +76,7 @@ const getNet = (v) => {
     const commission = parseFloat(v.commission) || 0;
     const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
     const tyreGreasingAir = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
-    const extraCash = parseFloat(v.extraCash) || 0;
+    const extraCash = extrasTotal(readExtras(v));
     const vehicleExpenses = tyrePuncture + tyreGreasingAir + extraCash;
     const totalDeductions = diesel + cash + online + munshi + commission + vehicleExpenses;
     return { gross, diesel, cash, online, munshi, commission, tyrePuncture, tyreGreasingAir, extraCash, vehicleExpenses, totalDeductions, net: gross - totalDeductions, dieselPending };
@@ -95,6 +96,17 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
         : (parseInt(v.bags) || 0);
 
+    // The rate the freight was worked out at. Multi-delivery vouchers can carry a
+    // different rate per drop, so show each one rather than a misleading single figure.
+    const rateLabel = (() => {
+        const rates = [...new Set((hasDeliveries ? v.deliveries.map(d => d.rate) : [v.rate])
+            .map(r => parseFloat(r) || 0).filter(r => r > 0))];
+        if (!rates.length) return '';
+        return rates.map(r => `Rs. ${r.toLocaleString('en-IN')}`).join(' / ') + ' / MT';
+    })();
+
+    // Each extra is its own row carrying its own remark. Folding the remark into
+    // the label made a long note push the amount clean off the slip.
     const deductionRows = [
         { lbl: 'Diesel Advance', val: n.diesel, raw: v.advanceDiesel },
         { lbl: 'Cash Advance', val: n.cash, raw: v.advanceCash },
@@ -103,8 +115,8 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         { lbl: 'Commission', val: n.commission, raw: v.commission },
         { lbl: 'Tyre Puncture', val: n.tyrePuncture },
         { lbl: 'Tyre Greasing & Air', val: n.tyreGreasingAir },
-        { lbl: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, val: n.extraCash },
-    ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'));
+    ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'))
+        .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', note: e.remark, val: e.amount })));
 
     if (brand === 'jklakshmi') {
         openReceiptWindow({
@@ -147,6 +159,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 8px;
         padding: 2.5px 6px;
         border-bottom: 1.5px solid #000;
         font-size: 9.5pt;
@@ -157,11 +170,27 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         font-size: 8.5pt;
         text-transform: uppercase;
         color: #000;
-        flex-shrink: 0;
+        /* Must be allowed to shrink. A long remark used to hold the label at its
+           full width and squeeze the amount off the right-hand edge. */
+        min-width: 0;
+      }
+      /* The remark sits under its label in normal case — uppercase runs long and
+         a remark is a sentence, not a heading. */
+      .lbl .note {
+        display: block;
+        font-weight: 600;
+        font-size: 7.5pt;
+        text-transform: none;
+        letter-spacing: 0;
+        line-height: 1.2;
+        margin-top: 0.5px;
+        word-break: break-word;
       }
       .val {
         font-weight: 900;
         text-align: right;
+        flex-shrink: 0;
+        white-space: nowrap;
       }
       .net-banner {
         background: #000;
@@ -242,11 +271,12 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
           <div class="line"><span class="lbl">Party Name</span><span class="val">${v.partyName || '—'}</span></div>
           <div class="line"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
           <div class="line"><span class="lbl">Bags / Weight</span><span class="val">${totalBags} Bags / ${totalWeight} MT</span></div>
+          ${rateLabel ? `<div class="line"><span class="lbl">Rate</span><span class="val">${rateLabel}</span></div>` : ''}
         </div>
 
         <div class="sec">
           <div class="line"><span class="lbl">Gross Freight</span><span class="val">Rs. ${Math.round(n.gross).toLocaleString('en-IN')}</span></div>
-          ${deductionRows.map(d => `<div class="line"><span class="lbl">${d.lbl}</span><span class="val">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : 'Rs. ' + Math.round(d.val).toLocaleString('en-IN')}</span></div>`).join('')}
+          ${deductionRows.map(d => `<div class="line"><span class="lbl">${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</span><span class="val">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : 'Rs. ' + Math.round(d.val).toLocaleString('en-IN')}</span></div>`).join('')}
         </div>
 
         ${n.dieselPending
@@ -268,14 +298,6 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         return;
     }
     // deductionRows already defined above
-
-    const deductionHTML = deductionRows.map(d => {
-        const isDieselPending = d.lbl === 'Diesel Advance' && n.dieselPending;
-        const valDisplay = isDieselPending
-            ? `FULL`
-            : `- Rs.${d.val.toLocaleString()}`;
-        return `<tr><td style="padding:5px 0;color:#000;font-size:13px;font-weight:600">${d.lbl}</td><td style="padding:5px 0;text-align:right;font-size:13px;font-weight:700;color:#000">${valDisplay}</td></tr>`;
-    }).join('');
 
     let html = '';
 
@@ -508,7 +530,8 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
 .dlv-total { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; font-size: 10px; border-top: 1.5px solid #000; padding-top: 3px; }
 .money { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
 .money td { padding: 3px 4px; font-weight: 800; }
-.money .amt { text-align: right; font-weight: 900; }
+.money .amt { text-align: right; font-weight: 900; white-space: nowrap; vertical-align: top; }
+.money .note { display: block; font-size: 8.5px; font-weight: 600; line-height: 1.2; margin-top: 0.5px; }
 .money .ded td { border-bottom: 1px solid #000; }
 .money .tot td { border-top: 1.5px solid #000; font-weight: 900; }
 .net {
@@ -556,7 +579,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
 
     <table class="money">
       <tr><td style="font-weight:700">Gross ${hasDeliveries ? '(Σ)' : `(${v.weight}×${v.rate})`}</td><td class="amt">${fmtRsP(n.gross)}</td></tr>
-      ${deductionRows.map(d => `<tr class="ded"><td>${d.lbl}</td><td class="amt">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
+      ${deductionRows.map(d => `<tr class="ded"><td>${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</td><td class="amt">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
       ${deductionRows.length > 0 && !n.dieselPending ? `<tr class="tot"><td>Total Deductions</td><td class="amt">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
     </table>
 
@@ -587,6 +610,52 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     win.document.write(html); win.document.close();
 }
 
+/* ── Extra money ── */
+
+/**
+ * The extra-money lines on a voucher: an amount and its own remark, as many as
+ * the trip needed. Grease at one dhaba and a puncture tip at the next are two
+ * different things, and lumping them into one figure loses the reason for both.
+ *
+ * Shared by the create form and the edit modal. The edit modal went a long time
+ * with no expense fields at all, which is what a second copy of a form invites.
+ */
+function ExtraMoneyList({ extras = [], onChange }) {
+    const update = (i, k, val) => onChange(extras.map((e, j) => (j === i ? { ...e, [k]: val } : e)));
+    const add = () => onChange([...extras, { amount: '', remark: '' }]);
+    const remove = (i) => onChange(extras.filter((_, j) => j !== i));
+    const total = extrasTotal(extras);
+
+    return (
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>💰 Extra Money</span>
+                {total > 0 && <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b', marginLeft: 'auto' }}>₹{total.toLocaleString('en-IN')}</span>}
+            </div>
+
+            {extras.map((e, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input className="fi" type="number" placeholder="₹0" value={e.amount ?? ''}
+                        onChange={ev => update(i, 'amount', ev.target.value)}
+                        style={{ width: '110px', flexShrink: 0 }} />
+                    <input className="fi" type="text" placeholder="Reason — e.g. grease ke paise" value={e.remark || ''}
+                        onChange={ev => update(i, 'remark', ev.target.value)}
+                        style={{ flex: 1, minWidth: 0 }} />
+                    <button type="button" onClick={() => remove(i)} title="Remove this line"
+                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '7px', color: '#f43f5e', cursor: 'pointer', padding: '8px', display: 'flex', flexShrink: 0 }}>
+                        <X size={14} />
+                    </button>
+                </div>
+            ))}
+
+            <button type="button" onClick={add}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '9px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 700 }}>
+                <Plus size={13} /> {extras.length ? 'Add another' : 'Add extra money'}
+            </button>
+        </div>
+    );
+}
+
 /* ── Edit Modal ── */
 function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, pumpOptions = [], driverOptions = [] }) {
     const [form, setForm] = useState({
@@ -599,12 +668,19 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
-        startKm: v.startKm || '', endKm: v.endKm || ''
+        startKm: v.startKm || '', endKm: v.endKm || '',
+        tyrePuncture: v.tyrePuncture || '',
+        // Older vouchers split this across tyreGreasing and tyreAir, and getNet
+        // still adds all three. Show the sum, or the field reads empty on a
+        // voucher that is plainly deducting for greasing.
+        tyreGreasingAir: (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) || '',
+        extras: readExtras(v),
     });
     const [saving, setSaving] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
     const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
     const setPartyName = (value) => S('partyName', resolvePartyName(value, partySuggestions));
+    const isSelf = isVGTCTruck(form.truckNo);
 
     // Validate BEFORE the confirm modal opens — not after the user already confirmed
     const requestSave = () => {
@@ -634,7 +710,18 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         setSaving(true); setIsConfirming(false);
         const calc = getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await ax.patch(API_V + '/' + v.id, { ...form, partyName: resolvePartyName(form.partyName, partySuggestions), ...calc });
+            await ax.patch(API_V + '/' + v.id, {
+                ...form,
+                partyName: resolvePartyName(form.partyName, partySuggestions),
+                ...calc,
+                // The greasing field above holds the sum of the legacy pair, so
+                // clear them or the old amounts get deducted a second time.
+                tyreGreasing: '', tyreAir: '',
+                // Deliberately not blanking the tyre fields for a market truck:
+                // isSelf reads a vehicle list that loads asynchronously, and a
+                // modal opened before it arrives would wipe a real charge.
+                ...extrasPayload(form.extras),
+            });
             onSave();
         } catch { alert('Update failed'); } finally { setSaving(false); }
     };
@@ -762,12 +849,30 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             <label htmlFor="ec" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>Rs.20/MT</label>
                         </div>
                     </div>
-                    {isVGTCTruck(form.truckNo) && (
+                    {isSelf && (
                         <div className="field-h">
                             <label><Gauge size={11} style={{ marginRight: '4px' }} /> Odometer</label>
                             <input className="fi" type="number" value={form.endKm} onChange={e => S('endKm', e.target.value)} />
                         </div>
                     )}
+
+                    {/* Same rule as the create form: tyre work on our own trucks,
+                        extra money on any of them. These were missing here entirely,
+                        so an expense entered at creation could not be corrected. */}
+                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
+                    {isSelf && (
+                        <>
+                            <div className="field-h">
+                                <label>🔧 Tyre Puncture</label>
+                                <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => S('tyrePuncture', e.target.value)} />
+                            </div>
+                            <div className="field-h">
+                                <label>⚙️ Tyre Greasing & Air</label>
+                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => S('tyreGreasingAir', e.target.value)} />
+                            </div>
+                        </>
+                    )}
+                    <ExtraMoneyList extras={form.extras} onChange={list => S('extras', list)} />
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
@@ -885,7 +990,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         hasCommission: false, isFullTank: false,
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
         materials: [],
-        tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '',
+        tyrePuncture: '', tyreGreasingAir: '', extras: [],
     });
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
 
@@ -950,6 +1055,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     }, [formOpen, refreshData]);
 
     const isVGTCTruck = (truckNo) => vgtcTrucks.has(cleanTruckNo(truckNo));
+    const isSelfTruck = isVGTCTruck(form.truckNo);
+    // Tyre work only counts towards the total when it is actually on offer.
+    const formExpenseTotal = (isSelfTruck ? (parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) : 0)
+        + extrasTotal(form.extras);
 
     // Update tab when initialTab prop changes from sidebar navigation
     useEffect(() => {
@@ -1178,6 +1287,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             type: vType, brand,
             ...calc,
             materials: form.materials || [],
+            // Tyre work is only offered on our own trucks; if the number was
+            // switched to a market vehicle after typing, those figures go with it.
+            ...(isSelfTruck ? {} : { tyrePuncture: '', tyreGreasingAir: '' }),
+            ...extrasPayload(form.extras),
             ...(hasMultiDelivery ? { deliveries: validDeliveries } : {}),
         };
         try {
@@ -1186,7 +1299,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             if (!lockedType && !isGeneric) rememberSticky('voucher.type', vType);
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             const newVoucher = res.data;
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '' }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [] }));
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
 
@@ -1616,35 +1729,35 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             </div>
 
-                                            {/* ── Vehicle Expenses — VGTC self-trucks only ── */}
-                                            {form.truckNo && isVGTCTruck(cleanTruckNo(form.truckNo)) && (
+                                            {/* ── Vehicle Expenses ──
+                                                Extra money can be handed to any driver, so it shows on every
+                                                truck. Tyre work is VGTC's own maintenance bill and stays on
+                                                self trucks — a market vehicle's punctures are not ours. */}
+                                            {form.truckNo && (
                                                 <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     <button type="button" onClick={() => setShowVehicleExpenses(s => !s)}
                                                         style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
                                                         <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
-                                                        🔧 Vehicle Expenses (Tyre, Extra Cash)
-                                                        {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
-                                                            <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
+                                                        {isSelfTruck ? '🔧 Vehicle Expenses (Tyre, Extra Money)' : '💰 Extra Money'}
+                                                        {formExpenseTotal > 0 && (
+                                                            <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{formExpenseTotal.toLocaleString('en-IN')}</span>
                                                         )}
                                                     </button>
                                                     {showVehicleExpenses && (
                                                         <div className="fg fg-2" style={{ padding: '14px', background: 'var(--bg)', borderRadius: '10px', border: '1px solid var(--border)', gap: '12px' }}>
-                                                            <div className="field-h">
-                                                                <label>🔧 Tyre Puncture</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
-                                                            </div>
-                                                            <div className="field-h">
-                                                                <label>⚙️ Tyre Greasing & Air</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => set('tyreGreasingAir', e.target.value)} />
-                                                            </div>
-                                                            <div className="field-h">
-                                                                <label>💰 Extra Cash</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.extraCash} onChange={e => set('extraCash', e.target.value)} />
-                                                            </div>
-                                                            <div className="field-h">
-                                                                <label>Remark</label>
-                                                                <input className="fi" type="text" placeholder="Reason for extra cash" value={form.extraCashRemark} onChange={e => set('extraCashRemark', e.target.value)} />
-                                                            </div>
+                                                            {isSelfTruck && (
+                                                                <>
+                                                                    <div className="field-h">
+                                                                        <label>🔧 Tyre Puncture</label>
+                                                                        <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
+                                                                    </div>
+                                                                    <div className="field-h">
+                                                                        <label>⚙️ Tyre Greasing & Air</label>
+                                                                        <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => set('tyreGreasingAir', e.target.value)} />
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                            <ExtraMoneyList extras={form.extras} onChange={list => set('extras', list)} />
                                                         </div>
                                                     )}
                                                 </div>
