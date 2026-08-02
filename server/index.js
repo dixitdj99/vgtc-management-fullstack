@@ -155,6 +155,9 @@ app.use('/api/jkl/cashbook', requireAuth, gate('cashbook'), jklCashbookRoutes);
 app.use('/api/vehicles', requireAuth, gate('vehicle'), vehicleRoutes);
 app.use('/api/vehicle-advances', requireAuth, gate(['pay','vehicle']), vehicleAdvanceRoutes);
 app.use('/api/freight-batches', requireAuth, gate('pay'), freightBatchRoutes);
+// Reads the loading receipts and MIGO entries of all five plants to price the
+// labour's work, so it is gated on `pay` rather than on ten separate lr_*/stock_* keys.
+app.use('/api/labour-account', requireAuth, gate('pay'), require('./routes/labourAccountRoutes'));
 app.use('/api/stock-transfers', requireAuth, gate(['stock_kosli','stock_jhajjar','stock_bahadurgarh','stock_jkl']), stockTransferRoutes);
 app.use('/api/mileage', requireAuth, gate('mileage'), mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);

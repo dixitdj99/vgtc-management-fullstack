@@ -195,8 +195,20 @@ const LR_FIT_CSS = `
 const LOADING_TYPE_LABEL = {
   'From Godown': 'From Godown · गोदाम से',
   'Crossing': 'Crossing · क्रॉसिंग',
+  'Direct': 'Direct · डायरेक्ट',
   'Godown': 'From Godown · गोदाम से',   // legacy rows saved before the label changed
 };
+
+/**
+ * A Direct load never passes through the godown, so no labour lifted it and the
+ * labour account leaves it out. Colour-coded on screen for the same reason it
+ * is printed: the man at the gate has to be able to tell at a glance.
+ */
+const LOADING_TYPE_COLOR = {
+  'Crossing': '#f59e0b',
+  'Direct': '#8b5cf6',
+};
+const loadingColor = (t) => LOADING_TYPE_COLOR[t] || '#10b981';
 const loadingLabel = (t) => (t ? (LOADING_TYPE_LABEL[t] || String(t)) : '');
 
 const normTruck = (t) => String(t || '').toUpperCase().replace(/\s/g, '');
@@ -808,6 +820,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
                 <option value="From Godown">From Godown</option>
                 <option value="Crossing">Crossing</option>
+                <option value="Direct">Direct (no labour)</option>
               </select>
             </div>
             <div className="field-h">
@@ -2036,6 +2049,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
                           <option value="From Godown">From Godown</option>
                           <option value="Crossing">Crossing</option>
+                          <option value="Direct">Direct (no labour)</option>
                         </select>
                       </div>
                       <div className="field-h">
@@ -2168,7 +2182,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td>
                           <span className="badge badge-tag">{lr.material}</span>
                           <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
-                          {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
+                          {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: loadingColor(lr.loadingType) }}>{lr.loadingType}</div>}
                         </td>
                         <td className="c">
                           {(() => {

@@ -103,6 +103,7 @@ function request(method, path, body, useAuth = true) {
 function get(path, auth = true) { return request('GET', path, null, auth); }
 function post(path, body, auth = true) { return request('POST', path, body, auth); }
 function patch(path, body) { return request('PATCH', path, body); }
+function put(path, body) { return request('PUT', path, body); }
 function del(path) { return request('DELETE', path); }
 
 // --- Test runner ---
@@ -1573,6 +1574,598 @@ test('cashbook: a roster cash-out still needs a real entity id', async () => {
     amount: 500, date: '2026-08-01', entityType: 'driver', entityId: '', entityName: 'Someone',
   });
   assert(res.status === 400, `expected 400, got ${res.status}`);
+});
+
+/* ── Profit & Loss ────────────────────────────────────────────────────────── */
+
+/**
+ * pnl.js is deliberately import-free so it can be loaded here and asserted on
+ * as arithmetic rather than as rendered markup. Money that is not counted does
+ * not announce itself, which is the whole reason these tests exist.
+ */
+function loadPnl() {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'utils', 'pnl.js'), 'utf8');
+  assert(!/^import /m.test(src),
+    'pnl.js has grown an import — the test can no longer load it, and neither can it stay dependency-free');
+  // eslint-disable-next-line no-new-func
+  return new Function(`${src.replace(/^export /gm, '')}
+    return { buildPnlRecords, summarisePnl, perTruck, pnlCoverage, ownFleet,
+             voucherGross, voucherDiesel, monthOf, PNL_GROUPS, FULL_TANK_ESTIMATE };`)();
+}
+
+const OWN = [{ id: 'veh1', truckNo: 'HR47G0975', ownershipType: 'self' }];
+const sumOf = (records, category) =>
+  records.filter(r => r.category === category).reduce((s, r) => s + r.amount, 0);
+
+test('pnl: diesel is read off the field a voucher actually has', async () => {
+  // The page used to read v.diesel, v.cash and v.online. A voucher stores
+  // advanceDiesel, advanceCash and advanceOnline, so diesel always totalled
+  // zero and nothing on screen said so.
+  const { buildPnlRecords, FULL_TANK_ESTIMATE } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    vouchers: [
+      { id: 'a', truckNo: 'HR47G0975', date: '2026-07-04', weight: '25', rate: '700', advanceDiesel: '4000', advanceCash: '1000', advanceOnline: '500' },
+      { id: 'b', truckNo: 'HR47G0975', date: '2026-07-06', weight: '20', rate: '700', advanceDiesel: 'FULL' },
+    ],
+  });
+  assert(sumOf(records, 'Diesel') === 4000 + FULL_TANK_ESTIMATE,
+    `diesel should be 4000 + the full-tank estimate, got ${sumOf(records, 'Diesel')}`);
+  assert(sumOf(records, 'Driver trip advances') === 1500,
+    `cash and online advances lost: ${sumOf(records, 'Driver trip advances')}`);
+});
+
+test('pnl: a payment with no truck number still reaches the sheet', async () => {
+  // Pump, tyre, workshop and labour payments were filtered by p.truckNo, a
+  // field payment records have never carried, so every one was discarded.
+  const { buildPnlRecords, summarisePnl } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    payments: [
+      { id: 'p1', category: 'Salary', amount: '12000', date: '2026-07-05', profileName: 'RAVI KUMAR' },
+      { id: 'p2', category: 'Other', amount: '3000', date: '2026-07-08', remark: 'office rent' },
+      { id: 'p3', category: 'Pump', amount: '50000', date: '2026-07-09', profileName: 'S K FILLING STATION' },
+    ],
+  });
+  assert(sumOf(records, 'Driver & staff salary') === 12000,
+    `salary lost: ${sumOf(records, 'Driver & staff salary')}`);
+  assert(sumOf(records, 'Office expenses') === 3000,
+    `office rent lost: ${sumOf(records, 'Office expenses')}`);
+
+  // The pump bill is the same money as the trip diesel, so it is reported but
+  // never added to the total.
+  const s = summarisePnl(records);
+  assert(s.settlements === 50000, `pump settlement not reported: ${s.settlements}`);
+  assert(s.expense === 15000, `a settlement was counted as an expense: ${s.expense}`);
+});
+
+test('pnl: a market truck earns a commission, not a trip margin', async () => {
+  // The client's bill and the owner's payout are money passing through. Only
+  // what the firm keeps is income — and none of the trip costs are the firm's.
+  const { buildPnlRecords, summarisePnl } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    vouchers: [{
+      id: 'm1', truckNo: 'HR63B8291', date: '2026-07-10',
+      weight: '25', rate: '700', commission: '500', munshi: '100', shortage: '200',
+      advanceDiesel: '4000', advanceCash: '2000',
+    }],
+  });
+  const s = summarisePnl(records);
+  assert(s.income === 800, `a market truck should yield 500+100+200, got ${s.income}`);
+  assert(s.expense === 0, `market trip costs are the owner's, not the firm's: ${s.expense}`);
+  assert(sumOf(records, 'Own-fleet freight') === 0, 'a hired truck must not book freight as income');
+});
+
+test('pnl: an own truck books its freight, priced per drop on a multi-LR trip', async () => {
+  // A voucher with deliveries has no top-level weight or rate, so pricing from
+  // those fields quietly earns the firm nothing on its own trucks.
+  const { buildPnlRecords, summarisePnl } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    vouchers: [{
+      id: 'v1', truckNo: 'HR47G0975', date: '2026-07-12',
+      deliveries: [
+        { lrNo: '1236', destination: 'Rewari', weight: '6', rate: '420' },
+        { lrNo: '1237', destination: 'Sohna', weight: '4', rate: '500' },
+      ],
+    }],
+  });
+  const expected = 6 * 420 + 4 * 500;
+  assert(sumOf(records, 'Own-fleet freight') === expected,
+    `multi-LR freight should be ${expected}, got ${sumOf(records, 'Own-fleet freight')}`);
+  assert(summarisePnl(records).income === expected, 'the drops did not reach the income total');
+});
+
+test('pnl: an EMI counts once its due date passes, ticked off or not', async () => {
+  // EmiScheduleTracker treats an instalment as due on its date. The sheet
+  // counted only status === 'paid', so a schedule nobody maintains cost nothing.
+  const { buildPnlRecords } = loadPnl();
+  const records = buildPnlRecords({
+    today: '2026-07-20',
+    vehicles: [{
+      id: 'veh1', truckNo: 'HR47G0975', ownershipType: 'self',
+      emiDetails: JSON.stringify({
+        due: 45000, bankName: 'HDFC', tenure: 48, schedule: [
+          { installmentNo: 1, dueDate: '2026-06-05', amount: 45000, status: 'pending' },
+          { installmentNo: 2, dueDate: '2026-07-05', amount: 45000, status: 'paid', paymentDate: '2026-07-05' },
+          { installmentNo: 3, dueDate: '2026-08-05', amount: 45000, status: 'pending' },
+        ],
+      }),
+    }],
+  });
+  assert(sumOf(records, 'Vehicle loan EMI') === 90000,
+    `two instalments have fallen due, expected 90000, got ${sumOf(records, 'Vehicle loan EMI')}`);
+});
+
+test('pnl: a loan with no schedule still costs money every month', async () => {
+  const { buildPnlRecords } = loadPnl();
+  const records = buildPnlRecords({
+    today: '2026-07-20',
+    vehicles: [{
+      id: 'veh1', truckNo: 'HR47G0975', ownershipType: 'self',
+      emiDetails: { due: 30000, tenure: 48, startDate: '2026-04-05', emiDay: 5 },
+    }],
+  });
+  // The first instalment falls due a month after the start date, so by 20 July
+  // three have passed: 5 May, 5 June, 5 July.
+  assert(sumOf(records, 'Vehicle loan EMI') === 90000,
+    `expected three instalments accrued, got ${sumOf(records, 'Vehicle loan EMI')}`);
+  const months = records.filter(r => r.category === 'Vehicle loan EMI').map(r => r.month).sort();
+  assert(months.join(',') === '2026-05,2026-06,2026-07',
+    `an accrued EMI landed in the wrong month: ${months.join(',')}`);
+});
+
+test('pnl: a returned cash-out and its refund cancel rather than double', async () => {
+  const { buildPnlRecords, summarisePnl } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    cashbook: [
+      { id: 'c1', type: 'cash_out', amount: '5000', date: '2026-07-02', entityType: 'driver', entityName: 'RAVI', isReturned: true, returnEntryId: 'c2' },
+      { id: 'c2', type: 'deposit', amount: '5000', date: '2026-07-03', isRefundEntry: true, originalEntryId: 'c1' },
+      { id: 'c3', type: 'cash_out', amount: '2000', date: '2026-07-04', entityType: 'staff', entityName: 'SUNIL' },
+    ],
+  });
+  const s = summarisePnl(records);
+  assert(s.expense === 2000, `the returned advance was still counted: ${s.expense}`);
+  assert(s.income === 0, `the refund was booked as income: ${s.income}`);
+});
+
+test('pnl: tolls, tyres and workshop bills all reach the sheet', async () => {
+  // None of the three were counted anywhere before.
+  const { buildPnlRecords } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    tolls: [{ id: 't1', truckNo: 'HR47G0975', date: '2026-07-11', amount: '850', route: 'KMP' }],
+    tyres: [{ id: 'y1', purchaseDate: '2026-07-03', purchasePrice: '22000', serialNo: 'X1', fitment: { truckNo: 'HR47G0975' } }],
+    maintenance: [{ id: 'm1', truckNo: 'HR47G0975', date: '2026-07-07', cost: '3000', labourCost: '500', partName: 'Clutch plate' }],
+  });
+  assert(sumOf(records, 'Tolls') === 850, `tolls: ${sumOf(records, 'Tolls')}`);
+  assert(sumOf(records, 'Tyres') === 22000, `tyres: ${sumOf(records, 'Tyres')}`);
+  assert(records.find(r => r.category === 'Tyres').truckNo === 'HR47G0975',
+    'a fitted tyre belongs to the truck it is on');
+  assert(sumOf(records, 'Maintenance') === 3500,
+    `workshop cost must include labour: ${sumOf(records, 'Maintenance')}`);
+});
+
+test('pnl: a tyre on somebody else\'s truck is not the firm\'s cost', async () => {
+  // Found against real data: every fitted tyre was charged to the firm, so a
+  // tyre store's whole inventory landed on the sheet — Rs.2 crore of a fleet
+  // the firm does not own, dwarfing every genuine line on the page.
+  const { buildPnlRecords } = loadPnl();
+  const records = buildPnlRecords({
+    vehicles: OWN,
+    tyres: [
+      { id: 'y1', purchaseDate: '2026-07-03', purchasePrice: '18000', fitment: { truckNo: 'HR47G0975' } },
+      { id: 'y2', purchaseDate: '2026-07-03', purchasePrice: '18000', fitment: { truckNo: 'HR63B8291' } },
+      { id: 'y3', purchaseDate: '2026-07-03', purchasePrice: '18000', fitment: null },
+    ],
+  });
+  // The own truck's tyre, and the one still in stock — not the market truck's.
+  assert(sumOf(records, 'Tyres') === 36000,
+    `expected the own truck's tyre and the stock only, got ${sumOf(records, 'Tyres')}`);
+  assert(records.some(r => r.category === 'Tyres' && r.fleet === 'firm'),
+    'unfitted stock is still the firm\'s money and must be counted');
+});
+
+test('pnl: a truck named for the firm before the flag existed is still own fleet', async () => {
+  // Trip Profit and Mileage both accept this; the P&L used to demand
+  // ownershipType === 'self' and quietly dropped the older trucks.
+  const { ownFleet } = loadPnl();
+  const fleet = ownFleet([
+    { truckNo: 'HR47G0975', ownerName: 'VIKAS GOODS TRANSPORT' },
+    { truckNo: 'HR63B8291', ownerName: 'Some Owner' },
+  ]);
+  assert(fleet.has('HR47G0975'), 'a firm-named truck was treated as a market truck');
+  assert(!fleet.has('HR63B8291'), 'a market truck was treated as own fleet');
+});
+
+test('pnl: the statement adds up, and per-truck rows come out of the same records', async () => {
+  const { buildPnlRecords, summarisePnl, perTruck } = loadPnl();
+  const records = buildPnlRecords({
+    today: '2026-07-31',
+    vehicles: OWN,
+    vouchers: [
+      { id: 'v1', truckNo: 'HR47G0975', date: '2026-07-04', weight: '25', rate: '700', advanceDiesel: '4000', advanceCash: '1000' },
+      { id: 'v2', truckNo: 'HR63B8291', date: '2026-07-05', weight: '25', rate: '700', commission: '500' },
+    ],
+    payments: [{ id: 'p1', category: 'Salary', amount: '12000', date: '2026-07-05', profileName: 'RAVI' }],
+    tolls: [{ id: 't1', truckNo: 'HR47G0975', date: '2026-07-06', amount: '850' }],
+  });
+  const s = summarisePnl(records);
+
+  const income = 25 * 700 + 500 + 100;         // freight + commission + munshi on the market truck
+  const expense = 4000 + 1000 + 12000 + 850;
+  assert(s.income === income, `income: expected ${income}, got ${s.income}`);
+  assert(s.expense === expense, `expense: expected ${expense}, got ${s.expense}`);
+  assert(s.net === income - expense, `net does not match its own parts: ${s.net}`);
+
+  // Every group total must be accounted for by the two headline figures,
+  // otherwise a category exists that the statement never displays.
+  const grouped = s.groups.reduce((t, g) => t + g.total, 0);
+  assert(grouped === s.income + s.expense,
+    `a group is missing from the statement: groups ${grouped} vs ${s.income + s.expense}`);
+
+  const rows = perTruck(records);
+  assert(rows.length === 1, `only the own truck gets a profit row, got ${rows.length}`);
+  assert(rows[0].truckNo === 'HR47G0975', `wrong truck: ${rows[0].truckNo}`);
+  // Firm-wide salary is not split across trucks, so the row is freight less
+  // the costs that name this truck.
+  assert(rows[0].net === 25 * 700 - 4000 - 1000 - 850,
+    `per-truck net: ${rows[0].net}`);
+});
+
+test('pnl: the sheet says what it could not see', async () => {
+  // A page that reports zero because a collection failed to load is worse than
+  // one that admits it.
+  const { buildPnlRecords, pnlCoverage } = loadPnl();
+  const data = {
+    vehicles: OWN,
+    vouchers: [
+      { id: 'v1', truckNo: 'HR47G0975', date: '2026-07-04', weight: '25', rate: '' },
+      { id: 'v2', truckNo: 'HR47G0975', date: '2026-07-06', weight: '25', rate: '700', advanceDiesel: 'FULL' },
+    ],
+    loadFailures: ['Tolls'],
+  };
+  const notes = pnlCoverage(data, buildPnlRecords(data)).join(' | ');
+  assert(/no rate/i.test(notes), `an unpriced trip is not flagged: ${notes}`);
+  assert(/full-tank/i.test(notes), `the diesel estimate is not flagged: ${notes}`);
+  assert(/Tolls did not load/i.test(notes), `a failed collection is not flagged: ${notes}`);
+});
+
+/* ── Labour account ───────────────────────────────────────────────────────── */
+
+const RATES = {
+  groups: {
+    dump: { default: { godown_load: 2, crossing_load: 3, godown_unload: 1.5 }, materials: { OPC: { godown_load: 4 } } },
+    jharli: { default: { godown_load: 5, crossing_load: 6, godown_unload: 4 }, materials: {} },
+  },
+};
+
+test('labour: a Direct load earns nothing, and the other two earn their own rate', async () => {
+  // The point of the whole change. Without Direct, a load that never touched
+  // the godown had to be filed as From Godown or Crossing, and labour who
+  // never lifted it got paid for it.
+  const svc = require('../utils/labourAccountService');
+  const r = (material, activity) => svc.rateFor(RATES, 'dump', material, activity);
+
+  assert(svc.LOADING_ACTIVITY['From Godown'] === 'godown_load', 'From Godown must price as a godown load');
+  assert(svc.LOADING_ACTIVITY['Crossing'] === 'crossing_load', 'Crossing has its own rate');
+  assert(svc.LOADING_ACTIVITY['Direct'] === null, 'a Direct load must earn nothing');
+  assert(svc.LOADING_ACTIVITY['Godown'] === 'godown_load',
+    'rows saved under the old label must still price, or the history silently drops to zero');
+
+  assert(r('PPC', 'godown_load') === 2 && r('PPC', 'crossing_load') === 3,
+    'the two loading rates must differ — that is why they are separate keys');
+});
+
+test('labour: at MIGO only a godown unload is charged', async () => {
+  // Deliberately different from the loading side: a crossing at the gate is
+  // bags moved between trucks, a crossing arriving is a truck passing through.
+  const svc = require('../utils/labourAccountService');
+  assert(svc.UNLOADING_ACTIVITY['Godown Unload'] === 'godown_unload', 'a godown unload must be paid');
+  assert(svc.UNLOADING_ACTIVITY['Crossing'] === null, 'a crossing on the way in earns nothing');
+  assert(svc.UNLOADING_ACTIVITY['Direct'] === null, 'a direct delivery earns nothing');
+});
+
+test('labour: a priced material beats the default, and one without falls back', async () => {
+  // Rates arrive material by material. Without the fallback the account would
+  // read zero for every material nobody had got round to pricing.
+  const svc = require('../utils/labourAccountService');
+  assert(svc.rateFor(RATES, 'dump', 'OPC', 'godown_load') === 4, 'a material with its own rate must use it');
+  assert(svc.rateFor(RATES, 'dump', 'PPC', 'godown_load') === 2, 'a material without one must fall back to the default');
+  assert(svc.rateFor(RATES, 'dump', 'OPC', 'crossing_load') === 3,
+    'a material priced for one activity must still fall back for the others');
+  assert(svc.rateFor(RATES, 'jharli', 'OPC', 'godown_load') === 5,
+    'the two crews are priced independently');
+  assert(svc.rateFor(RATES, 'dump', 'PPC', null) === 0, 'an unpaid activity has no rate at all');
+});
+
+test('labour: an empty box means "use the default", not "work for free"', async () => {
+  // Storing 0 for a blank override would override the group default with free
+  // labour — the one mistake that silently pays nobody.
+  const svc = require('../utils/labourAccountService');
+  const cleaned = svc.sanitiseRates({
+    groups: { dump: { default: { godown_load: 7 }, materials: { PPC: { godown_load: '', crossing_load: '9' } } } },
+  });
+  assert(cleaned.groups.dump.materials.PPC.godown_load === undefined,
+    'a blank override must not be stored');
+  assert(cleaned.groups.dump.materials.PPC.crossing_load === 9, 'a filled override must survive');
+  assert(svc.rateFor(cleaned, 'dump', 'PPC', 'godown_load') === 7, 'the blank must fall back to the default');
+});
+
+test('labour: the three dumps share a crew and Jharli has its own', async () => {
+  const svc = require('../utils/labourAccountService');
+  const groupOf = (key) => svc.PLANTS.find(p => p.key === key)?.group;
+  assert(groupOf('kosli') === 'dump' && groupOf('jhajjar') === 'dump' && groupOf('bahadurgarh') === 'dump',
+    'Kosli, Jhajjar and Bahadurgarh are worked by the same labour');
+  assert(groupOf('jkl') === 'jharli', 'JK Lakshmi is Jharli labour');
+  assert(groupOf('main') === 'jharli', 'the legacy JK Super book belongs with Jharli');
+  // Every plant must name collections that exist, or its receipts vanish.
+  assert(svc.PLANTS.every(p => p.lr && p.migo), 'a plant with no collections would be read as empty');
+});
+
+test('labour: earned minus paid is what is still owed, per crew', async () => {
+  const svc = require('../utils/labourAccountService');
+  const lines = [
+    { group: 'dump', activity: 'godown_load', material: 'PPC', bags: 100, rate: 2, amount: 200, plantLabel: 'Kosli' },
+    { group: 'dump', activity: 'crossing_load', material: 'OPC', bags: 50, rate: 3, amount: 150, plantLabel: 'Jhajjar' },
+    { group: 'dump', activity: null, material: 'PPC', bags: 400, rate: 0, amount: 0, plantLabel: 'Kosli' }, // Direct
+    { group: 'jharli', activity: 'godown_unload', material: 'PPC', bags: 20, rate: 4, amount: 80, plantLabel: 'JK Lakshmi' },
+  ];
+  const s = svc.summarise(lines, [{ group: 'dump', amount: 120 }]);
+  const dump = s.groups.find(g => g.key === 'dump');
+  const jharli = s.groups.find(g => g.key === 'jharli');
+
+  assert(dump.earned === 350, `dump earned: expected 350, got ${dump.earned}`);
+  assert(dump.bags === 150, `the 400 Direct bags must not be charged: ${dump.bags}`);
+  assert(dump.paid === 120 && dump.balance === 230, `dump balance: ${dump.balance}`);
+  assert(jharli.earned === 80 && jharli.balance === 80, `jharli: ${jharli.earned}/${jharli.balance}`);
+  assert(s.totals.balance === 310, `firm-wide balance: ${s.totals.balance}`);
+  // A plant's work must show under the plant it was done at.
+  assert(dump.byPlant.Kosli.bags === 100, `Direct bags leaked into the plant breakdown: ${JSON.stringify(dump.byPlant)}`);
+});
+
+test('labour: bags moved at no rate are counted and flagged, not hidden', async () => {
+  // A rate nobody has entered yet must be visible as unpriced work rather than
+  // read as a day where nothing happened.
+  const svc = require('../utils/labourAccountService');
+  const s = svc.summarise([
+    { group: 'dump', activity: 'godown_load', material: 'NEW MAT', bags: 90, rate: 0, amount: 0, plantLabel: 'Kosli' },
+  ], []);
+  const dump = s.groups.find(g => g.key === 'dump');
+  assert(dump.unpricedBags === 90, `unpriced bags not flagged: ${dump.unpricedBags}`);
+  assert(dump.earned === 0, 'unpriced work cannot invent a figure');
+});
+
+test('labour: a MIGO entry keeps its unloading type, defaulting to a godown unload', async () => {
+  // addStock destructures its payload field by field, so a new field is
+  // dropped in silence unless it is named there.
+  const fs = require('fs');
+  const src = fs.readFileSync(require('path').join(__dirname, '..', 'utils', 'stockService.js'), 'utf8');
+  const body = src.slice(src.indexOf('addStock:'), src.indexOf('getOverview:'));
+  assert(/unloadingType/.test(body), 'addStock drops unloadingType — the labour account would see every MIGO as a godown unload');
+  assert(/'Godown Unload'/.test(body), 'the default must be a godown unload, which is what MIGO always meant before');
+});
+
+test('labour: the account is reachable with pay permission and nothing else', async () => {
+  // It reads ten collections gated on lr_* and stock_*. Doing that from the
+  // browser would hand a clerk who has Pay a fistful of 403s.
+  const res = await get('/labour-account/meta');
+  assert(res.status === 200, `expected 200, got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(res.data.groups.length === 2, `expected two crews, got ${res.data.groups.length}`);
+  assert(res.data.plants.length === 5, `every plant must be covered, got ${res.data.plants.length}`);
+  assert(res.data.loadingTypes.Direct === null, 'the client must be told Direct earns nothing');
+});
+
+test('labour: each crew is priced on its own stock module\'s materials', async () => {
+  // The rate grid used to show one list for both crews, built only from what
+  // had already been loaded — so a material sitting in stock could not be
+  // priced until the first load had gone out unpriced, and the dumps' materials
+  // turned up on Jharli's sheet.
+  const svc = require('../utils/labourAccountService');
+  const res = await get('/labour-account/meta');
+  const { dump, jharli } = res.data.materials;
+
+  assert(Array.isArray(dump) && dump.length, 'the dump crew must have materials to price');
+  assert(Array.isArray(jharli) && jharli.length, 'the Jharli crew must have materials to price');
+  assert(svc.JKL_MATERIALS.every(m => jharli.includes(m)),
+    `Jharli must carry its own materials: ${jharli.join(', ')}`);
+  // Jharli's list is the one the firm confirmed correct; the legacy JK Super
+  // book must not fold the dumps' materials into it.
+  assert(!jharli.includes('Adstar') || dump.includes('Adstar'),
+    'a dump material leaked onto the Jharli sheet');
+  assert(svc.PLANTS.find(p => p.key === 'main').materials === null,
+    'the legacy book must not define a crew\'s material palette');
+});
+
+test('labour: the summary prices real receipts and balances against payments', async () => {
+  const rates = await put('/labour-account/rates', RATES);
+  assert(rates.status === 200, `saving rates failed: ${rates.status} ${JSON.stringify(rates.data)}`);
+  assert(rates.data.groups.dump.materials.OPC.godown_load === 4, 'the material override did not survive the round trip');
+
+  const before = await get('/labour-account/summary');
+  assert(before.status === 200, `summary failed: ${before.status}`);
+  const dumpBefore = before.data.groups.find(g => g.key === 'dump');
+
+  const pay = await post('/labour-account/payments', { group: 'dump', amount: 500, date: '2026-08-03', mode: 'Cash', remark: 'test' });
+  assert(pay.status === 201, `payment failed: ${pay.status} ${JSON.stringify(pay.data)}`);
+
+  const after = await get('/labour-account/summary');
+  const dumpAfter = after.data.groups.find(g => g.key === 'dump');
+  assert(dumpAfter.paid === dumpBefore.paid + 500, `paid did not move: ${dumpBefore.paid} → ${dumpAfter.paid}`);
+  assert(dumpAfter.balance === dumpBefore.balance - 500, `balance did not fall by the payment: ${dumpAfter.balance}`);
+
+  if (pay.data.id) await del('/labour-account/payments/' + pay.data.id);
+});
+
+test('labour: a payment needs a real crew and a positive amount', async () => {
+  const bad = await post('/labour-account/payments', { group: 'nobody', amount: 100 });
+  assert(bad.status === 400, `an unknown crew must be refused, got ${bad.status}`);
+  const zero = await post('/labour-account/payments', { group: 'dump', amount: 0 });
+  assert(zero.status === 400, `a zero payment must be refused, got ${zero.status}`);
+});
+
+/* ── Paying a whole owner from the settlement panel ───────────────────────── */
+
+/** freightAllocation.js is pure and import-free — the code that moves money. */
+function loadAllocation() {
+  const fs = require('fs');
+  const src = fs.readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'utils', 'freightAllocation.js'), 'utf8');
+  assert(!/^import /m.test(src), 'freightAllocation.js grew an import and can no longer be loaded here');
+  // eslint-disable-next-line no-new-func
+  return new Function(`${src.replace(/^export /gm, '')}
+    return { allocateFreightPayment, allocateAcrossTrucks, outstandingOf };`)();
+}
+
+const netFlat = () => (v) => parseFloat(v.net) || 0;
+
+test('pay: settling a whole owner pays every truck it covers', async () => {
+  // "Pay All" used to open a dialog of its own that could only pay in full.
+  // It now drives the same settlement panel, so this is the arithmetic behind
+  // that button.
+  const { allocateAcrossTrucks } = loadAllocation();
+  const trips = [
+    { id: 'a1', truckNo: 'HR47G0975', date: '2026-07-01', net: 5000 },
+    { id: 'a2', truckNo: 'HR47G0975', date: '2026-07-09', net: 3000 },
+    { id: 'b1', truckNo: 'HR63B8291', date: '2026-07-04', net: 2000 },
+  ];
+  const res = allocateAcrossTrucks(trips, {
+    amount: 10000, paymentDate: '2026-08-03', paymentMethod: 'Cash',
+    trucks: ['HR47G0975', 'HR63B8291'], netOfTruck: netFlat,
+  });
+  assert(res.patches.length === 3, `every trip must be settled, got ${res.patches.length}`);
+  assert(res.allocated === 10000 && res.unallocated === 0, `allocated ${res.allocated}, left ${res.unallocated}`);
+  assert(res.patches.every(p => p.paymentClearedDate),
+    'a trip paid in full must be marked cleared, or it stays open on the balance sheet');
+});
+
+test('pay: a part payment across an owner does not leave every truck half paid', async () => {
+  // Pooling an owner's trips would let one truck's arrears swallow money meant
+  // for another, and leave a scatter of part-paid trips behind.
+  const { allocateAcrossTrucks } = loadAllocation();
+  const trips = [
+    { id: 'a1', truckNo: 'HR47G0975', date: '2026-07-01', net: 5000 },
+    { id: 'a2', truckNo: 'HR47G0975', date: '2026-07-09', net: 3000 },
+    { id: 'b1', truckNo: 'HR63B8291', date: '2026-07-04', net: 2000 },
+  ];
+  const res = allocateAcrossTrucks(trips, {
+    amount: 6000, paymentDate: '2026-08-03', paymentMethod: 'Cash',
+    trucks: ['HR47G0975', 'HR63B8291'], netOfTruck: netFlat,
+  });
+  const by = Object.fromEntries(res.patches.map(p => [p.id, p]));
+  assert(res.allocated === 6000, `the whole payment must land somewhere: ${res.allocated}`);
+  // The first truck's oldest trip clears, the next takes the remainder, and the
+  // second truck is untouched — not every trip nibbled.
+  assert(by.a1 && by.a1.paymentClearedDate, 'the oldest trip must clear first');
+  assert(by.a2 && !by.a2.paymentClearedDate, 'a part-paid trip must not be marked cleared');
+  assert(!by.b1, 'money must not spill onto the next truck while the first is still owed');
+  assert(parseFloat(by.a2.paidBalance) === 1000, `remainder misallocated: ${by.a2.paidBalance}`);
+});
+
+test('pay: an overpayment across an owner is reported, never silently kept', async () => {
+  const { allocateAcrossTrucks } = loadAllocation();
+  const res = allocateAcrossTrucks(
+    [{ id: 'a1', truckNo: 'HR47G0975', date: '2026-07-01', net: 1000 }],
+    { amount: 2500, paymentDate: '2026-08-03', paymentMethod: 'Cash', trucks: ['HR47G0975'], netOfTruck: netFlat });
+  assert(res.allocated === 1000, `only what is owed can be allocated: ${res.allocated}`);
+  assert(res.unallocated === 1500, `the overpayment must be handed back: ${res.unallocated}`);
+});
+
+test('pay: a truck already paid off takes none of the money', async () => {
+  const { allocateAcrossTrucks } = loadAllocation();
+  const res = allocateAcrossTrucks([
+    { id: 'a1', truckNo: 'HR47G0975', date: '2026-07-01', net: 4000, paidBalance: '4000' },
+    { id: 'b1', truckNo: 'HR63B8291', date: '2026-07-04', net: 2000 },
+  ], { amount: 2000, paymentDate: '2026-08-03', paymentMethod: 'Cash',
+    trucks: ['HR47G0975', 'HR63B8291'], netOfTruck: netFlat });
+  assert(res.patches.length === 1 && res.patches[0].id === 'b1',
+    `a settled truck must be skipped: ${JSON.stringify(res.patches)}`);
+  assert(res.unallocated === 0, `nothing should be left over: ${res.unallocated}`);
+});
+
+test('pay: Pay All keeps every LR in the group ticked, including late arrivals', async () => {
+  // The reported bug: Pay All ticked one LR and left the rest of the owner's
+  // trips out of the payment. The tick fired once on whatever rows existed at
+  // that instant, and the rows arrive in stages — so anything that turned up
+  // afterwards, or was revealed by clearing the date filter, was silently
+  // excluded from the money being paid.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'PayModule.jsx'), 'utf8');
+  const start = src.indexOf('export function ownerSelection');
+  assert(start !== -1, 'ownerSelection is not exported from PayModule');
+  let i = src.indexOf('{', src.indexOf(')', start)), depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) break;
+  }
+  // eslint-disable-next-line no-new-func
+  const ownerSelection = new Function(
+    `${src.slice(start, i + 1).replace('export function', 'function')}\nreturn ownerSelection;`)();
+
+  const first = [{ id: 'a1' }];
+  const all = [{ id: 'a1' }, { id: 'a2' }, { id: 'b1' }, { id: 'b2' }];
+
+  assert(ownerSelection(first, new Set()).length === 1, 'the rows present at first are ticked');
+  // The rest of the owner's trips land a moment later — every one must be ticked.
+  assert(ownerSelection(all, new Set()).join(',') === 'a1,a2,b1,b2',
+    `late-arriving trips were left out: ${ownerSelection(all, new Set()).join(',')}`);
+
+  // Unticking one holds it back, and only it — even as more rows appear.
+  const held = new Set(['b1']);
+  assert(ownerSelection(all, held).join(',') === 'a1,a2,b2',
+    `unticking did not hold back exactly one trip: ${ownerSelection(all, held).join(',')}`);
+  assert(ownerSelection([...all, { id: 'c1' }], held).includes('c1'),
+    'a trip appearing after the clerk unticked another must still be ticked');
+  assert(!ownerSelection([...all, { id: 'c1' }], held).includes('b1'),
+    'a held-back trip must stay held back');
+});
+
+test('pay: a truck typed with spaces still finds its owner', async () => {
+  // Found while chasing a Pay All that "missed" a truck. Every vehicle lookup
+  // in Pay was an exact string match, while the rest of the app normalises. A
+  // truck registered HR55EF9012 but written HR55 EF 9012 on the voucher found
+  // no vehicle — losing its owner, so it fell out of that owner's group and
+  // Pay All skipped it, and losing the market-vehicle rule in calcNet, which
+  // is money.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'PayModule.jsx'), 'utf8');
+
+  const start = src.indexOf('export const normTruck');
+  assert(start !== -1, 'normTruck is not exported from PayModule');
+  // eslint-disable-next-line no-new-func
+  const normTruck = new Function(
+    `${src.slice(start, src.indexOf('\n', start)).replace('export const', 'const')}\nreturn normTruck;`)();
+
+  assert(normTruck('HR55 EF 9012') === normTruck('HR55EF9012'), 'spacing must not split a truck');
+  assert(normTruck('hr47g9999') === normTruck('HR47G9999'), 'case must not split a truck');
+  assert(normTruck(undefined) === '', 'a missing truck number must not throw');
+
+  // And no exact-match lookup may be left behind to reintroduce it.
+  assert(!/find\(vh => vh\.truckNo === /.test(src),
+    'an exact-match vehicle lookup is still there — it will drop trucks out of their owner’s group');
+  assert(!/vehiclesInfo\.find\(v => v\.truckNo === /.test(src),
+    'an exact-match vehicle lookup is still there — it will drop trucks out of their owner’s group');
+});
+
+test('pay: the owner popup is gone and Pay All opens the settlement panel', async () => {
+  // Two ways to pay meant the lesser one silently lacked the tick boxes, the
+  // part-payment box and the per-trip totals.
+  const fs = require('fs');
+  const src = fs.readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'PayModule.jsx'), 'utf8');
+  assert(!/payWholeOwner|payOwnerDone/.test(src), 'the separate owner-payment dialog is still there');
+  assert(/setSelOwner\(g\.owner\)/.test(src), 'Pay All no longer opens the settlement panel');
+  assert(/singleTruckMode/.test(src),
+    'per-truck deductions must be gated, or an owner payment would apply one truck’s GPS rent to all of them');
 });
 
 // Run

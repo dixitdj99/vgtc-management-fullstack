@@ -17,7 +17,7 @@ const driveService = require('./driveService');
 /** Top-level folders. Anything not listed is filed under Other. */
 const MODULES = new Set([
     'Loading Receipts', 'Vouchers', 'Balance Sheet', 'Stock', 'Cashbook',
-    'Sell', 'Invoices', 'Fleet', 'Pay', 'Other',
+    'Sell', 'Invoices', 'Fleet', 'Pay', 'Profit & Loss', 'Other',
 ]);
 
 /** Subfolders within a module. */

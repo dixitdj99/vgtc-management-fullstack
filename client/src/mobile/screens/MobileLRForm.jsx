@@ -70,7 +70,7 @@ export default function MobileLRForm({ brand, cfg, onDone }) {
             <Autocomplete label="Party Name" value={form.partyName} onChange={v => S('partyName', v)} options={parties} placeholder="Customer / broker" />
             <TextField label="Destination" value={form.destination} onChange={v => S('destination', v)} placeholder="e.g. Surat" />
             <SelectField label="Material" value={form.material} onChange={v => S('material', v)} options={mats} />
-            <SelectField label="Loading Type" value={form.loadingType} onChange={v => S('loadingType', v)} options={['From Godown', 'Crossing']} />
+            <SelectField label="Loading Type" value={form.loadingType} onChange={v => S('loadingType', v)} options={['From Godown', 'Crossing', 'Direct']} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <TextField label="Bags" type="number" value={form.bags} onChange={setBags} placeholder="0" />
                 <TextField label="Weight (MT)" type="number" value={form.weight} onChange={v => S('weight', v)} placeholder="0.00" />

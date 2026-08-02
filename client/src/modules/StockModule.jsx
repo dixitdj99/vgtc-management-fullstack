@@ -267,7 +267,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const fi = (label, el, span) => (<div className="field" style={{ gridColumn: span ? `span ${span}` : undefined }}><label>{label}</label>{el}</div>);
 
   /* forms */
-  const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '' });
+  const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '', unloadingType: 'Godown Unload' });
   const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
@@ -825,8 +825,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
               <td style={{ ...TD }}>
                 {r.txType === 'add'
-                  ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '10px', fontWeight: 800 }}>MIGO In</span>
-                  : r.txType === 'lr' 
+                  ? <>
+                      <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '10px', fontWeight: 800 }}>MIGO In</span>
+                      {r.unloadingType && r.unloadingType !== 'Godown Unload' && (
+                        <span style={{ marginLeft: '5px', padding: '2px 6px', borderRadius: '5px', background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontSize: '9.5px', fontWeight: 800 }}>{r.unloadingType}</span>
+                      )}
+                    </>
+                  : r.txType === 'lr'
                     ? <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', fontSize: '10px', fontWeight: 800 }}>LR Use</span>
                     : <span style={{ padding: '2px 8px', borderRadius: '5px', background: 'rgba(236,72,153,0.1)', color: '#ec4899', fontSize: '10px', fontWeight: 800 }}>Sale</span>
                 }
@@ -1096,6 +1101,17 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 <div className="field-h">
                   <label>Date</label>
                   <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />
+                </div>
+                <div className="field-h">
+                  <label>Unloading Type</label>
+                  <select className="fi" value={migoForm.unloadingType} onChange={e => setMigoForm(f => ({ ...f, unloadingType: e.target.value }))}>
+                    <option value="Godown Unload">Godown Unload</option>
+                    <option value="Crossing">Crossing (no labour)</option>
+                    <option value="Direct">Direct (no labour)</option>
+                  </select>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Only a godown unload is charged to the labour account.
+                  </span>
                 </div>
                 <div className="field-h" style={{ gridColumn: '1 / -1' }}>
                   <label>Remark</label>

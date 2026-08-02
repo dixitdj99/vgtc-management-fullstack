@@ -146,7 +146,7 @@ module.exports = {
     },
 
     addStock: async (orgId, data, sCol = SCOL, allowedMaterialsCol = MCOL) => {
-        const { material, quantity, date, remark, truckNo } = data;
+        const { material, quantity, date, remark, truckNo, unloadingType } = data;
         
         let validMatNames = [];
         if (Array.isArray(allowedMaterialsCol)) {
@@ -160,12 +160,19 @@ module.exports = {
         const qty = parseFloat(quantity);
         if (!qty || qty <= 0) throw new Error('Quantity must be positive');
         
+        // Whose hands moved the bags. Only a godown unload is labour the firm
+        // pays for; a crossing goes truck to truck and a direct never stops
+        // here. Entries made before this field existed were all godown
+        // unloads, which is what the labour account assumes when it is absent.
+        const UNLOADING_TYPES = ['Godown Unload', 'Crossing', 'Direct'];
+
         const payload = {
             material,
             quantity: qty,
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '',
             truckNo: truckNo || '',
+            unloadingType: UNLOADING_TYPES.includes(unloadingType) ? unloadingType : 'Godown Unload',
         };
 
         if (firebaseAvailable()) return await firestoreAddStock(orgId, payload, sCol);
