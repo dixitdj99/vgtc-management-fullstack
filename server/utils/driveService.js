@@ -57,7 +57,21 @@ function isConfigured() {
     return getClientTemplate() !== null;
 }
 
+/**
+ * A hard off switch for Drive writes.
+ *
+ * The test suite creates vouchers and LRs, and the backup hooks on those routes
+ * upload to Drive — so every run was quietly filing test records into the real
+ * customer folder alongside genuine ones. Nothing in the tests asked for that;
+ * it came free with the hooks. The harness sets this, and every write path is
+ * gated behind isAuthorized(), so one flag stops the lot.
+ */
+const driveDisabled = () =>
+    String(process.env.VGTC_DISABLE_DRIVE || '').toLowerCase() === 'true'
+    || process.env.VGTC_DISABLE_DRIVE === '1';
+
 async function isAuthorized() {
+    if (driveDisabled()) return false;
     try {
         const client = await getAuthClient();
         const res = await client.getAccessToken();
