@@ -1947,10 +1947,25 @@ input[type="checkbox"] {
   display: inline-block;
 }
 
-/* Better scrollbar for tbl-wrap */
-.tbl-wrap::-webkit-scrollbar { height: 5px; }
-.tbl-wrap::-webkit-scrollbar-track { background: transparent; }
-.tbl-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+/* Horizontal scrollbar for wide tables.
+   5px on a transparent track was almost invisible and a hard target to grab —
+   and the widest tables (All Balance Sheet, the voucher list) are exactly the
+   ones that have to be dragged sideways constantly. Thick enough to hit, with a
+   visible track so it is obvious there is more table off to the right. */
+.tbl-wrap { scrollbar-width: auto; scrollbar-color: var(--text-muted) var(--bg-tf); }
+.tbl-wrap::-webkit-scrollbar { height: 14px; width: 14px; }
+.tbl-wrap::-webkit-scrollbar-track {
+  background: var(--bg-tf);
+  border-radius: 99px;
+  border-top: 1px solid var(--border);
+}
+.tbl-wrap::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 99px;
+  border: 3px solid var(--bg-tf);   /* inset, so the thumb reads as a grip */
+  min-width: 40px;
+}
+.tbl-wrap::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
 /* ── Autoplant Pagination ─────────────────────────────────── */
 .ap-pagination {

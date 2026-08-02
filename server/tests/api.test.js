@@ -16,6 +16,10 @@ const BASE = process.env.API_BASE || 'http://127.0.0.1:5000/api';
  * nothing is listening, and stops it again at the end.
  */
 const SECRET = process.env.JWT_SECRET || 'vgtc-secret-2026';
+
+// Also for the in-process requires below (archiveService, listBackupService),
+// which reach Drive directly rather than through the spawned server.
+process.env.VGTC_DISABLE_DRIVE = '1';
 const TOKEN = jwt.sign(
   { id: 'test-user', role: 'admin', orgId: 'vgtc', name: 'Test Admin' },
   SECRET,
@@ -39,8 +43,16 @@ async function ensureServer() {
 
   console.log(`  ..  nothing listening on ${url.hostname}:${port} — starting one for this run`);
   ownServer = spawn(process.execPath, [path.join(__dirname, '..', 'index.js')], {
-    // The token above is signed with SECRET, so the server has to verify with it.
-    env: { ...process.env, PORT: String(port), JWT_SECRET: SECRET },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      // The token above is signed with SECRET, so the server has to verify with it.
+      JWT_SECRET: SECRET,
+      // The voucher and LR routes back themselves up to Drive on create, so a
+      // test run was filing invented records into the real customer folder.
+      // Nothing asked for that — it came free with the hooks.
+      VGTC_DISABLE_DRIVE: '1',
+    },
     stdio: 'ignore',
   });
 
@@ -1162,6 +1174,67 @@ test('dump godowns hide the head-office modules but keep the permissions behind 
   }
 });
 
+/* ── Diesel verification ──────────────────────────────────────────────────── */
+
+test('verifying a full tank replaces the estimate with what it actually cost', async () => {
+  // "FULL" is treated as a Rs.4,000 estimate by every net calculation, so until
+  // the real bill is recorded the balance sheet is wrong. Verification is when
+  // that figure turns up.
+  const made = await post('/vouchers', {
+    lrNo: '99901', date: '2026-08-02', truckNo: 'HR47G9999', partyName: 'Test',
+    weight: '25', rate: '700', advanceDiesel: 'FULL', isFullTank: true,
+    pump: 'Sharma Filling Station', type: 'Dump', brand: 'dump',
+  });
+  const id = made.data.id;
+  try {
+    // The screens now send the amount alone — litres and the pump were being
+    // retyped from what the voucher already held.
+    await patch(`/vouchers/${id}/verify-diesel`, { dieselActualAmount: 5200 });
+    const after = (await get('/vouchers')).data.find(v => v.id === id);
+    assert(after.isDieselVerified === true, 'should be marked verified');
+    assert(parseFloat(after.advanceDiesel) === 5200,
+      `the estimate should have been replaced, got ${after.advanceDiesel}`);
+    assert(after.dieselEstimatedAmount === 'FULL', 'what it replaced should be recorded');
+  } finally { await del('/vouchers/' + id); }
+});
+
+test('verifying without litres or a pump leaves earlier ones intact', async () => {
+  // The screens stopped sending these, and writing the defaults for absent
+  // fields would have blanked what an earlier verification recorded.
+  const made = await post('/vouchers', {
+    lrNo: '99903', date: '2026-08-02', truckNo: 'HR47G9999', partyName: 'Test',
+    weight: '25', rate: '700', advanceDiesel: '3000', type: 'Dump', brand: 'dump',
+  });
+  const id = made.data.id;
+  try {
+    await patch(`/vouchers/${id}/verify-diesel`, { dieselActualLitres: 40, dieselPumpName: 'Sharma' });
+    await patch(`/vouchers/${id}/verify-diesel`, {});   // the new, amount-only shape
+
+    const after = (await get('/vouchers')).data.find(v => v.id === id);
+    assert(parseFloat(after.dieselActualLitres) === 40, `litres were wiped: ${after.dieselActualLitres}`);
+    assert(after.dieselPumpName === 'Sharma', `pump was wiped: ${after.dieselPumpName}`);
+    assert(after.isDieselVerified === true, 'it should still be verified');
+  } finally { await del('/vouchers/' + id); }
+});
+
+test('verifying does not re-price a trip whose diesel was already a number', async () => {
+  // Verification confirms a fill; it is not a place to change what was booked.
+  const made = await post('/vouchers', {
+    lrNo: '99902', date: '2026-08-02', truckNo: 'HR47G9999', partyName: 'Test',
+    weight: '25', rate: '700', advanceDiesel: '3000', type: 'Dump', brand: 'dump',
+  });
+  const id = made.data.id;
+  try {
+    await patch(`/vouchers/${id}/verify-diesel`, {
+      dieselActualLitres: 30, dieselPumpName: 'Sharma', dieselActualAmount: 9999,
+    });
+    const after = (await get('/vouchers')).data.find(v => v.id === id);
+    assert(parseFloat(after.advanceDiesel) === 3000,
+      `a booked amount must not be overwritten, got ${after.advanceDiesel}`);
+    assert(after.isDieselVerified === true, 'it should still be marked verified');
+  } finally { await del('/vouchers/' + id); }
+});
+
 /* ── Exports and the Drive archive ────────────────────────────────────────── */
 
 test('export rows keep every field, including one only some records carry', async () => {
@@ -1215,38 +1288,44 @@ test('archive folders give every module its own tree', async () => {
   assert(!safeName('LR/12*3?').includes('/'), 'a slash in a name would silently nest a folder');
 });
 
-test('archiving refuses what it should and never throws at the caller', async () => {
+test('archiving refuses what it should, before it ever reaches Drive', async () => {
+  // VGTC_DISABLE_DRIVE is set at the top of this file, so a valid call here
+  // reports "not connected" rather than uploading. An earlier version of this
+  // test ran against a live token and left real files in the customer's folder.
   const archiveService = require('../utils/archiveService');
+  const driveService = require('../utils/driveService');
+  assert((await driveService.isAuthorized()) === false,
+    'the suite must never write to the real Drive — VGTC_DISABLE_DRIVE is not taking effect');
 
   const noHtml = await archiveService.archive({ module: 'Vouchers', name: 'x', html: '' });
   assert(noHtml.archived === false, 'an empty document should not be filed');
+
+  const noName = await archiveService.archive({ module: 'Vouchers', name: '', html: '<p>hi</p>' });
+  assert(noName.archived === false, 'a nameless document should not be filed');
 
   const huge = await archiveService.archive({
     module: 'Vouchers', name: 'x', html: 'a'.repeat(archiveService.MAX_HTML_BYTES + 1),
   });
   assert(huge.archived === false && /too large/i.test(huge.reason), `oversized: ${JSON.stringify(huge)}`);
-
-  // Drive is not connected in the test environment: that is a reported outcome,
-  // not an error, or a printed slip would surface a red banner.
-  const ok = await archiveService.archive({ module: 'Vouchers', name: 'x', html: '<p>hi</p>' });
-  assert(ok.archived === false && /not connected/i.test(ok.reason || ''), `unauthorised: ${JSON.stringify(ok)}`);
 });
 
 test('the archive endpoint answers 200 whether or not Drive is up', async () => {
-  const res = await post('/archive', { module: 'Vouchers', name: 'probe', html: '<p>x</p>' });
+  // Invalid on purpose, for the same reason as above: this asserts the contract
+  // — never a 500, always an `archived` flag — without filing anything.
+  const res = await post('/archive', { module: 'Vouchers', name: 'probe', html: '' });
   assert(res.status === 200, `expected 200, got ${res.status} ${JSON.stringify(res.data)}`);
-  assert(res.data.archived === false, `expected archived:false without Drive, got ${JSON.stringify(res.data)}`);
+  assert(res.data.archived === false, `expected archived:false, got ${JSON.stringify(res.data)}`);
+  assert(typeof res.data.reason === 'string', 'a refusal should say why');
 
   const status = await get('/archive/status');
   assert(status.status === 200 && 'authorized' in status.data, 'status should report Drive connectivity');
 });
 
 test('weekly-lists is registered and covers every module folder', async () => {
+  // Registration and coverage only — invoking it would run a full backup into
+  // the org's real Drive.
   const { JOBS } = require('../jobs');
   assert(typeof JOBS['weekly-lists'] === 'function', 'weekly-lists must be in the JOBS registry');
-  const result = await JOBS['weekly-lists']();
-  assert(result.status === 'ok', `job should succeed, got ${JSON.stringify(result)}`);
-  assert(result.result?.skipped === true, 'it should skip without Drive, not attempt uploads');
 
   const { LISTS, isoWeek } = require('../utils/listBackupService');
   const { MODULES } = require('../utils/archiveService');

@@ -9,7 +9,7 @@ import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
-import { extrasPayload } from '../utils/voucherExtras';
+import { extrasPayload, readExtras } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
 
 const API_V = `/vouchers`;
@@ -87,6 +87,15 @@ function monthLabel(ym) {
 }
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+/**
+ * The pump recorded on the voucher, or blank. 'None' is the sentinel the
+ * voucher form writes when no station was picked, so it is not a name.
+ */
+export const pumpNameOf = (v) => {
+  const p = v?.dieselPumpName || v?.pump || '';
+  return p && p !== 'None' ? p : '';
+};
 
 /**
  * A balance-sheet row as an export row: everything the voucher carries, plus
@@ -267,6 +276,236 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
   });
 }
 
+/* ── Edit Entry ── */
+
+/**
+ * Editing a balance-sheet entry in a proper dialog.
+ *
+ * It used to happen inline: the row turned into twenty ~55px inputs squeezed
+ * into table cells, several of them stacked two-deep inside one column. Nothing
+ * was labelled once you were in it, the row jumped width as you typed, and on a
+ * laptop half the fields were off the right-hand edge behind a scrollbar. This
+ * shows the same fields grouped and labelled, with the net recomputing as you
+ * go, so the person editing can see what their change does before saving.
+ *
+ * Shared by every balance sheet — the per-plant ones and the All-Over view —
+ * so there is one place the entry can be edited and one place to fix.
+ */
+export function VoucherEditModal({ v, vehicle, onClose, onSaved }) {
+  const [form, setForm] = useState(() => ({
+    date: v.date || '', lrNo: v.lrNo || '', truckNo: v.truckNo || '',
+    partyName: v.partyName || '', destination: v.destination || '',
+    billNo: v.billNo || '', partyCode: v.partyCode || '',
+    weight: v.weight ?? '', rate: v.rate ?? '',
+    advanceDiesel: v.advanceDiesel ?? '', advanceCash: v.advanceCash ?? '',
+    advanceOnline: v.advanceOnline ?? '', munshi: v.munshi ?? '',
+    shortage: v.shortage ?? '', commission: v.commission ?? '',
+    tyrePuncture: v.tyrePuncture ?? '',
+    // Older records split this across two fields and getNet adds both, so show
+    // the sum or the box reads empty on an entry that plainly deducts for it.
+    tyreGreasingAir: (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) || '',
+    paidBalance: v.paidBalance ?? '', paymentClearedDate: v.paymentClearedDate || '',
+    extras: readExtras(v),
+    // A multi-delivery voucher prices each drop, so the rate lives here, not on
+    // the voucher. Editing has to reach them or the sheet shows a rate nobody
+    // can change.
+    deliveries: (v.deliveries || []).map(d => ({ ...d })),
+  }));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
+
+  // Multi-delivery vouchers price each drop, so weight and rate here would be
+  // meaningless — the sheet shows the per-delivery breakdown instead.
+  const multiDrop = v.deliveries?.length > 0;
+
+  const preview = { ...v, ...form, extras: form.extras, deliveries: form.deliveries };
+  const net = calcNet(preview, vehicle);
+  const paid = parseFloat(form.paidBalance) || 0;
+  const outstanding = Math.max(0, net - paid);
+  const rateMissing = multiDrop
+    ? !form.deliveries.some(d => parseFloat(d.rate) > 0)
+    : !(parseFloat(form.rate) > 0);
+
+  const setDelivery = (i, key, val) =>
+    S('deliveries', form.deliveries.map((d, j) => (j === i ? { ...d, [key]: val } : d)));
+
+  const save = async () => {
+    setSaving(true); setErr('');
+    try {
+      await ax.patch(`${API_V}/${v.id}`, {
+        ...form,
+        // The greasing box holds the sum of the legacy pair, so clear them or
+        // the old amounts are deducted twice.
+        tyreGreasing: '', tyreAir: '',
+        // `total` is stored on the voucher and read by the exports, the Google
+        // Sheet mirror and the voucher list. The balance sheet derives gross
+        // from weight × rate and would have looked right while everything else
+        // still showed the old figure.
+        total: String(Math.round(calcGross(preview))),
+        ...extrasPayload(form.extras),
+      });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Could not save');
+    } finally { setSaving(false); }
+  };
+
+  const Field = ({ label, k, type = 'number', wide, hint }) => (
+    <div className="field-h" style={wide ? { gridColumn: '1 / -1' } : undefined}>
+      <label>{label}</label>
+      <input className="fi" type={type} step={type === 'number' ? 'any' : undefined}
+        value={form[k] ?? ''} onChange={e => S(k, e.target.value)} />
+      {hint && <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>{hint}</span>}
+    </div>
+  );
+
+  const setExtra = (i, key, val) => S('extras', form.extras.map((e, j) => (j === i ? { ...e, [key]: val } : e)));
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        style={{ width: '96%', maxWidth: '760px', maxHeight: '92vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.55)' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 22px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+          <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={16} color="var(--primary)" /></div>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Entry</div>
+            <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '2px' }}>
+              LR #{v.lrNo} · {v.truckNo} · {(v.type || '').replace(/_/g, ' ')}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', display: 'flex' }}><X size={18} /></button>
+        </div>
+
+        <div style={{ padding: '18px 22px' }}>
+          <SectionLabel>Trip</SectionLabel>
+          <div className="fg fg-2" style={{ gap: '12px' }}>
+            <Field label="Date" k="date" type="date" />
+            <Field label="LR No." k="lrNo" type="text" />
+            <Field label="Truck No." k="truckNo" type="text" />
+            <Field label="Party" k="partyName" type="text" />
+            <Field label="Destination" k="destination" type="text" />
+            <Field label="Bill No." k="billNo" type="text" />
+            <Field label="Party Code" k="partyCode" type="text" />
+            {!multiDrop && <Field label="Weight (MT)" k="weight" />}
+            {!multiDrop && <Field label="Rate (Rs/MT)" k="rate" hint={rateMissing ? 'Needed before the balance means anything' : undefined} />}
+          </div>
+          {multiDrop && (
+            <>
+              <SectionLabel>Destinations — {form.deliveries.length} drops, each with its own rate</SectionLabel>
+              <div className="tbl-wrap">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr>
+                      {['LR No.', 'Destination', 'Party', 'Weight (MT)', 'Rate (Rs/MT)', 'Gross'].map(h => (
+                        <th key={h} style={{ ...TH, padding: '7px 8px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.deliveries.map((d, i) => {
+                      const g = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+                      const cell = (k, w) => (
+                        <input className="fi" type={k === 'weight' || k === 'rate' ? 'number' : 'text'} step="any"
+                          value={d[k] ?? ''} onChange={e => setDelivery(i, k, e.target.value)}
+                          style={{ width: w, padding: '4px 7px', fontSize: '12px', height: '30px' }} />
+                      );
+                      return (
+                        <tr key={i}>
+                          <td style={{ ...TD, padding: '5px 8px' }}>{cell('lrNo', '70px')}</td>
+                          <td style={{ ...TD, padding: '5px 8px' }}>{cell('destination', '130px')}</td>
+                          <td style={{ ...TD, padding: '5px 8px' }}>{cell('partyName', '130px')}</td>
+                          <td style={{ ...TD, padding: '5px 8px' }}>{cell('weight', '80px')}</td>
+                          <td style={{ ...TD, padding: '5px 8px' }}>{cell('rate', '80px')}</td>
+                          <td style={{ ...TD, padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: g > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                            {g > 0 ? fmtRs(g) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <SectionLabel>Advances</SectionLabel>
+          <div className="fg fg-2" style={{ gap: '12px' }}>
+            <Field label="Diesel" k="advanceDiesel" type="text" hint={String(form.advanceDiesel).toUpperCase() === 'FULL' ? 'Full tank — counted as Rs.4,000 until verified' : undefined} />
+            <Field label="Cash" k="advanceCash" />
+            <Field label="Online" k="advanceOnline" />
+          </div>
+
+          <SectionLabel>Deductions</SectionLabel>
+          <div className="fg fg-2" style={{ gap: '12px' }}>
+            <Field label="Munshi" k="munshi" />
+            <Field label="Shortage" k="shortage" />
+            <Field label="Commission" k="commission" />
+            <Field label="Tyre Puncture" k="tyrePuncture" />
+            <Field label="Tyre Greasing & Air" k="tyreGreasingAir" />
+          </div>
+
+          <SectionLabel>Extra money</SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {form.extras.map((e, i) => (
+              <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input className="fi" type="number" placeholder="₹0" value={e.amount ?? ''}
+                  onChange={ev => setExtra(i, 'amount', ev.target.value)} style={{ width: '110px', flexShrink: 0 }} />
+                <input className="fi" type="text" placeholder="Reason — e.g. grease ke paise" value={e.remark || ''}
+                  onChange={ev => setExtra(i, 'remark', ev.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                <button type="button" onClick={() => S('extras', form.extras.filter((_, j) => j !== i))}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '7px', color: '#f43f5e', cursor: 'pointer', padding: '8px', display: 'flex', flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={() => S('extras', [...form.extras, { amount: '', remark: '' }])}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '9px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 700 }}>
+              <Plus size={13} /> {form.extras.length ? 'Add another' : 'Add extra money'}
+            </button>
+          </div>
+
+          <SectionLabel>Payment</SectionLabel>
+          <div className="fg fg-2" style={{ gap: '12px' }}>
+            <Field label="Paid" k="paidBalance" />
+            <Field label="Payment Cleared Date" k="paymentClearedDate" type="date" />
+          </div>
+
+          {/* The reason this is a dialog: you can see what the change does. */}
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '18px', padding: '12px 14px', borderRadius: '10px', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+            {rateMissing
+              ? <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--warn)' }}>Enter a rate to get the final balance</span>
+              : <>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>Gross <strong style={{ color: 'var(--text)' }}>{fmtRs(calcGross(preview))}</strong></span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>Net <strong style={{ color: net >= 0 ? 'var(--accent)' : 'var(--danger)' }}>{fmtRs(net)}</strong></span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>Outstanding <strong style={{ color: outstanding > 0 ? 'var(--warn)' : 'var(--accent)' }}>{outstanding > 0 ? fmtRs(outstanding) : 'Cleared'}</strong></span>
+              </>}
+          </div>
+
+          {err && <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: 700, color: 'var(--danger)' }}>{err}</div>}
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--bg-card)' }}>
+          <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-p" onClick={save} disabled={saving}>
+            {saving ? <Loader2 size={14} className="spin" /> : <><Save size={14} /> Save Changes</>}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+const SectionLabel = ({ children }) => (
+  <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '18px 0 8px', paddingBottom: '5px', borderBottom: '1px solid var(--border)' }}>
+    {children}
+  </div>
+);
+
 /* ── Editable Row ── */
 /**
  * @param {React.ReactNode} [leadCells] extra <td>s inserted after the row number.
@@ -275,7 +514,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
  *   its rows differ, so it can share this row rather than keep a second copy of
  *   editing, deleting, WhatsApp and diesel verification.
  */
-export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL, onVerifyDiesel, leadCells = null }) {
+export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, permissions, isBillType, vehicle, showPnL, onVerifyDiesel, leadCells = null, onEdit = null }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -326,7 +565,17 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
   const overdueColor = days > 30 ? '#f43f5e' : days > 15 ? '#f59e0b' : null;
 
   const gross = calcGross(cv);
-  const waText = `*VGTC Voucher*\nLR #${v.lrNo} | ${v.truckNo || ''}\nDate: ${v.date || ''}\nRoute: ${v.destination || v.partyName || '—'}\nGross: Rs.${Math.round(gross).toLocaleString('en-IN')}\nNet Bal: Rs.${Math.round(net).toLocaleString('en-IN')}\nOutstanding: ${outstanding > 0 ? 'Rs.' + Math.round(outstanding).toLocaleString('en-IN') : 'Cleared ✓'}`;
+
+  /**
+   * Nobody has priced this trip yet. A multi-delivery voucher carries a rate per
+   * drop, so one priced destination is enough to call the voucher rated — the
+   * balance is then real, even if incomplete.
+   */
+  const rateMissing = cv.deliveries?.length > 0
+    ? !cv.deliveries.some(d => parseFloat(d.rate) > 0)
+    : !(parseFloat(cv.rate) > 0);
+
+  const waText = `*VGTC Voucher*\nLR #${v.lrNo} | ${v.truckNo || ''}\nDate: ${v.date || ''}\nRoute: ${v.destination || v.partyName || '—'}\nGross: Rs.${Math.round(gross).toLocaleString('en-IN')}\n${rateMissing ? 'Rate not entered — balance pending' : `Net Bal: Rs.${Math.round(net).toLocaleString('en-IN')}\nOutstanding: ${outstanding > 0 ? 'Rs.' + Math.round(outstanding).toLocaleString('en-IN') : 'Cleared ✓'}`}`;
 
   return (
     <tr style={{ background: editing ? 'var(--bg-input)' : bg, outline: checked ? '1px solid var(--primary)' : '', borderLeft: overdueColor && !editing ? `3px solid ${overdueColor}` : '' }}
@@ -455,7 +704,18 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       </td>
       <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('paidBalance') : (paid ? fmtRs(paid) : '—')}</td>
       <td style={{ ...TD, textAlign: 'center' }}>
-        {net < 0
+        {rateMissing
+          /* A trip with no rate has no freight, so net comes out as the bare
+             deductions and the row read "Adjusted" — which says the balance was
+             settled against something, when really nobody has priced the trip
+             yet. Say what is actually needed. */
+          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(245,158,11,0.12)', color: 'var(--warn)', fontSize: '11px', fontWeight: 800, border: '1px dashed rgba(245,158,11,0.4)' }}>
+              <AlertCircle size={11} /> Enter rate
+            </span>
+            <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', fontWeight: 600 }}>to get final balance</span>
+          </div>
+          : net < 0
           ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '12px', fontWeight: 700 }}>Adjusted</span>
             <span style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700 }}>{fmtRs(Math.abs(net))}</span>
@@ -495,7 +755,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
               <MessageCircle size={12} color="#25d366" />
             </button>
             {(role === 'admin' || permissions?.balance === 'edit' || permissions?.balance === 'delete' || permissions?.voucher === 'edit' || permissions?.voucher === 'delete') && <>
-              <button className="btn btn-g btn-icon btn-sm" onClick={startEdit} title="Edit Record"><Pencil size={12} /></button>
+              <button className="btn btn-g btn-icon btn-sm" onClick={() => (onEdit ? onEdit(v) : startEdit())} title="Edit Record"><Pencil size={12} /></button>
               {(role === 'admin' || permissions?.balance === 'delete' || permissions?.voucher === 'delete') && <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>}
             </>}
           </div>
@@ -539,7 +799,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL, onVerifyDiesel }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL, onVerifyDiesel, onEdit }) {
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill' || tabName === 'Bahadurgarh_Bill';
   const [open, setOpen] = useState(true);
 
@@ -702,7 +962,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} onVerifyDiesel={onVerifyDiesel} />
+                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} onVerifyDiesel={onVerifyDiesel} onEdit={onEdit} />
               ))}
             </tbody>
             <tfoot>
@@ -794,8 +1054,11 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [showPnL, setShowPnL] = useState(false);
   const [showMonthPLModal, setShowMonthPLModal] = useState(false);
   const [selectedPLMonth, setSelectedPLMonth] = useState('');
+  // The entry open in the edit dialog. Also reachable from the selection bar,
+  // which is where a clerk who has just ticked a row looks for it.
+  const [editRow, setEditRow] = useState(null);
   const [dieselVerifyTarget, setDieselVerifyTarget] = useState(null);
-  const [dieselVerifyForm, setDieselVerifyForm] = useState({ litres: '', pump: '' });
+  const [dieselVerifyForm, setDieselVerifyForm] = useState({ amount: '' });
   const [dieselVerifySaving, setDieselVerifySaving] = useState(false);
 
   // ── Send to Pay ───────────────────────────────────────────────────────────
@@ -830,8 +1093,11 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     setDieselVerifySaving(true);
     try {
       await ax.patch(`${API_V}/${dieselVerifyTarget.id}/verify-diesel`, {
-        dieselActualLitres: dieselVerifyForm.litres,
-        dieselPumpName: dieselVerifyForm.pump,
+        // Amount only. Litres and the pump were being retyped from what the
+        // voucher already held; the server leaves any earlier values alone.
+        // Read only for a full tank, so verification can never re-price a trip
+        // that was already costed.
+        dieselActualAmount: dieselVerifyForm.amount,
       });
       setDieselVerifyTarget(null);
       fetchVouchers();
@@ -1416,6 +1682,13 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   Due: {selOut > 0 ? fmtRs(selOut) : 'Cleared ✓'}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '7px' }}>
+                  {/* Edit acts on one entry, so it only appears when one is ticked —
+                      offering it for twelve would mean guessing which. */}
+                  {selected.size === 1 && (role === 'admin' || permissions?.balance === 'edit') && (
+                    <button className="btn btn-g btn-sm" onClick={() => setEditRow(selRows[0])} title="Edit this entry">
+                      <Pencil size={13} /> Edit Entry
+                    </button>
+                  )}
                   {/* Print is the action for whatever is ticked, so it leads. */}
                   <button className="btn btn-p btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab, orgName, selVehicle)}>
                     <Printer size={13} /> Print {selected.size} Selected
@@ -1439,8 +1712,19 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               selected={selected} onCheck={onCheck} onCheckAll={onCheckAll} onDelete={setDelVoucher}
               tabName={tab} selTruck={selTruck} filters={filters} onFilterChange={handleFilterChange}
               role={role} permissions={permissions} orgName={orgName} vehicle={selVehicle} showPnL={showPnL}
-              onVerifyDiesel={(v) => { setDieselVerifyTarget(v); setDieselVerifyForm({ litres: '', pump: '' }); }} />
+              onVerifyDiesel={(v) => {
+                setDieselVerifyTarget(v);
+                setDieselVerifyForm({ amount: '' });
+              }}
+              onEdit={setEditRow} />
           ))}
+
+          <AnimatePresence>
+            {editRow && (
+              <VoucherEditModal v={editRow} vehicle={selVehicle}
+                onClose={() => setEditRow(null)} onSaved={fetchVouchers} />
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {delVoucher && (
@@ -1463,27 +1747,43 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   <div style={{ fontSize: '11px', color: 'var(--warn)', marginBottom: '18px', fontWeight: 700 }}>
                     Advance given: {dieselVerifyTarget.advanceDiesel === 'FULL' ? 'Full Tank (Est. Rs.4000)' : `Rs.${dieselVerifyTarget.advanceDiesel}`}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '18px' }}>
-                    <div className="field-h">
-                      <label>Actual Litres</label>
-                      <input className="fi" type="number" step="0.1" placeholder="e.g. 45.5" value={dieselVerifyForm.litres} onChange={e => setDieselVerifyForm(f => ({ ...f, litres: e.target.value }))} />
-                    </div>
-                    <div className="field-h">
-                      <label>Pump Name</label>
-                      <input className="fi" type="text" placeholder="e.g. HP Petrol Pump" value={dieselVerifyForm.pump} onChange={e => setDieselVerifyForm(f => ({ ...f, pump: e.target.value }))} />
-                    </div>
-                  </div>
-                  {dieselVerifyForm.litres && (() => {
-                    const advance = dieselVerifyTarget.advanceDiesel === 'FULL' ? 4000 : (parseFloat(dieselVerifyTarget.advanceDiesel) || 0);
-                    const pricePerLitre = advance > 0 && parseFloat(dieselVerifyForm.litres) > 0 ? (advance / parseFloat(dieselVerifyForm.litres)).toFixed(2) : null;
-                    return pricePerLitre ? <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '14px' }}>≈ Rs.{pricePerLitre}/litre implied rate</div> : null;
+                  {(() => {
+                    // The voucher already records which pump and how much, so
+                    // asking again is asking the clerk to retype what the app
+                    // knows. The one thing it cannot know is what a full tank
+                    // actually cost — that is the only field worth demanding.
+                    const isFull = dieselVerifyTarget.advanceDiesel === 'FULL' || dieselVerifyTarget.isFullTank;
+                    const spend = isFull
+                      ? (parseFloat(dieselVerifyForm.amount) || 0)
+                      : (parseFloat(dieselVerifyTarget.advanceDiesel) || 0);
+                    return (
+                      <>
+                        {isFull ? (
+                          <div className="field-h" style={{ marginBottom: '18px' }}>
+                            <label>Actual Amount (Rs.) *</label>
+                            <input className="fi" type="number" step="1" autoFocus placeholder="what the tank actually cost"
+                              value={dieselVerifyForm.amount}
+                              onChange={e => setDieselVerifyForm(f => ({ ...f, amount: e.target.value }))} />
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                              Booked as a full tank, so the sheet has been carrying the Rs.4,000 estimate. This replaces it.
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ marginBottom: '18px', fontSize: '12px', color: 'var(--text-sub)' }}>
+                            Confirm this is what the driver actually spent.
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                          <button className="btn btn-g" onClick={() => setDieselVerifyTarget(null)} disabled={dieselVerifySaving}>Cancel</button>
+                          <button className="btn btn-p" onClick={executeDieselVerify}
+                            disabled={dieselVerifySaving || (isFull && !(spend > 0))}
+                            title={isFull && !(spend > 0) ? 'Enter what the full tank cost' : 'Mark verified'}>
+                            {dieselVerifySaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Verify {spend > 0 ? `Rs.${spend.toLocaleString('en-IN')}` : ''}</>}
+                          </button>
+                        </div>
+                      </>
+                    );
                   })()}
-                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    <button className="btn btn-g" onClick={() => setDieselVerifyTarget(null)} disabled={dieselVerifySaving}>Cancel</button>
-                    <button className="btn btn-p" onClick={executeDieselVerify} disabled={dieselVerifySaving}>
-                      {dieselVerifySaving ? <Loader2 size={13} className="spin" /> : <><Check size={13} /> Mark Verified</>}
-                    </button>
-                  </div>
                 </motion.div>
               </div>
             )}
