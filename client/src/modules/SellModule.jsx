@@ -54,6 +54,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
   const [form, setForm] = useState(getEmptyForm());
   const [filters, setFilters] = useState({});
   const [view, setView] = useState('sales'); // sales | online | cash
+  // Opens on the ledger. The sale form used to hold a 340px column on every
+  // visit, when most visits are to check what was sold rather than to sell.
+  const [formOpen, setFormOpen] = useState(false);
 
   // ── Sell cash box ──
   const [movements, setMovements] = useState([]);
@@ -500,7 +503,11 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
           <p>Tracking internal sales and bag deductions</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="btn btn-p btn-sm" onClick={() => { setShowCash(true); setCashErr(''); }} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button className={`btn btn-sm ${formOpen ? 'btn-g' : 'btn-p'}`} onClick={() => setFormOpen(o => !o)}
+            title={formOpen ? 'Close the form' : 'Record a new sale'}>
+            {formOpen ? <><X size={14} /> Close Form</> : <><Plus size={14} /> Create New Sell</>}
+          </button>
+          <button className="btn btn-g btn-sm" onClick={() => { setShowCash(true); setCashErr(''); }} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Banknote size={14} /> Cash · ₹{cashInHand.toLocaleString('en-IN')}
           </button>
           <button className="btn btn-g btn-sm" onClick={fetchSales} disabled={loading}>
@@ -670,7 +677,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
         </div>
       )}
 
-      <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px', alignItems: 'start' }}>
+      <div className="two-col" style={{ display: 'grid', gridTemplateColumns: formOpen ? '1fr 340px' : '1fr', gap: '20px', alignItems: 'start' }}>
 
         {/* ── SALES HISTORY ── (the new-sale form beside it stays available in every view) */}
         <div className="card" style={{ display: view === 'sales' ? undefined : 'none' }}>
@@ -774,7 +781,8 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
           </div>
         </div>
 
-        {/* ── NEW SALE FORM ── */}
+        {/* ── NEW SALE FORM — hidden until asked for ── */}
+        {formOpen && (
         <div style={{ position: 'sticky', top: '20px' }}>
           <div className="card">
             <div className="card-header">
@@ -893,6 +901,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             </form>
           </div>
         </div>
+        )}
 
       </div>
     </div>

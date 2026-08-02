@@ -1240,6 +1240,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const { user } = useAuth();
   const signedBy = user?.name || user?.username || 'VGTC';
 
+  // The module opens on the list. Most visits are to look a receipt up, and the
+  // form used to take the whole first screen before anyone could see one.
+  const [formOpen, setFormOpen] = useState(false);
+
   // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
   const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : brand === 'bahadurgarh' ? 'lr_bahadurgarh' : 'lr_jkl';
   const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
@@ -1895,19 +1899,29 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <p>Create and manage loading receipts</p>
           </div>
           <div className="page-hd-right" style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn btn-p" onClick={() => setShowChalPopup('create')} title="Add a new Challan"><Plus size={15} /> Add New Challan</button>
+            {/* The list is what the module opens on now — this is how the form
+                is reached. Prominent, because creating is the common task. */}
+            <button className={`btn ${formOpen ? 'btn-g' : 'btn-p'}`} onClick={() => setFormOpen(o => !o)}
+              title={formOpen ? 'Close the form' : 'Create a new loading receipt'}>
+              {formOpen ? <><X size={15} /> Close Form</> : <><Plus size={15} /> Create New Loading Receipt</>}
+            </button>
+            <button className="btn btn-s" onClick={() => setShowChalPopup('create')} title="Add a new Challan"><Plus size={15} /> Add New Challan</button>
             <button className="btn btn-s" onClick={exportExcel} title="Export to Excel Spreadsheet"><Download size={15} /> Export Excel</button>
             <button className="btn btn-s" onClick={dlPDF} title="Export to PDF Document"><Printer size={15} /> Export PDF</button>
           </div>
         </div>
         <div className="tc-form-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* FORM */}
+          {/* FORM — hidden until asked for. It used to sit above the list and
+              push the receipts off the first screen on every visit, when most
+              visits are to look something up rather than to add one. */}
+          {formOpen && (
           <div className="card">
             <div className="card-header">
               <div className="card-title-block">
                 <div className="card-icon ci-indigo"><Plus size={17} /></div>
                 <div className="card-title-text"><h3>New Entry</h3><p>Fill loading details</p></div>
               </div>
+              <button className="btn btn-g btn-sm" onClick={() => setFormOpen(false)}><X size={13} /> Close</button>
             </div>
             <div className="card-body">
               <form onSubmit={handleFormRequest} ref={createFormRef}>
@@ -2084,6 +2098,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </form>
             </div>
           </div>
+          )}
 
           {/* LIST */}
           <div className="card">

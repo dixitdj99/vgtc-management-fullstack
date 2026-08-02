@@ -956,7 +956,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [lrAlreadyUsed, setLrAlreadyUsed] = useState(false);
     const [editVoucher, setEditVoucher] = useState(null);
     const [delVoucher, setDelVoucher] = useState(null);
-    const [formOpen, setFormOpen] = useState(true);
+    // Opens on the list. The form was taking the whole first screen on a module
+    // people mostly come to in order to look something up.
+    const [formOpen, setFormOpen] = useState(false);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -1447,10 +1449,17 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 {TYPES.map(t => <button key={t} className={`tab-btn${vType === t ? ' tab-indigo' : ''}`} onClick={() => setVType(t)}>{t.replace('_', ' ')}</button>)}
                             </div>
                         )}
+                        {canEdit && (
+                            <button className={`btn ${formOpen ? 'btn-g' : 'btn-p'}`} onClick={() => setFormOpen(o => !o)}
+                                title={formOpen ? 'Close the form' : 'Create a new voucher'}>
+                                {formOpen ? <><X size={15} /> Close Form</> : <><Plus size={15} /> Create New Voucher</>}
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                {/* ── Entry Form (collapsible) ── */}
+                {/* ── Entry Form — hidden until asked for ── */}
+                {formOpen && (
                 <div className="card" style={{ marginBottom: '18px' }}>
                     <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setFormOpen(o => !o)}>
                         <div className="card-title-block">
@@ -1458,7 +1467,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             <div className="card-title-text"><h3>New {isGeneric ? 'Voucher' : vType.replace('_', ' ') + ' Voucher'}</h3><p>{form.date}</p></div>
                         </div>
                         <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700 }}>
-                            {formOpen ? <><ChevronUp size={15} /> Collapse</> : <><ChevronDown size={15} /> Expand</>}
+                            <X size={15} /> Close
                         </button>
                     </div>
 
@@ -1839,6 +1848,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                         )}
                     </AnimatePresence>
                 </div>
+                )}
 
                 {/* ── Voucher Sheet ── */}
                 <div className="card">
