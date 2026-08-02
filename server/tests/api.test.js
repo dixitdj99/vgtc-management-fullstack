@@ -1174,6 +1174,70 @@ test('dump godowns hide the head-office modules but keep the permissions behind 
   }
 });
 
+/* ── Splitting a multi-LR voucher for display ─────────────────────────────── */
+
+test('a multi-LR voucher splits into one leg per LR, deductions on the first', async () => {
+  // Each drop has its own destination, rate and LR number. The deductions are
+  // for the whole trip and are not divisible by destination, so they sit on the
+  // first leg rather than being invented per leg.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'BalanceSheet.jsx'), 'utf8');
+  const start = src.indexOf('export function explodeVoucher');
+  assert(start !== -1, 'explodeVoucher is not exported');
+  let i = src.indexOf('{', src.indexOf(')', start)), depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) break;
+  }
+  // eslint-disable-next-line no-new-func
+  const explodeVoucher = new Function(
+    `${src.slice(start, i + 1).replace('export function', 'function')}\nreturn explodeVoucher;`)();
+
+  const voucher = {
+    id: 'v1', lrNo: '', truckNo: 'HR47G9999', date: '2026-08-02',
+    advanceDiesel: '4000', advanceCash: '1000', munshi: '100', paidBalance: '500',
+    deliveries: [
+      { lrNo: '101', destination: 'Rewari', weight: '6', rate: '420' },
+      { lrNo: '102', destination: 'Sohna', weight: '4', rate: '500' },
+    ],
+  };
+  const legs = explodeVoucher(voucher);
+  assert(legs.length === 2, `expected 2 legs, got ${legs.length}`);
+
+  // Each leg is identifiable by its own LR and priced on its own drop.
+  assert(legs[0].lrNo === '101' && legs[1].lrNo === '102', `LRs: ${legs.map(l => l.lrNo)}`);
+  assert(legs[0].destination === 'Rewari' && legs[1].destination === 'Sohna', 'destinations lost');
+  assert(legs[0].rate === '420' && legs[1].rate === '500', 'per-drop rates lost');
+  assert(!legs[0].deliveries && !legs[1].deliveries, 'a leg must price from its own weight x rate');
+
+  // Deductions on the first only — never duplicated across legs.
+  assert(legs[0].advanceDiesel === '4000' && legs[0].advanceCash === '1000', 'first leg lost the deductions');
+  assert(legs[1].advanceDiesel === '' && legs[1].advanceCash === '', 'deductions were duplicated onto leg 2');
+  assert(legs[1].paidBalance === '', 'payment belongs to the voucher, not to every leg');
+  assert(legs[1]._noDeductions === true, 'leg 2 must suppress the automatic munshi');
+
+  // Writes must address the voucher, not a leg.
+  assert(legs[0].id === 'v1', 'the first leg is the voucher itself');
+  assert(legs[1].id !== 'v1' && legs[1]._parentId === 'v1', 'a later leg needs its own key and a parent');
+
+  // A plain voucher is untouched.
+  const plain = explodeVoucher({ id: 'v2', lrNo: '9', weight: '25', rate: '700' });
+  assert(plain.length === 1 && plain[0].id === 'v2', 'a single-LR voucher must pass through unchanged');
+});
+
+test('the automatic munshi is not charged again on every leg', async () => {
+  // calcNet defaults munshi from the weight when none was entered, so a zeroed
+  // leg would silently be charged Rs.50-100 of its own.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'BalanceSheet.jsx'), 'utf8');
+  const m = src.match(/const munshi = [^\n]*/);
+  assert(m, 'the munshi line was not found — has calcNet been rewritten?');
+  assert(/_noDeductions/.test(m[0]),
+    `calcNet no longer honours _noDeductions, so split legs each get their own munshi: ${m[0]}`);
+});
+
 /* ── Diesel verification ──────────────────────────────────────────────────── */
 
 test('verifying a full tank replaces the estimate with what it actually cost', async () => {

@@ -97,6 +97,28 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
         : (parseInt(v.bags) || 0);
 
+    /**
+     * The LR numbers this voucher actually covers.
+     *
+     * A multi-delivery voucher's own `lrNo` is a parent reference — often blank,
+     * printed as "AUTO" — while the real numbers sit on the drops. The driver and
+     * the party both identify the load by those, so the slip has to carry them.
+     */
+    const lrLabel = hasDeliveries
+        ? v.deliveries.map(d => d.lrNo).filter(Boolean).map(n => `#${n}`).join(', ')
+          || (v.lrNo ? `#${v.lrNo}` : 'AUTO')
+        : (v.lrNo ? `#${v.lrNo}` : 'AUTO');
+
+    /**
+     * Nobody has priced this trip yet. Gross is then zero, so net comes out as
+     * the bare deductions — a negative "NET PAYABLE" that reads as though the
+     * driver owes the company. The slip says the rate is missing and lists the
+     * deductions instead.
+     */
+    const rateMissing = hasDeliveries
+        ? !v.deliveries.some(d => parseFloat(d.rate) > 0)
+        : !(parseFloat(v.rate) > 0);
+
     // The rate the freight was worked out at. Multi-delivery vouchers can carry a
     // different rate per drop, so show each one rather than a misleading single figure.
     const rateLabel = (() => {
@@ -264,6 +286,43 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         font-size: 5.5pt;
         color: #000;
         display: block;
+      }
+      /* One card per LR — the JK Super layout, which states each drop's own
+         destination, bags, weight and rate instead of one combined line. */
+      .dlv-list { margin-bottom: 2mm; }
+      .dlv {
+        border: 1.5px solid #000;
+        border-radius: 3px;
+        padding: 1.5mm 2mm;
+        margin-bottom: 1.2mm;
+      }
+      .dlv-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 2mm;
+        font-weight: 900;
+        font-size: 9.5pt;
+      }
+      .dlv-dest { text-align: right; }
+      .dlv-party { font-size: 8pt; font-weight: 700; margin-top: 0.3mm; }
+      .dlv-nums {
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1.5mm;
+        font-size: 8.5pt;
+        font-weight: 800;
+        margin-top: 0.8mm;
+      }
+      .dlv-gross { font-weight: 900; }
+      .dlv-total {
+        display: flex;
+        justify-content: space-between;
+        gap: 2mm;
+        font-weight: 900;
+        font-size: 9pt;
+        border-top: 2px solid #000;
+        padding-top: 1mm;
       }`,
             body: `
     <div class="container">
@@ -274,24 +333,54 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         </div>
 
         <div class="lr-row">
-          <span>Voucher for LR: # ${v.lrNo || 'AUTO'}</span>
+          <span>Voucher for LR: ${lrLabel}</span>
           <span>Date: ${v.date}</span>
         </div>
 
         <div class="sec">
           <div class="line"><span class="lbl">Truck No</span><span class="val" style="font-size: 11pt; font-weight: 900;">${v.truckNo}</span></div>
+          ${hasDeliveries ? '' : `
           <div class="line"><span class="lbl">Party Name</span><span class="val">${v.partyName || '—'}</span></div>
           <div class="line"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
           <div class="line"><span class="lbl">Bags / Weight</span><span class="val">${totalBags} Bags / ${totalWeight} MT</span></div>
-          ${rateLabel ? `<div class="line"><span class="lbl">Rate</span><span class="val">${rateLabel}</span></div>` : ''}
+          ${rateLabel ? `<div class="line"><span class="lbl">Rate</span><span class="val">${rateLabel}</span></div>` : ''}`}
         </div>
 
+        ${hasDeliveries ? `
+        <!-- One card per LR, the way the JK Super slip does it. A combined
+             "Bags / Weight" line hid which drop carried what, and the rates can
+             differ per destination — so each LR states its own. -->
+        <div class="dlv-list">
+          ${v.deliveries.map(d => {
+            const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+            return `<div class="dlv">
+              <div class="dlv-top"><span class="dlv-lr">LR #${d.lrNo || '—'}</span><span class="dlv-dest">${d.destination || '—'}</span></div>
+              ${d.partyName ? `<div class="dlv-party">${d.partyName}</div>` : ''}
+              <div class="dlv-nums">
+                <span><b>${parseFloat(d.weight || 0).toFixed(2)}</b> MT</span>
+                <span><b>${d.bags || '—'}</b> bags</span>
+                <span>@ ${d.rate || '—'}</span>
+                <span class="dlv-gross">${rowGross > 0 ? 'Rs. ' + Math.round(rowGross).toLocaleString('en-IN') : 'rate?'}</span>
+              </div>
+            </div>`;
+          }).join('')}
+          <div class="dlv-total">
+            <span>TOTAL · ${v.deliveries.length} destinations</span>
+            <span>${totalWeight} MT · ${totalBags} bags</span>
+          </div>
+        </div>` : ''}
+
         <div class="sec">
-          <div class="line"><span class="lbl">Gross Freight</span><span class="val">Rs. ${Math.round(n.gross).toLocaleString('en-IN')}</span></div>
+          <div class="line"><span class="lbl">Gross Freight</span><span class="val">${rateMissing ? '—' : 'Rs. ' + Math.round(n.gross).toLocaleString('en-IN')}</span></div>
           ${deductionRows.map(d => `<div class="line"><span class="lbl">${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</span><span class="val">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : 'Rs. ' + Math.round(d.val).toLocaleString('en-IN')}</span></div>`).join('')}
         </div>
 
-        ${n.dieselPending
+        ${rateMissing
+            ? `<div style="background:#92400e;color:#fff;text-align:center;padding:5px 6px;font-size:9pt;font-weight:800;margin-top:2mm;border-radius:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+                 RATE NOT UPDATED — BALANCE PENDING
+                 <div style="font-size:7.5pt;font-weight:600;margin-top:1px;">Deductions above total Rs. ${Math.round(n.totalDeductions).toLocaleString('en-IN')}</div>
+               </div>`
+            : n.dieselPending
             ? `<div style="background:#92400e;color:#fff;text-align:center;padding:5px;font-size:9.5pt;font-weight:800;margin-top:2mm;border-radius:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">DIESEL PENDING (FULL TANK)</div>`
             : `<div class="net-banner"><span>NET PAYABLE</span><span>Rs. ${Math.round(n.net).toLocaleString('en-IN')}</span></div>`}
       </div>
@@ -577,9 +666,9 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     <div class="ref-row">
       <div>
         ${hasDeliveries
-                    ? `<div style="font-size:10px;font-weight:800">Ref: <span style="font-size:11.5px;font-weight:900">#${v.lrNo || 'AUTO'}</span></div>
-           <div style="font-size:9px;font-weight:800">LRs: ${v.deliveries.map(d => '#' + d.lrNo).join(', ')}</div>`
-                    : `<div class="ref-lr">LR #${v.lrNo}</div>`}
+                    ? `<div class="ref-lr">LR ${lrLabel}</div>
+           ${v.lrNo ? `<div style="font-size:9px;font-weight:800;margin-top:2px">Ref: #${v.lrNo}</div>` : ''}`
+                    : `<div class="ref-lr">LR ${lrLabel}</div>`}
       </div>
       <div class="ref-meta">
         <div class="ref-type">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
@@ -591,12 +680,14 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     ${deliveryTableHTML}
 
     <table class="money">
-      <tr><td style="font-weight:700">Gross ${hasDeliveries ? `(${v.deliveries.length} destinations)` : `(${v.weight}×${v.rate})`}</td><td class="amt">${fmtRsP(n.gross)}</td></tr>
+      <tr><td style="font-weight:700">Gross ${rateMissing ? '(rate not entered)' : hasDeliveries ? `(${v.deliveries.length} destinations)` : `(${v.weight}×${v.rate})`}</td><td class="amt">${rateMissing ? '—' : fmtRsP(n.gross)}</td></tr>
       ${deductionRows.map(d => `<tr class="ded"><td>${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</td><td class="amt">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
       ${deductionRows.length > 0 && !n.dieselPending ? `<tr class="tot"><td>Total Deductions</td><td class="amt">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
     </table>
 
-    ${n.dieselPending
+    ${rateMissing
+                    ? `<div class="net-pending">RATE NOT UPDATED — BALANCE PENDING</div>`
+                    : n.dieselPending
                     ? `<div class="net-pending">NET PAYABLE — DIESEL PENDING (FULL TANK)</div>`
                     : `<div class="net"><span>NET PAYABLE</span><span>${fmtRsP(n.net)}</span></div>`}
 
@@ -681,6 +772,9 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
         startKm: v.startKm || '', endKm: v.endKm || '',
+        // A voucher covering several LRs prices each drop separately. Editing has
+        // to reach them, or the rate shown on the sheet cannot be corrected.
+        deliveries: (v.deliveries || []).map(d => ({ ...d })),
         tyrePuncture: v.tyrePuncture || '',
         // Older vouchers split this across tyreGreasing and tyreAir, and getNet
         // still adds all three. Show the sum, or the field reads empty on a
@@ -693,6 +787,12 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
     const setPartyName = (value) => S('partyName', resolvePartyName(value, partySuggestions));
     const isSelf = isVGTCTruck(form.truckNo);
+
+    const isMultiLr = form.deliveries.length > 0;
+    const setDelivery = (i, key, val) =>
+        S('deliveries', form.deliveries.map((d, j) => (j === i ? { ...d, [key]: val } : d)));
+    const deliveriesGross = form.deliveries.reduce(
+        (s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
 
     // Validate BEFORE the confirm modal opens — not after the user already confirmed
     const requestSave = () => {
@@ -720,7 +820,22 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
 
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
-        const calc = getCalc(form.weight, form.rate, form.hasCommission);
+        // A multi-LR voucher's weight and total come from the drops. Running
+        // getCalc on the blank top-level weight would have written total: 0 and
+        // wiped the freight — which is why editing a rate here appeared not to
+        // save: the number went in and the figure everything else reads went to
+        // nothing.
+        const totalWeight = isMultiLr
+            ? form.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
+            : form.weight;
+        const calc = isMultiLr
+            ? {
+                ...getCalc(totalWeight, 0, form.hasCommission),
+                total: String(Math.round(deliveriesGross)),
+                weight: String(totalWeight),
+                bags: String(form.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)),
+            }
+            : getCalc(form.weight, form.rate, form.hasCommission);
         try {
             await ax.patch(API_V + '/' + v.id, {
                 ...form,
@@ -745,7 +860,11 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={16} color="#10b981" /></div>
-                        <div><div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Voucher</div><div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>LR #{v.lrNo}</div></div>
+                        <div><div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Voucher</div><div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>
+                            {v.deliveries?.length > 0
+                                ? `LR ${v.deliveries.map(d => '#' + d.lrNo).filter(Boolean).join(', ')}`
+                                : `LR #${v.lrNo}`}
+                        </div></div>
                     </div>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex' }}><X size={18} /></button>
                 </div>
@@ -813,6 +932,56 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         </>
                     )}
                     <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
+
+                    {/* One voucher, several LRs: each drop has its own destination
+                        and its own rate, so each is priced on its own line. The
+                        single weight/rate below would be meaningless here. */}
+                    {isMultiLr && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                                {form.deliveries.length} LRs on this voucher
+                            </div>
+                            <div className="tbl-wrap">
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                    <thead><tr>
+                                        {['LR No.', 'Destination', 'Party', 'Bags', 'Weight (MT)', 'Rate', 'Gross'].map(h => (
+                                            <th key={h} style={{ padding: '6px 8px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                                        ))}
+                                    </tr></thead>
+                                    <tbody>
+                                        {form.deliveries.map((d, i) => {
+                                            const g = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+                                            const cell = (k, w, type = 'text') => (
+                                                <input className="fi" type={type} step="any" value={d[k] ?? ''}
+                                                    onChange={e => setDelivery(i, k, e.target.value)}
+                                                    style={{ width: w, padding: '4px 7px', fontSize: '12px', height: '30px' }} />
+                                            );
+                                            return (
+                                                <tr key={i}>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('lrNo', '70px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('destination', '120px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('partyName', '120px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('bags', '70px', 'number')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('weight', '80px', 'number')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('rate', '75px', 'number')}</td>
+                                                    <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 800, color: g > 0 ? 'var(--accent)' : 'var(--warn)', whiteSpace: 'nowrap' }}>
+                                                        {g > 0 ? 'Rs.' + Math.round(g).toLocaleString('en-IN') : 'rate?'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                                Total gross: {deliveriesGross > 0
+                                    ? 'Rs.' + Math.round(deliveriesGross).toLocaleString('en-IN')
+                                    : <span style={{ color: 'var(--warn)' }}>rate not entered</span>}
+                            </div>
+                        </div>
+                    )}
+
+                    {!isMultiLr && (
                     <div className="field-h">
                         <label>Weight (MT)</label>
                         <input className="fi" type="number" step="0.01" value={form.weight}
@@ -822,6 +991,8 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             }}
                         />
                     </div>
+                    )}
+                    {!isMultiLr && (
                     <div className="field-h">
                         <label>Bags</label>
                         <input className="fi" type="number" value={form.bags}
@@ -831,10 +1002,13 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             }}
                         />
                     </div>
+                    )}
+                    {!isMultiLr && (
                     <div className="field-h">
                         <label>Rate (Rs/MT)</label>
                         <input className="fi" type="number" value={form.rate} onChange={e => S('rate', e.target.value)} />
                     </div>
+                    )}
                     <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
                     <div className="field-h">
                         <label>Diesel Advance</label>

@@ -28,7 +28,11 @@ export function calcNet(v, vehicle) {
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
   const weight = parseFloat(v.weight) || 0;
-  const munshi = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+  // Munshi defaults from the weight when none was entered. `_noDeductions` is
+  // set on the second and later legs of a split voucher, where the whole
+  // munshi already sits on the first — without it the fallback would quietly
+  // charge it again per leg.
+  const munshi = v._noDeductions ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
   const commission = parseFloat(v.commission) || 0;
   const shortage = parseFloat(v.shortage) || 0;
   const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
@@ -96,6 +100,66 @@ export const pumpNameOf = (v) => {
   const p = v?.dieselPumpName || v?.pump || '';
   return p && p !== 'None' ? p : '';
 };
+
+/**
+ * One voucher covering several LRs, shown as one row per LR.
+ *
+ * Each drop has its own destination, weight and rate, and its own LR number —
+ * which is how the yard identifies a load — so a single row hid the numbers
+ * people actually work from.
+ *
+ * The deductions are for the whole trip: one diesel advance, one cash advance,
+ * one munshi. They are not divisible by destination without inventing a split,
+ * so they all sit on the **first** leg and the rest show pure freight. The legs
+ * therefore add up to exactly what the voucher is worth, and no figure is made
+ * up. It also means only the first leg is actionable — ticking, paying and
+ * editing belong to the voucher, not to a leg of it.
+ *
+ * Display only. One voucher remains one record.
+ *
+ * @returns {object[]} one entry for a plain voucher, one per drop otherwise
+ */
+export function explodeVoucher(v) {
+  if (!v?.deliveries?.length) return [v];
+  return v.deliveries.map((d, i) => {
+    const leg = {
+      ...v,
+      // Synthetic, stable id for React keys. `_parentId` is what any write must
+      // use — a leg is not a record.
+      id: i === 0 ? v.id : `${v.id}::leg${i}`,
+      _parentId: v.id,
+      _leg: i,
+      _legs: v.deliveries.length,
+      _isLeg: true,
+      // The whole voucher, deliveries intact. A leg has them stripped so it
+      // prices from its own drop — but anything that writes, above all the edit
+      // dialog, needs the real record or it would save a voucher with one LR.
+      _original: v,
+      // Priced from this drop alone, so calcGross uses weight × rate.
+      deliveries: undefined,
+      lrNo: d.lrNo || v.lrNo,
+      destination: d.destination || v.destination,
+      partyName: d.partyName || v.partyName,
+      weight: d.weight,
+      bags: d.bags,
+      rate: d.rate,
+    };
+    if (i === 0) return leg;
+    return {
+      ...leg,
+      _noDeductions: true,
+      advanceDiesel: '', advanceCash: '', advanceOnline: '',
+      munshi: '', shortage: '', commission: '',
+      tyrePuncture: '', tyreGreasing: '', tyreAir: '', tyreGreasingAir: '',
+      extraCash: '', extraCashRemark: '', extras: [],
+      // Payment is recorded against the voucher, so it belongs to the first leg.
+      paidBalance: '', paymentClearedDate: '',
+    };
+  });
+}
+
+/** Legs for display, flattened. */
+export const explodeAll = (vouchers) => (vouchers || []).flatMap(explodeVoucher);
 
 /**
  * A balance-sheet row as an export row: everything the voucher carries, plus
@@ -582,10 +646,17 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       onMouseEnter={e => { if (!editing && !checked) e.currentTarget.style.background = 'var(--bg-row-hover)'; }}
       onMouseLeave={e => { if (!editing && !checked) e.currentTarget.style.background = bg; }}>
 
-      {/* Checkbox */}
+      {/* Checkbox. A follow-on leg is a view of the same voucher, so ticking,
+          paying and deleting stay on the first leg — offering them twice would
+          send or delete the trip twice. */}
       <td style={{ ...TD, textAlign: 'center', padding: '6px 8px' }}>
-        <input type="checkbox" checked={checked} onChange={() => onCheck(v.id)}
-          style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+          {v._leg > 0 && <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)' }}>↳</span>}
+          <input type="checkbox" checked={checked}
+            onChange={() => onCheck(v._parentId || v.id)}
+            title={v._legs > 1 ? `Part of one voucher — all ${v._legs} LRs are ticked together` : undefined}
+            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+        </span>
       </td>
       <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
       {leadCells}
@@ -749,16 +820,30 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
             <button className="btn btn-g btn-icon btn-sm" onClick={() => setEditing(false)} title="Cancel"><X size={12} /></button>
           </div>
         ) : (
+          v._leg > 0 ? (
+            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', alignItems: 'center' }}>
+              {(role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') && (
+                <button className="btn btn-g btn-icon btn-sm" title="Edit this voucher — every LR on it"
+                  onClick={() => (onEdit ? onEdit(v._original || v) : startEdit())}><Pencil size={12} /></button>
+              )}
+              {/* The legs carry stripped deliveries, so name the voucher from the
+                  original record — reading it off the leg printed "part of LR #". */}
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                with LR #{v._original?.deliveries?.[0]?.lrNo || '—'}
+              </span>
+            </div>
+          ) : (
           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
             <button className="btn btn-g btn-icon btn-sm" title="Share via WhatsApp"
               onClick={() => window.open('https://wa.me/?text=' + encodeURIComponent(waText), '_blank')}>
               <MessageCircle size={12} color="#25d366" />
             </button>
             {(role === 'admin' || permissions?.balance === 'edit' || permissions?.balance === 'delete' || permissions?.voucher === 'edit' || permissions?.voucher === 'delete') && <>
-              <button className="btn btn-g btn-icon btn-sm" onClick={() => (onEdit ? onEdit(v) : startEdit())} title="Edit Record"><Pencil size={12} /></button>
-              {(role === 'admin' || permissions?.balance === 'delete' || permissions?.voucher === 'delete') && <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v)} title="Delete Record"><Trash2 size={12} /></button>}
+              <button className="btn btn-g btn-icon btn-sm" onClick={() => (onEdit ? onEdit(v._original || v) : startEdit())} title="Edit Record"><Pencil size={12} /></button>
+              {(role === 'admin' || permissions?.balance === 'delete' || permissions?.voucher === 'delete') && <button className="btn btn-d btn-icon btn-sm" onClick={() => onDelete(v._original || v)} title="Delete Record"><Trash2 size={12} /></button>}
             </>}
           </div>
+          )
         )}
       </td>
       <ConfirmSaveModal
@@ -962,7 +1047,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             <tbody>
               {rows.map((v, i) => (
                 <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
-                  checked={selected.has(v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} onVerifyDiesel={onVerifyDiesel} onEdit={onEdit} />
+                  checked={selected.has(v._parentId || v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} onVerifyDiesel={onVerifyDiesel} onEdit={onEdit} />
               ))}
             </tbody>
             <tfoot>
@@ -1199,8 +1284,10 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     });
 
     rows.sort((a, b) => a.date < b.date ? 1 : -1);
+    // Split last, so a voucher's legs stay together and filters still match on
+    // the voucher's own fields.
     const map = {};
-    rows.forEach(v => { const ym = (v.date || '').slice(0, 7) || 'Unknown'; (map[ym] = map[ym] || []).push(v); });
+    explodeAll(rows).forEach(v => { const ym = (v.date || '').slice(0, 7) || 'Unknown'; (map[ym] = map[ym] || []).push(v); });
     return map;
   }, [selTruck, truckGroups, filters]);
 
@@ -1216,7 +1303,25 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   }, []);
 
   /* Selection-based derived values */
-  const selRows = allVisibleRows.filter(v => selected.has(v.id));
+  /**
+   * Ticking a voucher takes all of its legs.
+   *
+   * Only the first leg carries a checkbox, but it also carries every deduction
+   * while the freight is spread across the rest. Totalling the ticked rows alone
+   * would charge the whole trip's diesel against one destination's freight and
+   * understate what is owed — so the legs come along for the money and for the
+   * printed statement.
+   */
+  const selRows = allVisibleRows.filter(v => selected.has(v._parentId || v.id));
+
+  /**
+   * The real records behind that selection, one per voucher. A leg has a
+   * synthetic id and stripped deductions, so anything that writes — marking
+   * paid, sending to Pay — has to address the voucher itself.
+   */
+  const selVouchers = [...new Map(
+    selRows.map(v => [v._parentId || v.id, v._original || v]),
+  ).values()];
   const selNet = selRows.reduce((s, v) => s + calcNet(v, selVehicle), 0);
   const selPaid = selRows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
   const selOut = Math.max(0, selNet - selPaid);
@@ -1225,7 +1330,9 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [confirmMarkPaid, setConfirmMarkPaid] = useState(null);
 
   const triggerMarkSelectedPaid = () => {
-    const unpaid = selRows.filter(v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0));
+    // Whole vouchers: a leg's net is only its own freight, so paying against it
+    // would settle a fraction of the trip.
+    const unpaid = selVouchers.filter(v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0));
     if (!unpaid.length) { alert('All selected already paid!'); return; }
     setConfirmMarkPaid(unpaid);
   };
@@ -1344,7 +1451,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
    * clerk cannot send the same trip twice by accident.
    */
   const canSendToPay = useCallback(
-    v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0) && !sentVoucherIds.has(v.id),
+    v => !(v._leg > 0) && calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0) && !sentVoucherIds.has(v._parentId || v.id),
     [selVehicle, sentVoucherIds],
   );
 
@@ -1355,7 +1462,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
 
   const sendableRows = useMemo(() => allVisibleRows.filter(canSendToPay), [allVisibleRows, canSendToPay]);
   const alreadySentCount = useMemo(
-    () => allVisibleRows.filter(v => sentVoucherIds.has(v.id)).length,
+    () => allVisibleRows.filter(v => !(v._leg > 0) && sentVoucherIds.has(v._parentId || v.id)).length,
     [allVisibleRows, sentVoucherIds],
   );
   const notReadyCount = useMemo(
@@ -1374,7 +1481,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   };
 
   const sendSelectedToPay = async () => {
-    const trips = selRows.filter(canSendToPay);
+    const trips = selVouchers.filter(canSendToPay);
     if (!trips.length || sending) return;
 
     // Everything ticked has to be complete. Stop on the whole selection rather
@@ -1653,10 +1760,10 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   {notReadyCount > 0 && <> · <span style={{ color: '#f43f5e' }}>{notReadyCount} not ready</span></>}
                 </span>
                 <button className="btn btn-p btn-sm"
-                  disabled={sending || selRows.filter(canSendToPay).length === 0}
+                  disabled={sending || selVouchers.filter(canSendToPay).length === 0}
                   onClick={sendSelectedToPay}>
                   {sending ? <Loader2 size={13} className="spin" /> : <ArrowRight size={13} />}
-                  {sending ? 'Sending…' : `Send ${selRows.filter(canSendToPay).length} to Pay`}
+                  {sending ? 'Sending…' : `Send ${selVouchers.filter(canSendToPay).length} to Pay`}
                 </button>
               </div>
             </div>
