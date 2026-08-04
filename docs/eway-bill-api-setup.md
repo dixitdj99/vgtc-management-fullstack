@@ -13,15 +13,42 @@ people.
 
 ## Before spending anything, three limits
 
-1. **₹50,000 threshold.** Below that no e-way bill exists at all. A ₹19,100
-   canter load will never appear here; a loaded trailer always will. The manual
-   form stays for the small ones.
-2. **VGTC must be named as transporter** on the bill, by whoever generates it.
-   Where a plant leaves that field blank the load is invisible to this API.
-   Worth checking a week of paperwork before paying for anything.
-3. **The vehicle number arrives with Part-B.** If the plant has not entered it,
-   the draft has no truck and the operator types that one field. The screen says
-   so on the row rather than leaving a blank to trip over.
+All three were written as warnings before any real paperwork had been seen. A
+JK Lakshmi delivery slip from 01 Aug 2026 (invoice 7330200286) settles each of
+them, and settles them well — see "What the paperwork proved" below.
+
+1. **~~₹50,000 threshold.~~ Not a limit here.** The rule is real for
+   inter-state movement, but the Jharli loads are intra-state Haryana and the
+   plant raises a bill regardless: the slip in hand is ₹19,100 and carries
+   e-way bill 352304414369. The earlier claim that "a ₹19,100 canter load will
+   never appear here" was an assumption, and it was wrong.
+2. **~~VGTC must be named as transporter.~~ It is.** The slip prints
+   `TRANSPORTER=VIKAS GOODS TRANSPORT CO.` against the consignment. The one
+   thing still unverified is whether the plant records VGTC's *GSTIN*
+   (06ARIPK9021C2Z2) in the transporter field — `GetEwayBillsForTransporter`
+   matches on that, not on the name — so confirm it on the portal before
+   paying for anything.
+3. **~~The vehicle arrives with Part-B, maybe.~~ It is filled at the gate.**
+   The slip prints `TRUCK NO=HR63E2923` at the moment of issue, so Part-B is
+   complete when the load leaves and the draft will carry a truck.
+
+### What the paperwork proved
+
+Every field the Challan form asks for is on that one slip, and all of it comes
+back from `GetEwayBill`:
+
+| Challan field | On the slip |
+|---|---|
+| Challan / invoice no | 7330200286 |
+| Date | 2026-08-01 |
+| Material | JK Lakshmi OPC 43 (H) |
+| Quantity | 2.500 MT = 50 bags (`toBags` already converts this) |
+| Truck | HR63E2923 |
+| Party | SAI BUILDING MATERIAL SUPPLIER |
+| E-way bill | 352304414369 |
+
+Only the LR number is not there, which is the one field the operator was always
+going to type.
 
 ---
 

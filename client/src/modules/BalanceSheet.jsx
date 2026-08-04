@@ -652,6 +652,11 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
           style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
       </td>
       <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
+      {/* Plant and truck on the combined sheet. Declared and documented but
+          never rendered, so those two headers stood over the wrong cells and
+          every column after them read one place to the left — a date under
+          "Plant", a rate under "Destination", a gross under "Weight". */}
+      {leadCells}
       <td className="t-card-title" style={{ ...TD }}>{v.date}</td>
       <td data-label="LR No." style={{ ...TD }}>
         {v.deliveries?.length > 0

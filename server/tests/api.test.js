@@ -2617,5 +2617,38 @@ test('lr: an unknown number reports nothing rather than failing', async () => {
   assert(res.data.receiptExists === false, 'invented a receipt');
 });
 
+test('all-balance: the header sits over the cell it names', async () => {
+  // Found in production: PLANT showed a date, TRUCK showed an LR number, and
+  // every money column after them read one place to the left — a rate under
+  // "Destination", a gross under "Weight". VoucherRow accepted a documented
+  // `leadCells` prop and never rendered it, so the combined sheet's two extra
+  // headers stood over nothing and the whole row shifted.
+  const path = require('path');
+  const rowSrc = require('fs').readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'BalanceSheet.jsx'), 'utf8');
+
+  const row = rowSrc.slice(rowSrc.indexOf('export function VoucherRow'));
+  assert(/leadCells = null/.test(row.slice(0, 400)), 'VoucherRow no longer accepts leadCells');
+
+  // It has to render between the row number and the date, which is where the
+  // combined sheet's Plant and Truck headers sit.
+  const idxCell = row.indexOf('{idx + 1}');
+  const lead = row.indexOf('{leadCells}');
+  const dateCell = row.indexOf('{v.date}');
+  assert(lead !== -1, 'leadCells is accepted but never rendered — every column after it shifts');
+  assert(idxCell < lead && lead < dateCell,
+    'leadCells must render between the row number and the date, or the headers stand over the wrong cells');
+
+  // And the combined sheet must still be passing exactly the two it has
+  // headers for.
+  const allSrc = require('fs').readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+  const passed = allSrc.slice(allSrc.indexOf('leadCells={<>'), allSrc.indexOf('leadCells={<>') + 900);
+  assert(/v\.plant/.test(passed) && /v\.truckNo/.test(passed),
+    'the combined sheet no longer supplies the plant and truck its headers promise');
+  assert((passed.match(/<td/g) || []).length === 2,
+    'the number of lead cells no longer matches the two extra headers');
+});
+
 // Run
 runAll();
