@@ -1325,6 +1325,32 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     materials: [{ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }],
   });
 
+  /**
+   * Has a voucher already been written on the number being typed?
+   *
+   * The books were not started together: vouchers have been kept for months
+   * while the receipts are only being entered now. So a clerk typing an LR
+   * number is usually typing one a voucher already refers to, and that is
+   * normally right — the receipt is catching up to a trip that happened. It is
+   * still worth saying, because it confirms the number is the one they meant.
+   *
+   * Advisory only, and debounced: this runs while someone is still typing, so
+   * it must not fire a request per keystroke or block the form.
+   */
+  const [lrCheck, setLrCheck] = useState(null);   // { checking, receiptExists, voucher }
+  useEffect(() => {
+    const typed = String(form.lrNo ?? '').trim();
+    if (!typed) { setLrCheck(null); return; }
+    setLrCheck({ checking: true });
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await ax.get(`${API}/voucher-for/${encodeURIComponent(typed)}`);
+        setLrCheck({ checking: false, ...data });
+      } catch { setLrCheck(null); }   // never let a lookup stop someone working
+    }, 450);
+    return () => clearTimeout(t);
+  }, [form.lrNo, API]);
+
   // ── Voice Recording State ──────────────────────────────
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -1991,6 +2017,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         ))}
                       </div>
                     </div>
+                    {/* Advisory, not a block: a voucher on this number is
+                        evidence the receipt belongs to it, not against it. */}
+                    {form.lrNo !== undefined && lrCheck && !lrCheck.checking && (
+                      lrCheck.receiptExists ? (
+                        <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#f43f5e' }}>
+                          A receipt already uses LR #{lrCheck.lrNo} — pick another number.
+                        </span>
+                      ) : lrCheck.voucher ? (
+                        <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
+                          Voucher already created on LR #{lrCheck.lrNo}
+                          {lrCheck.voucher.truckNo ? ` · ${lrCheck.voucher.truckNo}` : ''}
+                          {lrCheck.voucher.date ? ` · ${lrCheck.voucher.date}` : ''}
+                          {lrCheck.voucher.destination ? ` · ${lrCheck.voucher.destination}` : ''}
+                          <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
+                            Receipt not created yet — carry on if this is that trip.
+                          </span>
+                        </span>
+                      ) : null
+                    )}
                   </div>
                   <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field-h">

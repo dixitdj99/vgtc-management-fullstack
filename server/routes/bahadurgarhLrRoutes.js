@@ -12,6 +12,10 @@ router.use(requireAuth, tenancyMiddleware);
 const BASE_COL = 'bahadurgarh_loading_receipts';
 const META_COL = 'bahadurgarh_metadata';
 
+// Advisory: has a voucher already been written on this LR number?
+const { mountLrVoucherCheck } = require('./lrVoucherCheck');
+mountLrVoucherCheck(router, BASE_COL);
+
 // Create
 router.post('/', async (req, res) => {
     try {

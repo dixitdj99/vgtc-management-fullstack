@@ -2558,5 +2558,64 @@ test('lr: editing a number onto one already in use is refused', async () => {
     'the edit path still lets an LR number be moved onto one already in use');
 });
 
+test('lr: typing a number a voucher already uses says so, without refusing it', async () => {
+  // The books were not started together — vouchers have been kept for months
+  // while the receipts are only being entered now. A voucher on the number is
+  // evidence the receipt belongs to that trip, so it is reported, not blocked.
+  const lrNo = 700000 + Math.floor(Math.random() * 90000);
+
+  const voucher = await post('/vouchers', {
+    type: 'Kosli_Bill', lrNo: String(lrNo), date: '2026-08-04',
+    truckNo: 'HR47G0975', destination: 'Rewari', partyName: 'VOUCHER FIRST TEST',
+    weight: '25', rate: '700',
+  });
+  assert(voucher.status === 201 || voucher.status === 200,
+    `could not create the voucher this test needs: ${voucher.status} ${JSON.stringify(voucher.data)}`);
+  const voucherId = voucher.data?.id || voucher.data?.ids?.[0];
+
+  const check = await get(`/kosli/lr/voucher-for/${lrNo}`);
+  assert(check.status === 200, `expected 200, got ${check.status} ${JSON.stringify(check.data)}`);
+  assert(check.data.voucher, 'the voucher on this LR was not found');
+  assert(check.data.voucher.truckNo === 'HR47G0975', `wrong voucher matched: ${JSON.stringify(check.data.voucher)}`);
+  assert(check.data.receiptExists === false, 'there is no receipt yet, so this must be false');
+
+  // Reported, never refused — the receipt still goes through.
+  const lr = await post('/kosli/lr', {
+    lrNo, date: '2026-08-04', truckNo: 'HR47G0975', partyName: 'VOUCHER FIRST TEST',
+    materials: [{ type: 'PPC', bags: '10', weight: '0.5', loadingType: 'From Godown' }],
+  });
+  assert(lr.status === 201 || lr.status === 200,
+    `a voucher on the number must not block the receipt: ${lr.status} ${JSON.stringify(lr.data)}`);
+
+  // And now the receipt does exist, which is the one thing that does refuse.
+  const after = await get(`/kosli/lr/voucher-for/${lrNo}`);
+  assert(after.data.receiptExists === true, 'the receipt was created but is not reported as existing');
+
+  for (const id of (lr.data.ids || [])) await del('/kosli/lr/' + id);
+  if (voucherId) await del('/vouchers/' + voucherId);
+});
+
+test('lr: the voucher check is scoped to the book being written in', async () => {
+  // LR serials restart per plant. Without scoping, a Kosli number would match a
+  // JK Lakshmi voucher that happens to share it and the warning would be wrong.
+  const { PLANT_OF_LR_COLLECTION } = require('../routes/lrVoucherCheck');
+  assert(PLANT_OF_LR_COLLECTION.kosli_loading_receipts === 'kosli_dump', 'Kosli is not scoped');
+  assert(PLANT_OF_LR_COLLECTION.jkl_loading_receipts === 'jklakshmi_jharli', 'JK Lakshmi is not scoped');
+  assert(PLANT_OF_LR_COLLECTION.loading_receipts === 'jksuper_jharli', 'the legacy book is not scoped');
+
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'routes', 'lrVoucherCheck.js'), 'utf8');
+  assert(/Bahadurgarh_Bill/.test(src),
+    'Bahadurgarh has no invoice plant key, so it must be scoped by voucher type or it searches everything');
+});
+
+test('lr: an unknown number reports nothing rather than failing', async () => {
+  // This runs while someone is still typing. It must never be an error state.
+  const res = await get('/kosli/lr/voucher-for/999999999');
+  assert(res.status === 200, `expected 200, got ${res.status}`);
+  assert(res.data.voucher === null, 'invented a voucher for a number nobody used');
+  assert(res.data.receiptExists === false, 'invented a receipt');
+});
+
 // Run
 runAll();
