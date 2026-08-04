@@ -309,6 +309,74 @@ const getRoster = async (orgId, req, date) => {
 };
 
 /**
+ * Days in the recent past whose roll-call is not finished.
+ *
+ * The roll-call is easy to forget, and a day that was never marked is invisible
+ * until payroll — by which time nobody remembers who turned up. This is what
+ * the Attendance screen shows so the gap is noticed the same week.
+ *
+ * Deliberately not `getRoster` per day: that derives driver evidence from
+ * vouchers and fuel logs for each date, which is a lot of reading to answer a
+ * question that only needs "is there a record". One profile read and one range
+ * read cover the whole window.
+ *
+ * @param {number} days how far back to look, today included
+ * @returns {Promise<{days: Array, totalPending: number, oldest: string|null}>}
+ *          `days` is newest first, each `{ date, isToday, pending, total, names }`.
+ */
+const getPendingDays = async (orgId, req, days = 14) => {
+    const to = businessToday();
+    const span = Math.min(Math.max(parseInt(days, 10) || 14, 1), 60);
+    const window = datesBetween(
+        new Date(new Date(`${to}T00:00:00Z`).getTime() - (span - 1) * 86400000).toISOString().slice(0, 10),
+        to,
+    );
+
+    const [profiles, saved] = await Promise.all([
+        // Undated: joiners and leavers are filtered per day below, where the
+        // date is actually known.
+        getAttendingProfiles(orgId, req, null),
+        getRange(orgId, req, { from: window[0], to }),
+    ]);
+
+    const markedByDate = new Map();
+    saved.forEach(r => {
+        if (!markedByDate.has(r.date)) markedByDate.set(r.date, new Set());
+        markedByDate.get(r.date).add(r.profileId);
+    });
+
+    const out = [];
+    for (const date of window) {
+        const due = profiles.filter(p => {
+            if (isValidDate(p.dateJoined) && p.dateJoined > date) return false;
+            if (isValidDate(p.dateExit) && p.dateExit < date) return false;
+            return true;
+        });
+        if (!due.length) continue;
+
+        const marked = markedByDate.get(date) || new Set();
+        const missing = due.filter(p => !marked.has(p.id));
+        if (!missing.length) continue;   // finished — it drops off the list
+
+        out.push({
+            date,
+            isToday: date === to,
+            pending: missing.length,
+            total: due.length,
+            // Enough to recognise the gap without loading the whole roster.
+            names: missing.slice(0, 6).map(p => p.name || 'Unnamed'),
+        });
+    }
+
+    out.sort((a, b) => b.date.localeCompare(a.date));
+    return {
+        days: out,
+        totalPending: out.reduce((s, d) => s + d.pending, 0),
+        oldest: out.length ? out[out.length - 1].date : null,
+    };
+};
+
+/**
  * Write one day's roll-call.
  *
  * Doc id is `{profileId}_{date}`, so saving the same day twice overwrites rather
@@ -435,6 +503,7 @@ module.exports = {
     deriveDriverActivity,
     getRange,
     getRoster,
+    getPendingDays,
     saveBulk,
     getMonthlySummary,
     // exported for tests

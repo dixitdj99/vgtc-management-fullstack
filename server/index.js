@@ -99,15 +99,26 @@ const isAllowedOrigin = (origin) => {
     return false;
 };
 
-app.use(cors({
+/**
+ * A page this server itself served is trivially trusted, whatever port it is
+ * on. Worth stating explicitly: the landing page posts its enquiry form back to
+ * /api/enquiry, and a browser attaches an Origin header to a form submission
+ * even when it is same-origin — so without this the server rejected a request
+ * from a page it had just handed out, on any port not in the dev list.
+ */
+const isSameOrigin = (origin, req) => {
+    try { return new URL(origin).host === req.headers.host; } catch { return false; }
+};
+
+app.use(cors((req, done) => done(null, {
     origin: (origin, cb) => {
         if (!origin) return cb(null, true); // same-origin, curl, mobile webview
-        if (isAllowedOrigin(origin)) return cb(null, true);
+        if (isSameOrigin(origin, req) || isAllowedOrigin(origin)) return cb(null, true);
         console.warn(`[CORS] Blocked origin: ${origin}`);
         return cb(new Error(`CORS: origin ${origin} not allowed`), false);
     },
     credentials: true,
-}));
+})));
 
 // Reduced payload limit (was 50mb — unnecessary for this app)
 app.use(express.json({ limit: '10mb' }));
@@ -130,6 +141,10 @@ app.use('/api/bahadurgarh/stock', requireAuth, gate('stock_bahadurgarh'), bahadu
 app.use('/api/sell', requireAuth, gate('sell'), sellRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/public', publicRoutes);
+// The landing page's "work with us" form. Public by necessity — it is the one
+// door a stranger can knock on, so the router carries its own honeypot, rate
+// limit and field caps, and guards its read side with requireAuth.
+app.use('/api/enquiry', require('./routes/enquiryRoutes'));
 app.use('/api/lr', requireAuth, gate(['lr_dump','bill_kosli','bill_jhajjar','bill_bahadurgarh']), lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
@@ -239,6 +254,21 @@ app.get('/', async (req, res, next) => {
 
 // Serve static files from Vite build in production/App Hosting
 const path = require('path');
+/**
+ * The public landing page, at /home.
+ *
+ * The app keeps the root: everyone's bookmark, the PWA and every clerk still
+ * land on the login screen at vgtc.site. The marketing page — the only thing on
+ * this domain worth indexing — sits at /home, which is the conventional place
+ * for it when the application owns the apex.
+ *
+ * Explicit route rather than letting express.static serve /home.html, so the
+ * address people are given has no extension on it.
+ */
+app.get('/home', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/home.html'));
+});
+
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // Unknown API paths must fail loudly. Without this they fall through to the SPA

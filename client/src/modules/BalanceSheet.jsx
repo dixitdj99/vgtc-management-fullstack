@@ -646,22 +646,14 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       onMouseEnter={e => { if (!editing && !checked) e.currentTarget.style.background = 'var(--bg-row-hover)'; }}
       onMouseLeave={e => { if (!editing && !checked) e.currentTarget.style.background = bg; }}>
 
-      {/* Checkbox. A follow-on leg is a view of the same voucher, so ticking,
-          paying and deleting stay on the first leg — offering them twice would
-          send or delete the trip twice. */}
-      <td style={{ ...TD, textAlign: 'center', padding: '6px 8px' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-          {v._leg > 0 && <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)' }}>↳</span>}
-          <input type="checkbox" checked={checked}
-            onChange={() => onCheck(v._parentId || v.id)}
-            title={v._legs > 1 ? `Part of one voucher — all ${v._legs} LRs are ticked together` : undefined}
-            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
-        </span>
+      {/* Checkbox */}
+      <td className="t-card-checkbox" style={{ ...TD, textAlign: 'center', padding: '6px 8px' }}>
+        <input type="checkbox" checked={checked} onChange={() => onCheck(v.id)}
+          style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
       </td>
-      <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
-      {leadCells}
-      <td style={{ ...TD }}>{v.date}</td>
-      <td style={{ ...TD }}>
+      <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
+      <td className="t-card-title" style={{ ...TD }}>{v.date}</td>
+      <td data-label="LR No." style={{ ...TD }}>
         {v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
               {v.deliveries.map((d, di) => <span key={di} style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '11px' }}>#{d.lrNo || '—'}</span>)}
@@ -679,9 +671,9 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
           );
         })()}
       </td>
-      {isBillType && <td style={{ ...TD }}>{v.billNo || '—'}</td>}
-      {isBillType && <td style={{ ...TD }}>{v.partyCode || '—'}</td>}
-      <td style={{ ...TD }}>
+      {isBillType && <td data-label="Bill No." style={{ ...TD }}>{v.billNo || '—'}</td>}
+      {isBillType && <td data-label="Party Code" style={{ ...TD }}>{v.partyCode || '—'}</td>}
+      <td data-label="Destination" style={{ ...TD }}>
         {v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
               {v.deliveries.map((d, di) => (
@@ -693,7 +685,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
             </div>
           : (v.destination || v.partyName || '—')}
       </td>
-      <td style={{ ...TD, textAlign: 'right' }}>
+      <td data-label="Weight" style={{ ...TD, textAlign: 'right' }}>
         {editing ? FI('weight', '60px') : (v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
               {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '10px' }}>{d.weight}</span>)}
@@ -705,17 +697,17 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
             </div>
           : (v.weight || '—'))}
       </td>
-      <td style={{ ...TD, textAlign: 'right' }}>
+      <td data-label="Rate" style={{ ...TD, textAlign: 'right' }}>
         {editing ? FI('rate', '60px') : (v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
               {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '10px' }}>{d.rate}</span>)}
             </div>
           : (v.rate || '—'))}
       </td>
-      <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
+      <td data-label="Gross" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
         {editing ? FI('total', '75px') : fmtRs(calcGross(cv))}
       </td>
-      <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>
+      <td data-label="Diesel" style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>
         {editing ? FI('advanceDiesel', '70px', true) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
             <span style={{ fontWeight: v.isDieselVerified ? 800 : 400 }}>
@@ -734,8 +726,8 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
           </div>
         )}
       </td>
-      <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>{editing ? FI('advanceCash') : (v.advanceCash || '—')}</td>
-      <td style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>
+      <td data-label="Cash" style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>{editing ? FI('advanceCash') : (v.advanceCash || '—')}</td>
+      <td data-label="Online" style={{ ...TD, textAlign: 'right', color: 'var(--warn)' }}>
         {editing
           ? FI('advanceOnline')
           : (parseFloat(v.advanceOnline) > 0 ? (
@@ -748,9 +740,9 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
             </div>
           ) : '—')}
       </td>
-      <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('munshi') : (v.munshi || '—')}</td>
-      <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('shortage') : (v.shortage || '—')}</td>
-      <td style={{ ...TD, textAlign: 'right', fontSize: '11px', padding: '4px 6px' }}>
+      <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('munshi') : (v.munshi || '—')}</td>
+      <td data-label="Shortage" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('shortage') : (v.shortage || '—')}</td>
+      <td data-label="Expenses" style={{ ...TD, textAlign: 'right', fontSize: '11px', padding: '4px 6px' }}>
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '80px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Comm.</span>{FI('commission', '55px')}</div>
@@ -767,29 +759,18 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
           </div>
         ) : '—'}
       </td>
-      <td style={{
+      <td data-label="Net Bal" style={{
         ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px',
         color: net >= 0 ? 'var(--accent)' : 'var(--danger)'
       }}>
         {fmtRs(net)}
       </td>
-      <td style={{ ...TD, textAlign: 'right' }}>{editing ? FI('paidBalance') : (paid ? fmtRs(paid) : '—')}</td>
-      <td style={{ ...TD, textAlign: 'center' }}>
-        {rateMissing
-          /* A trip with no rate has no freight, so net comes out as the bare
-             deductions and the row read "Adjusted" — which says the balance was
-             settled against something, when really nobody has priced the trip
-             yet. Say what is actually needed. */
-          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(245,158,11,0.12)', color: 'var(--warn)', fontSize: '11px', fontWeight: 800, border: '1px dashed rgba(245,158,11,0.4)' }}>
-              <AlertCircle size={11} /> Enter rate
-            </span>
-            <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', fontWeight: 600 }}>to get final balance</span>
-          </div>
-          : net < 0
-          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '12px', fontWeight: 700 }}>Adjusted</span>
-            <span style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700 }}>{fmtRs(Math.abs(net))}</span>
+      <td data-label="Paid" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('paidBalance') : (paid ? fmtRs(paid) : '—')}</td>
+      <td data-label="Status" style={{ ...TD, textAlign: 'center' }}>
+        {net < 0
+          ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '11px', fontWeight: 700 }}>Adjusted</span>
+            <span style={{ fontSize: '9px', color: '#6366f1', fontWeight: 700 }}>{fmtRs(Math.abs(net))}</span>
           </div>
           : cleared
             ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
@@ -805,15 +786,15 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
         const deductions = calcTotalDeductions(cv, vehicle);
         const margin = calcMarginPct(cv, vehicle);
         return <>
-          <td style={{ ...TD, textAlign: 'right', color: 'var(--danger)', fontWeight: 700 }}>{gross > 0 ? fmtRs(deductions) : '—'}</td>
-          <td style={{ ...TD, textAlign: 'center' }}>
+          <td data-label="Deductions" style={{ ...TD, textAlign: 'right', color: 'var(--danger)', fontWeight: 700 }}>{gross > 0 ? fmtRs(deductions) : '—'}</td>
+          <td data-label="Margin %" style={{ ...TD, textAlign: 'center' }}>
             {gross > 0 ? <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 800, background: margin < 20 ? 'rgba(16,185,129,0.1)' : margin < 40 ? 'rgba(245,158,11,0.1)' : 'rgba(244,63,94,0.1)', color: margin < 20 ? '#10b981' : margin < 40 ? '#f59e0b' : '#f43f5e' }}>{margin.toFixed(1)}%</span> : '—'}
           </td>
         </>;
       })()}
-      {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
-      {role === 'admin' && <td style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
-      <td style={{ ...TD, textAlign: 'center' }}>
+      {role === 'admin' && <td data-label="Created By" style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
+      {role === 'admin' && <td data-label="Updated By" style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
+      <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
             <button className="btn btn-p btn-icon btn-sm" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Edit">{saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}</button>
@@ -1010,8 +991,8 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
       </div>
 
       {open && (
-        <div className="tbl-wrap">
-          <table style={{ minWidth: showPnL ? '1720px' : '1500px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+        <div className="tbl-wrap tbl-cards">
+          <table style={{ minWidth: showPnL ? '1620px' : '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr>
                 <th style={{ ...TH, textAlign: 'center', padding: '7px 8px' }}>

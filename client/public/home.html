@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Cement Transport from Jharli | Vikas Goods Transport Co., Rewari</title>
+<meta name="description" content="Vikas Goods Transport Co. moves cement for J.K. Lakshmi Cement and J.K. Cement from Jharli across Haryana and beyond. Offices at Jharli and Jhajjar, godowns at Kosli, Jhajjar, Bahadurgarh and Jharli. GST registered goods transport agency. Market vehicle owners can apply to work with us.">
+<link rel="canonical" href="https://vgtc.site/home">
+<meta name="robots" content="index, follow">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cement Transport from Jharli | Vikas Goods Transport Co.">
+<meta property="og:description" content="We move cement for J.K. Lakshmi and J.K. Cement out of Jharli. GST registered goods transport agency, Rewari. Market vehicles welcome to apply.">
+<meta property="og:url" content="https://vgtc.site/home">
+<meta property="og:locale" content="en_IN">
+<meta property="og:site_name" content="Vikas Goods Transport Co.">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#050507">
+
+<!--
+  Positioned as the service the firm provides, not as a request for trucks.
+  Vehicle owners apply through the form; the office calls them. No phone number
+  is printed on the page by choice, so every lead arrives written down.
+
+  Inline SVG and inline CSS, no JavaScript, no web fonts. The one external
+  request is the lazily-loaded map iframe, which is below the fold.
+-->
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --black:#050507; --card:#0e0e16;
+    --ink:#0d1018; --muted:#5d6472; --line:#e4e6ec; --light:#f1f1ef;
+    --violet:#8b5cf6; --indigo:#4f7cff; --lilac:#c4b5fd;
+  }
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{margin:0;background:var(--black);color:#fff;
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+  svg{max-width:100%}
+  .grad{background:linear-gradient(96deg,var(--indigo) 8%,var(--violet) 58%,#c084fc 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+
+  .btn{display:inline-flex;align-items:center;gap:9px;text-decoration:none;font-weight:700;
+    border-radius:999px;padding:14px 27px;font-size:14.5px;letter-spacing:.03em;
+    text-transform:uppercase;transition:transform .13s,background .13s;white-space:nowrap;
+    border:0;cursor:pointer;font-family:inherit}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-w{background:#fff;color:#08080c;box-shadow:0 10px 30px -10px rgba(255,255,255,.35)}
+  .btn-d{background:rgba(255,255,255,.05);color:#fff;border:1px solid rgba(255,255,255,.22)}
+  .btn-d:hover{background:rgba(255,255,255,.1)}
+  .btn-v{background:linear-gradient(120deg,var(--indigo),var(--violet));color:#fff;
+    box-shadow:0 12px 34px -12px rgba(139,92,246,.75)}
+
+  /* ── Floating pill nav ── */
+  .navwrap{position:absolute;top:22px;left:0;right:0;z-index:10;padding:0 20px}
+  .navpill{max-width:1010px;margin:0 auto;background:rgba(16,16,24,.82);
+    border:1px solid rgba(255,255,255,.1);border-radius:999px;
+    padding:9px 11px 9px 20px;display:flex;align-items:center;justify-content:space-between;
+    gap:14px;backdrop-filter:blur(14px);box-shadow:0 16px 40px -18px rgba(0,0,0,.9)}
+  .brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none}
+  .brand-mark{width:32px;height:32px;flex:none}
+  .brand b{display:block;font-size:15px;letter-spacing:-.01em;line-height:1.15}
+  .brand i{display:block;font-size:10px;color:#79819a;letter-spacing:.1em;
+    text-transform:uppercase;font-style:normal}
+  .navpill .btn{padding:10px 20px;font-size:12.5px}
+  .navlinks{display:flex;align-items:center;gap:22px}
+  .navlinks a{color:#c9cede;text-decoration:none;font-size:13.5px;font-weight:600}
+  .navlinks a:hover{color:#fff}
+
+  /* ── Hero ── */
+  .hero{position:relative;overflow:hidden;background:var(--black);padding:150px 0 0}
+  .hero::before{content:"";position:absolute;left:62%;top:-190px;transform:translateX(-50%);
+    width:1000px;height:620px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(closest-side,rgba(103,90,255,.20),transparent 72%)}
+  .hero .wrap{position:relative;z-index:2}
+  .hero-inner{max-width:760px}
+  .pill{display:inline-flex;align-items:center;gap:9px;background:rgba(139,92,246,.13);
+    border:1px solid rgba(139,92,246,.42);color:var(--lilac);font-size:11.5px;font-weight:800;
+    letter-spacing:.11em;text-transform:uppercase;padding:7px 16px;border-radius:999px;margin-bottom:26px}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:#a78bfa;
+    box-shadow:0 0 0 4px rgba(167,139,250,.2)}
+  h1{margin:0 0 20px;font-size:58px;line-height:1.06;letter-spacing:-.035em;font-weight:800}
+  .lede{margin:0 0 34px;font-size:17px;color:#98a0b4;max-width:60ch;font-weight:500}
+  .cta{display:flex;gap:13px;flex-wrap:wrap;align-items:center}
+
+  /* ── Perspective grid floor ── */
+  .floor{position:relative;margin-top:44px;line-height:0}
+  .floor::after{content:"";position:absolute;left:0;right:0;bottom:0;height:130px;
+    background:linear-gradient(to bottom,transparent,var(--black));pointer-events:none}
+
+  /* ── Clients row ── */
+  .clients{background:var(--black);padding:0 0 60px;position:relative;z-index:2}
+  .clients p{margin:0 0 20px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:#6b7488;font-weight:700}
+  .clients .row{display:flex;align-items:center;gap:14px 34px;flex-wrap:wrap}
+  .clients b{color:#c5cbdb;font-size:16px;font-weight:700;letter-spacing:-.01em;
+    display:inline-flex;align-items:center;gap:9px}
+  .clients b svg{flex:none;opacity:.75}
+
+  /* ── Stats ── */
+  .stats{background:var(--black)}
+  .stats .wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:0;
+    border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+  .stat{padding:34px 26px;border-left:1px solid rgba(255,255,255,.08)}
+  .stat:first-child{border-left:0;padding-left:0}
+  .stat b{display:block;font-size:42px;font-weight:800;letter-spacing:-.035em;line-height:1}
+  .stat span{display:block;margin-top:9px;font-size:13px;color:#6b7488}
+
+  .notch{line-height:0;background:var(--black)}
+
+  /* ── Light sections ── */
+  .lightsec{background:var(--light);color:var(--ink);padding:76px 0}
+  .lightsec + .lightsec{padding-top:0}
+  .sec-head{max-width:680px;margin:0 0 44px}
+  .eyebrow{display:block;font-size:11.5px;font-weight:800;letter-spacing:.15em;
+    text-transform:uppercase;color:#7b8296;margin:0 0 14px}
+  h2{margin:0 0 12px;font-size:38px;letter-spacing:-.03em;line-height:1.12;font-weight:800}
+  .sub{margin:0;color:var(--muted);font-size:16.5px}
+  h3{margin:0 0 8px;font-size:18px;letter-spacing:-.01em}
+
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr))}
+  .dcard{background:var(--card);border:1px solid rgba(255,255,255,.07);border-radius:18px;
+    padding:28px;color:#fff;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s}
+  .dcard:hover{transform:translateY(-4px);box-shadow:0 30px 60px -30px rgba(80,60,200,.65)}
+  .dcard::after{content:"";position:absolute;right:-70px;bottom:-90px;width:220px;height:220px;
+    border-radius:50%;background:radial-gradient(closest-side,rgba(139,92,246,.30),transparent 70%);pointer-events:none}
+  .dcard .ico{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    margin-bottom:18px;background:linear-gradient(135deg,rgba(79,124,255,.24),rgba(139,92,246,.24));
+    border:1px solid rgba(255,255,255,.1)}
+  .dcard p{margin:0;color:#98a0b4;font-size:14.5px;position:relative;z-index:1}
+
+  /* ── Route panel ── */
+  .route{background:linear-gradient(125deg,#0a0a12 0%,#141026 100%);color:#fff;
+    border-radius:22px;padding:40px;display:grid;gap:30px;
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr));align-items:center;
+    border:1px solid rgba(255,255,255,.08)}
+  .route h3{color:var(--lilac);font-size:11.5px;text-transform:uppercase;letter-spacing:.13em;margin-bottom:11px}
+  .route p{margin:0;font-size:16px;line-height:1.9;color:#d5d9e5}
+  .places{display:flex;flex-wrap:wrap;gap:9px}
+  .places span{background:rgba(139,92,246,.16);border:1px solid rgba(139,92,246,.4);
+    border-radius:999px;padding:7px 17px;font-size:13.5px;font-weight:600;color:#ddd2ff}
+
+  ul.check{margin:0;padding:0;list-style:none;display:grid;gap:12px;
+    grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  ul.check li{display:flex;gap:12px;align-items:flex-start;background:#fff;
+    border:1px solid var(--line);border-radius:14px;padding:17px 19px;font-size:15px}
+  ul.check svg{flex:none;margin-top:2px}
+
+  /* ── Apply form ── */
+  .applysec{background:var(--black);color:#fff;padding:80px 0;position:relative;overflow:hidden}
+  .applysec::before{content:"";position:absolute;left:20%;top:-160px;transform:translateX(-50%);
+    width:900px;height:520px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(closest-side,rgba(103,90,255,.20),transparent 72%)}
+  .applysec .wrap{position:relative;z-index:2;display:grid;gap:44px;
+    grid-template-columns:minmax(0,9fr) minmax(0,11fr);align-items:start}
+  .applysec h2{margin-bottom:14px}
+  .applysec .sub{color:#98a0b4}
+  .applynote{margin:22px 0 0;padding:18px 20px;border:1px solid rgba(255,255,255,.1);
+    border-radius:14px;background:rgba(255,255,255,.03);font-size:14px;color:#98a0b4}
+  .applynote b{color:#fff;display:block;margin-bottom:4px;font-size:14.5px}
+
+  form.apply{background:#0e0e16;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:30px}
+  .frow{display:grid;gap:14px;grid-template-columns:1fr 1fr;margin-bottom:14px}
+  .fld{display:block}
+  .fld span{display:block;font-size:11.5px;font-weight:800;letter-spacing:.09em;
+    text-transform:uppercase;color:#79819a;margin-bottom:7px}
+  .fld input,.fld select,.fld textarea{width:100%;background:#07070d;color:#fff;
+    border:1px solid rgba(255,255,255,.13);border-radius:11px;padding:12px 14px;font-size:15px;
+    font-family:inherit;outline:none;transition:border-color .13s}
+  .fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--violet)}
+  .fld textarea{resize:vertical;min-height:88px}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  form.apply .btn{width:100%;justify-content:center;margin-top:6px}
+  .privacy{margin:14px 0 0;font-size:12.5px;color:#6b7488;text-align:center}
+
+  /* ── Offices + map ── */
+  .offices{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin-bottom:26px}
+  .ocard{border:1px solid var(--line);border-radius:18px;padding:26px;background:#fff}
+  .ocard .tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.1em;
+    text-transform:uppercase;color:#6d28d9;background:#ede9fe;border-radius:999px;padding:5px 12px;margin-bottom:12px}
+  .ocard address{font-style:normal;color:var(--muted);font-size:15px;line-height:1.7}
+  .mapbox{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:#e9eaee;line-height:0}
+  .mapbox iframe{width:100%;height:400px;border:0;display:block}
+  .maplink{display:inline-flex;align-items:center;gap:7px;margin-top:16px;font-size:14.5px;
+    font-weight:700;color:#4f46e5;text-decoration:none}
+
+  /* ── Closing band ── */
+  .band{position:relative;background:var(--black);text-align:center;padding:86px 0;overflow:hidden}
+  .band::before{content:"";position:absolute;left:50%;bottom:-260px;transform:translateX(-50%);
+    width:900px;height:520px;border-radius:50%;
+    background:radial-gradient(closest-side,rgba(120,80,255,.34),transparent 70%);pointer-events:none}
+  .band .wrap{position:relative;z-index:2}
+  .band h2{color:#fff;margin-bottom:14px}
+  .band p{color:#98a0b4;margin:0 0 30px;font-size:16.5px}
+
+  footer{background:var(--black);color:#5d6577;padding:30px 0 40px;font-size:13px;
+    border-top:1px solid rgba(255,255,255,.07)}
+  .fine{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center}
+  .fine .meta{display:flex;gap:18px;flex-wrap:wrap}
+  .staff{color:#5d6577;text-decoration:none;border-bottom:1px dotted #3b4257}
+
+  @media(max-width:900px){
+    .navlinks{display:none}
+    .hero{padding-top:112px}
+    h1{font-size:33px}
+    h2{font-size:27px}
+    .lede{font-size:15.5px}
+    .lightsec,.applysec{padding:52px 0}
+    .applysec .wrap{grid-template-columns:1fr;gap:30px}
+    .frow{grid-template-columns:1fr}
+    .stat{border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:22px 0}
+    .stat b{font-size:34px}
+    .route{padding:28px 24px}
+    form.apply{padding:22px}
+    .mapbox iframe{height:300px}
+  }
+</style>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "MovingCompany",
+  "name": "Vikas Goods Transport Co.",
+  "url": "https://vgtc.site/home",
+  "telephone": "+91-9416319445",
+  "email": "vikasgoodstransport1234@gmail.com",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Near Rao Gopal Dev Chowk, Narnaul Road",
+    "addressLocality": "Rewari",
+    "addressRegion": "Haryana",
+    "addressCountry": "IN"
+  },
+  "location": [
+    { "@type": "Place", "name": "Jharli Office",
+      "address": { "@type": "PostalAddress", "addressLocality": "Jharli", "addressRegion": "Haryana", "addressCountry": "IN" } },
+    { "@type": "Place", "name": "Jhajjar Office",
+      "address": { "@type": "PostalAddress", "addressLocality": "Jhajjar", "addressRegion": "Haryana", "addressCountry": "IN" } }
+  ],
+  "areaServed": [
+    { "@type": "State", "name": "Haryana" },
+    { "@type": "State", "name": "Rajasthan" },
+    { "@type": "State", "name": "Delhi" }
+  ],
+  "knowsAbout": ["Cement transport", "Bulk goods transport", "Goods transport agency"],
+  "identifier": [
+    { "@type": "PropertyValue", "name": "GSTIN", "value": "06ARIPK9021C2Z2" },
+    { "@type": "PropertyValue", "name": "SAC", "value": "996511" }
+  ]
+}
+</script>
+</head>
+
+<body>
+
+<div class="hero">
+
+  <div class="navwrap">
+    <div class="navpill">
+      <a class="brand" href="/home">
+        <svg class="brand-mark" viewBox="0 0 200 200" role="img" aria-label="VGTC logo">
+          <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#4f7cff"/><stop offset="1" stop-color="#a855f7"/>
+          </linearGradient></defs>
+          <circle cx="100" cy="100" r="96" fill="url(#lg)"/>
+          <g transform="translate(30,65)" fill="#fff">
+            <rect x="0" y="10" width="85" height="42" rx="4"/>
+            <path d="M85,18 L85,52 L125,52 L125,30 L108,10 L85,10 Z"/>
+            <rect x="90" y="16" width="14" height="12" rx="2" fill="#7c4dff"/>
+            <circle cx="24" cy="56" r="10"/><circle cx="24" cy="56" r="4.5" fill="#7c4dff"/>
+            <circle cx="62" cy="56" r="10"/><circle cx="62" cy="56" r="4.5" fill="#7c4dff"/>
+            <circle cx="108" cy="56" r="10"/><circle cx="108" cy="56" r="4.5" fill="#7c4dff"/>
+          </g>
+        </svg>
+        <span>
+          <b>Vikas Goods Transport</b>
+          <i>Rewari &middot; Haryana</i>
+        </span>
+      </a>
+      <div class="navlinks">
+        <a href="#services">Services</a>
+        <a href="#network">Network</a>
+        <a href="#offices">Offices</a>
+      </div>
+      <a class="btn btn-v" href="#apply">Work with us</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="hero-inner">
+      <span class="pill"><span class="dot"></span> GST registered goods transport agency</span>
+      <h1>Cement moved out of Jharli, <span class="grad">every single day.</span></h1>
+      <p class="lede">
+        Vikas Goods Transport Co. carries cement for J.K. Lakshmi Cement and J.K. Cement
+        from their Jharli works to dealers and sites across Haryana and the states beside it.
+        Own fleet and attached market vehicles, every consignment on a bilty.
+      </p>
+      <div class="cta">
+        <a class="btn btn-w" href="#apply">
+          Work with us
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+        <a class="btn btn-d" href="#services">What we carry</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="floor">
+    <svg viewBox="0 0 1200 400" preserveAspectRatio="none" style="width:100%;height:360px" aria-hidden="true">
+      <defs>
+        <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#8b5cf6" stop-opacity=".85"/>
+          <stop offset=".45" stop-color="#7c5cff" stop-opacity=".38"/>
+          <stop offset="1" stop-color="#4f7cff" stop-opacity=".05"/>
+        </linearGradient>
+        <linearGradient id="horizon" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#8b5cf6" stop-opacity="0"/>
+          <stop offset=".5" stop-color="#c4b5fd"/>
+          <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+        </linearGradient>
+        <radialGradient id="hglow" cx=".5" cy="0" r=".62">
+          <stop offset="0" stop-color="#7c5cff" stop-opacity=".55"/>
+          <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+        </radialGradient>
+        <clipPath id="clipfloor"><rect x="0" y="0" width="1200" height="400"/></clipPath>
+      </defs>
+      <rect width="1200" height="400" fill="url(#hglow)"/>
+      <g clip-path="url(#clipfloor)" stroke="url(#fade)" fill="none" stroke-width="1.1">
+        <path d="M600 0 L-840 400"/><path d="M600 0 L-680 400"/><path d="M600 0 L-520 400"/>
+        <path d="M600 0 L-360 400"/><path d="M600 0 L-200 400"/><path d="M600 0 L-40 400"/>
+        <path d="M600 0 L120 400"/><path d="M600 0 L280 400"/><path d="M600 0 L440 400"/>
+        <path d="M600 0 L600 400"/>
+        <path d="M600 0 L760 400"/><path d="M600 0 L920 400"/><path d="M600 0 L1080 400"/>
+        <path d="M600 0 L1240 400"/><path d="M600 0 L1400 400"/><path d="M600 0 L1560 400"/>
+        <path d="M600 0 L1720 400"/><path d="M600 0 L1880 400"/><path d="M600 0 L2040 400"/>
+        <path d="M0 2 H1200"/><path d="M0 8 H1200"/><path d="M0 18 H1200"/>
+        <path d="M0 33 H1200"/><path d="M0 51 H1200"/><path d="M0 74 H1200"/>
+        <path d="M0 100 H1200"/><path d="M0 131 H1200"/><path d="M0 165 H1200"/>
+        <path d="M0 204 H1200"/><path d="M0 247 H1200"/><path d="M0 294 H1200"/>
+        <path d="M0 345 H1200"/><path d="M0 399 H1200"/>
+      </g>
+      <rect x="0" y="0" width="1200" height="2.4" fill="url(#horizon)"/>
+    </svg>
+  </div>
+
+  <div class="clients">
+    <div class="wrap">
+      <p>Carrying for</p>
+      <div class="row">
+        <b>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+          J.K. Lakshmi Cement, Jharli
+        </b>
+        <b>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+          J.K. Cement (JK Super), Jharli
+        </b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="wrap">
+    <div class="stat"><b class="grad">2</b><span>Cement works served at Jharli</span></div>
+    <div class="stat"><b class="grad">2</b><span>Offices &mdash; Jharli and Jhajjar</span></div>
+    <div class="stat"><b class="grad">4</b><span>Godowns across the district</span></div>
+    <div class="stat"><b class="grad">GST</b><span>Registered GTA &middot; SAC 996511</span></div>
+  </div>
+</div>
+
+<div class="notch">
+  <svg viewBox="0 0 1200 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block" aria-hidden="true">
+    <polygon points="0,0 470,0 600,34 730,0 1200,0 1200,42 0,42" fill="#050507"/>
+    <polygon points="0,0 470,0 600,34 730,0 1200,0" fill="#f1f1ef"/>
+  </svg>
+</div>
+
+<section class="lightsec" id="services">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">What we do</span>
+      <h2>Cement, from the plant gate <span class="grad">to the delivery point.</span></h2>
+      <p class="sub">A goods transport agency working the Jharli plants, with our own fleet and attached market vehicles.</p>
+    </div>
+    <div class="grid">
+      <div class="dcard">
+        <div class="ico">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+        </div>
+        <h3>Plant to dealer</h3>
+        <p>Bagged cement lifted at Jharli and delivered to dealers and sites across Haryana, Rajasthan and Delhi.</p>
+      </div>
+      <div class="dcard">
+        <div class="ico">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        </div>
+        <h3>Godown storage</h3>
+        <p>Four godowns of our own, so stock can be held near the market and drawn down as orders come in.</p>
+      </div>
+      <div class="dcard">
+        <div class="ico">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M15 2v5h5"/><path d="m9 15 2 2 4-4"/></svg>
+        </div>
+        <h3>Bilty and tax invoice</h3>
+        <p>Every consignment moves on a loading receipt and is billed with a proper GST tax invoice.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lightsec" id="network">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Network</span>
+      <h2>Where we load, <span class="grad">where we deliver</span></h2>
+      <p class="sub">Loading is at Jharli. Our godowns are spread across the district, so deliveries and return runs stay close by.</p>
+    </div>
+    <div class="route">
+      <div>
+        <h3>Loading points</h3>
+        <p>J.K. Lakshmi Cement, Jharli<br>J.K. Cement (JK Super), Jharli</p>
+      </div>
+      <div style="text-align:center">
+        <svg width="100" height="36" viewBox="0 0 100 36" fill="none" aria-hidden="true">
+          <path d="M4 18h80" stroke="#a78bfa" stroke-width="2.5" stroke-dasharray="7 6" stroke-linecap="round"/>
+          <path d="M82 9l14 9-14 9" fill="#a78bfa"/>
+        </svg>
+      </div>
+      <div>
+        <h3>Our godowns</h3>
+        <div class="places">
+          <span>Kosli</span><span>Jhajjar</span><span>Bahadurgarh</span><span>Jharli</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="lightsec">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">For dealers &amp; companies</span>
+      <h2>Need cement <span class="grad">moved?</span></h2>
+      <p class="sub">Tell us the destination and the quantity and we will come back with a rate.</p>
+    </div>
+    <ul class="check">
+      <li>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        Tax invoice with GST on every billing
+      </li>
+      <li>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        Consignment on a proper bilty, plant gate to delivery
+      </li>
+      <li>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        Rates quoted per route &mdash; send us your destination
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="applysec" id="apply">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow" style="color:#79819a">Work with us</span>
+      <h2>Own a vehicle? <span class="grad">Attach it with us.</span></h2>
+      <p class="sub">
+        Market vehicles run alongside our own fleet on the Jharli work. Send your details
+        and the office will call you back to talk through rates and paperwork.
+      </p>
+
+      <div class="applynote">
+        <b>How the freight is paid</b>
+        Diesel advance at loading, so nothing comes out of your pocket to start the trip,
+        and the balance settled once the load is delivered and the slip is back in.
+      </div>
+
+      <div class="applynote">
+        <b>What to have ready</b>
+        Truck number and type, carrying capacity, RC, insurance, fitness and the driver's
+        licence, and the bank account the freight should be paid into.
+      </div>
+
+      <div class="applynote">
+        <b>Dealers and companies welcome too</b>
+        Choose &ldquo;I need cement transported&rdquo; and tell us the route and quantity.
+      </div>
+    </div>
+
+    <!--
+      A plain HTML form. No JavaScript on this page, so the browser posts and
+      the server answers with a page — see server/routes/enquiryRoutes.js.
+    -->
+    <form class="apply" method="POST" action="/api/enquiry">
+      <label class="fld" style="margin-bottom:14px">
+        <span>I am enquiring as</span>
+        <select name="kind">
+          <option value="vehicle">A vehicle owner wanting work</option>
+          <option value="transport">I need cement transported</option>
+        </select>
+      </label>
+
+      <div class="frow">
+        <label class="fld">
+          <span>Your name *</span>
+          <input type="text" name="name" required maxlength="80" autocomplete="name">
+        </label>
+        <label class="fld">
+          <span>Mobile number *</span>
+          <input type="tel" name="phone" required maxlength="20" inputmode="numeric" autocomplete="tel">
+        </label>
+      </div>
+
+      <div class="frow">
+        <label class="fld">
+          <span>Vehicle number</span>
+          <input type="text" name="vehicleNo" maxlength="20" placeholder="HR47G0000">
+        </label>
+        <label class="fld">
+          <span>Vehicle type</span>
+          <select name="vehicleType">
+            <option value="">Select</option>
+            <option>Canter</option>
+            <option>6-wheeler</option>
+            <option>10-wheeler</option>
+            <option>12-wheeler</option>
+            <option>Trailer</option>
+            <option>Not applicable</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="frow">
+        <label class="fld">
+          <span>Capacity (tonnes)</span>
+          <input type="text" name="capacity" maxlength="20" placeholder="e.g. 25">
+        </label>
+        <label class="fld">
+          <span>Your city</span>
+          <input type="text" name="city" maxlength="60" placeholder="e.g. Rewari">
+        </label>
+      </div>
+
+      <label class="fld" style="margin-bottom:16px">
+        <span>Anything else</span>
+        <textarea name="message" maxlength="800" placeholder="Routes you prefer, or the load you need moved."></textarea>
+      </label>
+
+      <!-- Honeypot: hidden from people, filled in by bots. -->
+      <div class="hp" aria-hidden="true">
+        <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
+
+      <button class="btn btn-v" type="submit">
+        Send my details
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+      <p class="privacy">We use your details only to call you back about this enquiry.</p>
+    </form>
+  </div>
+</section>
+
+<section class="lightsec" id="offices">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Offices</span>
+      <h2>Come and <span class="grad">see us</span></h2>
+      <p class="sub">Head office at Rewari, with working offices at Jharli and Jhajjar.</p>
+    </div>
+
+    <div class="offices">
+      <div class="ocard">
+        <span class="tag">Head office</span>
+        <h3>Rewari</h3>
+        <address>
+          Near Rao Gopal Dev Chowk,<br>
+          Narnaul Road, Rewari,<br>
+          Haryana
+        </address>
+      </div>
+      <div class="ocard">
+        <span class="tag">Office</span>
+        <h3>Jharli</h3>
+        <address>
+          At the cement works,<br>
+          Jharli, Jhajjar district,<br>
+          Haryana
+        </address>
+      </div>
+      <div class="ocard">
+        <span class="tag">Office</span>
+        <h3>Jhajjar</h3>
+        <address>
+          Jhajjar,<br>
+          Haryana
+        </address>
+      </div>
+    </div>
+
+    <div class="mapbox">
+      <!-- Lazy so it never blocks the page; keyless embed, no API key to leak. -->
+      <iframe
+        src="https://maps.google.com/maps?q=Vikas%20Goods%20Transport%2C%20Near%20Rao%20Gopal%20Dev%20Chowk%2C%20Narnaul%20Road%2C%20Rewari%2C%20Haryana&amp;z=12&amp;output=embed"
+        loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+        title="Map showing Vikas Goods Transport Co., Rewari, Haryana"></iframe>
+    </div>
+    <a class="maplink" href="https://maps.google.com/maps?q=Vikas+Goods+Transport,+Near+Rao+Gopal+Dev+Chowk,+Narnaul+Road,+Rewari,+Haryana" target="_blank" rel="noopener">
+      Open in Google Maps
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+    </a>
+  </div>
+</section>
+
+<div class="band">
+  <div class="wrap">
+    <h2>Ready to <span class="grad">work with us?</span></h2>
+    <p>Send your details and the office will call you back.</p>
+    <a class="btn btn-w" href="#apply">
+      Fill the form
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap fine">
+    <span>&copy; Vikas Goods Transport Co. &middot; Rewari, Jharli, Jhajjar &middot; Haryana</span>
+    <span class="meta">
+      <span>GSTIN 06ARIPK9021C2Z2</span>
+      <!-- For the office, not for visitors. nofollow keeps it out of the index. -->
+      <a class="staff" href="/" rel="nofollow">Staff login</a>
+    </span>
+  </div>
+</footer>
+
+</body>
+</html>

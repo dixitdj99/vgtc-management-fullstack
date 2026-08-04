@@ -2168,5 +2168,321 @@ test('pay: the owner popup is gone and Pay All opens the settlement panel', asyn
     'per-truck deductions must be gated, or an owner payment would apply one truck’s GPS rent to all of them');
 });
 
+/* ── Attendance: chasing the days nobody marked ───────────────────────────── */
+
+const pub = (name) => require('fs').readFileSync(
+  require('path').join(__dirname, '..', '..', 'client', 'public', name), 'utf8');
+
+/** Fetches a non-API path — BASE points at /api, which these are not under. */
+function getPage(pathname) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(BASE.replace(/\/api\/?$/, '') + pathname);
+    const req = http.request(
+      { hostname: url.hostname, port: url.port, path: url.pathname, method: 'GET' },
+      (res) => {
+        let data = '';
+        res.on('data', c => (data += c));
+        res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** Posts a URL-encoded body, the way a browser submits a form with no JS. */
+function postForm(pathname, body, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(BASE.replace(/\/api\/?$/, '') + pathname);
+    const req = http.request({
+      hostname: url.hostname, port: url.port, path: url.pathname, method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+        ...extraHeaders,
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', c => (data += c));
+      res.on('end', () => resolve({
+        status: res.statusCode, body: data, type: res.headers['content-type'] || '',
+      }));
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+const distBuilt = () => require('fs').existsSync(
+  require('path').join(__dirname, '..', '..', 'client', 'dist', 'home.html'));
+
+test('attendance: a day drops off the pending list once everyone is marked', async () => {
+  // The whole point of surfacing this. A day that stays after it has been done
+  // is noise the admin learns to ignore, which defeats it.
+  const svc = require('../services/attendanceService');
+  const res = await get('/attendance/pending?days=14');
+  assert(res.status === 200, `expected 200, got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(Array.isArray(res.data.days), 'pending days must be a list');
+  assert(typeof res.data.totalPending === 'number', 'the card needs a total to show');
+
+  const dates = res.data.days.map(d => d.date);
+  assert(dates.join() === [...dates].sort().reverse().join(),
+    `days must be newest first, got ${dates.join(', ')}`);
+
+  for (const d of res.data.days) {
+    assert(d.pending > 0, `${d.date} is on the list with nothing pending`);
+    assert(d.pending <= d.total, `${d.date} claims ${d.pending} pending of ${d.total}`);
+    assert(Array.isArray(d.names), `${d.date} carries no names to recognise it by`);
+  }
+
+  // Honours the business timezone, not UTC — between midnight and 05:30 IST a
+  // UTC "today" is still yesterday.
+  const today = svc.businessToday();
+  assert(dates.every(d => d <= today), `a future day is on the list: ${dates.join(', ')}`);
+  assert(res.data.days.length <= 14, `asked for 14 days, got ${res.data.days.length}`);
+});
+
+test('attendance: the pending window is capped however large a number is asked for', async () => {
+  const res = await get('/attendance/pending?days=9999');
+  assert(res.status === 200, `expected 200, got ${res.status}`);
+  assert(res.data.days.length <= 60, `the window was not capped: ${res.data.days.length} days`);
+});
+
+test('attendance: pending days need attendance permission', async () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'routes', 'attendanceRoutes.js'), 'utf8');
+  const gate = src.indexOf("requirePermission('attendance', 'view')");
+  const route = src.indexOf("router.get('/pending'");
+  assert(gate !== -1 && gate < route, 'the pending route sits outside the attendance permission gate');
+});
+
+test('attendance: the dashboard marks today in place, and only today', async () => {
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const dash = fs2.readFileSync(
+    path2.join(__dirname, '..', '..', 'client', 'src', 'modules', 'DashboardHome.jsx'), 'utf8');
+
+  assert(/attendance\/bulk/.test(dash), 'the dashboard cannot save attendance');
+  assert(!/attendance\/pending/.test(dash),
+    'the dashboard still lists earlier days — those belong in the Attendance module');
+
+  const card = dash.slice(dash.indexOf('function TodayRollCall'), dash.indexOf('export default'));
+  assert(!/navTo\(/.test(card), 'the roll-call card navigates away instead of marking in place');
+  assert(/const mark = async/.test(card), 'the card no longer saves on tap');
+  assert(!/Save attendance/.test(card), 'a Save button is back on the card');
+  assert(/records: \[\{/.test(card), 'the card writes more than the person just tapped');
+
+  const hook = fs2.readFileSync(
+    path2.join(__dirname, '..', '..', 'client', 'src', 'hooks', 'useDashboardData.js'), 'utf8');
+  assert(/attendance\/roster/.test(hook), "the dashboard does not load today's roll-call");
+  assert(/role === 'admin'/.test(hook), 'the roll-call is fetched for non-admins too');
+});
+
+test('attendance: the module saves as you mark, without losing a mark in flight', async () => {
+  // No Save button there either. The tile cycles through statuses, so the write
+  // is debounced — and a debounce is exactly where marks go missing.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AttendanceModule.jsx'), 'utf8');
+
+  assert(!/handleSave/.test(src), 'the Save button handler is still there');
+  assert(/scheduleAutoSave/.test(src), 'marks are not auto-saved');
+  assert(/beforeunload/.test(src), 'closing the tab would drop a mark still on the timer');
+  assert(/useEffect\(\(\) => \(\) => \{[\s\S]{0,140}persist\(\)/.test(src),
+    'leaving the screen would drop a mark still on the timer');
+
+  const changeDate = src.slice(src.indexOf('const changeDate'), src.indexOf('const shiftDate'));
+  assert(/await persist\(\)/.test(changeDate),
+    'stepping to another date would write the mark against the wrong day');
+
+  assert(/e0\[r\.profileId\] !== r\.status/.test(src),
+    'every auto-save rewrites the whole roll-call');
+});
+
+test('attendance: the module lists the earlier days, today excluded', async () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AttendanceModule.jsx'), 'utf8');
+  assert(/attendance\/pending/.test(src), 'the module does not show the days that were missed');
+  assert(/filter\(d => !d\.isToday\)/.test(src),
+    "today appears in the module's missed-days list — it is the dashboard's job and is not missed yet");
+  assert(/loadPendingDays\(\);/.test(src.slice(src.indexOf('attendance/bulk'))),
+    'the missed-days list is not refreshed after saving, so a finished day keeps asking');
+});
+
+/* ── The public landing page ──────────────────────────────────────────────── */
+
+test('landing: the app keeps the root and the landing page sits at /home', async () => {
+  // The application owns the apex — every bookmark, the PWA and every clerk
+  // still land on the login screen at vgtc.site. The one public page has its
+  // own address instead.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.js'), 'utf8');
+
+  const homeRoute = src.indexOf("app.get('/home'");
+  const staticLine = src.indexOf('express.static(path.join(__dirname');
+  assert(homeRoute !== -1, 'nothing serves the landing page at /home');
+  assert(homeRoute < staticLine, 'express.static would answer /home first');
+  // The root has an OAuth callback on it that falls through with next(), which
+  // is fine. What must never happen is the landing page being served there.
+  assert(!/app\.get\('\/',[\s\S]{0,400}home\.html/.test(src),
+    'the landing page is being served at the root — that belongs to the app');
+
+  if (!distBuilt()) return;   // nothing to serve until the client is built
+
+  const home = await getPage('/home');
+  assert(home.status === 200, `GET /home returned ${home.status}`);
+  assert(/Vikas Goods Transport/.test(home.body), '/home is not the landing page');
+  assert(!/<div id="root">/.test(home.body), '/home is serving the app shell');
+
+  for (const route of ['/', '/admin/login', '/labour', '/loading-status']) {
+    const res = await getPage(route);
+    assert(res.status === 200, `GET ${route} returned ${res.status}`);
+    assert(/<div id="root">/.test(res.body), `GET ${route} no longer serves the app`);
+  }
+});
+
+test('landing: the root, the manifest and the sitemap all still point at the app', async () => {
+  const manifest = JSON.parse(pub('manifest.json'));
+  assert(manifest.start_url === '/',
+    `start_url is ${manifest.start_url} — an installed app must open the app, not marketing copy`);
+  assert(manifest.scope === '/', 'scope must stay / or the installed app cannot reach /admin or /labour');
+  assert(JSON.parse(pub('manifest-labour.json')).start_url === '/labour',
+    'the labour portal must keep its own start_url');
+
+  assert(pub('sitemap.xml').includes('https://vgtc.site/home'),
+    'the sitemap points at the root, which is the login screen');
+  assert(pub('robots.txt').includes('Allow: /home'), 'the one public page is not allowed');
+});
+
+test('landing: the page carries what Google needs to rank it', async () => {
+  const html = pub('home.html');
+  assert(/<title>[^<]{25,}<\/title>/.test(html), 'no usable title');
+  assert(/<meta name="description" content="[^"]{80,}"/.test(html), 'no usable meta description');
+  assert(/rel="canonical" href="https:\/\/vgtc\.site\/home"/.test(html),
+    'no canonical — /home.html would compete with /home as duplicate content');
+  assert(/application\/ld\+json/.test(html), 'no structured data, which is what feeds local results');
+  assert(/"@type": "MovingCompany"/.test(html), 'the business is not typed for search');
+  assert(/og:title/.test(html) && /og:description/.test(html), 'no Open Graph tags for shares');
+
+  // Speed is a ranking factor, and this is read at a loading gate on a weak
+  // signal. Nothing may block the render.
+  assert(!/<script(?![^>]*application\/ld\+json)/.test(html), 'the page pulled in JavaScript');
+  assert(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html), 'a render-blocking web font crept in');
+});
+
+test('landing: only true, checkable claims are on the page', async () => {
+  // Everything here is corroborated by server/config/plantConfig.js. An
+  // unverifiable claim on a public page can cost the business its listing.
+  const html = pub('home.html');
+  const cfg = require('../config/plantConfig');
+  const info = cfg.VGTC_INFO || Object.values(cfg).find(v => v && v.gstin);
+
+  assert(html.includes(info.gstin), `the GSTIN does not match config (${info.gstin})`);
+  assert(html.includes(info.email), 'the email does not match config');
+  assert(/Rewari/.test(html), 'the office town is missing, which is what local search matches on');
+  for (const office of ['Jharli', 'Jhajjar']) {
+    assert(html.includes(office), `the ${office} office is missing`);
+  }
+  for (const godown of ['Kosli', 'Bahadurgarh']) {
+    assert(html.includes(godown), `godown ${godown} is missing`);
+  }
+  assert(/[Bb]ilty/.test(html), 'the bilty-per-trip promise is missing');
+  assert(/[Dd]iesel advance/.test(html), 'the payment terms are missing');
+  assert(!/years of experience|trusted by|[0-9]+\+? trucks|testimonial/i.test(html),
+    'an unverifiable claim is on the page');
+
+  // The number is deliberately not printed — enquiries come through the form so
+  // every lead is written down. It stays in the structured data, which is what
+  // lets Google offer a call button in a local result.
+  const visible = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '');
+  assert(!visible.includes(info.contact),
+    'the phone number is printed on the page — it was meant to be reachable only through the form');
+  assert(html.includes(info.contact), 'the phone is missing from the structured data too');
+  assert(!/href="tel:/.test(visible), 'a click-to-call link is still on the page');
+});
+
+test('landing: the form is not blocked by the server that served the page', async () => {
+  // A browser attaches an Origin header to a form submission even when it is
+  // same-origin, so the enquiry form's POST went through the CORS check and was
+  // refused — the server rejecting a request from a page it had just served.
+  const url = new URL(BASE.replace(/\/api\/?$/, ''));
+  const res = await postForm('/api/enquiry', 'kind=vehicle&name=Origin+Test&phone=9876500000',
+    { Origin: `http://${url.hostname}:${url.port}` });
+  assert(res.status === 201, `the page's own origin was refused: ${res.status}`);
+
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+  assert(/isSameOrigin\(origin, req\) \|\| isAllowedOrigin\(origin\)/.test(src),
+    'the origin check no longer runs the allowlist for other hosts');
+});
+
+test('landing: the enquiry form records a vehicle owner and answers with a page', async () => {
+  const body = 'kind=vehicle&name=Test+Owner&phone=9876543210&vehicleNo=HR47G1111'
+    + '&vehicleType=10-wheeler&capacity=25&city=Rewari&message=Testing';
+  const res = await postForm('/api/enquiry', body);
+  assert(res.status === 201, `expected 201, got ${res.status}`);
+  assert(/text\/html/.test(res.type), `reply must be a page, got ${res.type}`);
+  assert(/Thank you/i.test(res.body), 'no thank-you shown to the person who filled it in');
+});
+
+test('landing: an enquiry without a usable phone number is refused', async () => {
+  // A lead with no way to call it back is worse than no lead — it looks handled.
+  const noPhone = await postForm('/api/enquiry', 'kind=vehicle&name=Test+Owner&phone=');
+  assert(noPhone.status === 400, `a missing number must be refused, got ${noPhone.status}`);
+  const shortPhone = await postForm('/api/enquiry', 'kind=vehicle&name=Test+Owner&phone=12345');
+  assert(shortPhone.status === 400, `a five-digit number must be refused, got ${shortPhone.status}`);
+  const noName = await postForm('/api/enquiry', 'kind=vehicle&name=&phone=9876543210');
+  assert(noName.status === 400, `a missing name must be refused, got ${noName.status}`);
+});
+
+test('landing: the honeypot swallows a bot without telling it anything', async () => {
+  const res = await postForm('/api/enquiry',
+    'name=Bot&phone=9876543210&website=http%3A%2F%2Fspam.example');
+  assert(res.status === 200, `a bot should get a bland 200, got ${res.status}`);
+  assert(/Thank you/i.test(res.body), 'the bot must not learn it was caught');
+});
+
+test('landing: enquiries are not readable without logging in', async () => {
+  // Names and phone numbers of everyone who filled the form. The router is
+  // mounted unauthenticated so the form can post to it, so the read side has
+  // to guard itself.
+  const url = new URL(BASE.replace(/\/api\/?$/, '') + '/api/enquiry/list');
+  const open = await new Promise((resolve, reject) => {
+    const req = http.request({ hostname: url.hostname, port: url.port, path: url.pathname, method: 'GET' },
+      (r) => { let d = ''; r.on('data', c => (d += c)); r.on('end', () => resolve({ status: r.statusCode })); });
+    req.on('error', reject);
+    req.end();
+  });
+  assert(open.status === 401 || open.status === 403,
+    `anyone can read every enquiry — got ${open.status}`);
+
+  const authed = await get('/enquiry/list');
+  assert(authed.status === 200, `the office cannot read its own enquiries: ${authed.status}`);
+  assert(Array.isArray(authed.data), 'the list should be an array');
+});
+
+test('landing: staff can still find their way in', async () => {
+  const html = pub('home.html');
+  // The app is at the root, so this is where a clerk who landed here goes.
+  assert(/class="staff" href="\/"/.test(html), 'there is no way for a clerk to reach the app');
+  assert(/rel="nofollow"/.test(html), 'the staff link is not nofollowed and will be crawled');
+});
+
+test('landing: crawlers are pointed at the one page worth indexing', async () => {
+  const robots = pub('robots.txt');
+  assert(/Sitemap: https:\/\/vgtc\.site\/sitemap\.xml/.test(robots), 'robots.txt names no sitemap');
+  // The root is the login screen now, so it is disallowed along with the rest.
+  for (const gated of ['/$', '/admin', '/labour', '/api/']) {
+    assert(robots.includes(`Disallow: ${gated}`), `${gated} is behind a login but still crawlable`);
+  }
+  assert(/Disallow: \/home\.html/.test(robots), '/home.html would be crawled as a duplicate of /home');
+  assert(/<loc>https:\/\/vgtc\.site\/home<\/loc>/.test(pub('sitemap.xml')),
+    'the sitemap does not list the landing page');
+
+  if (!distBuilt()) return;
+  for (const f of ['/robots.txt', '/sitemap.xml']) {
+    const res = await getPage(f);
+    assert(res.status === 200, `${f} returned ${res.status} — crawlers cannot read it`);
+  }
+});
+
 // Run
 runAll();

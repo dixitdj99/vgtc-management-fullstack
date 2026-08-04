@@ -12,7 +12,7 @@ export function plantConfig(plant, godown) {
         return {
             lrApi: '/jkl/lr', cashbookApi: '/jkl/cashbook',
             voucherTypes: ['Dump', 'JK_Lakshmi', 'JK_Super'],
-            ids: { lr: 'lr_jharli', voucher: 'voucher_jharli', cashbook: 'cashbook_jharli', balance: 'balance_jharli', vehicles: 'vehicles_jharli' },
+            ids: { lr: 'lr_jharli', voucher: 'voucher_jharli', cashbook: 'cashbook_jharli', balance: 'balance_jharli', vehicles: 'vehicles_jharli', attendance: 'attendance_jharli' },
         };
     }
     let voucherTypes = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'JK_Super'];
@@ -24,7 +24,7 @@ export function plantConfig(plant, godown) {
     return {
         lrApi, cashbookApi: '/cashbook',
         voucherTypes,
-        ids: { lr: 'lr_dump', voucher: 'voucher_dump', cashbook: 'cashbook_dump', balance: 'balance_dump', vehicles: 'vehicles_dump' },
+        ids: { lr: 'lr_dump', voucher: 'voucher_dump', cashbook: 'cashbook_dump', balance: 'balance_dump', vehicles: 'vehicles_dump', attendance: 'attendance_dump' },
     };
 }
 
@@ -34,7 +34,7 @@ export function plantConfig(plant, godown) {
  * Returns raw sources + computed KPIs + refetchers + the plant cfg.
  */
 export default function useDashboardData() {
-    const { plant, godown } = useAuth();
+    const { plant, godown, user } = useAuth();
     const cfg = useMemo(() => plantConfig(plant, godown), [plant, godown]);
 
     const [lrs, setLrs] = useState({ loading: true, data: null, error: false });
@@ -42,6 +42,15 @@ export default function useDashboardData() {
     const [cashbook, setCashbook] = useState({ loading: true, data: null, error: false });
     const [maintAlerts, setMaintAlerts] = useState({ loading: true, data: null, error: false });
     const [vehicles, setVehicles] = useState({ loading: true, data: null, error: false });
+
+    // Unfinished roll-calls are an admin's problem to chase, and the roster
+    // names staff — so it is not fetched at all for anyone else, rather than
+    // fetched and hidden.
+    const isAdmin = user?.role === 'admin';
+    // Today's roll-call, so the dashboard can mark it in place. Earlier days
+    // that were missed belong in the Attendance module, not here — the point of
+    // this card is that today gets done before it becomes one of them.
+    const [attendanceToday, setAttendanceToday] = useState({ loading: isAdmin, data: null, error: false });
 
     const fetchLrs = () => {
         setLrs(s => ({ ...s, loading: true, error: false }));
@@ -74,10 +83,21 @@ export default function useDashboardData() {
             .catch(() => setVehicles({ loading: false, data: null, error: true }));
     };
 
+    const fetchAttendanceToday = () => {
+        if (!isAdmin) { setAttendanceToday({ loading: false, data: null, error: false }); return; }
+        setAttendanceToday(s => ({ ...s, loading: true, error: false }));
+        // No date parameter: the server answers for the yard's calendar day, not
+        // the browser's, which differ before 05:30 IST.
+        ax.get('/attendance/roster')
+            .then(r => setAttendanceToday({ loading: false, data: r.data || null, error: false }))
+            .catch(() => setAttendanceToday({ loading: false, data: null, error: true }));
+    };
+
     useEffect(() => {
         fetchLrs(); fetchVouchers(); fetchCashbook(); fetchAlerts(); fetchVehicles();
+        fetchAttendanceToday();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cfg]);
+    }, [cfg, isAdmin]);
 
     const todayLrCount = useMemo(() => {
         if (!lrs.data) return null;
@@ -154,9 +174,9 @@ export default function useDashboardData() {
 
     return {
         cfg,
-        lrs, vouchers, cashbook, maintAlerts, vehicles,
+        lrs, vouchers, cashbook, maintAlerts, vehicles, attendanceToday,
         kpis: { todayLrCount, outstanding, cashInHand, fleetAlerts },
         recentActivity,
-        refetch: { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles },
+        refetch: { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles, fetchAttendanceToday },
     };
 }

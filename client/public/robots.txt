@@ -1,0 +1,18 @@
+# The application owns the root of this domain, so almost everything here sits
+# behind a login and is no use to a crawler. /home is the one public page.
+
+User-agent: *
+Allow: /home
+Disallow: /$
+Disallow: /admin
+Disallow: /labour
+Disallow: /loading-status
+Disallow: /reset-password
+Disallow: /receipt/
+Disallow: /api/
+# The landing page is also reachable at its own filename once built. The
+# canonical tag on the page settles which is which; this keeps it out of the
+# crawl entirely.
+Disallow: /home.html
+
+Sitemap: https://vgtc.site/sitemap.xml

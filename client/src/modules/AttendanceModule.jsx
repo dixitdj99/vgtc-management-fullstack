@@ -68,6 +68,8 @@ const monthOf = d => d.slice(0, 7);
 // timeZone: 'UTC' keeps the label on the day we actually asked for.
 const fmtMonthLabel = m => parseDay(m + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const fmtDateLabel = d => parseDay(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+/** Short enough to sit on a chip: "Sat 01 Aug". */
+const fmtDayChip = d => parseDay(d).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
 const initials = name => String(name || '?').trim().charAt(0).toUpperCase() || '?';
 
 export default function AttendanceModule() {
@@ -89,6 +91,21 @@ export default function AttendanceModule() {
   const [error, setError] = useState(null);
 
   const canEdit = user?.role === 'admin' || user?.permissions?.attendance === 'edit';
+
+  /**
+   * Days before today whose roll-call is unfinished.
+   *
+   * Today is excluded on purpose — it is the dashboard's job and is not "missed"
+   * until the day is over. Reloaded after every save, so a day chased from here
+   * drops out of the list.
+   */
+  const [pendingDays, setPendingDays] = useState([]);
+  const loadPendingDays = useCallback(async () => {
+    try {
+      const { data } = await ax.get('/attendance/pending', { params: { days: 30 } });
+      setPendingDays((data?.days || []).filter(d => !d.isToday));
+    } catch { setPendingDays([]); }   // never block the roll-call over a side panel
+  }, []);
 
   // Stepping through days quickly leaves several requests in flight at once, and
   // they can come back out of order — the grid would then show a different day
@@ -163,9 +180,30 @@ export default function AttendanceModule() {
     if (view === 'daily') loadRoster(selectedDate);
   }, [view, selectedDate, loadRoster]);
 
+  useEffect(() => { loadPendingDays(); }, [loadPendingDays]);
+
   useEffect(() => {
     if (view === 'monthly') loadSummary(selectedMonth);
   }, [view, selectedMonth, loadSummary]);
+
+  /**
+   * Auto-save.
+   *
+   * There is no Save button: a mark is written as soon as it is made. Debounced
+   * rather than fired per tap, because a tile *cycles* — tapping through to
+   * Leave passes Present, Absent and Half Day on the way, and each one would
+   * otherwise be a write, with the intermediate ones landing in the audit trail
+   * as decisions nobody made.
+   *
+   * One timer for the whole grid, not one per person: marking six people in a
+   * row then becomes a single request rather than six.
+   */
+  const autoSaveTimer = useRef(null);
+  const scheduleAutoSave = () => {
+    if (!canEdit) return;
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => { autoSaveTimer.current = null; persist(); }, 600);
+  };
 
   // ── Marking ────────────────────────────────────────────────────────────────
   const setStatus = (profileId, status) => {
@@ -173,6 +211,7 @@ export default function AttendanceModule() {
     setEdits(e => ({ ...e, [profileId]: status }));
     setTouched(t => new Set(t).add(profileId));
     setSavedAt(null);
+    scheduleAutoSave();
   };
 
   const cycleStatus = (profileId) => {
@@ -189,6 +228,7 @@ export default function AttendanceModule() {
     setEdits(next);
     setTouched(new Set(roster.rows.map(r => r.profileId)));
     setSavedAt(null);
+    scheduleAutoSave();
   };
 
   const resetToSuggested = () => {
@@ -201,6 +241,7 @@ export default function AttendanceModule() {
     setEdits(next);
     setTouched(new Set());
     setSavedAt(null);
+    scheduleAutoSave();
   };
 
   const rows = roster?.rows || [];
@@ -247,61 +288,94 @@ export default function AttendanceModule() {
   );
 
   // ── Save ───────────────────────────────────────────────────────────────────
-  const handleSave = async () => {
-    if (!canEdit || !roster) return;
+  /**
+   * Writes whatever is on screen but not yet in the database.
+   *
+   * Only rows whose mark differs from the stored one are sent, so an auto-save
+   * triggered by one tap does not rewrite the whole roll-call — and a person the
+   * supervisor has not resolved is never given a status, because inventing an
+   * "absent" is a wage decision.
+   *
+   * Reads state through a ref: it is called from a timer, where a closure would
+   * hold whatever the grid looked like 600ms ago.
+   */
+  const stateRef = useRef({});
+  stateRef.current = { rows, edits, touched, selectedDate, roster, canEdit };
+
+  const persist = useCallback(async () => {
+    const { rows: r0, edits: e0, touched: t0, selectedDate: date, roster: ros, canEdit: may } = stateRef.current;
+    if (!may || !ros) return;
+
+    const records = r0
+      .filter(r => e0[r.profileId] && e0[r.profileId] !== r.status)
+      .map(r => ({
+        profileId: r.profileId,
+        profileName: r.name,
+        profileType: r.type,
+        status: e0[r.profileId],
+        // Untouched driver rows that came from trip data stay flagged derived,
+        // so a later dispute can tell apart "the system worked this out" from
+        // "a supervisor asserted this".
+        source: !t0.has(r.profileId) && r.suggestedBy === 'trip_data' ? 'derived' : 'manual',
+      }));
+
+    if (!records.length) return;   // nothing changed — silence, not an error
+
     setSaving(true);
     setError(null);
     try {
-      // Only send people who actually have a status. Never invent an "absent"
-      // for someone the supervisor has not resolved — that is a wage decision.
-      const records = rows
-        .filter(r => edits[r.profileId])
-        .map(r => ({
-          profileId: r.profileId,
-          profileName: r.name,
-          profileType: r.type,
-          status: edits[r.profileId],
-          // Untouched driver rows that came from trip data stay flagged derived,
-          // so a later dispute can tell apart "the system worked this out" from
-          // "a supervisor asserted this".
-          source: !touched.has(r.profileId) && r.suggestedBy === 'trip_data' ? 'derived' : 'manual',
-        }));
-
-      if (!records.length) {
-        setError('Nothing to save — no one has been marked yet.');
-        return;
-      }
-
-      await ax.post('/attendance/bulk', { date: selectedDate, records });
+      await ax.post('/attendance/bulk', { date, records });
       setSavedAt(Date.now());
-      await loadRoster(selectedDate);
+      await loadRoster(date);
+      // A day that is now complete has to leave the "earlier days" list, or the
+      // banner keeps asking for work already done.
+      loadPendingDays();
     } catch (err) {
       setError(err.response?.data?.error || err.message);
     } finally {
       setSaving(false);
     }
-  };
+  }, [loadRoster, loadPendingDays]);
 
   /**
-   * Moving to another date reloads everything, so anything marked but not saved
-   * would just disappear. Ask first — a supervisor who has worked through twenty
-   * tiles and then nudges the arrow should not lose it without being told.
+   * A mark made in the last 600ms is still on a timer. Leaving the screen, or
+   * closing the tab, has to write it first or it is simply lost — which is the
+   * one thing auto-save must never do. Stepping to another date is handled in
+   * changeDate below, because the timer would otherwise fire against the day
+   * that has just been navigated to.
    */
-  const changeDate = useCallback((next) => {
-    // `<input type="date">` fires while the field is still half-typed ("0002-01-01"),
-    // which would otherwise fetch nonsense days and pop the confirm below on every
+  useEffect(() => () => {
+    if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); persist(); }
+  }, [persist]);
+
+  useEffect(() => {
+    const flush = () => { if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); persist(); } };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [persist]);
+
+  /**
+   * Moving to another date.
+   *
+   * A mark made in the last moment is still on the auto-save timer, and the
+   * timer fires against whatever date is current when it goes off — so it is
+   * written here, before the date moves, or it would land on the wrong day.
+   * That is also why there is no longer a "you have unsaved changes" prompt:
+   * there is nothing to lose by the time this returns.
+   */
+  const changeDate = useCallback(async (next) => {
+    // `<input type="date">` fires while the field is still half-typed
+    // ("0002-01-01"), which would otherwise fetch nonsense days on every
     // keystroke. Only act on a complete date.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(next || ''))) return;
     if (next === selectedDate) return;
-    if (pendingCount > 0) {
-      const ok = window.confirm(
-        `${pendingCount} change${pendingCount === 1 ? '' : 's'} on ${fmtDateLabel(selectedDate)} ${pendingCount === 1 ? 'has' : 'have'} not been saved yet.\n\n` +
-        `Moving to another date will discard ${pendingCount === 1 ? 'it' : 'them'}.\n\nLeave without saving?`
-      );
-      if (!ok) return;
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+      await persist();
     }
     setSelectedDate(next);
-  }, [selectedDate, pendingCount]);
+  }, [selectedDate, persist]);
 
   const shiftDate = delta => changeDate(addDays(selectedDate, delta));
 
@@ -403,7 +477,7 @@ export default function AttendanceModule() {
           setStatus={setStatus}
           markAllPresent={markAllPresent}
           resetToSuggested={resetToSuggested}
-          handleSave={handleSave}
+          pendingDays={pendingDays}
           saving={saving}
           savedAt={savedAt}
           pendingCount={pendingCount}
@@ -428,7 +502,7 @@ export default function AttendanceModule() {
 function DailyRollCall({
   card, refreshing, rows, allRows, edits, touched, counts, canEdit, query, setQuery,
   selectedDate, setSelectedDate, shiftDate, cycleStatus, setStatus,
-  markAllPresent, resetToSuggested, handleSave, saving, savedAt, pendingCount, unsavedCount,
+  markAllPresent, resetToSuggested, pendingDays = [], saving, savedAt, pendingCount, unsavedCount,
 }) {
   const unresolved = allRows.filter(r => !edits[r.profileId]);
   const derivedCount = allRows.filter(r => r.suggestedBy === 'trip_data').length;
@@ -442,6 +516,37 @@ function DailyRollCall({
 
   return (
     <>
+      {/*
+        Earlier days nobody finished. The dashboard only ever offers today, so
+        this is where a missed day is caught — and it needs to be here anyway,
+        because fixing one wants the trip evidence and the month view beside it.
+      */}
+      {pendingDays.length > 0 && (
+        <div style={{ ...card, padding: '12px 14px', marginBottom: '14px', borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '9px' }}>
+            <AlertTriangle size={14} color="#f59e0b" />
+            <span style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {pendingDays.length} earlier day{pendingDays.length === 1 ? '' : 's'} not marked
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+            {pendingDays.map(d => (
+              <button key={d.date} onClick={() => setSelectedDate(d.date)}
+                title={`${d.pending} of ${d.total} still to mark`}
+                style={{
+                  padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit',
+                  border: `1px solid ${d.date === selectedDate ? '#f59e0b' : 'var(--border)'}`,
+                  background: d.date === selectedDate ? 'rgba(245,158,11,0.15)' : 'var(--bg-input)',
+                  color: 'var(--text)', fontSize: '12px', fontWeight: 700,
+                }}>
+                {fmtDayChip(d.date)}
+                <span style={{ color: '#f59e0b', marginLeft: '6px', fontWeight: 800 }}>{d.pending}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Date navigation — stays live through the reload */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', ...card, padding: '4px' }}>
@@ -529,36 +634,39 @@ function DailyRollCall({
       )}
       </div>
 
-      {/* Sticky save bar */}
+      {/*
+        Status, not a save button. Every mark is written the moment it is made,
+        so the only thing left to say is whether it has landed — and to say it
+        plainly, because a supervisor used to pressing Save needs to see that it
+        happened without them.
+      */}
       {canEdit && allRows.length > 0 && (
         <div style={{
           position: 'sticky', bottom: '16px', marginTop: '20px', display: 'flex',
-          alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap',
+          alignItems: 'center', gap: '10px', flexWrap: 'wrap',
           ...card, padding: '12px 16px', boxShadow: '0 8px 24px -8px rgba(0,0,0,0.25)',
           backdropFilter: 'blur(8px)',
         }}>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+          {saving
+            ? <Loader2 size={15} className="spin" style={{ color: '#6366f1' }} />
+            : unsavedCount > 0
+              ? <Save size={15} style={{ color: 'var(--text-muted)' }} />
+              : <CheckCircle2 size={15} style={{ color: '#10b981' }} />}
+          <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
             {refreshing
               ? `Loading ${fmtDateLabel(selectedDate)}…`
-              : savedAt
-              ? <span style={{ color: '#10b981', fontWeight: 800 }}>Saved. {counts.present + counts.half_day + counts.leave + counts.absent} people recorded for {fmtDateLabel(selectedDate)}.</span>
-              : pendingCount > 0
-                ? <><b style={{ color: 'var(--text)' }}>{pendingCount}</b> change{pendingCount === 1 ? '' : 's'} not saved yet</>
+              : saving
+                ? 'Saving…'
                 : unsavedCount > 0
-                  ? <>Nothing changed — <b style={{ color: 'var(--text)' }}>{unsavedCount}</b> suggested mark{unsavedCount === 1 ? '' : 's'} still need saving</>
-                  : 'Nothing changed since the last save'}
+                  ? <><b style={{ color: 'var(--text)' }}>{unsavedCount}</b> mark{unsavedCount === 1 ? '' : 's'} saving in a moment…</>
+                  : savedAt
+                    ? <span style={{ color: '#10b981', fontWeight: 800 }}>
+                        Saved automatically · {counts.present + counts.half_day + counts.leave + counts.absent} people recorded for {fmtDateLabel(selectedDate)}
+                      </span>
+                    : counts.unresolved > 0
+                      ? <><b style={{ color: 'var(--text)' }}>{counts.unresolved}</b> still to mark — each one saves as you tap it</>
+                      : 'Everyone marked. Saved automatically.'}
           </div>
-          {/* Blocked while a new day loads — the marks on screen still belong to the old one. */}
-          <button onClick={handleSave} disabled={saving || refreshing}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px', padding: '11px 26px', borderRadius: '10px',
-              border: 'none', cursor: saving || refreshing ? 'not-allowed' : 'pointer',
-              background: savedAt ? '#10b981' : '#6366f1', color: '#fff', fontWeight: 800, fontSize: '13px',
-              opacity: saving || refreshing ? 0.7 : 1, transition: 'background 0.3s',
-            }}>
-            {saving ? <Loader2 size={15} className="spin" /> : savedAt ? <CheckCircle2 size={15} /> : <Save size={15} />}
-            {saving ? 'Saving…' : savedAt ? 'Saved' : 'Save attendance · सेव करें'}
-          </button>
         </div>
       )}
     </>

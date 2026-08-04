@@ -2057,7 +2057,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     )}
 
                     {/* Sheet table */}
-                    <div className="tbl-wrap">
+                    <div className="tbl-wrap tbl-cards">
                         <table className="tbl" style={{ minWidth: '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                             <thead>
                                 <tr style={{ background: 'var(--bg-th)' }}>
@@ -2116,8 +2116,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                     <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', transition: 'background 0.12s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
-                                        <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                                        <td style={{ ...TD }}>
+                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                        <td className="t-card-title" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     {v.deliveries.map((d, di) => (
@@ -2126,8 +2126,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                                 : <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span>}
                                         </td>
-                                        <td style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
-                                        <td style={{ ...TD, fontWeight: 700 }}>
+                                        <td data-label="Date" style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
+                                        <td data-label="Truck" style={{ ...TD, fontWeight: 700 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 {v.truckNo}
                                                 {v.endKm && (
@@ -2138,7 +2138,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 )}
                                             </div>
                                         </td>
-                                        <td style={{ ...TD }}>
+                                        <td data-label="Destination" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     {v.deliveries.map((d, di) => (
@@ -2150,7 +2150,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                                 : v.destination || '—'}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
+                                        <td data-label="Weight" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.weight || '—'}</span>)}
@@ -2163,7 +2163,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                                 : v.weight}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                        <td data-label="Bags" style={{ ...TD, textAlign: 'right' }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px', fontWeight: 700 }}>{d.bags || '—'}</span>)}
@@ -2174,19 +2174,19 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 : <><div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>
                                                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div></>}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                        <td data-label="Rate" style={{ ...TD, textAlign: 'right' }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.rate || '—'}</span>)}
                                                 </div>
                                                 : v.rate}
                                         </td>
-                                        <td style={{ ...TD }}>{getPumpDisplay(v.pump)}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                        <td data-label="Pump" style={{ ...TD }}>{getPumpDisplay(v.pump)}</td>
+                                        <td data-label="Diesel Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
+                                        <td data-label="Cash Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
+                                        <td data-label="Online Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
+                                        <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
+                                        <td data-label="Total" style={{ ...TD, textAlign: 'right' }}>
                                             {(() => {
                                                 const n = getNet(v);
                                                 return (
@@ -2214,9 +2214,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 );
                                             })()}
                                         </td>
-                                        {role === 'admin' && <td style={{ ...TD }}>{v.createdBy || '—'}</td>}
-                                        {role === 'admin' && <td style={{ ...TD }}>{v.updatedBy || '—'}</td>}
-                                        <td style={{ ...TD, textAlign: 'center' }}>
+                                        {role === 'admin' && <td data-label="Created By" style={{ ...TD }}>{v.createdBy || '—'}</td>}
+                                        {role === 'admin' && <td data-label="Updated By" style={{ ...TD }}>{v.updatedBy || '—'}</td>}
+                                        <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
                                                 <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org, brand, signedBy)}><Printer size={13} /></button>
                                                 {canEdit && (

@@ -40,6 +40,7 @@ import DashboardHome from './modules/DashboardHome';
 import CommandPalette from './components/CommandPalette';
 import useViewport from './hooks/useViewport';
 import MobileApp from './mobile/MobileApp';
+import BottomTabBar from './components/BottomTabBar';
 import { processSyncQueue, count as queueCount } from './utils/offlineQueue';
 import TyreModule from './modules/TyreModule';
 import VendorModule from './modules/VendorModule';
@@ -1451,6 +1452,9 @@ function AppInner() {
 
       {/* Ctrl+K command palette */}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={COMMANDS} />
+
+      {/* Mobile bottom tab bar (≤768px) */}
+      <BottomTabBar active={active} plant={plant} filteredNavIds={filteredNavIds} onMore={() => setShowMobileMenu(true)} />
 
       {/* Global Waking Up indicator for inside the app */}
       <AnimatePresence>

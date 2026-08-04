@@ -31,6 +31,18 @@ router.get('/roster', async (req, res, next) => {
 });
 
 /**
+ * GET /api/attendance/pending?days=14
+ *
+ * Recent days whose roll-call is unfinished, newest first. A day drops off as
+ * soon as everyone on it is marked, so the list empties itself.
+ */
+router.get('/pending', async (req, res, next) => {
+    try {
+        res.json(await attendanceService.getPendingDays(req.orgId, req, req.query.days));
+    } catch (err) { next(err); }
+});
+
+/**
  * GET /api/attendance/summary?month=YYYY-MM
  * Per-profile payroll totals: payable days, paid vs unpaid leave, estimated pay.
  */

@@ -464,7 +464,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
 
   /* ── Render helper: ledger table ── */
   const LedgerTable = ({ rows, showBalance = true, showBadge = true }) => (
-    <div className="tbl-wrap">
+    <div className="tbl-wrap tbl-cards">
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
           <th style={TH}>Date</th>
@@ -486,8 +486,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             return (
               <tr key={r.id}
                 style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
-                <td style={{ ...TD, maxWidth: '320px' }}>
+                <td className="t-card-title" style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                <td data-label="Description" style={{ ...TD, maxWidth: '320px' }}>
                   <div style={{ fontWeight: 600, color: r.isReturned ? 'var(--text-muted)' : 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.isReturned ? 'line-through' : 'none' }}>
                     {r.label}
                   </div>
@@ -520,29 +520,29 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   )}
                 </td>
                 {showBadge && (
-                  <td style={{ ...TD }}>
+                  <td data-label="Type" style={{ ...TD }}>
                     <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 700, background: bs.bg, color: bs.color }}>
                       {bs.label}
                     </span>
                   </td>
                 )}
-                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)', fontSize: '13px' }}>
+                <td data-label="Credit (In)" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)', fontSize: '13px' }}>
                   {r.credit > 0 ? fmtRs(r.credit) : '—'}
                 </td>
-                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)', fontSize: '13px' }}>
+                <td data-label="Debit (Out)" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)', fontSize: '13px' }}>
                   {r.debit > 0 ? fmtRs(r.debit) : '—'}
                 </td>
                 {showBalance && (
-                  <td style={{
+                  <td data-label="Balance" style={{
                     ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px',
                     color: r.balance >= 0 ? 'var(--accent)' : 'var(--danger)'
                   }}>
                     {fmtRs(r.balance)}
                   </td>
                 )}
-                {role === 'admin' && <td style={TD}>{r.createdBy || '—'}</td>}
-                {role === 'admin' && <td style={TD}>{r.updatedBy || '—'}</td>}
-                <td style={{ ...TD, textAlign: 'center' }}>
+                {role === 'admin' && <td data-label="Created By" style={TD}>{r.createdBy || '—'}</td>}
+                {role === 'admin' && <td data-label="Updated By" style={TD}>{r.updatedBy || '—'}</td>}
+                <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                     {r.type === 'cash_out' && r.entityType && !r.isReturned && (role === 'admin' || permissions?.cashbook === 'edit') && (
                       <button className="btn btn-sm" title="Mark as Returned" style={{ padding: '3px 7px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9', border: '1px solid rgba(14,165,233,0.2)', borderRadius: '6px', cursor: 'pointer' }}

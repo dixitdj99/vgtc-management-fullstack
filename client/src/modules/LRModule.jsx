@@ -2137,7 +2137,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </div>
             )}
 
-            <div className="tbl-wrap">
+            <div className="tbl-wrap tbl-cards">
               <table className="tbl" style={{ minWidth: '1200px' }}>
                 <thead><tr>
                   <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -2174,17 +2174,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
-                        <td><span className="t-lr">#{lr.lrNo}</span></td>
-                        <td>
-                          <div className="t-main">{lr.truckNo}</div>
-                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
+                        <td className="t-card-title"><span className="t-lr">#{lr.lrNo}</span></td>
+                        <td data-label="Vehicle / Party">
+                          <div>
+                            <div className="t-main">{lr.truckNo}</div>
+                            <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
+                          </div>
                         </td>
-                        <td>
-                          <span className="badge badge-tag">{lr.material}</span>
-                          <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
-                          {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: loadingColor(lr.loadingType) }}>{lr.loadingType}</div>}
+                        <td data-label="Material">
+                          <div>
+                            <span className="badge badge-tag">{lr.material}</span>
+                            <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
+                            {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
+                          </div>
                         </td>
-                        <td className="c">
+                        <td className="c" data-label="Source Challan">
                           {(() => {
                             // Determine how many bags are not yet covered by any challan
                             const lrBags = parseInt(lr.totalBags || 0);
@@ -2260,7 +2264,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        <td className="c">
+                        <td className="c" data-label="Voucher Status">
                           {(() => {
                             const usedInVouchers = allVouchers.filter(v => {
                               if (!v.lrNo) return false;
@@ -2284,7 +2288,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        <td className="c">
+                        <td className="c" data-label="Trip Status">
                           {(() => {
                             const status = lr.status || 'Created';
                             const idx = LR_STATUS_FLOW.indexOf(status);
@@ -2303,9 +2307,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
-                        {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
-                        <td className="c">
+                        {role === 'admin' && <td data-label="Created By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
+                        {role === 'admin' && <td data-label="Updated By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
+                        <td className="c t-card-actions">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                             <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, brand, signedBy, vehicles)}>
                               <Printer size={14} />
