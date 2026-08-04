@@ -2650,5 +2650,18 @@ test('all-balance: the header sits over the cell it names', async () => {
     'the number of lead cells no longer matches the two extra headers');
 });
 
+test('balance: a ticked row is still obvious without the box around it', async () => {
+  // The outline drew a bracket around every multi-LR voucher, because ticking
+  // one leg ticks them all. Removing it is only safe while the tint still says
+  // which rows are picked -- drop both and nothing does.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'BalanceSheet.jsx'), 'utf8');
+
+  assert(/const bg = checked ? /.test(src),
+    'a selected row no longer looks different from an unselected one');
+  assert(!/outline: checked/.test(src),
+    'the selection outline is back, and it brackets every multi-LR voucher');
+});
+
 // Run
 runAll();

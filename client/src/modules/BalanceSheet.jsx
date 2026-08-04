@@ -624,7 +624,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
   const paid = parseFloat(cv.paidBalance) || 0;
   const outstanding = Math.max(0, net - paid);
   const cleared = outstanding <= 0;
-  const bg = checked ? 'rgba(99,102,241,0.07)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
+  const bg = checked ? 'rgba(99,102,241,0.16)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
   const days = outstanding > 0 ? daysAgo(v.date) : 0;
   const overdueColor = days > 30 ? '#f43f5e' : days > 15 ? '#f59e0b' : null;
 
@@ -642,7 +642,13 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
   const waText = `*VGTC Voucher*\nLR #${v.lrNo} | ${v.truckNo || ''}\nDate: ${v.date || ''}\nRoute: ${v.destination || v.partyName || '—'}\nGross: Rs.${Math.round(gross).toLocaleString('en-IN')}\n${rateMissing ? 'Rate not entered — balance pending' : `Net Bal: Rs.${Math.round(net).toLocaleString('en-IN')}\nOutstanding: ${outstanding > 0 ? 'Rs.' + Math.round(outstanding).toLocaleString('en-IN') : 'Cleared ✓'}`}`;
 
   return (
-    <tr style={{ background: editing ? 'var(--bg-input)' : bg, outline: checked ? '1px solid var(--primary)' : '', borderLeft: overdueColor && !editing ? `3px solid ${overdueColor}` : '' }}
+    /*
+     * Selected rows are tinted, not outlined. Ticking one leg of a multi-LR
+     * voucher ticks all of them, so the per-row outlines met and drew a box
+     * around the group -- which read as a permanent bracket stamped on the
+     * voucher rather than as "these are the rows you picked".
+     */
+    <tr style={{ background: editing ? 'var(--bg-input)' : bg, borderLeft: overdueColor && !editing ? `3px solid ${overdueColor}` : '' }}
       onMouseEnter={e => { if (!editing && !checked) e.currentTarget.style.background = 'var(--bg-row-hover)'; }}
       onMouseLeave={e => { if (!editing && !checked) e.currentTarget.style.background = bg; }}>
 
