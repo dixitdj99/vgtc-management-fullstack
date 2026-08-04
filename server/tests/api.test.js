@@ -2484,5 +2484,79 @@ test('landing: crawlers are pointed at the one page worth indexing', async () =>
   }
 });
 
+/* ── Loading receipt: typing the LR number ────────────────────────────────── */
+
+test('lr: a clerk can type the LR number instead of taking the next one', async () => {
+  // A paper bilty already written at the gate, or a book being caught up after
+  // the fact — cases the counter cannot know about.
+  const chosen = 900000 + Math.floor(Math.random() * 90000);
+  const res = await post('/kosli/lr', {
+    lrNo: chosen, date: '2026-08-04', truckNo: 'HR47G0975', partyName: 'MANUAL LR TEST',
+    materials: [{ type: 'PPC', bags: '10', weight: '0.5', loadingType: 'From Godown' }],
+  });
+  assert(res.status === 201 || res.status === 200, `expected a receipt, got ${res.status} ${JSON.stringify(res.data)}`);
+  assert(res.data.lrNo === chosen, `asked for #${chosen}, got #${res.data.lrNo}`);
+
+  // The same number cannot be used twice — and it is the caller's mistake, so
+  // it must not read as a server fault.
+  const dup = await post('/kosli/lr', {
+    lrNo: chosen, date: '2026-08-04', truckNo: 'HR47G0975', partyName: 'MANUAL LR TEST',
+    materials: [{ type: 'PPC', bags: '10', weight: '0.5', loadingType: 'From Godown' }],
+  });
+  assert(dup.status === 409, `a duplicate must be refused with 409, got ${dup.status}`);
+  assert(/already exists/i.test(JSON.stringify(dup.data)), `unhelpful message: ${JSON.stringify(dup.data)}`);
+
+  for (const id of (res.data.ids || [])) await del('/kosli/lr/' + id);
+});
+
+test('lr: the automatic sequence never catches up with a typed number', async () => {
+  // Type 900000 while the counter sits at 120 and every automatic number from
+  // 900000 onwards would later collide with it. Claiming one moves the counter.
+  const svc = require('../services/lrService');
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'services', 'lrService.js'), 'utf8');
+  assert(/count: Math\.max\(data\.count \|\| 0, requested\)/.test(src),
+    'a typed number does not advance the counter, so the sequence will collide with it');
+  assert(/available: available\.filter\(n => n !== requested\)/.test(src),
+    'a typed number is not removed from the freed-number pool, so it can be handed out twice');
+  assert(typeof svc.createLoadingReceipt === 'function', 'the create entry point moved');
+});
+
+test('lr: a number that is not a number is refused, not coerced', async () => {
+  // An LR number is an identity. parseInt('12abc') is 12, which would file the
+  // receipt under a number nobody typed.
+  for (const bad of ['abc', '0', '-4', '12.5abc']) {
+    const res = await post('/kosli/lr', {
+      lrNo: bad, date: '2026-08-04', truckNo: 'HR47G0975', partyName: 'BAD LR TEST',
+      materials: [{ type: 'PPC', bags: '5', weight: '0.25', loadingType: 'From Godown' }],
+    });
+    assert(res.status === 400 || res.status === 409,
+      `"${bad}" should be refused, got ${res.status} ${JSON.stringify(res.data)}`);
+    if (res.data && res.data.ids) for (const id of res.data.ids) await del('/kosli/lr/' + id);
+  }
+});
+
+test('lr: leaving the number blank still takes the next one automatically', async () => {
+  // The toggle sends '' when switched on and left empty; that must mean "auto",
+  // not "reject", or a clerk who changes their mind is stuck.
+  const res = await post('/kosli/lr', {
+    lrNo: '', date: '2026-08-04', truckNo: 'HR47G0975', partyName: 'AUTO LR TEST',
+    materials: [{ type: 'PPC', bags: '5', weight: '0.25', loadingType: 'From Godown' }],
+  });
+  assert(res.status === 201 || res.status === 200, `expected a receipt, got ${res.status}`);
+  assert(Number.isInteger(res.data.lrNo) && res.data.lrNo > 0,
+    `no automatic number allocated: ${JSON.stringify(res.data)}`);
+  for (const id of (res.data.ids || [])) await del('/kosli/lr/' + id);
+});
+
+test('lr: editing a number onto one already in use is refused', async () => {
+  // Nothing checked this before, and letting a clerk type one makes it likelier.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'services', 'lrService.js'), 'utf8');
+  const update = src.slice(src.indexOf('const updateLoadingReceipt'));
+  assert(/lrNoTaken\(/.test(update.slice(0, 1200)),
+    'the edit path still lets an LR number be moved onto one already in use');
+});
+
 // Run
 runAll();

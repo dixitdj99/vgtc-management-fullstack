@@ -1704,7 +1704,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
-      alert('Error creating receipt: ' + JSON.stringify(errDetails));
+      // A refused LR number is the clerk's to fix, and the server already says
+      // exactly what is wrong — showing that plainly beats a JSON dump.
+      if (e.response?.status === 409 || e.response?.status === 400) {
+        alert(typeof errDetails === 'string' ? errDetails : JSON.stringify(errDetails));
+      } else {
+        alert('Error creating receipt: ' + JSON.stringify(errDetails));
+      }
     } finally { setLoading(false); }
   };
 
@@ -1939,6 +1945,53 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <div className="card-body">
               <form onSubmit={handleFormRequest} ref={createFormRef}>
                 <div className="fg fg-2">
+                  {/*
+                    The number normally comes from the counter, which also
+                    reuses numbers freed by deleted receipts. Typing one is for
+                    the case the counter cannot know about: a paper bilty
+                    already written at the gate, or a book being caught up
+                    after the fact. The server refuses a number already in use
+                    and walks the counter past a manual one, so the automatic
+                    sequence never collides with it later.
+                  */}
+                  <div className="field-h">
+                    <label>LR Number</label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                      {form.lrNo === undefined ? (
+                        <input className="fi" value="Next number, automatically" readOnly
+                          style={{ flex: 1, minWidth: 0, color: 'var(--text-muted)', fontStyle: 'italic' }} />
+                      ) : (
+                        <input className="fi" type="number" min="1" step="1" autoFocus
+                          placeholder="e.g. 1247" style={{ flex: 1, minWidth: 0 }}
+                          value={form.lrNo}
+                          onChange={e => setForm({ ...form, lrNo: e.target.value })} />
+                      )}
+                      {/* Auto is the default and stays first: the counter also
+                          reuses numbers freed by deleted receipts, which a
+                          person typing cannot know about. */}
+                      <div style={{
+                        display: 'flex', flexShrink: 0, borderRadius: '8px', overflow: 'hidden',
+                        border: '1px solid var(--border)',
+                      }}>
+                        {[
+                          { id: 'auto', label: 'Auto', on: form.lrNo === undefined },
+                          { id: 'manual', label: 'Manual', on: form.lrNo !== undefined },
+                        ].map(opt => (
+                          <button key={opt.id} type="button"
+                            onClick={() => setForm(f => ({ ...f, lrNo: opt.id === 'auto' ? undefined : (f.lrNo ?? '') }))}
+                            style={{
+                              padding: '0 14px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                              fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
+                              background: opt.on ? 'var(--primary)' : 'var(--bg-input)',
+                              color: opt.on ? '#fff' : 'var(--text-muted)',
+                              transition: 'background .12s, color .12s',
+                            }}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                   <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field-h">
                     <label>Truck No. *</label>

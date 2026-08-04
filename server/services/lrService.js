@@ -61,16 +61,73 @@ const syncParty = async (orgId, partyName, group = null) => {
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METADATA) => {
+/**
+ * A number the clerk typed, or null for "give me the next one".
+ * Anything that is not a positive whole number is rejected rather than
+ * quietly coerced — an LR number is an identity, not an amount.
+ */
+const readRequestedLrNo = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    const reject = () => {
+        const e = new Error('LR number must be a whole number above zero');
+        e.status = 400;
+        throw e;
+    };
+    // Digits only, and parsed only once they are. parseInt stops at the first
+    // character it does not understand, so "12.5abc" reads as 12 and the
+    // receipt would be filed under a number nobody typed.
+    const raw = typeof value === 'number' ? String(value) : String(value).trim();
+    if (!/^\d+$/.test(raw)) reject();
+    const n = parseInt(raw, 10);
+    if (!Number.isSafeInteger(n) || n <= 0) reject();
+    return n;
+};
+
+/** Is this LR number already on a receipt in this book? */
+const lrNoTaken = async (orgId, lrCollection, lrNo, exceptId = null) => {
+    if (firebaseAvailable()) {
+        const snap = await db.collection(lrCollection)
+            .where('orgId', '==', orgId).where('lrNo', '==', lrNo).limit(2).get();
+        return snap.docs.some(d => d.id !== exceptId);
+    }
+    return localStore.getAll(lrCollection)
+        .some(r => r.orgId === orgId && r.lrNo === lrNo && r.id !== exceptId);
+};
+
+/**
+ * Takes an LR number out of the pool, or claims the one the clerk asked for.
+ *
+ * A claimed number still has to move the counter: type 500 while the counter
+ * sits at 120 and every automatic number from 500 onwards would later collide
+ * with it. It is also removed from `available` — the pool of numbers freed by
+ * deleted receipts — so it cannot be handed out a second time.
+ *
+ * Uniqueness against receipts already written is checked by the caller before
+ * this runs. Firestore transactions cannot run a query, so two clerks typing
+ * the same number in the same instant would both pass; with one clerk per
+ * godown that is not a real sequence of events, and the duplicate would be
+ * plain to see. The automatic path has no such window.
+ */
+const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METADATA, requested = null) => {
     const metadataRef = db.collection(metadataCollection).doc(`${orgId}_lr_counter`);
     return await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(metadataRef);
         if (!doc.exists) {
-            transaction.set(metadataRef, { count: 1, available: [] });
-            return 1;
+            const start = requested || 1;
+            transaction.set(metadataRef, { count: start, available: [] });
+            return start;
         }
         const data = doc.data();
         let available = data.available || [];
+
+        if (requested !== null) {
+            transaction.update(metadataRef, {
+                available: available.filter(n => n !== requested),
+                count: Math.max(data.count || 0, requested),
+            });
+            return requested;
+        }
+
         if (available.length > 0) {
             const nextNo = Math.min(...available);
             available = available.filter(n => n !== nextNo);
@@ -89,7 +146,11 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     const normalizedPartyName = normalizePartyName(partyName || '');
     const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
 
-    const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection);
+    const requestedNo = readRequestedLrNo(data.lrNo);
+    if (requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
+        { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
+    }
+    const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection, requestedNo);
     const batch = db.batch();
     const createdIds = [];
     
@@ -135,8 +196,14 @@ const firestoreGetAll = async (orgId, lrCollection = COLLECTION_LR) => {
 
 // ── Local store helpers ────────────────────────────────────────────────────────
 
-const localGetNextLrNo = (orgId, collectionName = 'lr_no') => {
-    return localStore.getCounter(`${orgId}_${collectionName}`);
+const localGetNextLrNo = (orgId, collectionName = 'lr_no', requested = null) => {
+    if (requested === null) return localStore.getCounter(`${orgId}_${collectionName}`);
+    // Walk the counter past a claimed number so the automatic sequence never
+    // catches up with it later. getCounter is increment-and-return, so this
+    // stops one short and leaves the next call returning requested + 1.
+    let n = localStore.getCounter(`${orgId}_${collectionName}`);
+    while (n < requested) n = localStore.getCounter(`${orgId}_${collectionName}`);
+    return requested;
 };
 
 const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
@@ -145,7 +212,11 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
     const normalizedPartyName = normalizePartyName(partyName || '');
     const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
 
-    const lrNo = localGetNextLrNo(orgId, counterCollection);
+    const requestedNo = readRequestedLrNo(data.lrNo);
+    if (requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
+        { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
+    }
+    const lrNo = localGetNextLrNo(orgId, counterCollection, requestedNo);
     const createdIds = [];
 
     for (const mat of materials) {
@@ -202,7 +273,23 @@ const updateBillingStatus = async (id, billing, lrCollection = COLLECTION_LR) =>
 
 const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     const allowed = {};
-    if (data.lrNo !== undefined) allowed.lrNo = typeof data.lrNo === 'number' ? data.lrNo : parseInt(data.lrNo);
+    if (data.lrNo !== undefined) {
+        // Editing the number could always collide; nothing checked it before,
+        // and letting a clerk type one makes it far likelier. A receipt shares
+        // its number with its own other material rows, so those are excluded.
+        const wanted = readRequestedLrNo(data.lrNo);
+        if (wanted === null) { const e = new Error('LR number cannot be blank'); e.status = 400; throw e; }
+        const current = firebaseAvailable()
+            ? (await db.collection(lrCollection).doc(id).get()).data()
+            : localStore.getById(lrCollection, id);
+        if (current && current.lrNo !== wanted) {
+            const orgId = current.orgId;
+            if (await lrNoTaken(orgId, lrCollection, wanted)) {
+                { const e = new Error(`LR #${wanted} already exists in this book`); e.status = 409; throw e; }
+            }
+        }
+        allowed.lrNo = wanted;
+    }
     if (data.date !== undefined) allowed.date = data.date;
     if (data.truckNo !== undefined) allowed.truckNo = data.truckNo;
     if (data.destination !== undefined) allowed.destination = data.destination;
