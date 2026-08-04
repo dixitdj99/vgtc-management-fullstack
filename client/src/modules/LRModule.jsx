@@ -960,6 +960,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     partyName: resolvePartyName(preFill?.partyName || '', partySuggestions),
     destination: preFill?.destination || '',
     remark: preFill?.remark || '',
+    factoryCode: '',
     challanNo: ''
   });
 
@@ -991,7 +992,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
       const created = res.data;
       // Go back to select tab so user can see newly created challan
       setTab('select');
-      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', challanNo: '' });
+      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', factoryCode: '', challanNo: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
       // Pass full challan object (with quantity) to parent
@@ -1151,6 +1152,16 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                     <div className="field">
                       <label>Destination</label>
                       <input className="fi" type="text" placeholder="Delivery location" value={chalForm.destination} onChange={e => S('destination', e.target.value)} />
+                    </div>
+                    {/* Offered here as well as on the Stock form — a challan
+                        raised from the LR screen would otherwise be the only
+                        one with no gate against it. */}
+                    <div className="field">
+                      <label>Factory Code</label>
+                      <input className="fi" type="text" placeholder="e.g. FC1, FC5" maxLength={16}
+                        style={{ textTransform: 'uppercase' }}
+                        value={chalForm.factoryCode || ''}
+                        onChange={e => S('factoryCode', e.target.value.toUpperCase())} />
                     </div>
                     <div className="field" style={{ gridColumn: '1 / -1' }}>
                       <label>Remark</label>

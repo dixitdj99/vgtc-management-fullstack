@@ -290,8 +290,13 @@ module.exports = {
     },
 
     createChallan: async (orgId, data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
-        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity } = data;
+        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity, factoryCode } = data;
         const normalizedPartyName = normalizePartyName(partyName || '');
+        // The loading gate the bags came off — FC1, FC5 and so on. Typed by
+        // hand off the slip, so it is upper-cased and trimmed here rather than
+        // trusting whatever shift-key state it arrived in; a code that only
+        // differs by case would read as a second gate in every grouping.
+        const cleanFactoryCode = String(factoryCode || '').trim().toUpperCase().slice(0, 16);
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
         if (!materials || !materials.length) throw new Error('Materials required');
 
@@ -324,6 +329,7 @@ module.exports = {
                 partyCode: partyCode || '',
                 billNo: billNo || '',
                 destination: destination || '',
+                factoryCode: cleanFactoryCode,
                 date: date || new Date().toISOString().slice(0, 10),
                 remark: remark || '', status: 'open'
             }, cCol);
@@ -341,6 +347,7 @@ module.exports = {
             partyCode: partyCode || '',
             billNo: billNo || '',
             destination: destination || '',
+            factoryCode: cleanFactoryCode,
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '', status: 'open'
         });

@@ -78,6 +78,7 @@ const buildChallanExportRows = (challans) => challans.flatMap(challan =>
     quantity: row.quantity,
     loadingDetails: row.loadingDetails,
     partyName: challan.partyName || '',
+    factoryCode: challan.factoryCode || '',
     status: challan.status || 'open',
     remark: challan.remark || '',
   }))
@@ -144,6 +145,7 @@ function printChallan(c, orgName) {
     <div class="info-row"><span class="lbl">Date</span><span class="val">${new Date(c.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
     <div class="info-row"><span class="lbl">Truck No.</span><span class="val">${c.truckNo || '—'}</span></div>
     <div class="info-row"><span class="lbl">Party Name</span><span class="val">${c.partyName || '—'}</span></div>
+    ${c.factoryCode ? `<div class="info-row"><span class="lbl">Factory Code</span><span class="val">${c.factoryCode}</span></div>` : ''}
     <div class="info-row"><span class="lbl">Status</span><span class="val">${c.status ? c.status.toUpperCase() : 'OPEN'}</span></div>
   </div>
 
@@ -269,7 +271,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '', unloadingType: 'Godown Unload' });
-  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
+  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', factoryCode: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
@@ -1152,13 +1154,16 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 <th style={TH}>Date</th>
                 <th style={TH}>Truck #</th>
                 <th style={TH}>Material</th>
-                <th style={TH}>Quantity</th>
+                {/* Right, over the figures it names. It was left while the cells
+                    below were right, so the header sat over the wrong column. */}
+                <th style={{ ...TH, textAlign: 'right' }}>Quantity</th>
+                <th style={TH}>Unloading Type</th>
                 <th style={TH}>Remark</th>
                 {role === 'admin' && <th style={TH}>By</th>}
-                <th style={TH}>Action</th>
+                <th style={{ ...TH, textAlign: 'center' }}>Action</th>
               </tr></thead>
               <tbody>
-                {additions.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No arrivals yet</td></tr>}
+                {additions.length === 0 && <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No arrivals yet</td></tr>}
                 {[...additions].sort((a, b) => a.date > b.date ? -1 : 1).map((a, i) => (
                   <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                     <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(a.date)}</td>
@@ -1172,6 +1177,26 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
                        <div style={{ color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</div>
                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(a.quantity * 0.05).toFixed(2)} MT</div>
+                    </td>
+                    {/* Whether the labour account was charged for this arrival
+                        is the whole point of the field, so the colour says it:
+                        only a godown unload is paid for. Older rows predate the
+                        field and were all godown unloads. */}
+                    <td style={{ ...TD }}>
+                      {(() => {
+                        const t = a.unloadingType || 'Godown Unload';
+                        const paid = t === 'Godown Unload';
+                        return (
+                          <span style={{
+                            padding: '2px 8px', borderRadius: '5px', fontSize: '10.5px', fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                            background: paid ? 'rgba(16,185,129,0.12)' : 'rgba(139,92,246,0.1)',
+                            color: paid ? '#10b981' : '#8b5cf6',
+                          }}>
+                            {t}{paid ? '' : ' · no labour'}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td style={{ ...TD, color: 'var(--text-muted)' }}>{a.remark || '—'}</td>
                     {role === 'admin' && <td style={{ ...TD, fontSize: '11px', color: 'var(--text-muted)' }}>{a.createdBy || '—'}</td>}
@@ -1255,6 +1280,15 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   <input className="fi" type="text" placeholder="Optional bill number"
                     value={chalForm.billNo} onChange={e => setChalForm(f => ({ ...f, billNo: e.target.value }))} />
                 </div>
+                {/* The loading gate off the slip. Upper-cased as it is typed so
+                    fc1 and FC1 do not read as two different gates later. */}
+                <div className="field-h">
+                  <label>Factory Code</label>
+                  <input className="fi" type="text" placeholder="e.g. FC1, FC5" maxLength={16}
+                    style={{ textTransform: 'uppercase' }}
+                    value={chalForm.factoryCode || ''}
+                    onChange={e => setChalForm(f => ({ ...f, factoryCode: e.target.value.toUpperCase() }))} />
+                </div>
                 <div className="field-h">
                   <label>Date</label>
                   <input className="fi" type="date" value={chalForm.date} onChange={e => setChalForm(f => ({ ...f, date: e.target.value }))} />
@@ -1326,6 +1360,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   <th style={TH}><ColumnFilter label="Material" colKey="material" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Qty (bags)</th>
                   <th style={TH}><ColumnFilter label="Party" colKey="partyName" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  {/* Filterable, since "everything off FC5 today" is the
+                      question a gate code gets asked. */}
+                  <th style={TH}><ColumnFilter label="Factory Code" colKey="factoryCode" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Remark</th>
                   <th style={TH}>Status</th>
                   <th style={TH}>Sold</th>
@@ -1334,7 +1371,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   <th style={TH}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredChallans.length === 0 && <tr><td colSpan={9} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No challans</td></tr>}
+                  {filteredChallans.length === 0 && <tr><td colSpan={11} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No challans</td></tr>}
                   {[...filteredChallans].sort((a, b) => a.date > b.date ? -1 : 1).map((c, i) => {
                     const sm = STATUS_META[c.status] || STATUS_META.open;
                     return (
@@ -1376,6 +1413,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                           )}
                         </td>
                         <td style={{ ...TD }}>{c.partyName || '—'}</td>
+                        <td style={{ ...TD, fontWeight: 700, fontFamily: 'monospace', color: c.factoryCode ? 'var(--text)' : 'var(--text-muted)' }}>{c.factoryCode || '—'}</td>
                         <td style={{ ...TD, color: 'var(--text-muted)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.remark || '—'}</td>
                         <td style={{ ...TD }}>
                           <span style={{

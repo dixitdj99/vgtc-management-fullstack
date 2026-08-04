@@ -3052,5 +3052,127 @@ test('pay: a multi-LR trip names its real LRs', async () => {
     'PayModule uses lrLabelOf without importing it');
 });
 
+test('challan: a factory code is kept, and normalised', async () => {
+  // createChallan names every field it stores, so anything the form sends that
+  // is not in that list is dropped without a word. A code typed into the form
+  // and silently lost would be worse than no field at all.
+  const svcSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils', 'stockService.js'), 'utf8');
+  const create = svcSrc.slice(svcSrc.indexOf('createChallan: async'), svcSrc.indexOf('updateChallanStatus:'));
+
+  assert(/factoryCode \} = data|, factoryCode/.test(create),
+    'createChallan does not read factoryCode off the request');
+  assert((create.match(/factoryCode: cleanFactoryCode/g) || []).length === 2,
+    'both the Firestore and the local-store paths must store it — found ' +
+    (create.match(/factoryCode: cleanFactoryCode/g) || []).length);
+
+  // Upper-cased and trimmed: fc1 and FC1 are one gate, not two, and every
+  // grouping or filter downstream compares them as strings.
+  const clean = new Function('factoryCode',
+    "return String(factoryCode || '').trim().toUpperCase().slice(0, 16);");
+  assert(clean(' fc5 ') === 'FC5', 'a lower-case code is not normalised: ' + clean(' fc5 '));
+  assert(clean('FC1') === 'FC1', 'a good code was altered');
+  assert(clean(undefined) === '', 'a missing code should be blank, not "undefined"');
+  assert(clean('x'.repeat(50)).length === 16, 'a long code is not capped');
+});
+
+test('challan: the factory code is offered, saved and shown', async () => {
+  const fs = require('fs'), path = require('path');
+  const dir = path.join(__dirname, '..', '..', 'client', 'src', 'modules');
+  const stock = fs.readFileSync(path.join(dir, 'StockModule.jsx'), 'utf8');
+  const lr = fs.readFileSync(path.join(dir, 'LRModule.jsx'), 'utf8');
+
+  // Offered on both forms that raise a challan.
+  assert(/getEmptyChal = \(\) => \(\{[^}]*factoryCode: ''/.test(stock),
+    'the Stock challan form does not start with a factoryCode field');
+  assert(/factoryCode: ''/.test(lr),
+    'the LR quick-create modal does not carry a factoryCode');
+  assert((stock.match(/e\.target\.value\.toUpperCase\(\)/g) || []).length >= 1 &&
+    /toUpperCase\(\)/.test(lr),
+    'the field does not upper-case as it is typed');
+
+  // Visible once saved, or there is no way to check what was entered.
+  assert(/c\.factoryCode \|\| '—'/.test(stock), 'the challan list has no factory code column');
+  assert(/colKey="factoryCode"/.test(stock), 'the factory code cannot be filtered on');
+  assert(/factoryCode: challan\.factoryCode/.test(stock), 'the export drops the factory code');
+  assert(/c\.factoryCode \?/.test(stock), 'the printed slip never shows the factory code');
+
+  // Header and cell must be inserted at the same position. This table has
+  // drifted before, and a shifted column reads as the wrong data entirely.
+  // Six tables live in this file; anchor on the challan one.
+  const anchor = stock.indexOf('label="Challan #"');
+  assert(anchor !== -1, 'the challan table header is gone');
+  const head = stock.slice(stock.lastIndexOf('<thead><tr>', anchor), stock.indexOf('</tr></thead>', anchor));
+  const cols = ['challanNo', 'date', 'truckNo', 'material', 'Qty (bags)', 'partyName', 'factoryCode', 'Remark'];
+  let at = -1;
+  for (const c of cols) {
+    const next = head.indexOf(c, at + 1);
+    assert(next > at, 'challan header column out of order at "' + c + '"');
+    at = next;
+  }
+});
+
+test('migo: the arrival list shows how it was unloaded', async () => {
+  const fs = require('fs'), path = require('path');
+  const stock = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'StockModule.jsx'), 'utf8');
+
+  const anchor = stock.indexOf('Stock Arrival History (MIGO)');
+  assert(anchor !== -1, 'the MIGO history table is gone');
+  const table = stock.slice(anchor, stock.indexOf('{/* ── CHALLAN TAB ── */}', anchor));
+
+  assert(/<th style=\{TH\}>Unloading Type<\/th>/.test(table),
+    'the MIGO list has no unloading type column');
+  assert(/a\.unloadingType \|\| 'Godown Unload'/.test(table),
+    'rows saved before the field existed have no fallback — they were all godown unloads');
+  assert(/no labour/.test(table),
+    'nothing on the row says which arrivals the labour account was not charged for');
+
+  // Header order must match cell order, or every column reads as its neighbour.
+  const head = table.slice(table.indexOf('<thead><tr>'), table.indexOf('</tr></thead>'));
+  const body = table.slice(table.indexOf('<tbody>'));
+  const headCols = ['Date', 'Truck #', 'Material', 'Quantity', 'Unloading Type', 'Remark'];
+  let at = -1;
+  for (const c of headCols) {
+    const next = head.indexOf('>' + c + '<');
+    assert(next > at, 'MIGO header out of order at "' + c + '"');
+    at = next;
+  }
+  const bodyCols = ['fmtDate(a.date)', 'a.truckNo', 'a.material', 'a.quantity', 'a.unloadingType', 'a.remark'];
+  at = -1;
+  for (const c of bodyCols) {
+    const next = body.indexOf(c);
+    assert(next > at, 'MIGO cells out of order at "' + c + '" — the column sits under the wrong header');
+    at = next;
+  }
+
+  // The quantity header has to sit over its figures, which are right-aligned.
+  assert(/<th style=\{\{ \.\.\.TH, textAlign: 'right' \}\}>Quantity<\/th>/.test(table),
+    'the Quantity header is not aligned with the numbers under it');
+
+  // The empty row has to span the columns that are actually there.
+  assert(/colSpan=\{role === 'admin' \? 8 : 7\}/.test(table),
+    'the "no arrivals" row spans the wrong number of columns');
+});
+
+test('migo: only a godown unload is charged to labour', async () => {
+  // The colour on the list is a claim about money, so it has to agree with the
+  // service that actually bills it.
+  const svc = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils', 'labourAccountService.js'), 'utf8');
+  const stock = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils', 'stockService.js'), 'utf8');
+
+  assert(/UNLOADING_TYPES\.includes\(unloadingType\)/.test(stock),
+    'an arrival can be saved with an unloading type nobody recognises');
+  assert(/'Godown Unload'/.test(svc), 'the labour service no longer knows the paying type');
+
+  const ui = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'StockModule.jsx'), 'utf8');
+  const table = ui.slice(ui.indexOf('Stock Arrival History (MIGO)'));
+  assert(/paid = t === 'Godown Unload'/.test(table),
+    'the list decides "paid" on something other than a godown unload');
+});
+
 // Run
 runAll();
