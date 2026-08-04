@@ -6,7 +6,7 @@ import {
   ChevronUp, ChevronDown, Download, Printer, Search, X
 } from 'lucide-react';
 import { exportToExcel, buildExportRows } from '../utils/exportUtils';
-import { printHtml } from '../utils/receiptPrint';
+import { printHtml, reportWatermarkCss } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
@@ -68,7 +68,8 @@ function doPrintDashboard(rows, orgName) {
   table{width:100%;border-collapse:collapse}th{padding:6px 8px;background:#333;color:#fff;font-size:10px;text-align:left}
   td{padding:5px 8px;border-bottom:1px solid #eee}
   .tot{background:#eee;font-weight:bold}
-  @media print{body{padding:0}}</style></head><body>
+  @media print{body{padding:0}}    ${reportWatermarkCss()}
+  </style></head><body>
   <h1>${orgName}</h1>
   <div class="sub">Truck Performance Dashboard — Printed: ${new Date().toLocaleDateString('en-IN')}</div>
   <table><thead><tr>

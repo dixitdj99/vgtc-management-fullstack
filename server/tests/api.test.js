@@ -3174,5 +3174,185 @@ test('migo: only a godown unload is charged to labour', async () => {
     'the list decides "paid" on something other than a godown unload');
 });
 
+/** Width, height and colour type straight out of the PNG header. */
+function pngHeader(file) {
+  const b = require('fs').readFileSync(file);
+  assert(b.slice(0, 8).toString('hex') === '89504e470d0a1a0a', file + ' is not a PNG');
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), colourType: b[25], bytes: b.length };
+}
+
+test('brand: the icons are real files at the sizes they claim', async () => {
+  const path = require('path');
+  const pub = path.join(__dirname, '..', '..', 'client', 'public');
+
+  const expected = [
+    ['favicon-32.png', 32], ['favicon-48.png', 48],
+    ['icon-192.png', 192], ['icon-512.png', 512],
+    ['apple-touch-icon.png', 180], ['icon-512-maskable.png', 512],
+  ];
+  for (const [name, size] of expected) {
+    const h = pngHeader(path.join(pub, name));
+    assert(h.w === size && h.h === size,
+      name + ' should be ' + size + 'x' + size + ', is ' + h.w + 'x' + h.h);
+  }
+
+  // A favicon that is heavier than the page it labels is a bug of its own.
+  assert(pngHeader(path.join(pub, 'favicon-32.png')).bytes < 12 * 1024,
+    'favicon-32.png is too heavy for something fetched on every page load');
+
+  // iOS composites a transparent icon onto black and this logo is navy, so the
+  // touch icon must be opaque. Colour type 6 is RGBA, 2 is RGB.
+  assert(pngHeader(path.join(pub, 'apple-touch-icon.png')).colourType === 2,
+    'apple-touch-icon.png still has an alpha channel — it will render navy on black');
+  assert(pngHeader(path.join(pub, 'icon-512-maskable.png')).colourType === 2,
+    'a maskable icon must be opaque, or the platform mask shows through');
+
+  // The wordmark keeps its 3:1 shape; the watermark is derived from it.
+  const logo = pngHeader(path.join(pub, 'vgtc-logo.png'));
+  assert(Math.abs(logo.w / logo.h - 3.05) < 0.1,
+    'the logo is no longer the 3:1 wordmark: ' + (logo.w / logo.h).toFixed(2) + ':1');
+  const wm = pngHeader(path.join(pub, 'vgtc-watermark.png'));
+  assert(Math.abs(wm.w / wm.h - logo.w / logo.h) < 0.05, 'the watermark was distorted');
+  assert(wm.bytes < logo.bytes, 'the watermark is not a lighter copy of the logo');
+});
+
+test('brand: the icons are actually referenced', async () => {
+  const fs = require('fs'), path = require('path');
+  const client = path.join(__dirname, '..', '..', 'client');
+  const html = fs.readFileSync(path.join(client, 'index.html'), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(client, 'public', 'manifest.json'), 'utf8'));
+
+  assert(/rel="icon"[^>]*href="\/favicon-32\.png"/.test(html), 'the 32px favicon is not linked');
+  assert(/rel="apple-touch-icon" href="\/apple-touch-icon\.png"/.test(html),
+    'the iOS icon still points at the old SVG');
+
+  const srcs = manifest.icons.map(i => i.src);
+  assert(srcs.includes('/icon-192.png') && srcs.includes('/icon-512.png'),
+    'the manifest does not offer PNG icons: ' + JSON.stringify(srcs));
+  const maskable = manifest.icons.find(i => i.purpose === 'maskable');
+  assert(maskable && maskable.src === '/icon-512-maskable.png',
+    'the maskable icon is missing, so an installed app gets a cropped logo');
+  assert(!srcs.includes('/vgtc-logo.svg'),
+    'the manifest still points at the placeholder SVG logo');
+
+  // A browser prefers an SVG icon over any PNG when both are offered, so
+  // leaving the old placeholder linked meant the tab never changed however the
+  // PNGs were regenerated.
+  assert(!/rel="icon"[^>]*favicon\.svg/.test(html),
+    'the placeholder SVG favicon is still linked and will win over the PNGs');
+  assert(!srcs.includes('/favicon.svg'),
+    'the manifest still offers the placeholder SVG icon');
+
+  // No coloured tile behind the logo — the mark carries its own brand.
+  const css = fs.readFileSync(path.join(client, 'src', 'index.css'), 'utf8');
+  const brand = css.slice(css.indexOf('.brand-icon {'), css.indexOf('.brand-text'));
+  assert(!/background:/.test(brand),
+    'the sidebar still paints a gradient tile behind the logo');
+});
+
+test('brand: every printed document carries the watermark', async () => {
+  const fs = require('fs'), path = require('path');
+  const src = path.join(__dirname, '..', '..', 'client', 'src');
+
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) walk(f, out); else if (/\.jsx?$/.test(e.name)) out.push(f);
+    }
+    return out;
+  };
+
+  // Anything that builds a whole document to print must apply the mark.
+  const printers = walk(src).filter(f => fs.readFileSync(f, 'utf8').includes('<!DOCTYPE html>'));
+  assert(printers.length >= 5, 'expected several print documents, found ' + printers.length);
+  for (const f of printers) {
+    assert(/[wW]atermarkCss/.test(fs.readFileSync(f, 'utf8')),
+      path.basename(f) + ' builds a printable document with no watermark on it');
+  }
+
+  const rp = fs.readFileSync(path.join(src, 'utils', 'receiptPrint.js'), 'utf8');
+  const css = rp.slice(rp.indexOf('export const watermarkCss'), rp.indexOf('const shellCss'));
+
+  // A print window is opened blank and written into, so its base URL is
+  // about:blank and a root-relative path resolves to nothing.
+  assert(/window\.location\.origin/.test(css),
+    'the watermark URL is relative — it will not resolve in a print window');
+
+  // Faint enough to print under figures people are paid to read, on both the
+  // A4 default and the stronger setting the thermal slips ask for.
+  const def = rp.match(/watermarkCss = \(scale = [\d.]+, opacity = ([\d.]+)\)/);
+  assert(def, 'watermarkCss no longer takes an opacity with a default');
+  assert(parseFloat(def[1]) > 0 && parseFloat(def[1]) <= 0.12,
+    'default watermark opacity ' + def[1] + ' will compete with the numbers on a report');
+  assert(/opacity:\s*\$\{opacity\}/.test(css), 'the opacity argument is not actually used');
+
+  // A thermal head has no greys — it burns a dot or it does not — so the faint
+  // A4 setting dithers away to nothing on a slip.
+  const slip = rp.match(/slipWatermarkCss = \(\) => watermarkCss\([\d.]+,\s*([\d.]+)\)/);
+  const report = rp.match(/reportWatermarkCss = \(\) => watermarkCss\([\d.]+,\s*([\d.]+)\)/);
+  assert(slip && report, 'the slip and report presets are gone');
+  assert(parseFloat(slip[1]) > parseFloat(report[1]),
+    'the slip watermark is no stronger than the report one, so it will not survive thermal printing');
+  assert(parseFloat(slip[1]) <= 0.22,
+    'the slip watermark at ' + slip[1] + ' is strong enough to fight the figures on it');
+
+  // Every print document must pick a preset. The bare builder defaults to the
+  // report setting, which is how the voucher — a slip — ended up with a mark
+  // too faint to print.
+  for (const f of printers) {
+    const t = fs.readFileSync(f, 'utf8');
+    assert(/slipWatermarkCss\(\)|reportWatermarkCss\(\)/.test(t),
+      path.basename(f) + ' uses the raw watermark builder instead of choosing slip or report');
+  }
+
+  assert(/rotate\(-?\d+deg\)/.test(css), 'the watermark is not rotated');
+
+  // Over the document, not under it. A voucher is a stack of bordered white
+  // boxes; painted behind the content the mark survived only in the gaps
+  // between rows, which is how it reached production looking half-printed.
+  assert(/body::after/.test(css) && !/body::before/.test(css),
+    'the watermark is painted behind the content again — opaque rows will hide it');
+  assert(/z-index:\s*2147483647/.test(css),
+    'the watermark overlay is not above the content it has to cover');
+  assert(/pointer-events:\s*none/.test(css),
+    'an overlay without pointer-events:none swallows the Print button');
+  assert(/position:\s*fixed/.test(css),
+    'the watermark is not fixed, so a long report gets it on the first page only');
+  assert(/print-color-adjust:\s*exact/.test(css),
+    'without print-color-adjust the browser drops the mark when it goes to paper');
+});
+
+test('brand: every slip carries the logo at its head', async () => {
+  const fs = require('fs'), path = require('path');
+  const src = path.join(__dirname, '..', '..', 'client', 'src');
+  const rp = fs.readFileSync(path.join(src, 'utils', 'receiptPrint.js'), 'utf8');
+
+  // Injected by the shared shell, not pasted into each template — there are
+  // half a dozen slip templates and the next one added would have been missed.
+  assert(/\$\{receiptLogoHtml\(\)\}\n\$\{body\}/.test(rp.replace(/\r/g, '')),
+    'the logo is no longer put at the top of every slip the shell builds');
+  assert(/\$\{receiptLogoCss\}/.test(rp), 'the logo styling is not in the shell');
+
+  // Same absolute-URL rule as the watermark: a print window is written into a
+  // blank document, so a relative path resolves to nothing.
+  const logo = rp.slice(rp.indexOf('export const receiptLogoHtml'), rp.indexOf('export const receiptLogoCss'));
+  assert(/window\.location\.origin/.test(logo),
+    'the slip logo uses a relative URL and will not load in a print window');
+
+  // Sized in millimetres. This is paper, and a pixel height means nothing to a
+  // thermal head; height only, or the 3:1 wordmark gets squashed.
+  const css = rp.slice(rp.indexOf('export const receiptLogoCss'), rp.indexOf('const shellCss'));
+  assert(/height:\s*\d+(\.\d+)?mm/.test(css), 'the slip logo is not sized in millimetres');
+  assert(/width:\s*auto/.test(css), 'the slip logo has a fixed width and will be distorted');
+  assert(/print-color-adjust:\s*exact/.test(css),
+    'without print-color-adjust the logo can be dropped when the slip goes to paper');
+
+  // The challan builds its own document rather than using the shell.
+  const stock = fs.readFileSync(path.join(src, 'modules', 'StockModule.jsx'), 'utf8');
+  assert(/receiptLogoHtml\(\)/.test(stock), 'the challan has no logo at its head');
+  assert(/import \{[^}]*receiptLogoHtml[^}]*\} from '\.\.\/utils\/receiptPrint'/.test(stock),
+    'StockModule uses the slip logo without importing it');
+});
+
 // Run
 runAll();

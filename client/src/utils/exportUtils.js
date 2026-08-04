@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { reportWatermarkCss } from './receiptPrint';
 
 /**
  * exportUtils — getting a list out of the app without losing any of it.
@@ -159,6 +160,7 @@ export const exportToPDF = (rows, title = 'Document Export', columns = null, opt
           th { background: #f3f4f6; font-weight: 700; white-space: nowrap; }
           tr:nth-child(even) td { background: #fafafa; }
           @media print { body { padding: 0; } button { display: none !important; } }
+          ${reportWatermarkCss()}
         </style>
       </head>
       <body>
@@ -176,7 +178,22 @@ export const exportToPDF = (rows, title = 'Document Export', columns = null, opt
             ${rows.map(r => `<tr>${headers.map(h => `<td>${cell(r[h])}</td>`).join('')}</tr>`).join('')}
           </tbody>
         </table>
-        <script>setTimeout(() => window.print(), 300);<\/script>
+        <!--
+          Wait for the watermark rather than guessing at it. The old fixed 300ms
+          was a race: on a cold cache the dialog opened before the image had
+          arrived and the export came out unmarked, which is the worst kind of
+          bug because it only happens the first time. The timeout stays as a
+          floor so a file that never loads cannot leave a report unprintable.
+        -->
+        <script>
+          (function () {
+            var done = false;
+            function go() { if (done) return; done = true; window.print(); }
+            if (document.readyState === 'complete') go();
+            else window.addEventListener('load', go);
+            setTimeout(go, 2000);
+          })();
+        <\/script>
       </body>
     </html>`;
 

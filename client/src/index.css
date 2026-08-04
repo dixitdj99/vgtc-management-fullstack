@@ -224,16 +224,23 @@ textarea {
   min-height: 64px;
 }
 
+/* No tile behind the mark.
+   The purple gradient was a placeholder from before there was a real logo, and
+   a branded badge sitting behind a branded logo reads as two marks fighting.
+   Wider than it is tall now, because the logo is a 3:1 wordmark and squeezing
+   it into a 38px square drew it about 12px tall. */
 .brand-icon {
   flex-shrink: 0;
-  width: 38px;
   height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-2));
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px var(--primary-glow);
+}
+.brand-icon img {
+  height: 26px;
+  width: auto;
+  max-width: 104px;
+  object-fit: contain;
 }
 
 .brand-text {

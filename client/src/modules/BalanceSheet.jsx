@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
-import { printHtml } from '../utils/receiptPrint';
+import { printHtml, reportWatermarkCss } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { extrasPayload, readExtras } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
@@ -260,7 +260,8 @@ function doPrintMonthlyPL(ym, rows, tabName, orgName, vehicle) {
   .brow{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid #e5e5e5}
   table{width:100%;border-collapse:collapse}th{padding:5px 8px;background:#333;color:#fff;font-size:10px}
   td{padding:4px 8px;border-bottom:1px solid #eee}.tot{background:#eee;font-weight:bold}
-  @media print{body{padding:0}}</style></head><body>
+  @media print{body{padding:0}}    ${reportWatermarkCss()}
+  </style></head><body>
   <h1>${orgName}</h1>
   <div class="sub">Monthly P&L Report — ${tabName} — ${label}</div>
   <div class="summary">
@@ -333,7 +334,8 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
   td{padding:5px 8px;border-bottom:1px solid #e5e5e5}
   .tot{background:#eee;font-weight:bold}.sig{display:flex;justify-content:space-between;margin-top:28px}
   .sl{min-width:120px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:10px}
-  @media print{body{padding:0}}</style></head><body>
+  @media print{body{padding:0}}    ${reportWatermarkCss()}
+  </style></head><body>
   <h1>${orgName}</h1>
   <div class="sub">Balance Statement — ${tabName}</div>
   <div class="meta">

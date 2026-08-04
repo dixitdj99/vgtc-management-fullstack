@@ -32,7 +32,110 @@ export const RECEIPT_MIN_HEIGHT_MM = 150;
 /** The `@page` rule lives alone in this element so the script can replace it wholesale. */
 const PAGE_STYLE_ID = 'receipt-page-size';
 
+/**
+ * The company mark, printed faintly behind everything.
+ *
+ * Absolute, not relative: a print window is opened blank and written into, so
+ * its base URL is `about:blank` and `/vgtc-watermark.png` resolves to nothing.
+ * The window is same-origin with the app, so the file is served and cached
+ * normally — which is why this is a URL and not a quarter-megabyte of base64
+ * pasted into every slip.
+ *
+ * `position: fixed` is what puts it on every page of a long report rather than
+ * only the first. `print-color-adjust: exact` is what stops the browser
+ * helpfully dropping it as a background when the job goes to paper.
+ *
+ * Opacity is deliberately low. This sits under columns of figures on documents
+ * people are paid to read correctly, and a watermark that competes with a digit
+ * is worse than no watermark.
+ *
+ * @param {number} [scale]   width as a fraction of the page, 0-1
+ * @param {number} [opacity] how strongly it prints
+ *
+ * Receipts want a stronger mark than reports. A thermal head has no greys — it
+ * either burns a dot or it does not — so a 7% tint that looks right on an inkjet
+ * A4 dithers away to nothing on an 79mm slip. Reports keep the faint setting;
+ * the slip templates ask for more.
+ */
+export const watermarkCss = (scale = 0.72, opacity = 0.09) => `
+  body::after {
+    content: '';
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: ${Math.round(scale * 100)}%;
+    aspect-ratio: 1185 / 389;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    background-image: url('${typeof window !== 'undefined' ? window.location.origin : ''}/vgtc-watermark.png');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    opacity: ${opacity};
+    pointer-events: none;
+    /* Over the document, not under it.
+       Painted behind the content it was invisible wherever anything opaque sat
+       on top — and a voucher is a stack of bordered white boxes, so the mark
+       survived only in the gaps between rows. That was reported as "not
+       visible on the receipt" and it was: three quarters of it was covered.
+       An overlay lands evenly across the whole slip. It has to stay faint for
+       exactly this reason, and pointer-events none keeps the Print button
+       underneath it clickable. */
+    z-index: 2147483647;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+`;
+
+/**
+ * The mark for a slip — a 79mm receipt, a 105mm challan, a voucher.
+ *
+ * Stronger and wider than the report setting, and not by taste. These come off
+ * a thermal head, which has no greys: it burns a dot or it does not, so the
+ * faint tint that reads correctly on an A4 laser page dithers away to nothing
+ * on a slip. The paper is also narrow, so the mark is given more of its width.
+ */
+export const slipWatermarkCss = () => watermarkCss(0.85, 0.16);
+
+/** The mark for an A4 report or export, under columns of figures. */
+export const reportWatermarkCss = () => watermarkCss(0.6, 0.09);
+
+/**
+ * The logo across the head of a slip.
+ *
+ * Same absolute URL as the watermark, for the same reason: the print window is
+ * blank and written into, so a relative path resolves to nothing. The slip
+ * measures its own height once images have loaded, so this does not need to be
+ * inlined to be counted.
+ */
+export const receiptLogoHtml = () =>
+  `<img class="rcpt-logo" src="${typeof window !== 'undefined' ? window.location.origin : ''}/vgtc-logo.png" alt="VGTC">`;
+
+/**
+ * Sized in millimetres, not pixels — this is paper.
+ *
+ * 5mm matches the company name below it: that line is 13pt, which is 4.6mm, so
+ * the mark reads as part of the masthead rather than as a picture stuck above
+ * it. Height only — the wordmark is 3:1 and constraining both dimensions would
+ * squash it. It stays legible off a 203dpi thermal head at this size; much
+ * under 4mm and the cab detail starts to fill in.
+ */
+export const receiptLogoCss = `
+  .rcpt-logo {
+    display: block;
+    height: 5mm;
+    width: auto;
+    max-width: 50%;
+    margin: 0 auto 1mm;
+    /* A logo is a picture, and browsers drop pictures they think are
+       decorative backgrounds when printing. This one is content. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+`;
+
 const shellCss = ({ width, minHeight, padding, fontSize, lineHeight, fitContent }) => `
+  ${slipWatermarkCss()}
+  ${receiptLogoCss}
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { background: #fff; }
   body {
@@ -197,6 +300,7 @@ export function openReceiptWindow({
 <style>${styles}</style>
 </head>
 <body>
+${receiptLogoHtml()}
 ${body}
 <button class="no-print" onclick="window.__printReceipt()">Print</button>
 <script>${autoHeightScript(opts)}<\/script>

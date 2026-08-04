@@ -797,7 +797,12 @@ function AppInner() {
       <div className={`sidebar-overlay${showMobileMenu ? ' show-mobile' : ''}`} onClick={() => setShowMobileMenu(false)} />
       <aside className={`sidebar${col ? ' collapsed' : ''}${showMobileMenu ? ' show-mobile' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand-icon"><img src="/vgtc-logo.svg" alt="VGTC" width={26} height={26} style={{ borderRadius: 4 }} /></div>
+          {/* The wordmark itself, at its own 3:1 shape. Collapsed, the sidebar
+              gives this slot no room for it, so it falls back to the square
+              icon — which is the cab, and stays legible at that size. */}
+          <div className="brand-icon">
+            <img src={col ? '/vgtc-mark.png' : '/vgtc-logo.png'} alt="VGTC" height={26} />
+          </div>
           {!col && <div className="brand-text">
             <div className="brand-name">Vikas Goods</div>
             <div className="brand-sub">Transport System</div>

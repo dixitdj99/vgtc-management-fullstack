@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
-import { printHtml } from '../utils/receiptPrint';
+import { printHtml, slipWatermarkCss, receiptLogoCss, receiptLogoHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 import EwayBillPanel from '../components/EwayBillPanel';
@@ -133,8 +133,11 @@ function printChallan(c, orgName) {
     .sig{display:flex;justify-content:space-between;margin-top:40px}
     .sig-box{text-align:center;font-size:12px;font-weight:800;min-width:100px;border-top:1.5px solid #000;padding-top:6px;text-transform:uppercase;letter-spacing:0.5px}
     @media print{.no-print{display:none}}
+      ${slipWatermarkCss()}
+    ${receiptLogoCss}
   </style></head><body>
   <div class="header">
+    ${receiptLogoHtml()}
     <div class="h1">JK Lakshmi Depo Loading Receipt</div>
     <div class="h2">Vikas Goods Transport Company</div>
     <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar</div>

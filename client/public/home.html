@@ -61,7 +61,10 @@
     padding:9px 11px 9px 20px;display:flex;align-items:center;justify-content:space-between;
     gap:14px;backdrop-filter:blur(14px);box-shadow:0 16px 40px -18px rgba(0,0,0,.9)}
   .brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none}
-  .brand-mark{width:32px;height:32px;flex:none}
+  .brand-mark{width:auto;height:30px;flex:none}
+  /* The logo is navy on transparent and this header is near-black. */
+  .brand-mark{filter:brightness(0) invert(1) opacity(.92)}
+  @media(prefers-color-scheme:light){.brand-mark{filter:none}}
   .brand b{display:block;font-size:15px;letter-spacing:-.01em;line-height:1.15}
   .brand i{display:block;font-size:10px;color:#79819a;letter-spacing:.1em;
     text-transform:uppercase;font-style:normal}
@@ -261,20 +264,8 @@
   <div class="navwrap">
     <div class="navpill">
       <a class="brand" href="/home">
-        <svg class="brand-mark" viewBox="0 0 200 200" role="img" aria-label="VGTC logo">
-          <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#4f7cff"/><stop offset="1" stop-color="#a855f7"/>
-          </linearGradient></defs>
-          <circle cx="100" cy="100" r="96" fill="url(#lg)"/>
-          <g transform="translate(30,65)" fill="#fff">
-            <rect x="0" y="10" width="85" height="42" rx="4"/>
-            <path d="M85,18 L85,52 L125,52 L125,30 L108,10 L85,10 Z"/>
-            <rect x="90" y="16" width="14" height="12" rx="2" fill="#7c4dff"/>
-            <circle cx="24" cy="56" r="10"/><circle cx="24" cy="56" r="4.5" fill="#7c4dff"/>
-            <circle cx="62" cy="56" r="10"/><circle cx="62" cy="56" r="4.5" fill="#7c4dff"/>
-            <circle cx="108" cy="56" r="10"/><circle cx="108" cy="56" r="4.5" fill="#7c4dff"/>
-          </g>
-        </svg>
+        <img class="brand-mark" src="/vgtc-logo.png" alt="VGTC — Vikas Goods Transport Company"
+          width="1185" height="389" decoding="async">
         <span>
           <b>Vikas Goods Transport</b>
           <i>Rewari &middot; Haryana</i>
