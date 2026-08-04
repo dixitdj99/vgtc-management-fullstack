@@ -13,6 +13,7 @@ import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -691,7 +692,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             </div>
           </div>
 
-          <div className="tbl-wrap" style={{ maxHeight: '600px' }}>
+          <TableScroll style={{ maxHeight: '600px' }}>
             <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -778,7 +779,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
               pageSize={PAGE_SIZE}
               onPageChange={setCurrentPage}
             />
-          </div>
+          </TableScroll>
         </div>
 
         {/* ── NEW SALE FORM — hidden until asked for ── */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause, Shield, Users, Package } from 'lucide-react';
+import TableScroll from '../components/TableScroll';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -273,7 +274,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
           No loading orders found for today.
         </div>
       ) : (
-        <div className="tbl-wrap" style={{ background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <TableScroll style={{ background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'rgba(0,0,0,0.02)' }}>
@@ -396,7 +397,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </div>
   );

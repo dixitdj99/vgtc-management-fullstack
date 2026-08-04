@@ -7,6 +7,7 @@ import {
     ChevronRight, AlertCircle, Loader2, Navigation, BarChart3, Plus, Droplets, Trash2
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -251,7 +252,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                         </div>
                     </div>
                 </div>
-                <div className="tbl-wrap">
+                <TableScroll>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                         <thead>
                             <tr style={{ background: 'var(--bg-th)' }}>
@@ -305,7 +306,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                             })}
                         </tbody>
                     </table>
-                </div>
+                </TableScroll>
 
                 <Pagination 
                     currentPage={currentPage}

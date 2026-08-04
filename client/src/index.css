@@ -2166,6 +2166,52 @@ input[type="checkbox"] {
 }
 .tbl-wrap::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
+/* The same bar, mirrored above the table.
+   On a 48-row list the scrollbar underneath is a screen and a half away, so
+   seeing the right-hand columns meant scrolling to the bottom of the page,
+   dragging sideways, then scrolling back up. It carries no content of its own —
+   just a spacer as wide as the table — and stays in step with the real one. */
+.tbl-scroll-top {
+  /* Tall enough to hold the 14px bar. Left to size itself it would be one
+     pixel high — the height of the spacer — and the bar would be clipped. */
+  height: 15px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: auto;
+  scrollbar-color: var(--text-muted) var(--bg-tf);
+  border-bottom: 1px solid var(--border);
+}
+.tbl-scroll-top::-webkit-scrollbar { height: 14px; }
+.tbl-scroll-top::-webkit-scrollbar-track {
+  background: var(--bg-tf);
+  border-radius: 99px;
+  border-bottom: 1px solid var(--border);
+}
+.tbl-scroll-top::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 99px;
+  border: 3px solid var(--bg-tf);
+  min-width: 40px;
+}
+.tbl-scroll-top::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+/* A page holding a wide data table takes the whole window.
+   The 1440px cap left a third of a large monitor empty while the table itself
+   still had to be dragged sideways. Every list of this kind is wrapped in
+   .tbl-wrap, so the page widens wherever one appears and nowhere else — pages
+   that are only forms, dashboards or cards keep the cap that makes them
+   readable.
+
+   Keyed on the wrapper existing, not on whether it currently overflows: keying
+   it on the scrollbar would widen the page, let the table fit, remove the
+   scrollbar, narrow the page again, and loop.
+
+   A browser without :has() simply keeps the cap. */
+.page-content:has(> .page-full),
+.page-content:has(.tbl-wrap) {
+  max-width: none;
+}
+
 /* ── Autoplant Pagination ─────────────────────────────────── */
 .ap-pagination {
   display: flex;

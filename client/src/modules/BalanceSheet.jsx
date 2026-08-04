@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock, Banknote, ArrowRight
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock, Banknote, ArrowRight, CornerDownRight
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
@@ -11,6 +11,7 @@ import { printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { extrasPayload, readExtras } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
+import TableScroll from '../components/TableScroll';
 
 const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
@@ -81,9 +82,36 @@ export function payBlockers(v) {
   const hasDiesel = (!isNaN(dieselVal) && dieselVal > 0) || v.advanceDiesel === 'FULL' || v.isFullTank;
   if (hasDiesel && !v.isDieselVerified) problems.push('Diesel not verified');
   if ((parseFloat(v.advanceOnline) || 0) > 0 && !v.isOnlinePaid) problems.push('Online advance not paid');
-  if (!(parseFloat(v.rate) > 0)) problems.push('Rate not entered');
+
+  // A multi-drop voucher prices each drop, and the rate box at the top of the
+  // form stays empty — the saved record keeps it that way. Reading `v.rate`
+  // alone therefore called every such voucher unpriced and refused to send it,
+  // however carefully each drop had been rated. Ask the drops, and name the one
+  // that is genuinely missing rather than the voucher as a whole.
+  const unpriced = v.deliveries?.length
+    ? v.deliveries.filter(d => !(parseFloat(d.rate) > 0))
+    : null;
+  if (unpriced) {
+    if (unpriced.length)
+      problems.push(`Rate not entered on LR ${unpriced.map(d => `#${d.lrNo || '?'}`).join(', ')}`);
+  } else if (!(parseFloat(v.rate) > 0)) {
+    problems.push('Rate not entered');
+  }
   return problems;
 }
+
+/**
+ * The LR numbers a voucher covers, for anything addressing the whole record.
+ *
+ * A multi-drop voucher carries its LRs on the drops; its own `lrNo` is left
+ * over from the form and means nothing to the yard. Printing that field was
+ * reported as a message naming an LR that did not exist.
+ */
+export const lrLabelOf = (v) => {
+  const fromDrops = (v?.deliveries || []).map(d => d.lrNo).filter(Boolean);
+  if (fromDrops.length) return fromDrops.map(n => `#${n}`).join(' + ');
+  return v?.lrNo ? `#${v.lrNo}` : '—';
+};
 
 function monthLabel(ym) {
   const [y, m] = ym.split('-');
@@ -461,7 +489,7 @@ export function VoucherEditModal({ v, vehicle, onClose, onSaved }) {
           {multiDrop && (
             <>
               <SectionLabel>Destinations — {form.deliveries.length} drops, each with its own rate</SectionLabel>
-              <div className="tbl-wrap">
+              <TableScroll>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr>
@@ -493,7 +521,7 @@ export function VoucherEditModal({ v, vehicle, onClose, onSaved }) {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
             </>
           )}
 
@@ -654,6 +682,12 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
 
       {/* Checkbox */}
       <td className="t-card-checkbox" style={{ ...TD, textAlign: 'center', padding: '6px 8px' }}>
+        {/* A continuation LR of the voucher above. It sits with the tick
+            box because that is what the row shares with its voucher:
+            ticking any leg ticks them all. */}
+        {v._leg > 0 && (
+          <CornerDownRight size={12} style={{ color: "var(--text-muted)", marginRight: "3px", verticalAlign: "-2px" }} />
+        )}
         <input type="checkbox" checked={checked} onChange={() => onCheck(v.id)}
           style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
       </td>
@@ -1002,7 +1036,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
       </div>
 
       {open && (
-        <div className="tbl-wrap tbl-cards">
+        <TableScroll className="tbl-cards">
           <table style={{ minWidth: showPnL ? '1620px' : '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr>
@@ -1071,7 +1105,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
       )}
       <AnimatePresence>
         {confirmMarkRows && (
@@ -1638,7 +1672,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                   )}
 
                   {/* Advance Transactions Table */}
-                  <div className="tbl-wrap">
+                  <TableScroll>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                       <thead>
                         <tr>
@@ -1693,7 +1727,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                         </tfoot>
                       )}
                     </table>
-                  </div>
+                  </TableScroll>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1944,7 +1978,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                       <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', background: 'var(--bg-tf)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>
-                            LR #{v.lrNo || '—'} <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '11.5px' }}>· {v.date || '—'}</span>
+                            LR {lrLabelOf(v)} <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '11.5px' }}>· {v.date || '—'}</span>
                           </span>
                           <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)' }}>{v.destination || v.partyName || ''}</span>
                         </div>
@@ -2031,7 +2065,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               <button className="btn btn-g btn-sm" onClick={() => exportToPDF(overviewExportRows, `Balance Sheet Overview - ${tab.replace('_', ' ')}`)}><Printer size={13} /> PDF</button>
             </div>
           </div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr>
@@ -2122,7 +2156,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
         </div>
       )}

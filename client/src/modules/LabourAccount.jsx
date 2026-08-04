@@ -5,6 +5,7 @@ import {
   AlertTriangle, ChevronDown, ChevronRight, SlidersHorizontal, Download,
 } from 'lucide-react';
 import { buildExportRows, exportToExcel } from '../utils/exportUtils';
+import TableScroll from '../components/TableScroll';
 
 const API = '/labour-account';
 
@@ -243,7 +244,7 @@ export default function LabourAccount({ canEdit }) {
               <div className="card-title-text"><h3>Payments made</h3><p>{summary.payments.length} recorded · {fmtRs(summary.totals.paid)}</p></div>
             </div>
           </div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
                 <th style={TH}>Date</th><th style={TH}>Crew</th><th style={TH}>Mode</th>
@@ -269,7 +270,7 @@ export default function LabourAccount({ canEdit }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 
@@ -286,7 +287,7 @@ export default function LabourAccount({ canEdit }) {
             </div>
           </div>
         </div>
-        <div className="tbl-wrap" style={{ maxHeight: '520px', overflowY: 'auto' }}>
+        <TableScroll style={{ maxHeight: '520px', overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
               <th style={TH}>Date</th><th style={TH}>Crew</th><th style={TH}>Plant</th>
@@ -328,7 +329,7 @@ export default function LabourAccount({ canEdit }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </div>
 
       {payFor && (
@@ -443,7 +444,7 @@ function RatesDialog({ meta, rates, loadedMaterials, canEdit, saving, onClose, o
         A <b>Direct</b> load, and a crossing arriving at MIGO, are never charged.
       </div>
 
-      <div className="tbl-wrap">
+      <TableScroll>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>
             <th style={TH}>Material</th>
@@ -475,7 +476,7 @@ function RatesDialog({ meta, rates, loadedMaterials, canEdit, saving, onClose, o
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
 
       {canEdit && (
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>

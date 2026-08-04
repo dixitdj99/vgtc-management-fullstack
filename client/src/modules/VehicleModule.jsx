@@ -10,6 +10,7 @@ import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
 import VehicleRegistryCard from '../components/VehicleRegistryCard';
 import EmiScheduleTracker from '../components/EmiScheduleTracker';
+import TableScroll from '../components/TableScroll';
 
 const API = `/vehicles`;
 
@@ -564,7 +565,7 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
                     <input className="fi" placeholder="Search truck, route, remark…" value={tollSearch} onChange={e => setTollSearch(e.target.value)} style={{ flex: 1, height: '30px' }} />
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{filtered.length} records</span>
                 </div>
-                <div className="tbl-wrap">
+                <TableScroll>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                         <thead>
                             <tr>{['#', 'Date', 'Truck No.', 'Amount', 'Route / Plaza', 'Remark', 'Del'].map(h => <th key={h} style={TH2}>{h}</th>)}</tr>
@@ -596,7 +597,7 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
                             </tfoot>
                         )}
                     </table>
-                </div>
+                </TableScroll>
             </div>
         </div>
     );

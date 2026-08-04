@@ -12,6 +12,7 @@ import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtil
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -464,7 +465,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
 
   /* ── Render helper: ledger table ── */
   const LedgerTable = ({ rows, showBalance = true, showBadge = true }) => (
-    <div className="tbl-wrap tbl-cards">
+    <TableScroll className="tbl-cards">
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
           <th style={TH}>Date</th>
@@ -582,7 +583,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           );
         })()}
       </table>
-    </div>
+    </TableScroll>
   );
 
   /* Online advances table (grouped by date) */
@@ -597,7 +598,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     const sortedDates = Object.keys(groupedRows).sort((a, b) => b > a ? 1 : -1);
 
     return (
-      <div className="tbl-wrap">
+      <TableScroll>
         {sortedDates.length === 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <tbody>
@@ -662,7 +663,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             <span style={{ fontWeight: 900, fontSize: '15px', color: '#0ea5e9' }}>{fmtRs(rows.reduce((sum, r) => sum + r.amount, 0))}</span>
           </div>
         )}
-      </div>
+      </TableScroll>
     );
   };
 
@@ -841,7 +842,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               </div>
             </div>
           </div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
               <thead><tr>
                 <th style={TH}>Month</th>
@@ -894,7 +895,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 </tfoot>
               )}
             </table>
-          </div>
+          </TableScroll>
         </div>
       ) : (
       <div className="card">

@@ -14,6 +14,7 @@ import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -941,7 +942,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
                                 {form.deliveries.length} LRs on this voucher
                             </div>
-                            <div className="tbl-wrap">
+                            <TableScroll>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                                     <thead><tr>
                                         {['LR No.', 'Destination', 'Party', 'Bags', 'Weight (MT)', 'Rate', 'Gross'].map(h => (
@@ -972,7 +973,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                                         })}
                                     </tbody>
                                 </table>
-                            </div>
+                            </TableScroll>
                             <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
                                 Total gross: {deliveriesGross > 0
                                     ? 'Rs.' + Math.round(deliveriesGross).toLocaleString('en-IN')
@@ -2057,7 +2058,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     )}
 
                     {/* Sheet table */}
-                    <div className="tbl-wrap tbl-cards">
+                    <TableScroll className="tbl-cards">
                         <table className="tbl" style={{ minWidth: '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                             <thead>
                                 <tr style={{ background: 'var(--bg-th)' }}>
@@ -2232,7 +2233,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             </tbody>
 
                         </table>
-                    </div>
+                    </TableScroll>
 
                     <Pagination
                         currentPage={currentPage}

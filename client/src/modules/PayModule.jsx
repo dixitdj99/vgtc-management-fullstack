@@ -10,6 +10,10 @@ import { useWindowSize } from 'react-use';
 import ColumnFilter from '../components/ColumnFilter';
 import VehicleCreditDebitModule from './VehicleCreditDebitModule';
 import LabourAccount from './LabourAccount';
+// A multi-drop voucher keeps its LR numbers on the drops; its own `lrNo` is a
+// leftover form field. Printing that showed a number the yard has never issued.
+import { lrLabelOf } from './BalanceSheet';
+import TableScroll from '../components/TableScroll';
 
 const API_V = '/vouchers';
 
@@ -698,10 +702,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       const tga = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
       const ec = parseFloat(v.extraCash) || 0;
       const comm = parseFloat(v.commission) || 0;
-      if (tp > 0) expenses.push({ label: 'Tyre Puncture', amount: tp, date: v.date, lrNo: v.lrNo });
-      if (tga > 0) expenses.push({ label: 'Tyre Greasing & Air', amount: tga, date: v.date, lrNo: v.lrNo });
-      if (ec > 0) expenses.push({ label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash', amount: ec, date: v.date, lrNo: v.lrNo });
-      if (comm > 0) expenses.push({ label: 'Commission', amount: comm, date: v.date, lrNo: v.lrNo });
+      if (tp > 0) expenses.push({ label: 'Tyre Puncture', amount: tp, date: v.date, lrLabel: lrLabelOf(v) });
+      if (tga > 0) expenses.push({ label: 'Tyre Greasing & Air', amount: tga, date: v.date, lrLabel: lrLabelOf(v) });
+      if (ec > 0) expenses.push({ label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash', amount: ec, date: v.date, lrLabel: lrLabelOf(v) });
+      if (comm > 0) expenses.push({ label: 'Commission', amount: comm, date: v.date, lrLabel: lrLabelOf(v) });
     });
     return expenses;
   }, [expenseSource]);
@@ -990,7 +994,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       </div>
                       <span style={{ fontWeight: 800, fontSize: '13px', color: '#0ea5e9' }}>Day Total: {fmtRs(dayTotal)}</span>
                     </div>
-                    <div className="tbl-wrap">
+                    <TableScroll>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                         <thead><tr>
                           <th style={TH}>#</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
@@ -1002,7 +1006,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                             <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                               <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                               <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
-                              <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>#{v.lrNo}</td>
+                              <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{lrLabelOf(v)}</td>
                               <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{v.type?.replace('_', ' ')}</span></td>
                               <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
                               <td style={{ ...TD, textAlign: 'center' }}>
@@ -1019,7 +1023,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </TableScroll>
                   </div>
                 );
               })}
@@ -1034,7 +1038,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                     <div className="card-title-text"><h3>Paid Online Advances</h3><p>{paid.length} cleared</p></div>
                   </div>
                 </div>
-                <div className="tbl-wrap">
+                <TableScroll>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                     <thead><tr>
                       <th style={TH}>#</th><th style={TH}>Date</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
@@ -1046,7 +1050,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                           <td style={TD}>{fmtDate(v.date)}</td>
                           <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
-                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>#{v.lrNo}</td>
+                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{lrLabelOf(v)}</td>
                           <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{v.type?.replace('_', ' ')}</span></td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
                           <td style={{ ...TD, fontWeight: 700, color: 'var(--accent)' }}>{fmtDate(v.onlinePaidDate)}</td>
@@ -1057,7 +1061,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               </div>
             )}
           </div>
@@ -1143,7 +1147,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <div className="card-header border-b">
               <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Recent Firm Payments</h3>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
@@ -1174,7 +1178,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
         </div>
       ) : view === 'staff' ? (
@@ -1208,7 +1212,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <div className="card-header border-b">
               <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Staff & Drivers</h3>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
@@ -1258,7 +1262,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
         </div>
       ) : (
@@ -1297,7 +1301,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <Merge size={13} /> {groupByOwner ? 'Grouped by owner' : 'Group by owner'}
               </button>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
@@ -1406,7 +1410,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
 
         </div>
@@ -1505,7 +1509,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                         </td>
                         {selOwner && <td style={{ ...TD, fontWeight: 800, color: 'var(--text)' }}>{v.truckNo}</td>}
                         <td style={{ ...TD }}>{fmtDate(v.date)}</td>
-                        <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                        <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>{lrLabelOf(v)}</td>
                         <td style={{ ...TD, fontWeight: 700, color: 'var(--text-sub)' }}>{v.type?.replace('_', ' ') || 'Unknown'}</td>
                         <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
                         <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(out)}</td>
@@ -1590,7 +1594,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       Balance: ₹{advanceBalance.toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="tbl-wrap">
+                  <TableScroll>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
                         <tr>
@@ -1628,7 +1632,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                         )}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                 </div>
               </div>
             ) : (
@@ -1661,7 +1665,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                             </span>
                           </td>
                           <td style={{ ...TD }}>{fmtDate(v.date)}</td>
-                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>{lrLabelOf(v)}</td>
                           <td style={{ ...TD, fontWeight: 700, color: 'var(--text-sub)' }}>{v.type?.replace('_', ' ') || 'Unknown'}</td>
                           <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRs(net)}</td>
@@ -1715,7 +1719,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                     <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Vehicle Expenses{selRows.length > 0 ? ' (selected)' : ' (all pending)'} — already deducted</div>
                     {selVehicleExpenses.map((e, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR#{e.lrNo} · {e.date}</span></span>
+                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR {e.lrLabel} · {e.date}</span></span>
                         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
                       </div>
                     ))}

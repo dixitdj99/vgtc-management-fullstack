@@ -5,6 +5,7 @@ import { Fuel, Search, Filter, Calendar, Check, X, Pencil, Droplet, ArrowRight, 
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { useAuth } from '../auth/AuthContext';
 import ColumnFilter from '../components/ColumnFilter';
+import TableScroll from '../components/TableScroll';
 
 const API_V = `/vouchers`;
 
@@ -389,7 +390,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                         </div>
                     </div>
                 </div>
-                <div className="tbl-wrap">
+                <TableScroll>
                     {loading ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading records...</div>
                     ) : (
@@ -484,7 +485,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                             </tbody>
                         </table>
                     )}
-                </div>
+                </TableScroll>
             </div>
             </>)}
 
@@ -557,7 +558,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                             <AnimatePresence>
                                 {expandedPump === pg.pump && (
                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-                                        <div className="tbl-wrap">
+                                        <TableScroll>
                                             <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                                                 <thead>
                                                     <tr style={{ background: 'var(--bg-th)' }}>
@@ -603,7 +604,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                                                     </tr>
                                                 </tfoot>
                                             </table>
-                                        </div>
+                                        </TableScroll>
                                         {/* Pump Payments from Firm Pay */}
                                         {pg.payments.length > 0 && (
                                             <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
@@ -676,7 +677,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                         </div>
                     ) : (
                         <div className="card" style={{ overflow: 'hidden' }}>
-                            <div className="tbl-wrap">
+                            <TableScroll>
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead><tr>
                                         <th style={TH}>Date</th>
@@ -749,7 +750,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                                         </tr>
                                     </tfoot>
                                 </table>
-                            </div>
+                            </TableScroll>
                         </div>
                     )}
 

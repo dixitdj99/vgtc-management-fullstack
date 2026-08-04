@@ -15,6 +15,7 @@ import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import { openReceiptWindow, RECEIPT_WIDTH_MM } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -2235,7 +2236,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </div>
             )}
 
-            <div className="tbl-wrap tbl-cards">
+            <TableScroll className="tbl-cards">
               <table className="tbl" style={{ minWidth: '1200px' }}>
                 <thead><tr>
                   <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -2428,7 +2429,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
 
             <Pagination
               currentPage={currentPage}

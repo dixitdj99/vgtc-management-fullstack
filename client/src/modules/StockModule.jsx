@@ -16,6 +16,7 @@ import { printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
 import EwayBillPanel from '../components/EwayBillPanel';
+import TableScroll from '../components/TableScroll';
 
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -806,7 +807,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const exportHistoryPDF = () => exportToPDF(historyExportRows(), 'Stock History');
 
   const renderHistoryTable = (rows) => (
-    <div className="tbl-wrap">
+    <TableScroll>
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>
           <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -857,7 +858,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 
   return (
@@ -1003,7 +1004,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 <div className="card-title-text"><h3>Monthly Summary</h3><p>Detailed month, material, and loading-type report</p></div>
              </div>
           </div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table className="tbl" style={{ minWidth: '1280px' }}>
               <thead>
                 <tr>
@@ -1045,7 +1046,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 }
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 
@@ -1145,7 +1146,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             <div className="card-icon" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}><Archive size={17} /></div>
             <div className="card-title-text"><h3>Stock Arrival History (MIGO)</h3><p>{additions.length} total entries</p></div>
           </div></div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table className="tbl" style={{ minWidth: '1000px', width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
                 <th style={TH}>Date</th>
@@ -1185,7 +1186,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 
@@ -1316,7 +1317,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 ))}
               </div>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
                   <th style={TH}><ColumnFilter label="Challan #" colKey="challanNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -1412,7 +1413,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
         </div>
       )}
@@ -1501,7 +1502,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 <div className="card-title-text"><h3>Transfer History</h3><p>{transfers.length} transfers recorded</p></div>
               </div>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
                   <th style={TH}>#</th>
@@ -1548,7 +1549,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
         </div>
       )}
@@ -1773,7 +1774,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div className="card-title-text"><h3>Party-Wise Summary</h3><p>{partySummary.length} parties with challan and loading details</p></div>
             </div>
           </div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
                 <th style={TH}>#</th>
@@ -1843,7 +1844,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </tfoot>
               )}
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 

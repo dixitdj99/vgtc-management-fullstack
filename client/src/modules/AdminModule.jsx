@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Cloud, AlertCircle, CheckCircle2, Loader2, Info, ExternalLink, Key } from 'lucide-react';
 import ax from '../api';
 import Pagination from '../components/Pagination';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -291,7 +292,7 @@ const AdminModule = () => {
                     </div>
 
                     <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-                        <div className="tbl-wrap">
+                        <TableScroll>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead style={{ background: 'var(--bg-th)', borderBottom: '1px solid var(--border)' }}>
                                     <tr>
@@ -332,7 +333,7 @@ const AdminModule = () => {
                                     )}
                                 </tbody>
                             </table>
-                        </div>
+                        </TableScroll>
 
                         <Pagination 
                             currentPage={currentPage}

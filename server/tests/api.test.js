@@ -2663,5 +2663,394 @@ test('balance: a ticked row is still obvious without the box around it', async (
     'the selection outline is back, and it brackets every multi-LR voucher');
 });
 
+test('all-balance: a multi-LR voucher can be sent to pay', async () => {
+  // Reported from production: ticking a multi-LR voucher and pressing Send to
+  // Pay did nothing. Every leg shares the parent key, a Map keeps the last
+  // value for a repeated key, and the last leg has `_leg > 0` -- which the
+  // filter then dropped, so the voucher fell out of the selection entirely.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+  const memo = src.slice(src.indexOf('const selVouchers'), src.indexOf('const sendable'));
+
+  assert(/_original \|\| r/.test(memo),
+    'the selection still keeps a leg rather than the voucher it belongs to');
+  assert(!/filter\(v => !\(v\._leg > 0\)\)/.test(memo),
+    'the leg filter is back, and it throws the voucher away with the last leg');
+
+  // Status has to be worked out on the voucher. A leg is never "pending" on
+  // its own terms once the deductions sit on the first one.
+  assert(/calcNet\(voucher, vehicle\)/.test(memo),
+    'status and outstanding are not recomputed on the whole voucher');
+});
+
+test('all-balance: the selection total adds vouchers, not legs', async () => {
+  // A leg whose deductions outrun its own freight reports zero outstanding
+  // rather than a negative one, so adding legs up overstates the trip:
+  // -5,860 + 4,740 + 2,370 is 7,110 as legs and 1,250 as a voucher.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+  assert(!/selRows\.reduce\(\(s, v\) => s \+ v\._outstanding, 0\)/.test(src),
+    'the selection bar sums legs, which overstates any voucher with a negative first leg');
+  assert(/selVouchers\.reduce\(\(s, v\) => s \+ v\._outstanding, 0\)/.test(src),
+    'the selection bar no longer shows an outstanding total at all');
+});
+
+test('all-balance: a continuation LR is marked as one', async () => {
+  // Without a mark the second and third LRs read as unrelated trips that
+  // happen to share a truck and a date.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'BalanceSheet.jsx'), 'utf8');
+  // Asserting the file merely contains the name is worthless: the JSX usage
+  // satisfies it. What matters is that the icon is imported, and this test
+  // passed while the app was crashing on exactly that.
+  const imports = src.slice(0, src.indexOf("from 'lucide-react'"));
+  assert(/CornerDownRight/.test(imports), 'CornerDownRight is used but never imported');
+  // It lives in the tick-box cell: that is what a leg shares with its
+  // voucher, since ticking any leg ticks them all.
+  const cell = src.slice(src.indexOf('t-card-checkbox'), src.indexOf('t-card-checkbox') + 700);
+  assert(/v._leg > 0/.test(cell), 'the mark is not tied to the legs after the first');
+  assert(/CornerDownRight/.test(cell), 'the mark is not in the tick-box cell');
+});
+
+/** Lift a top-level declaration out of a .jsx file and run it for real. */
+function liftFromBalanceSheet(header, name) {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'BalanceSheet.jsx'), 'utf8');
+  const i = src.indexOf(header);
+  if (i === -1) throw new Error('declaration not found: ' + header);
+  let depth = 0, started = false, end = -1;
+  for (let j = i; j < src.length; j++) {
+    const c = src[j];
+    if (c === '{') { depth++; started = true; }
+    else if (c === '}') { depth--; if (started && depth === 0) { end = j + 1; break; } }
+  }
+  if (end === -1) throw new Error('unbalanced braces in ' + header);
+  return new Function(src.slice(i, end) + '; return ' + name + ';')();
+}
+
+test('balance: a multi-drop voucher is not called unpriced', async () => {
+  // Reported from production: every voucher carrying more than one LR was
+  // refused at Send to Pay for a rate that was plainly on the screen. The rate
+  // box at the top of the voucher form is not used once drops are added, and
+  // the saved record keeps it empty -- so the check was reading a field that is
+  // empty by design and calling the trip unrated.
+  const payBlockers = liftFromBalanceSheet('function payBlockers(v) {', 'payBlockers');
+
+  const voucher = {
+    rate: '', lrNo: '2',
+    deliveries: [
+      { lrNo: '1236', destination: 'Rewari', weight: '10', rate: '400' },
+      { lrNo: '1237', destination: 'Bhiwani', weight: '2', rate: '365' },
+    ],
+  };
+  assert(payBlockers(voucher).length === 0,
+    'a voucher with every drop priced is still being refused: ' + JSON.stringify(payBlockers(voucher)));
+});
+
+test('balance: an unpriced drop is named by its LR number', async () => {
+  // The old message named the voucher's own lrNo, which on a multi-drop record
+  // is whatever was left in the form -- an LR number the yard has never seen.
+  // Nobody could act on it. Name the drop that is actually missing a rate.
+  const payBlockers = liftFromBalanceSheet('function payBlockers(v) {', 'payBlockers');
+
+  const problems = payBlockers({
+    rate: '', lrNo: '2',
+    deliveries: [
+      { lrNo: '1236', rate: '400' },
+      { lrNo: '1237', rate: '' },
+    ],
+  });
+  assert(problems.length === 1, 'expected exactly one problem, got ' + JSON.stringify(problems));
+  assert(problems[0].includes('#1237'), 'the unpriced drop is not named: ' + problems[0]);
+  assert(!problems[0].includes('#1236'), 'a priced drop is being blamed too: ' + problems[0]);
+});
+
+test('balance: a single-drop voucher still needs its rate', async () => {
+  // The multi-drop branch must not become a way past the check for the ordinary
+  // voucher, which is the overwhelming majority of them.
+  const payBlockers = liftFromBalanceSheet('function payBlockers(v) {', 'payBlockers');
+
+  assert(JSON.stringify(payBlockers({ rate: '', weight: '10' })) === JSON.stringify(['Rate not entered']),
+    'an unpriced single-drop voucher is no longer caught');
+  assert(payBlockers({ rate: '365', weight: '10' }).length === 0,
+    'a priced single-drop voucher is being refused');
+
+  // And the other two bars are untouched.
+  assert(payBlockers({ rate: '365', advanceDiesel: '3500' }).includes('Diesel not verified'),
+    'unverified diesel no longer blocks');
+  assert(payBlockers({ rate: '365', advanceOnline: '2000' }).includes('Online advance not paid'),
+    'an unpaid online advance no longer blocks');
+});
+
+test('balance: the blocked-send dialogs name the LRs on the voucher', async () => {
+  // Both sheets showed `LR #{v.lrNo}`, which is the leftover form field on a
+  // multi-drop voucher. The user read it as a row number, because that is what
+  // it looked like.
+  const path = require('path'), fs = require('fs');
+  const dir = path.join(__dirname, '..', '..', 'client', 'src', 'modules');
+  const bal = fs.readFileSync(path.join(dir, 'BalanceSheet.jsx'), 'utf8');
+  const all = fs.readFileSync(path.join(dir, 'AllBalanceSheet.jsx'), 'utf8');
+
+  const lrLabelOf = liftFromBalanceSheet('const lrLabelOf = (v) => {', 'lrLabelOf');
+  assert(lrLabelOf({ lrNo: '2', deliveries: [{ lrNo: '1236' }, { lrNo: '1237' }] }) === '#1236 + #1237',
+    'a multi-drop voucher is not labelled by its drops');
+  assert(lrLabelOf({ lrNo: '1189' }) === '#1189', 'a plain voucher lost its LR');
+  assert(lrLabelOf({}) === String.fromCharCode(8212), 'a voucher with no LR should read as a dash');
+
+  for (const [name, src] of [['BalanceSheet', bal], ['AllBalanceSheet', all]]) {
+    const dialog = src.slice(src.indexOf('sendBlocked.map'), src.indexOf('sendBlocked.map') + 900);
+    assert(/lrLabelOf\(v\)/.test(dialog), name + ': the blocked dialog does not use lrLabelOf');
+    assert(!/LR #\{v\.lrNo/.test(dialog), name + ': the blocked dialog still prints the raw lrNo');
+  }
+
+  // The name has to be imported, not merely used -- a missing import is a blank
+  // screen, and it has happened here before.
+  const imp = all.slice(0, all.indexOf('\n\n', all.indexOf("from './BalanceSheet'")));
+  assert(/import \{[^}]*\blrLabelOf\b[^}]*\} from '\.\/BalanceSheet'/s.test(imp),
+    'AllBalanceSheet uses lrLabelOf without importing it');
+});
+
+test('all-balance: two scrollbars do not chase each other', async () => {
+  // The rail above the table and the table's own bar are kept in step by
+  // writing one's scrollLeft from the other. That write fires a scroll event on
+  // the box written to, which would write back, for as long as the mouse is
+  // held -- a locked tab, not a slow one.
+  const all = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'components', 'TableScroll.jsx'), 'utf8');
+  const i = all.indexOf('export function mirrorScroll');
+  assert(i !== -1, 'mirrorScroll is gone');
+  let depth = 0, started = false, end = -1;
+  for (let j = i; j < all.length; j++) {
+    if (all[j] === '{') { depth++; started = true; }
+    else if (all[j] === '}') { depth--; if (started && depth === 0) { end = j + 1; break; } }
+  }
+  const mirrorScroll = new Function(all.slice(i, end).replace('export ', '') + '; return mirrorScroll;')();
+
+  // Two boxes that report a scroll event whenever they are written to, which
+  // is what a browser does.
+  const frames = [];
+  global.requestAnimationFrame = fn => frames.push(fn);
+  const driving = { current: null };
+  let writes = 0;
+  const make = () => {
+    const el = { _v: 0 };
+    Object.defineProperty(el, 'scrollLeft', {
+      get: () => el._v,
+      set: v => { el._v = v; writes++; if (writes < 50) el.onScroll(); },
+    });
+    return { current: el };
+  };
+  const rail = make(), wrap = make();
+  rail.current.onScroll = () => mirrorScroll(driving, rail, wrap);
+  wrap.current.onScroll = () => mirrorScroll(driving, wrap, rail);
+
+  // The user drags the rail.
+  rail.current._v = 420;
+  rail.current.onScroll();
+
+  assert(writes < 50, 'the two bars are still echoing each other -- ' + writes + ' writes');
+  assert(writes === 1, 'expected exactly one mirrored write, got ' + writes);
+  assert(wrap.current.scrollLeft === 420, 'the table did not follow the rail');
+
+  // The mark has to be released, or the rail never moves again.
+  frames.forEach(fn => fn());
+  assert(driving.current === null, 'the guard was never cleared, so scrolling is dead after one drag');
+
+  wrap.current._v = 900;
+  wrap.current.onScroll();
+  assert(rail.current.scrollLeft === 900, 'the rail no longer follows the table');
+  delete global.requestAnimationFrame;
+});
+
+test('all-balance: the rail only appears when there is something off-screen', async () => {
+  // A scrollbar on a table that already fits is a control that does nothing.
+  const fs = require('fs'), path = require('path');
+  const src = path.join(__dirname, '..', '..', 'client', 'src');
+  const comp = fs.readFileSync(path.join(src, 'components', 'TableScroll.jsx'), 'utf8');
+
+  assert(/needsRail = tableW > wrapW/.test(comp),
+    'the rail is no longer conditional on the table overflowing');
+  assert(/\{needsRail && \(/.test(comp), 'the rail is rendered unconditionally');
+
+  // Both boxes must actually be wired up, or the rail scrolls nothing.
+  assert(/ref=\{wrapRef\}[\s\S]{0,120}onScroll=/.test(comp), 'the table box is not wired to the rail');
+  assert(/ref=\{railRef\} className="tbl-scroll-top"/.test(comp), 'the rail is not wired to the table');
+
+  // And every wide table has to go through it, or only one list gets the rail.
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full, out);
+      else if (e.name.endsWith('.jsx')) out.push(full);
+    }
+    return out;
+  };
+  // TableScroll itself is the implementation, and its own doc comment quotes
+  // the markup it replaces.
+  const stragglers = walk(src)
+    .filter(f => path.basename(f) !== 'TableScroll.jsx')
+    .filter(f => /className="tbl-wrap/.test(fs.readFileSync(f, 'utf8')));
+  assert(stragglers.length === 0,
+    'these still use a bare tbl-wrap and get no top scrollbar: ' +
+    stragglers.map(f => path.basename(f)).join(', '));
+
+  // Anything using it must import it, or the module is a blank screen.
+  const users = walk(src).filter(f => /<TableScroll[\s>]/.test(fs.readFileSync(f, 'utf8')));
+  assert(users.length >= 15, 'only ' + users.length + ' modules use the shared wrapper');
+  for (const f of users) {
+    assert(/import TableScroll from '[^']+'/.test(fs.readFileSync(f, 'utf8')),
+      path.basename(f) + ' uses TableScroll without importing it');
+  }
+});
+
+test('all-balance: the widest sheet is not capped at 1440px', async () => {
+  // Nineteen columns on a 2,500px monitor left a third of the screen empty
+  // while the table still had to be dragged sideways.
+  const fs = require('fs'), path = require('path');
+  const dir = path.join(__dirname, '..', '..', 'client', 'src');
+  const css = fs.readFileSync(path.join(dir, 'index.css'), 'utf8');
+  const all = fs.readFileSync(path.join(dir, 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+
+  // Every list with a sideways scrollbar widens, not just this one — the rule
+  // keys on the table wrapper, so a module gets it by using TableScroll.
+  assert(/\.page-content:has\(\.tbl-wrap\)[\s\S]{0,80}max-width:\s*none/.test(css),
+    'pages holding a wide table no longer widen');
+  assert(/\.page-content:has\(> \.page-full\)/.test(css),
+    'the explicit opt-in for a full-width page is missing');
+  assert(/<div className="page-full">/.test(all),
+    'All Balance Sheet no longer opts into the full width');
+
+  // Keyed on the wrapper, never on the scrollbar: keying it on .tbl-scroll-top
+  // would widen the page, let the table fit, drop the scrollbar and narrow it
+  // again, for as long as the page is open.
+  assert(!/\.page-content:has\([^)]*tbl-scroll-top/.test(css),
+    'the width now depends on the scrollbar it controls, which oscillates');
+
+  // The cap must survive for everything else -- a form stretched to 2,500px is
+  // worse than one that is too narrow.
+  assert(/\.page-content\s*\{[^}]*max-width:\s*1440px/.test(css),
+    'the default page cap has been removed, which widens every form too');
+});
+
+test('all-balance: a PDF can be taken of the ticked rows alone', async () => {
+  const all = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+
+  assert(/const exportRows = \(list = filtered\)/.test(all),
+    'the export builder still hard-codes the full filtered list');
+  assert(/exportRows\(selRows\)/.test(all),
+    'nothing exports the selection');
+  assert(/PDF \(\{selRows\.length\} selected\)/.test(all),
+    'the selected-only button does not say how many rows it will print');
+
+  // The full export must still be there. Replacing it would mean no way to
+  // print the whole sheet once anything is ticked.
+  assert(/exportToPDF\(exportRows\(\),/.test(all), 'the full-sheet PDF export is gone');
+  assert(/exportToExcel\(exportRows\(\),/.test(all), 'the Excel export is gone');
+});
+
+test('enquiry: the daily cap still applies in production', async () => {
+  // The cap was relaxed off the live deploy so the suite could run twice in one
+  // dev server -- six posts a run against a max of six meant every second run
+  // was nothing but 429s. That relaxation must not reach the public form, which
+  // is the only unauthenticated door into this server.
+  //
+  // Asserted on the source rather than by reloading envConfig: that module
+  // decides the Firestore collection prefix, and re-requiring it with APP_ENV
+  // flipped would point the rest of this suite at the production collections.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'routes', 'enquiryRoutes.js'), 'utf8');
+
+  assert(/MAX_PER_DAY = isProduction\(\) \? 6 :/.test(src),
+    'the production cap is no longer six a day');
+  assert(/max: MAX_PER_DAY/.test(src),
+    'the limiter is not reading the cap');
+  assert(/require\('\.\.\/utils\/envConfig'\)/.test(src),
+    'isProduction is used without being imported');
+});
+
+test('all-balance: every leg of a voucher lands in the same tab', async () => {
+  // Reported from production: opening "Sent to Pay" showed one LR of a
+  // multi-LR trip and hid the rest.
+  //
+  // Status was worked out per row. A leg carries only its own freight, while
+  // the diesel, cash, munshi and the payment all sit on the first one -- so the
+  // first leg of a heavily-advanced trip owes nothing and reads "paid", while
+  // its siblings still owe and read "sent". One voucher, three tabs, and no tab
+  // showing the whole trip.
+  const all = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+  const memo = all.slice(all.indexOf('const rows = useMemo'), all.indexOf('const filtered = useMemo'));
+
+  assert(/voucherState/.test(memo), 'status is no longer worked out per voucher');
+  assert(/sentIds\.has\(v\.id\)/.test(memo),
+    'sent-ness is being asked of a leg id again');
+  assert(/\.\.\.voucherState\.get\(v\._parentId \|\| v\.id\)/.test(memo),
+    'the voucher status is not stamped onto each leg');
+
+  // The status must not be recomputed from the leg after that, or the stamp is
+  // undone by the next line.
+  const afterStamp = memo.slice(memo.indexOf('voucherState.get'));
+  assert(!/_status:/.test(afterStamp), 'a per-leg _status is still being written after the stamp');
+
+  // Reproduce the arithmetic the fix relies on, with the numbers off the
+  // reported voucher: freight 4,740 + 4,740 + 2,370 against a 10,000 diesel
+  // advance, 100 munshi and 500 commission.
+  const legNets = [4740 - 10000 - 100 - 500, 4740, 2370];
+  const legStatus = legNets.map(n => (Math.max(0, n) <= 0 ? 'paid' : 'sent'));
+  assert(new Set(legStatus).size === 2,
+    'the fixture no longer reproduces the split that caused the bug');
+
+  const voucherNet = legNets.reduce((a, b) => a + b, 0);
+  assert(voucherNet === 1250, 'voucher net should be 1,250, got ' + voucherNet);
+  assert(Math.max(0, voucherNet) > 0, 'the voucher still owes, so every leg belongs under Sent to Pay');
+});
+
+test('all-balance: the outstanding total counts a voucher once', async () => {
+  // Same root cause, on the money. Outstanding is floored at zero per row, so
+  // the first leg contributes nothing rather than offsetting its siblings:
+  // 0 + 4,740 + 2,370 reads as 7,110 owed on a trip that owes 1,250.
+  const all = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'AllBalanceSheet.jsx'), 'utf8');
+  const totals = all.slice(all.indexOf('const totals = useMemo'), all.indexOf('/* ── Selection'));
+
+  assert(/counted/.test(totals) && /firstSeen/.test(totals),
+    'the outstanding total no longer de-duplicates by voucher');
+  assert(/_voucherOutstanding/.test(totals),
+    'the total is back to adding each leg up');
+
+  const legs = [
+    { _parentId: 'v1', id: 'v1', _outstanding: 0, _voucherOutstanding: 1250 },
+    { _parentId: 'v1', id: 'v1::leg1', _outstanding: 4740, _voucherOutstanding: 1250 },
+    { _parentId: 'v1', id: 'v1::leg2', _outstanding: 2370, _voucherOutstanding: 1250 },
+  ];
+  const counted = new Set();
+  const total = legs.reduce((acc, v) => {
+    const vid = v._parentId || v.id;
+    const first = !counted.has(vid);
+    if (first) counted.add(vid);
+    return acc + (first ? v._voucherOutstanding : 0);
+  }, 0);
+  assert(total === 1250, 'expected 1,250 outstanding on the voucher, got ' + total);
+
+  const naive = legs.reduce((a, v) => a + v._outstanding, 0);
+  assert(naive === 7110, 'the fixture no longer reproduces the overstatement');
+});
+
+test('pay: a multi-LR trip names its real LRs', async () => {
+  // Pay printed the voucher's own lrNo, which on a multi-drop record is the
+  // leftover form field -- the "2" the user read as a row number.
+  const fs = require('fs'), path = require('path');
+  const pay = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'PayModule.jsx'), 'utf8');
+
+  assert(!/#\{v\.lrNo\}/.test(pay), 'a Pay table still prints the raw lrNo');
+  assert(!/lrNo: v\.lrNo/.test(pay), 'the expense strip still labels with the raw lrNo');
+  assert((pay.match(/lrLabelOf\(v\)/g) || []).length >= 8,
+    'not every LR cell in Pay was switched over');
+  assert(/import \{[^}]*\blrLabelOf\b[^}]*\} from '\.\/BalanceSheet'/s.test(pay),
+    'PayModule uses lrLabelOf without importing it');
+});
+
 // Run
 runAll();

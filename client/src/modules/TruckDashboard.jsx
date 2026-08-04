@@ -9,6 +9,7 @@ import { exportToExcel, buildExportRows } from '../utils/exportUtils';
 import { printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
+import TableScroll from '../components/TableScroll';
 
 const TH = {
   padding: '8px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)',
@@ -263,7 +264,7 @@ export default function TruckDashboard({ role, permissions }) {
       )}
 
       <div className="card">
-        <div className="tbl-wrap">
+        <TableScroll>
           <table style={{ minWidth: '1200px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <thead>
               <tr>
@@ -345,7 +346,7 @@ export default function TruckDashboard({ role, permissions }) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
       </div>
     </div>
   );

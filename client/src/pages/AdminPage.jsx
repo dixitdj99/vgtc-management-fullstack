@@ -15,6 +15,7 @@ import FuelStationManager from '../pages/admin/FuelStationManager';
 import FirmManager from '../pages/admin/FirmManager';
 import PartyMaster from '../modules/PartyMaster';
 import PermissionEditor from '../components/PermissionEditor';
+import TableScroll from '../components/TableScroll';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
@@ -511,7 +512,7 @@ export default function AdminPage() {
               {loading ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading...</div>
               ) : (
-                <div className="tbl-wrap">
+                <TableScroll>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
                       <tr style={{ background: 'var(--bg-th)' }}>
@@ -547,7 +548,7 @@ export default function AdminPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               )}
             </div>
             )}

@@ -2,6 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const { getEnvCol } = require('../utils/collectionUtils');
+const { isProduction } = require('../utils/envConfig');
 
 /**
  * Enquiries from the public landing page.
@@ -71,9 +72,17 @@ function page(heading, body, ok = true) {
 
 // Six a day from one address is generous for a real person and useless to a
 // spammer. Keyed on the proxy-corrected IP — see `trust proxy` in index.js.
+//
+// The counter lives in memory for the life of the process, so off the live
+// deploy it is the test suite that spends the six — the whole suite posts six
+// enquiries, and a second run in the same dev server got nothing but 429s. The
+// cap exists to keep strangers off the form; a dev machine has no strangers on
+// it. Production is unchanged.
+const MAX_PER_DAY = isProduction() ? 6 : 1000;
+
 const limiter = rateLimit({
     windowMs: 24 * 60 * 60 * 1000,
-    max: 6,
+    max: MAX_PER_DAY,
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res) => res.status(429).type('html').send(page(

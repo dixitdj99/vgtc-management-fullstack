@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronRight, Trash2, Plus, Clock, History, MoveRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import TableScroll from '../components/TableScroll';
 
 // `available: false` plants still have 'TBD' GSTIN/SAP/plant codes in server plantConfig.js —
 // generating them would print "TBD" on a legal tax invoice, so they stay locked until
@@ -1064,7 +1065,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                   <RefreshCw size={13} className={historyLoading ? 'ani-spin' : ''} />
                 </button>
               </div>
-              <div className="tbl-wrap" style={{ maxHeight: '500px' }}>
+              <TableScroll style={{ maxHeight: '500px' }}>
                 <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -1148,7 +1149,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
             </div>
           </motion.div>
         )}

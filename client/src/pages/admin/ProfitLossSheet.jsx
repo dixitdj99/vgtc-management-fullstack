@@ -11,6 +11,7 @@ import {
 } from '../../utils/pnl';
 import { buildExportRows, exportToExcel, exportToPDF } from '../../utils/exportUtils';
 import { archiveName } from '../../utils/archiveDoc';
+import TableScroll from '../../components/TableScroll';
 
 const fmtRs = (val) => '₹' + Math.round(val || 0).toLocaleString('en-IN');
 const fmtSigned = (val) => (val < 0 ? '-' : '') + fmtRs(Math.abs(val));
@@ -362,7 +363,7 @@ export default function ProfitLossSheet() {
               Own fleet only. Office and firm-wide costs are not split across trucks.
             </p>
           </div>
-          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+          <TableScroll style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-th)' }}>
@@ -393,7 +394,7 @@ export default function ProfitLossSheet() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         </div>
       )}
 
