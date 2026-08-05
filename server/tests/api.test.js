@@ -3599,5 +3599,41 @@ test('cashbook: an exported amount means the same thing on every row', async () 
   assert(signed({ credit: 77600, debit: 0 }) === 77600, 'a deposit should export positive');
 });
 
+test('cashbook: every ledger row belongs to a tab', async () => {
+  // The tabs added up to 64 of a 72-row ledger. The missing eight were the
+  // vehicle expenses off vouchers — tyre work and extra cash, Rs.5,700 on the
+  // reported export — counted in the running balance and in the totals but
+  // with no list of their own, so the only way to see them was to read all 72
+  // rows and pick them out.
+  const fs = require('fs'), path = require('path');
+  const cb = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'CashbookModule.jsx'), 'utf8');
+
+  // The four sources the ledger is built from.
+  const ledger = cb.slice(cb.indexOf('const ledgerWithBalance'), cb.indexOf('Monthly summary'));
+  const sources = ['deposits', 'cashOuts', 'voucherCashAdv', 'voucherVehicleExpenses'];
+  for (const s of sources) {
+    assert(new RegExp('\\.\\.\\.' + s + '\\.map').test(ledger),
+      s + ' is no longer part of the running ledger');
+  }
+
+  // Each one must be reachable on its own.
+  const tabs = cb.slice(cb.indexOf("{ id: 'ledger'"), cb.indexOf("{ id: 'cash_out'") + 120);
+  for (const id of ['deposits', 'voucher_cash', 'voucher_expense', 'cash_out']) {
+    assert(new RegExp("id: '" + id + "'").test(tabs), 'no tab for ' + id);
+  }
+  assert(/voucherVehicleExpenses\.length/.test(tabs),
+    'the vehicle expenses tab does not show how many there are');
+
+  // And the tab has to select something, or it shows the cash-outs instead.
+  const rows = cb.slice(cb.indexOf('const activeRows'), cb.indexOf('const activeRows') + 400);
+  assert(/tab === 'voucher_expense' \? filteredVehicleExpenses/.test(rows),
+    'the vehicle expenses tab falls through to another list');
+
+  // The counts must reconcile: the reported ledger was 3 + 48 + 13 = 64 of 72.
+  const counted = 3 + 48 + 13 + 8;
+  assert(counted === 72, 'the reported ledger no longer reconciles');
+});
+
 // Run
 runAll();

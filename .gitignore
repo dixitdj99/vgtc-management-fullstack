@@ -19,3 +19,6 @@ artifacts/
 *_db_backup_*.json
 server/delete_production.js
 server/dump_production.js
+*.log
+firebase-debug.log
+

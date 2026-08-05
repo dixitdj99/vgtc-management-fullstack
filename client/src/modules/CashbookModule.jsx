@@ -242,44 +242,82 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   };
 
   /* ── Derived voucher lists ── */
+
+  /**
+   * Get the real LR number label for a voucher.
+   * For multi-delivery vouchers, LR numbers live on the drops; the top-level
+   * `lrNo` is a parent reference (often blank). We surface the real numbers so
+   * the cashbook matches what the driver and the party see on the load slip.
+   */
+  const getVoucherLrLabel = (v) => {
+    if (v.deliveries && v.deliveries.length > 0) {
+      const dlrNos = v.deliveries.map(d => d.lrNo).filter(Boolean);
+      if (dlrNos.length > 0) return dlrNos.join(', ');
+    }
+    return v.lrNo || '?';
+  };
+
   const voucherCashAdv = useMemo(() =>
     allVouchers
-      .filter(v => parseFloat(v.advanceCash) > 0)
-      .map(v => ({
-        id: 'v_cash_' + v.id,
-        voucherId: v.id,
-        date: v.date,
-        type: 'voucher_cash',
-        amount: -(parseFloat(v.advanceCash) || 0),
-        remark: `Cash Advance — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'} [${v.vType}]`,
-        truckNo: v.truckNo,
-        lrNo: v.lrNo,
-        vType: v.vType,
-        createdBy: v.createdBy,
-        updatedBy: v.updatedBy
-      }))
+      .filter(v => parseFloat(v.advanceCash) > 0 || parseFloat(v.extraCash) > 0)
+      .map(v => {
+        const lrLabel = getVoucherLrLabel(v);
+        const advCash = parseFloat(v.advanceCash) || 0;
+        const extraCash = parseFloat(v.extraCash) || 0;
+        const totalCash = advCash + extraCash;
+        // Build a readable sub-note when extra cash is present alongside the advance.
+        // "Advance Rs.X + Extra Rs.Y" lets the cashbook explain the combined total
+        // without needing a second row for the same trip.
+        let breakdownNote = '';
+        if (advCash > 0 && extraCash > 0) {
+          const extraLabel = v.extraCashRemark ? `Extra (${v.extraCashRemark})` : 'Extra Cash';
+          breakdownNote = `Advance Rs.${Math.round(advCash).toLocaleString('en-IN')} + ${extraLabel} Rs.${Math.round(extraCash).toLocaleString('en-IN')}`;
+        } else if (extraCash > 0) {
+          breakdownNote = v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash';
+        }
+        return {
+          id: 'v_cash_' + v.id,
+          voucherId: v.id,
+          date: v.date,
+          type: 'voucher_cash',
+          amount: -totalCash,
+          remark: `Cash Advance — Truck ${v.truckNo || '?'} | LR #${lrLabel} [${v.vType}]`,
+          breakdownNote,
+          advanceCash: advCash,
+          extraCash,
+          truckNo: v.truckNo,
+          lrNo: lrLabel,
+          vType: v.vType,
+          createdBy: v.createdBy,
+          updatedBy: v.updatedBy
+        };
+      })
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
 
-  // Vehicle expenses from vouchers (tyre puncture, greasing, air, extra cash)
+  // Vehicle expenses from vouchers (tyre puncture, greasing/air only).
+  // Extra cash is now merged into the cash advance row above so it is not
+  // double-counted here as a separate cashbook entry.
   const voucherVehicleExpenses = useMemo(() => {
     const expenses = [];
     allVouchers.forEach(v => {
-      const fields = [
-        { key: 'tyrePuncture', label: 'Tyre Puncture' },
-        { key: 'tyreGreasingAir', label: 'Tyre Greasing & Air' },
-        { key: 'extraCash', label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash' },
-      ];
+      const lrLabel = getVoucherLrLabel(v);
       // Also check old separate fields for backward compatibility
       const greasingAmt = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
       if (greasingAmt > 0 && !parseFloat(v.tyreGreasingAir)) {
-        const amt = greasingAmt;
-        if (amt > 0) expenses.push({
+        expenses.push({
           id: `v_tyreGA_${v.id}`, voucherId: v.id, date: v.date, type: 'voucher_expense',
-          amount: -amt, remark: `Tyre Greasing & Air — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'}`,
-          truckNo: v.truckNo, lrNo: v.lrNo, vType: v.vType,
+          amount: -greasingAmt, remark: `Tyre Greasing & Air — Truck ${v.truckNo || '?'} | LR #${lrLabel}`,
+          truckNo: v.truckNo, lrNo: lrLabel, vType: v.vType,
         });
       }
+      const fields = [
+        { key: 'tyrePuncture', label: 'Tyre Puncture' },
+        { key: 'tyreGreasingAir', label: 'Tyre Greasing & Air' },
+        // extraCash is intentionally excluded here — it is now bundled with the
+        // cash advance row in voucherCashAdv so the ledger shows one combined line
+        // per trip instead of a fragmented second entry.
+      ];
       fields.forEach(f => {
         const amt = parseFloat(v[f.key]) || 0;
         if (amt > 0) {
@@ -287,8 +325,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             id: `v_${f.key}_${v.id}`,
             voucherId: v.id, date: v.date, type: 'voucher_expense',
             amount: -amt,
-            remark: `${f.label} — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'}`,
-            truckNo: v.truckNo, lrNo: v.lrNo, vType: v.vType,
+            remark: `${f.label} — Truck ${v.truckNo || '?'} | LR #${lrLabel}`,
+            truckNo: v.truckNo, lrNo: lrLabel, vType: v.vType,
           });
         }
       });
@@ -299,19 +337,22 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const onlineAdvList = useMemo(() =>
     allVouchers
       .filter(v => parseFloat(v.advanceOnline) > 0)
-      .map(v => ({
-        id: 'v_online_' + v.id,
-        date: v.date,
-        amount: parseFloat(v.advanceOnline) || 0,
-        remark: `Online Advance — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'} [${v.vType}]`,
-        truckNo: v.truckNo,
-        lrNo: v.lrNo,
-        vType: v.vType,
-        isOnlinePaid: v.isOnlinePaid || false,
-        onlinePaidDate: v.onlinePaidDate || null,
-        createdBy: v.createdBy,
-        updatedBy: v.updatedBy
-      }))
+      .map(v => {
+        const lrLabel = getVoucherLrLabel(v);
+        return {
+          id: 'v_online_' + v.id,
+          date: v.date,
+          amount: parseFloat(v.advanceOnline) || 0,
+          remark: `Online Advance — Truck ${v.truckNo || '?'} | LR #${lrLabel} [${v.vType}]`,
+          truckNo: v.truckNo,
+          lrNo: lrLabel,
+          vType: v.vType,
+          isOnlinePaid: v.isOnlinePaid || false,
+          onlinePaidDate: v.onlinePaidDate || null,
+          createdBy: v.createdBy,
+          updatedBy: v.updatedBy
+        };
+      })
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
 
@@ -423,11 +464,24 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const filteredDeposits = useMemo(() => filterRows(deposits.map(e => ({ ...e, credit: e.amount, debit: 0, label: e.remark || 'Deposit', badge: 'deposit', deletable: true }))), [deposits, fFrom, fTo, fSearch]);
   const filteredVoucherCash = useMemo(() => filterRows(voucherCashAdv.map(e => ({ ...e, credit: 0, debit: Math.abs(e.amount), label: e.remark, badge: 'voucher_cash', deletable: false }))), [voucherCashAdv, fFrom, fTo, fSearch]);
   const filteredCashOuts = useMemo(() => filterRows(cashOuts.map(e => ({ ...e, credit: 0, debit: e.amount, label: e.remark || 'Cash Out', badge: 'cash_out', deletable: true }))), [cashOuts, fFrom, fTo, fSearch]);
+  // Tyre work and extra cash off a voucher. These were in the running ledger and
+  // in the totals but had no list of their own, so the only way to see the
+  // Rs.5,700 they came to was to read all 72 rows and pick them out. Deposits,
+  // cash advances and cash-outs added up to 64 of a 72-row ledger and nothing
+  // on the screen said where the other eight were.
+  const filteredVehicleExpenses = useMemo(
+    () => filterRows(voucherVehicleExpenses.map(e => ({
+      ...e, credit: 0, debit: Math.abs(e.amount),
+      label: e.remark, badge: 'voucher_expense', deletable: false,
+    }))),
+    [voucherVehicleExpenses, fFrom, fTo, fSearch],
+  );
   const filteredOnline = useMemo(() => filterRows(onlineAdvList, true), [onlineAdvList, fFrom, fTo, fSearch, fPaid]);
 
   const activeRows = tab === 'ledger' ? filteredLedger :
     tab === 'deposits' ? filteredDeposits :
       tab === 'voucher_cash' ? filteredVoucherCash :
+        tab === 'voucher_expense' ? filteredVehicleExpenses :
           filteredCashOuts;
 
   const paginatedRows = useMemo(() => {
@@ -528,6 +582,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   <div style={{ fontWeight: 600, color: r.isReturned ? 'var(--text-muted)' : 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.isReturned ? 'line-through' : 'none' }}>
                     {r.label}
                   </div>
+                  {r.breakdownNote && (
+                    <div style={{ fontSize: '10.5px', color: '#f97316', marginTop: '2px', fontWeight: 600 }}>
+                      ↳ {r.breakdownNote}
+                    </div>
+                  )}
                   {r.entityType && r.entityName && (() => {
                     const EIcon = ENTITY_ICON[r.entityType] || User;
                     return (
@@ -632,6 +691,10 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     }, {});
     
     const sortedDates = Object.keys(groupedRows).sort((a, b) => b > a ? 1 : -1);
+    // Running serial counter across ALL date groups so the number doesn't reset
+    // when you move from one day's block to the next (the user was reading each
+    // date group as a "page" and each one restarted at #1).
+    let runningSerial = 0;
 
     return (
       <TableScroll>
@@ -666,9 +729,12 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   <th style={{ ...TH, textAlign: 'center' }}>Status</th>
                 </tr></thead>
                 <tbody>
-                  {dateRows.map((r, i) => (
+                  {dateRows.map((r, i) => {
+                    runningSerial++;
+                    const serial = runningSerial;
+                    return (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                      <td style={{ ...TD, color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>{i + 1}</td>
+                      <td style={{ ...TD, color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>{serial}</td>
                       <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>{r.truckNo || '—'}</td>
                       <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{r.lrNo}</span></td>
                       <td style={{ ...TD }}><span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{r.vType}</span></td>
@@ -686,7 +752,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                           </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -856,6 +923,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           { id: 'monthly', label: 'Monthly Summary', count: '' },
           { id: 'deposits', label: 'Deposits', count: deposits.length },
           { id: 'voucher_cash', label: 'Voucher Cash Adv', count: voucherCashAdv.length },
+          { id: 'voucher_expense', label: 'Vehicle Expenses', count: voucherVehicleExpenses.length },
           { id: 'cash_out', label: 'Cash Outs', count: cashOuts.length },
         ].map(({ id, label, count }) => (
           <button key={id} onClick={() => onTabChange(id)}
@@ -953,6 +1021,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 {tab === 'ledger' ? 'Full Ledger (with running balance)' :
                   tab === 'deposits' ? 'Deposits' :
                     tab === 'voucher_cash' ? 'Voucher Cash Advances (auto-deducted)' :
+                      tab === 'voucher_expense' ? 'Vehicle Expenses off Vouchers (recovered from the owner)' :
                         'Cash Outs & Other Expenses'}
               </h3>
               <p>
