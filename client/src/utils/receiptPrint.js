@@ -49,13 +49,13 @@ const PAGE_STYLE_ID = 'receipt-page-size';
  * people are paid to read correctly, and a watermark that competes with a digit
  * is worse than no watermark.
  *
+ * Reports and exports only. Slips carry the logo at their head instead: a
+ * watermark behind the figures was doing the same job twice on the one document
+ * where space and legibility are tightest, and on 79mm thermal paper the mark
+ * competed with the numbers rather than sitting behind them.
+ *
  * @param {number} [scale]   width as a fraction of the page, 0-1
  * @param {number} [opacity] how strongly it prints
- *
- * Receipts want a stronger mark than reports. A thermal head has no greys — it
- * either burns a dot or it does not — so a 7% tint that looks right on an inkjet
- * A4 dithers away to nothing on an 79mm slip. Reports keep the faint setting;
- * the slip templates ask for more.
  */
 export const watermarkCss = (scale = 0.72, opacity = 0.09) => `
   body::after {
@@ -85,16 +85,6 @@ export const watermarkCss = (scale = 0.72, opacity = 0.09) => `
     print-color-adjust: exact;
   }
 `;
-
-/**
- * The mark for a slip — a 79mm receipt, a 105mm challan, a voucher.
- *
- * Stronger and wider than the report setting, and not by taste. These come off
- * a thermal head, which has no greys: it burns a dot or it does not, so the
- * faint tint that reads correctly on an A4 laser page dithers away to nothing
- * on a slip. The paper is also narrow, so the mark is given more of its width.
- */
-export const slipWatermarkCss = () => watermarkCss(0.85, 0.16);
 
 /** The mark for an A4 report or export, under columns of figures. */
 export const reportWatermarkCss = () => watermarkCss(0.6, 0.09);
@@ -134,7 +124,6 @@ export const receiptLogoCss = `
 `;
 
 const shellCss = ({ width, minHeight, padding, fontSize, lineHeight, fitContent }) => `
-  ${slipWatermarkCss()}
   ${receiptLogoCss}
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { background: #fff; }

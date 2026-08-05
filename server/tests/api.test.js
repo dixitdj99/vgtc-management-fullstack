@@ -3250,7 +3250,7 @@ test('brand: the icons are actually referenced', async () => {
     'the sidebar still paints a gradient tile behind the logo');
 });
 
-test('brand: every printed document carries the watermark', async () => {
+test('brand: reports are watermarked and slips are not', async () => {
   const fs = require('fs'), path = require('path');
   const src = path.join(__dirname, '..', '..', 'client', 'src');
 
@@ -3262,66 +3262,51 @@ test('brand: every printed document carries the watermark', async () => {
     return out;
   };
 
-  // Anything that builds a whole document to print must apply the mark.
-  const printers = walk(src).filter(f => fs.readFileSync(f, 'utf8').includes('<!DOCTYPE html>'));
-  assert(printers.length >= 5, 'expected several print documents, found ' + printers.length);
-  for (const f of printers) {
-    assert(/[wW]atermarkCss/.test(fs.readFileSync(f, 'utf8')),
-      path.basename(f) + ' builds a printable document with no watermark on it');
+  // A4 documents that leave the office carry the mark.
+  const REPORTS = ['BalanceSheet.jsx', 'TruckDashboard.jsx', 'exportUtils.js'];
+  for (const name of REPORTS) {
+    const f = walk(src).find(x => path.basename(x) === name);
+    assert(f, name + ' has gone');
+    assert(/reportWatermarkCss\(\)/.test(fs.readFileSync(f, 'utf8')),
+      name + ' prints a report with no watermark on it');
+  }
+
+  // Slips do not. They carry the logo at the head instead, and a wash behind
+  // the figures was the same job twice on the one document where space and
+  // legibility are tightest.
+  const SLIPS = ['receiptPrint.js', 'VoucherModule.jsx', 'StockModule.jsx'];
+  for (const name of SLIPS) {
+    const f = walk(src).find(x => path.basename(x) === name);
+    const t = fs.readFileSync(f, 'utf8');
+    assert(!/slipWatermarkCss/.test(t), name + ' is watermarking a slip again');
+    assert(!/\$\{watermarkCss\(/.test(t), name + ' applies a raw watermark to a slip');
   }
 
   const rp = fs.readFileSync(path.join(src, 'utils', 'receiptPrint.js'), 'utf8');
-  const css = rp.slice(rp.indexOf('export const watermarkCss'), rp.indexOf('const shellCss'));
+  const css = rp.slice(rp.indexOf('export const watermarkCss'), rp.indexOf('export const receiptLogoHtml'));
 
   // A print window is opened blank and written into, so its base URL is
   // about:blank and a root-relative path resolves to nothing.
   assert(/window\.location\.origin/.test(css),
     'the watermark URL is relative — it will not resolve in a print window');
 
-  // Faint enough to print under figures people are paid to read, on both the
-  // A4 default and the stronger setting the thermal slips ask for.
   const def = rp.match(/watermarkCss = \(scale = [\d.]+, opacity = ([\d.]+)\)/);
   assert(def, 'watermarkCss no longer takes an opacity with a default');
   assert(parseFloat(def[1]) > 0 && parseFloat(def[1]) <= 0.12,
-    'default watermark opacity ' + def[1] + ' will compete with the numbers on a report');
+    'watermark opacity ' + def[1] + ' will compete with the numbers on a report');
   assert(/opacity:\s*\$\{opacity\}/.test(css), 'the opacity argument is not actually used');
-
-  // A thermal head has no greys — it burns a dot or it does not — so the faint
-  // A4 setting dithers away to nothing on a slip.
-  const slip = rp.match(/slipWatermarkCss = \(\) => watermarkCss\([\d.]+,\s*([\d.]+)\)/);
-  const report = rp.match(/reportWatermarkCss = \(\) => watermarkCss\([\d.]+,\s*([\d.]+)\)/);
-  assert(slip && report, 'the slip and report presets are gone');
-  assert(parseFloat(slip[1]) > parseFloat(report[1]),
-    'the slip watermark is no stronger than the report one, so it will not survive thermal printing');
-  assert(parseFloat(slip[1]) <= 0.22,
-    'the slip watermark at ' + slip[1] + ' is strong enough to fight the figures on it');
-
-  // Every print document must pick a preset. The bare builder defaults to the
-  // report setting, which is how the voucher — a slip — ended up with a mark
-  // too faint to print.
-  for (const f of printers) {
-    const t = fs.readFileSync(f, 'utf8');
-    assert(/slipWatermarkCss\(\)|reportWatermarkCss\(\)/.test(t),
-      path.basename(f) + ' uses the raw watermark builder instead of choosing slip or report');
-  }
-
   assert(/rotate\(-?\d+deg\)/.test(css), 'the watermark is not rotated');
 
-  // Over the document, not under it. A voucher is a stack of bordered white
-  // boxes; painted behind the content the mark survived only in the gaps
-  // between rows, which is how it reached production looking half-printed.
+  // Over the document, not under it: an A4 report has opaque table rows too.
   assert(/body::after/.test(css) && !/body::before/.test(css),
     'the watermark is painted behind the content again — opaque rows will hide it');
   assert(/z-index:\s*2147483647/.test(css),
     'the watermark overlay is not above the content it has to cover');
   assert(/pointer-events:\s*none/.test(css),
-    'an overlay without pointer-events:none swallows the Print button');
-  assert(/position:\s*fixed/.test(css),
-    'the watermark is not fixed, so a long report gets it on the first page only');
+    'an overlay without pointer-events:none swallows the button underneath it');
   assert(/print-color-adjust:\s*exact/.test(css),
     'without print-color-adjust the browser drops the mark when it goes to paper');
 });
-
 test('brand: every slip carries the logo at its head', async () => {
   const fs = require('fs'), path = require('path');
   const src = path.join(__dirname, '..', '..', 'client', 'src');

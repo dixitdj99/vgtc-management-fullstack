@@ -11,7 +11,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
-import { openReceiptWindow, printHtml, slipWatermarkCss } from '../utils/receiptPrint';
+import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
 import TableScroll from '../components/TableScroll';
@@ -452,7 +452,6 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         .hindi-note { margin: 2px 0; }
         .signatures { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; font-weight: bold; padding: 0 10px; }
         @media print { body { padding: 0; background-color: #fff; } .receipt-container { margin: 0; } }
-        ${slipWatermarkCss()}
   </style>
 </head>
 <body>
