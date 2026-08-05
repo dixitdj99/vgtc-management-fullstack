@@ -8,6 +8,7 @@ import { allocateFreightPayment, allocateAcrossTrucks, outstandingOf } from '../
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import VehicleCreditDebitModule from './VehicleCreditDebitModule';
 import LabourAccount from './LabourAccount';
 // A multi-drop voucher keeps its LR numbers on the drops; its own `lrNo` is a
@@ -434,7 +435,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
     Object.keys(filters).forEach(key => {
       const vals = filters[key];
-      if (vals && vals.length > 0) list = list.filter(t => vals.includes(String(t[key] ?? '')));
+      if (vals && vals.length > 0) list = list.filter(t => columnValues(t, key).some(x => vals.includes(x)));
     });
 
     // Soonest due first; undated last.

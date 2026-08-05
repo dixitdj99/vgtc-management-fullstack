@@ -15,6 +15,7 @@ import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtil
 import { printHtml, receiptLogoCss, receiptLogoHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import EwayBillPanel from '../components/EwayBillPanel';
 import TableScroll from '../components/TableScroll';
 
@@ -768,7 +769,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     Object.keys(filters).forEach(key => {
         const vals = filters[key];
         if (vals && vals.length > 0) {
-            list = list.filter(c => vals.includes(String(c[key] ?? '')));
+            list = list.filter(c => columnValues(c, key).some(x => vals.includes(x)));
         }
     });
 
@@ -786,7 +787,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     Object.keys(filters).forEach(key => {
         const vals = filters[key];
         if (vals && vals.length > 0) {
-            rows = rows.filter(r => vals.includes(String(r[key] ?? '')));
+            rows = rows.filter(r => columnValues(r, key).some(x => vals.includes(x)));
         }
     });
 

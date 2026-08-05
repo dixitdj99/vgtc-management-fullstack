@@ -9,6 +9,7 @@ import { exportToExcel, buildExportRows } from '../utils/exportUtils';
 import { printHtml, reportWatermarkCss } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
 
 const TH = {
@@ -184,7 +185,7 @@ export default function TruckDashboard({ role, permissions }) {
     // column filters
     Object.keys(filters).forEach(key => {
       const vals = filters[key];
-      if (vals && vals.length > 0) list = list.filter(r => vals.includes(String(r[key] ?? '')));
+      if (vals && vals.length > 0) list = list.filter(r => columnValues(r, key).some(x => vals.includes(x)));
     });
 
     list.sort((a, b) => {

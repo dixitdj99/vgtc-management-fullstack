@@ -8,6 +8,7 @@ import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Pri
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
@@ -1526,7 +1527,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         Object.keys(filters).forEach(key => {
             const selectedValues = filters[key];
             if (selectedValues && selectedValues.length > 0) {
-                list = list.filter(v => selectedValues.includes(String(v[key] ?? '')));
+                list = list.filter(v => columnValues(v, key).some(x => selectedValues.includes(x)));
             }
         });
 

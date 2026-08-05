@@ -11,6 +11,7 @@ import { printHtml, reportWatermarkCss } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { extrasPayload, readExtras } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
 
 const API_V = `/vouchers`;
@@ -1307,7 +1308,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     Object.keys(filters).forEach(key => {
       const selectedValues = filters[key];
       if (selectedValues && selectedValues.length > 0) {
-        rows = rows.filter(v => selectedValues.includes(String(v[key] ?? '')));
+        rows = rows.filter(v => columnValues(v, key).some(x => selectedValues.includes(x)));
       }
     });
 
@@ -1461,7 +1462,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     Object.keys(filters).forEach(key => {
       const selectedValues = filters[key];
       if (selectedValues && selectedValues.length > 0) {
-        filtered = filtered.filter(t => selectedValues.includes(String(t[key] ?? '')));
+        filtered = filtered.filter(t => columnValues(t, key).some(x => selectedValues.includes(x)));
       }
     });
 

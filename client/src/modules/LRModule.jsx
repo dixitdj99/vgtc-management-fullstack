@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
@@ -1759,7 +1760,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     Object.keys(filters).forEach(key => {
       const vals = filters[key];
       if (vals && vals.length > 0) {
-        list = list.filter(r => vals.includes(String(r[key] ?? '')));
+        list = list.filter(r => columnValues(r, key).some(x => vals.includes(x)));
       }
     });
 

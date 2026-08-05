@@ -43,6 +43,48 @@ import { motion, AnimatePresence } from 'framer-motion';
  *   trustData — the rows are not being narrowed by this column, so believe them
  * @returns {{key: string, opts: string[]}}
  */
+/**
+ * The values a row offers for a column.
+ *
+ * Most columns are one field. A voucher covering several LRs is the exception:
+ * the numbers live on its deliveries, and its own `lrNo` is whatever was left
+ * in the form when it was saved — which is why the LR filter on the JK Lakshmi
+ * and JK Super voucher lists offered a column of small numbers nobody
+ * recognised. Such a voucher offers one value per drop and matches if any of
+ * them is picked, because a trip carrying LR 1236 and 1237 belongs under both.
+ *
+ * @returns {string[]} zero or more values, always strings
+ */
+export function columnValues(row, colKey) {
+    if (colKey === 'lrNo' && Array.isArray(row?.deliveries) && row.deliveries.length) {
+        const fromDrops = row.deliveries
+            .map(d => d?.lrNo)
+            .filter(v => v !== undefined && v !== null && v !== '')
+            .map(String);
+        if (fromDrops.length) return fromDrops;
+    }
+    const v = row?.[colKey];
+    if (v === undefined || v === null || v === '') return [];
+    return [String(v)];
+}
+
+/**
+ * Does a row survive the active filters?
+ *
+ * Shared so the dropdown and the matching cannot drift apart — offering a value
+ * that then matches nothing is worse than not offering it.
+ *
+ * @param {Object} filters  { [colKey]: string[] }
+ * @param {Object} [derive] { [colKey]: (row) => value } for computed columns
+ */
+export function rowMatchesFilters(row, filters, derive = {}) {
+    return Object.entries(filters || {}).every(([key, vals]) => {
+        if (!vals || !vals.length) return true;
+        if (derive[key]) return vals.includes(String(derive[key](row) ?? ''));
+        return columnValues(row, key).some(v => vals.includes(v));
+    });
+}
+
 export function nextOptions(store, { colKey, fromData, trustData }) {
     // A different column: nothing remembered applies.
     if (store.key !== colKey) return { key: colKey, opts: fromData };
@@ -64,11 +106,14 @@ export default function ColumnFilter({ label, colKey, data, allData, activeFilte
 
     const uniqueFrom = (rows) => {
         const set = new Set();
-        (rows || []).forEach(item => {
-            const val = item[colKey];
-            if (val !== undefined && val !== null && val !== '') set.add(String(val));
+        (rows || []).forEach(item => columnValues(item, colKey).forEach(v => set.add(v)));
+        // Numeric columns — LR and bill numbers above all — read as nonsense
+        // sorted as text: 1, 10, 100, 2. Compare as numbers when they are.
+        return [...set].sort((a, b) => {
+            const na = Number(a), nb = Number(b);
+            if (Number.isFinite(na) && Number.isFinite(nb) && a.trim() !== '' && b.trim() !== '') return na - nb;
+            return a.localeCompare(b);
         });
-        return [...set].sort();
     };
 
     // Remembers the widest set seen for this column. While this column's own

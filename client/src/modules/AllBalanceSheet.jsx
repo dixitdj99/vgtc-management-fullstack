@@ -31,6 +31,7 @@ import {
   Truck as TruckIcon, Trash2, RotateCcw,
 } from 'lucide-react';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { calcNet, calcGross, payBlockers, pumpNameOf, lrLabelOf, explodeAll, VoucherRow, VoucherEditModal, TH, TD } from './BalanceSheet';
@@ -213,7 +214,7 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
       // ColumnFilter stores an array of accepted values per column.
       for (const [key, vals] of Object.entries(filters)) {
         if (!vals?.length) continue;
-        if (!vals.includes(String(v[key] ?? ''))) return false;
+        if (!columnValues(v, key).some(x => vals.includes(x))) return false;
       }
       return true;
     });

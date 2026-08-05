@@ -5,6 +5,7 @@ import { Fuel, Search, Filter, Calendar, Check, X, Pencil, Droplet, ArrowRight, 
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { useAuth } from '../auth/AuthContext';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
 
 const API_V = `/vouchers`;
@@ -160,7 +161,7 @@ export default function DieselModule({ role = 'user', permissions = {}, types })
                         return vals.includes(s);
                     });
                 } else {
-                    list = list.filter(v => vals.includes(String(v[key] ?? '')));
+                    list = list.filter(v => columnValues(v, key).some(x => vals.includes(x)));
                 }
             }
         });

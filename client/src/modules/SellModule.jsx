@@ -12,6 +12,7 @@ import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtil
 import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import TableScroll from '../components/TableScroll';
 
@@ -180,7 +181,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     Object.keys(filters).forEach(key => {
       const vals = filters[key];
       if (vals && vals.length > 0) {
-        list = list.filter(s => vals.includes(String(s[key] ?? '')));
+        list = list.filter(s => columnValues(s, key).some(x => vals.includes(x)));
       }
     });
     return list;

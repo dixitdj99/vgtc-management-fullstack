@@ -3375,5 +3375,136 @@ test('app: a module that reads role is given one', async () => {
     'rendered without role, so every admin-only control is hidden from admins: ' + missing.join('; '));
 });
 
+/** Lift a named top-level function out of ColumnFilter.jsx and run it. */
+function liftFromColumnFilter(name) {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'components', 'ColumnFilter.jsx'), 'utf8');
+  const header = 'export function ' + name;
+  const i = src.indexOf(header);
+  if (i === -1) throw new Error(name + ' is gone from ColumnFilter.jsx');
+  let depth = 0, started = false, end = -1;
+  for (let j = i; j < src.length; j++) {
+    const c = src[j];
+    if (c === '{') { depth++; started = true; }
+    else if (c === '}') { depth--; if (started && depth === 0) { end = j + 1; break; } }
+  }
+  return new Function(src.slice(i, end).replace('export ', '') + '; return ' + name + ';')();
+}
+
+test('filters: the LR filter offers real LR numbers, not the voucher serial', async () => {
+  // Reported on the JK Lakshmi and JK Super voucher lists: the LR column showed
+  // the drop numbers but its filter offered a column of small numbers nobody
+  // recognised. A multi-drop voucher keeps its LRs on the deliveries; its own
+  // lrNo is whatever was left in the form when it was saved.
+  const columnValues = liftFromColumnFilter('columnValues');
+
+  const multi = { lrNo: '5', deliveries: [{ lrNo: '1236' }, { lrNo: '1237' }] };
+  assert(JSON.stringify(columnValues(multi, 'lrNo')) === JSON.stringify(['1236', '1237']),
+    'a multi-drop voucher does not offer its real LRs: ' + JSON.stringify(columnValues(multi, 'lrNo')));
+  assert(!columnValues(multi, 'lrNo').includes('5'),
+    'the leftover form number is still offered as though it were an LR');
+
+  // A plain voucher is unchanged.
+  assert(JSON.stringify(columnValues({ lrNo: '1189' }, 'lrNo')) === JSON.stringify(['1189']),
+    'a single-drop voucher lost its LR');
+
+  // Deliveries with no numbers on them fall back rather than going blank.
+  assert(JSON.stringify(columnValues({ lrNo: '7', deliveries: [{}, {}] }, 'lrNo')) === JSON.stringify(['7']),
+    'a voucher whose drops carry no LR should fall back to its own');
+
+  // Every other column is untouched.
+  assert(JSON.stringify(columnValues(multi, 'truckNo')) === JSON.stringify([]),
+    'a missing field should offer nothing, not "undefined"');
+  assert(JSON.stringify(columnValues({ truckNo: 'HR55 EF 9012' }, 'truckNo')) === JSON.stringify(['HR55 EF 9012']),
+    'an ordinary column stopped working');
+});
+
+test('filters: a multi-LR voucher matches on any of its LRs', async () => {
+  // Offering a value that then matches nothing is worse than not offering it,
+  // so the dropdown and the row matching read the same place. Both functions
+  // are lifted into one scope because the matcher calls the accessor.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'components', 'ColumnFilter.jsx'), 'utf8');
+  // Braces inside the parameter list are not the body. `rowMatchesFilters` has
+  // a `derive = {}` default, and counting from the first brace closed on that
+  // and returned a signature with no body at all.
+  const body = (name) => {
+    const i = src.indexOf('export function ' + name);
+    assert(i !== -1, name + ' is gone from ColumnFilter.jsx');
+    let paren = 0, depth = 0, started = false;
+    for (let j = i; j < src.length; j++) {
+      const c = src[j];
+      if (c === '(') paren++;
+      else if (c === ')') paren--;
+      else if (paren === 0 && c === '{') { depth++; started = true; }
+      else if (paren === 0 && c === '}') {
+        depth--;
+        if (started && depth === 0) return src.slice(i, j + 1).replace('export ', '');
+      }
+    }
+    throw new Error('unbalanced ' + name);
+  };
+  const match = new Function(
+    body('columnValues') + '\n' + body('rowMatchesFilters') + '\n; return rowMatchesFilters;')();
+
+  const voucher = { lrNo: '5', truckNo: 'HR55 EF 9012', deliveries: [{ lrNo: '1236' }, { lrNo: '1237' }] };
+  assert(match(voucher, { lrNo: ['1237'] }), 'picking the second LR loses the trip');
+  assert(match(voucher, { lrNo: ['1236'] }), 'picking the first LR loses the trip');
+  assert(!match(voucher, { lrNo: ['9999'] }), 'an unrelated LR still matches');
+  assert(!match(voucher, { lrNo: ['5'] }), 'the leftover serial still matches');
+  assert(match(voucher, {}), 'no filters should keep every row');
+
+  // Two columns at once still means both must hold.
+  assert(match(voucher, { lrNo: ['1236'], truckNo: ['HR55 EF 9012'] }), 'two matching filters rejected the row');
+  assert(!match(voucher, { lrNo: ['1236'], truckNo: ['HR46 C 1234'] }), 'a non-matching second filter was ignored');
+
+  // Computed columns keep their own accessor — Diesel's status is derived.
+  const derive = { status: r => (r.isDieselVerified ? 'Verified' : 'Pending') };
+  assert(match({ isDieselVerified: true }, { status: ['Verified'] }, derive), 'a derived column stopped matching');
+  assert(!match({ isDieselVerified: false }, { status: ['Verified'] }, derive), 'a derived column matches everything');
+});
+test('filters: every list matches rows the same way the dropdown offers them', async () => {
+  // The dropdown reads a voucher's deliveries. A list still comparing one raw
+  // field would offer LR 1237 and then match nothing when it was picked.
+  const fs = require('fs'), path = require('path');
+  const dir = path.join(__dirname, '..', '..', 'client', 'src', 'modules');
+
+  const offenders = [];
+  for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.jsx'))) {
+    const t = fs.readFileSync(path.join(dir, f), 'utf8');
+    if (!/<ColumnFilter/.test(t)) continue;
+    // The old shape: comparing a single raw field against the picked values.
+    const bare = t.match(/(?:vals|selectedValues)\.includes\(String\(\w+\[key\][^)]*\)\)/g);
+    if (bare) offenders.push(f + ' (' + bare.length + ')');
+  }
+  assert(offenders.length === 0,
+    'these still match on one raw field and will not find a multi-LR voucher: ' + offenders.join(', '));
+
+  // And the ones that filter must import the shared accessor.
+  for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.jsx'))) {
+    const t = fs.readFileSync(path.join(dir, f), 'utf8');
+    if (!/columnValues\(/.test(t)) continue;
+    assert(/import \{[^}]*columnValues[^}]*\} from '\.\.\/components\/ColumnFilter'/.test(t),
+      f + ' uses columnValues without importing it');
+  }
+});
+
+test('filters: numeric options are ordered as numbers', async () => {
+  // LR and bill numbers sorted as text read 1, 10, 100, 2 — which makes a long
+  // dropdown useless for finding one.
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'client', 'src', 'components', 'ColumnFilter.jsx'), 'utf8');
+  const fn = src.slice(src.indexOf('const uniqueFrom'), src.indexOf('const remembered'));
+  assert(/Number\.isFinite/.test(fn), 'the option list is back to sorting numbers as text');
+
+  const sorter = new Function(`return ${'(a, b) => { const na = Number(a), nb = Number(b); if (Number.isFinite(na) && Number.isFinite(nb) && a.trim() !== "" && b.trim() !== "") return na - nb; return a.localeCompare(b); }'};`)();
+  const got = ['100', '2', '1', '10'].sort(sorter);
+  assert(JSON.stringify(got) === JSON.stringify(['1', '2', '10', '100']),
+    'numeric options are still ordered as text: ' + JSON.stringify(got));
+
+  const words = ['Rewari', 'Jind', 'Bhiwani'].sort(sorter);
+  assert(words[0] === 'Bhiwani', 'text options are no longer sorted alphabetically');
+});
+
 // Run
 runAll();
