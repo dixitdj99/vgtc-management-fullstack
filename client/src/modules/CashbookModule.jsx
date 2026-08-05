@@ -345,8 +345,31 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       })),
     ].sort((a, b) => {
       const da = a.date || '', db = b.date || '';
-      if (da !== db) return da > db ? 1 : -1;
-      return (a.createdAt || '') > (b.createdAt || '') ? 1 : -1;
+      if (da !== db) return da < db ? -1 : 1;
+
+      // Money in before money out, within the day.
+      //
+      // Rows built from vouchers carry no createdAt — they are derived, not
+      // stored — so comparing timestamps put every one of them ahead of the
+      // day's deposit ('' is never greater than a real date). A day that opened
+      // with cash in hand was drawn down first and topped up afterwards, and
+      // the running balance dived to a five-figure minus before the deposit
+      // that had actually been made first. That is what the office meant by
+      // "we added the balance and it still went minus".
+      //
+      // A cash box cannot be overdrawn, so receipts lead. It is also how a cash
+      // book is read.
+      const ca = a.credit > 0 ? 0 : 1, cb = b.credit > 0 ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+
+      // Then whatever ordering the records themselves support, and finally the
+      // id so the sequence is the same on every render. The old comparator
+      // returned -1 for equal rows and never 0, which is not a valid ordering:
+      // it claims a < b and b < a at once, and leaves the result up to the
+      // sort implementation.
+      const ta = a.createdAt || '', tb = b.createdAt || '';
+      if (ta !== tb) return ta < tb ? -1 : 1;
+      return String(a.id || '').localeCompare(String(b.id || ''));
     });
     let bal = 0;
     return rows.map(r => {
@@ -413,7 +436,20 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   }, [activeRows, currentPage]);
 
   /* ── Summary stats ── */
-  const currentBalance = deposits.reduce((s, e) => s + e.amount, 0) - cashOuts.reduce((s, e) => s + e.amount, 0) - voucherCashAdv.reduce((s, e) => s + Math.abs(e.amount), 0);
+  /**
+   * The last line of the ledger, not a second sum of the same money.
+   *
+   * This used to add deposits and subtract cash-outs and voucher cash advances,
+   * and stop there — it never subtracted the vehicle expenses a voucher carries
+   * (tyre puncture, greasing and air, extra cash), though the ledger below
+   * counts every one of them as a debit. The headline figure therefore read
+   * high by exactly that total and disagreed with the balance printed on the
+   * last row of the same screen. It also ignored returns, counting money that
+   * had been handed back.
+   */
+  const currentBalance = ledgerWithBalance.length
+    ? ledgerWithBalance[ledgerWithBalance.length - 1].balance
+    : 0;
   const totalDeposited = filteredDeposits.reduce((s, e) => s + e.credit, 0);
   const currentMonthYM = new Date().toISOString().slice(0, 7);
   const currentMonthDeposit = deposits.filter(e => (e.date || '').startsWith(currentMonthYM)).reduce((s, e) => s + e.amount, 0);
@@ -677,7 +713,15 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   // Every field on the ledger row. The old lists dropped who took the cash, the
   // remark behind it, and whether a cash-out had been returned.
   const cashbookExportRows = () => buildExportRows(
-    activeRows.map(r => ({ ...r, label: r.label || r.remark })),
+    // Amount is signed the same way for every row: out is negative.
+    // It used to be whatever the source record happened to hold, so a voucher
+    // advance of 1,200 exported as -1200 while a cash-out of 2,000 exported as
+    // +2000 — both money leaving the box, on the same printed page.
+    activeRows.map(r => ({
+      ...r,
+      label: r.label || r.remark,
+      amount: (r.credit || 0) - (r.debit || 0),
+    })),
     { order: ['date', 'label', 'badge', 'entityType', 'entityName', 'credit', 'debit', 'amount', 'balance', 'truckNo', 'lrNo', 'remark'] },
   );
 

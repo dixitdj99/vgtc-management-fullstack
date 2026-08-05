@@ -3506,5 +3506,98 @@ test('filters: numeric options are ordered as numbers', async () => {
   assert(words[0] === 'Bhiwani', 'text options are no longer sorted alphabetically');
 });
 
+test('cashbook: a day opens with what was put in, not with what went out', async () => {
+  // Reported from production. Rows built from vouchers are derived and carry no
+  // createdAt, so comparing timestamps put every one of them ahead of the day's
+  // deposit — '' is never greater than a real date. A day that opened with cash
+  // in hand was drawn down first and topped up afterwards, and the running
+  // balance dived to a five-figure minus before the deposit that had actually
+  // been made first.
+  const fs = require('fs'), path = require('path');
+  const cb = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'CashbookModule.jsx'), 'utf8');
+
+  const memo = cb.slice(cb.indexOf('const ledgerWithBalance'), cb.indexOf('Monthly summary'));
+  assert(/a\.credit > 0 \? 0 : 1/.test(memo),
+    'the ledger no longer puts receipts before payments within a day');
+  assert(!/\(a\.createdAt \|\| ''\) > \(b\.createdAt \|\| ''\) \? 1 : -1/.test(memo),
+    'the old comparator is back — it never returns 0, so equal rows claim to be both before and after each other');
+  assert(/localeCompare\(String\(b\.id/.test(memo),
+    'nothing breaks a tie, so the order can change between renders');
+
+  // Replay the first day of the reported ledger.
+  const day = '2026-08-01';
+  const rows = [
+    { id: 'v1', date: day, credit: 0, debit: 1200 },
+    { id: 'v2', date: day, credit: 0, debit: 1200 },
+    { id: 'v3', date: day, credit: 0, debit: 1000 },
+    { id: 'v4', date: day, credit: 0, debit: 1000 },
+    { id: 'v5', date: day, credit: 0, debit: 1000 },
+    { id: 'v6', date: day, credit: 0, debit: 1200 },
+    { id: 'c1', date: day, credit: 0, debit: 2000, createdAt: '2026-08-01T11:20:00Z' },
+    { id: 'c2', date: day, credit: 0, debit: 1100, createdAt: '2026-08-01T11:25:00Z' },
+    { id: 'c3', date: day, credit: 0, debit: 900, createdAt: '2026-08-01T11:30:00Z' },
+    { id: 'd1', date: day, credit: 77600, debit: 0, createdAt: '2026-08-01T09:00:00Z' },
+  ];
+  const cmp = (a, b) => {
+    const da = a.date || '', db = b.date || '';
+    if (da !== db) return da < db ? -1 : 1;
+    const ca = a.credit > 0 ? 0 : 1, cb2 = b.credit > 0 ? 0 : 1;
+    if (ca !== cb2) return ca - cb2;
+    const ta = a.createdAt || '', tb = b.createdAt || '';
+    if (ta !== tb) return ta < tb ? -1 : 1;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  };
+
+  let bal = 0, lowest = 0;
+  [...rows].sort(cmp).forEach(r => { bal += r.credit - r.debit; if (bal < lowest) lowest = bal; });
+  assert(bal === 67000, 'the day should still close at 67,000, got ' + bal);
+  assert(lowest >= 0, 'the ledger still shows an overdraft that never happened: ' + lowest);
+
+  // A comparator must be able to say two rows are equal.
+  const same = { id: 'x', date: day, credit: 0, debit: 5 };
+  assert(cmp(same, { ...same }) === 0, 'identical rows do not compare equal');
+});
+
+test('cashbook: the headline balance is the last line of the ledger', async () => {
+  // It added deposits and subtracted cash-outs and voucher cash advances, and
+  // stopped — never subtracting the vehicle expenses a voucher carries, though
+  // the ledger counts every one as a debit. On the reported export that is
+  // Rs.5,700 of tyre work and extra cash: the figure at the top read 95,890
+  // against a ledger closing at 90,190, on the same screen.
+  const fs = require('fs'), path = require('path');
+  const cb = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'CashbookModule.jsx'), 'utf8');
+
+  const line = cb.slice(cb.indexOf('const currentBalance'), cb.indexOf('const totalDeposited'));
+  assert(/ledgerWithBalance\[ledgerWithBalance\.length - 1\]\.balance/.test(line),
+    'the headline balance is computed separately from the ledger again');
+  assert(!/voucherCashAdv\.reduce/.test(line),
+    'the headline balance is back to re-summing part of the ledger by hand');
+
+  const expenses = [200, 100, 200, 300, 2200, 200, 2000, 500];
+  const missed = expenses.reduce((a, b) => a + b, 0);
+  assert(missed === 5700, 'fixture drifted');
+  assert(90190 + missed === 95890, 'the arithmetic of the reported discrepancy no longer holds');
+});
+
+test('cashbook: an exported amount means the same thing on every row', async () => {
+  // The export took whatever the source record held, so a voucher advance of
+  // 1,200 printed as -1200 while a cash-out of 2,000 printed as +2000 — both
+  // money leaving the box, on the same page.
+  const fs = require('fs'), path = require('path');
+  const cb = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'client', 'src', 'modules', 'CashbookModule.jsx'), 'utf8');
+  const fn = cb.slice(cb.indexOf('const cashbookExportRows'), cb.indexOf('const handleExportExcel'));
+
+  assert(/amount: \(r\.credit \|\| 0\) - \(r\.debit \|\| 0\)/.test(fn),
+    'the exported amount is not derived from credit and debit');
+
+  const signed = r => (r.credit || 0) - (r.debit || 0);
+  assert(signed({ credit: 0, debit: 1200 }) === -1200, 'a voucher advance should export negative');
+  assert(signed({ credit: 0, debit: 2000 }) === -2000, 'a cash-out should export negative too');
+  assert(signed({ credit: 77600, debit: 0 }) === 77600, 'a deposit should export positive');
+});
+
 // Run
 runAll();
