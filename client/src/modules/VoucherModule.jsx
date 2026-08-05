@@ -2118,7 +2118,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                     <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', transition: 'background 0.12s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
-                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * PAGE_SIZE + i + 1}</td>
                                         <td className="t-card-title" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
