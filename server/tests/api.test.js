@@ -3339,5 +3339,41 @@ test('brand: every slip carries the logo at its head', async () => {
     'StockModule uses the slip logo without importing it');
 });
 
+test('app: a module that reads role is given one', async () => {
+  // Diesel Control showed an admin no action buttons at all. The module defaults
+  // `role = 'user'` and gates Quick Verify and Reconcile on
+  // `role === 'admin' || permissions.diesel === 'edit'`; App.jsx passed
+  // permissions but not role, and an admin carries no per-module permission
+  // entry because admin rights come from the role. Both halves were false, so
+  // the Actions column rendered empty — with no error anywhere.
+  const fs = require('fs'), path = require('path');
+  const client = path.join(__dirname, '..', '..', 'client', 'src');
+  const app = fs.readFileSync(path.join(client, 'App.jsx'), 'utf8');
+  const modDir = path.join(client, 'modules');
+
+  // Any module whose signature reads role, and which actually branches on it.
+  const readsRole = fs.readdirSync(modDir)
+    .filter(f => f.endsWith('.jsx'))
+    .filter(f => {
+      const t = fs.readFileSync(path.join(modDir, f), 'utf8');
+      return /function \w+\(\{[^}]*\brole\b/s.test(t) && /role === '/.test(t);
+    })
+    .map(f => f.replace('.jsx', ''));
+
+  assert(readsRole.includes('DieselModule'), 'DieselModule no longer branches on role');
+
+  const missing = [];
+  for (const m of readsRole) {
+    const sites = [...app.matchAll(new RegExp('<' + m + '(\\s[^>]*?)?/?>', 'gs'))];
+    for (const s of sites) {
+      if (!/\brole=/.test(s[0])) {
+        missing.push(m + ' at App.jsx line ' + app.slice(0, s.index).split('\n').length);
+      }
+    }
+  }
+  assert(missing.length === 0,
+    'rendered without role, so every admin-only control is hidden from admins: ' + missing.join('; '));
+});
+
 // Run
 runAll();

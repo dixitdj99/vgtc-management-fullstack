@@ -739,6 +739,7 @@ function AppInner() {
        */}
       {(id === 'diesel_dump' || id === 'diesel_jkl' || id === 'diesel_jharli') && (
         <DieselModule
+          role={user.role}
           permissions={user.permissions}
           types={
             (id === 'diesel_jkl' || id === 'diesel_jharli')
@@ -768,7 +769,7 @@ function AppInner() {
       {/* Generic orgs keep their vouchers under type 'main'. Without this it fell
           back to the VGTC types and a generic org saw no diesel at all — which
           would now also make its entries permanently unsendable to Pay. */}
-      {id === 'diesel_main' && <DieselModule permissions={user.permissions} types={['main']} />}
+      {id === 'diesel_main' && <DieselModule role={user.role} permissions={user.permissions} types={['main']} />}
       {id === 'mileage_main' && <MileageModule />}
       {id === 'tyres_main' && <TyreModule />}
       {id === 'pay_main' && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
