@@ -1,123 +1,186 @@
 const express = require('express');
 const router = express.Router();
-const { db, isAvailable } = require('../firebase');
-const { getCol } = require('../utils/collectionUtils');
-const localStore = require('../utils/localStore');
+const attendanceService = require('../services/attendanceService');
+const auditService = require('../services/auditService');
+const { requirePermission } = require('../middleware/auth');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 
 const ATTENDANCE_COL = 'attendance';
 
-// GET all attendance records — supports ?month=YYYY-MM and ?profileId=xxx
-router.get('/', async (req, res) => {
+// Everything here is org-scoped and needs at least view access. Writes ask for
+// 'edit' individually below — the client also hides the controls, but the check
+// that matters is this one.
+router.use(requirePermission('attendance', 'view'), tenancyMiddleware);
+
+// The yard's calendar day, not the server's UTC day — see attendanceService.
+const today = () => attendanceService.businessToday();
+const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+
+/**
+ * GET /api/attendance/roster?date=YYYY-MM-DD
+ *
+ * The roll-call screen. Returns every profile who should be present that day,
+ * what has already been saved, and a suggested status for anyone unmarked —
+ * drivers from their trip evidence, everyone else defaulting to present.
+ */
+router.get('/roster', async (req, res, next) => {
+    try {
+        const date = isDate(req.query.date) ? req.query.date : today();
+        res.json(await attendanceService.getRoster(req.orgId, req, date));
+    } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/attendance/pending?days=14
+ *
+ * Recent days whose roll-call is unfinished, newest first. A day drops off as
+ * soon as everyone on it is marked, so the list empties itself.
+ */
+router.get('/pending', async (req, res, next) => {
+    try {
+        res.json(await attendanceService.getPendingDays(req.orgId, req, req.query.days));
+    } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/attendance/summary?month=YYYY-MM
+ * Per-profile payroll totals: payable days, paid vs unpaid leave, estimated pay.
+ */
+router.get('/summary', async (req, res, next) => {
+    try {
+        const month = req.query.month || today().slice(0, 7);
+        res.json(await attendanceService.getMonthlySummary(req.orgId, req, month));
+    } catch (err) {
+        if (/must be/.test(err.message)) return res.status(400).json({ error: err.message });
+        next(err);
+    }
+});
+
+/**
+ * GET /api/attendance/evidence?profileId=&from=&to=
+ * The trip/fuel records behind a driver's derived days, for auditing a dispute.
+ */
+router.get('/evidence', async (req, res, next) => {
+    try {
+        const { profileId } = req.query;
+        if (!profileId) return res.status(400).json({ error: 'profileId is required' });
+        const to = isDate(req.query.to) ? req.query.to : today();
+        const from = isDate(req.query.from) ? req.query.from : `${to.slice(0, 7)}-01`;
+
+        const profiles = await attendanceService.getAttendingProfiles(req.orgId, req, null);
+        const profile = profiles.find(p => p.id === profileId);
+        if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+        const evidence = await attendanceService.deriveDriverActivity(req.orgId, req, {
+            from, to, profiles: [profile],
+        });
+        res.json({ profileId, from, to, days: evidence[profileId] || {} });
+    } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/attendance?from=&to=&profileId=&month=
+ * Raw saved records. Defaults to the current month rather than the whole
+ * collection so this stays cheap as history builds up.
+ */
+router.get('/', async (req, res, next) => {
     try {
         const { month, profileId } = req.query;
-        let docs = [];
+        let { from, to } = req.query;
 
-        if (!isAvailable()) {
-            docs = localStore.getAll(ATTENDANCE_COL);
-        } else {
-            let query = db.collection(getCol(ATTENDANCE_COL, req));
-            const snapshot = await query.get();
-            docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (month && /^\d{4}-\d{2}$/.test(month)) {
+            const [y, m] = month.split('-').map(Number);
+            from = `${month}-01`;
+            to = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
         }
+        if (!isDate(from) || !isDate(to)) {
+            const t = today();
+            from = `${t.slice(0, 7)}-01`;
+            to = t;
+        }
+        if (from > to) return res.status(400).json({ error: '"from" must not be after "to"' });
 
-        // Filter by month if provided (format: YYYY-MM)
-        if (month) docs = docs.filter(d => (d.date || '').startsWith(month));
-        // Filter by staff profile id
-        if (profileId) docs = docs.filter(d => d.profileId === profileId);
-
-        docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-        res.json(docs);
-    } catch (err) {
-        console.error('get attendance error:', err);
-        res.status(500).json({ error: err.message });
-    }
+        res.json(await attendanceService.getRange(req.orgId, req, { from, to, profileId }));
+    } catch (err) { next(err); }
 });
 
-// POST — mark attendance for a single staff member for a specific date
-// Body: { profileId, profileName, date, status: 'present'|'absent'|'half_day'|'leave' }
-router.post('/', async (req, res) => {
-    try {
-        const { profileId, date } = req.body;
-        if (!profileId || !date) return res.status(400).json({ error: 'profileId and date are required' });
-
-        const payload = {
-            ...req.body,
-            createdAt: new Date().toISOString(),
-        };
-
-        if (!isAvailable()) {
-            // Check for existing record and update it
-            const existing = localStore.getAll(ATTENDANCE_COL).find(d => d.profileId === profileId && d.date === date);
-            if (existing) {
-                localStore.update(ATTENDANCE_COL, existing.id, payload);
-                return res.json({ id: existing.id, ...payload });
-            }
-            const doc = localStore.insert(ATTENDANCE_COL, payload);
-            return res.json({ id: doc.id, ...payload });
-        }
-
-        // In Firestore, use a deterministic doc ID so duplicate marks simply overwrite
-        const docId = `${profileId}_${date}`;
-        await db.collection(getCol(ATTENDANCE_COL, req)).doc(docId).set(payload, { merge: true });
-        res.json({ id: docId, ...payload });
-    } catch (err) {
-        console.error('add attendance error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST bulk — mark attendance for multiple staff in one request
-// Body: { date, records: [{ profileId, profileName, status }] }
-router.post('/bulk', async (req, res) => {
+/**
+ * POST /api/attendance/bulk — save one day's roll-call.
+ * Body: { date, records: [{ profileId, profileName, profileType, status, note?, source? }] }
+ */
+router.post('/bulk', requirePermission('attendance', 'edit'), async (req, res, next) => {
     try {
         const { date, records } = req.body;
-        if (!date || !Array.isArray(records)) return res.status(400).json({ error: 'date and records[] are required' });
+        const saved = await attendanceService.saveBulk(req.orgId, req, {
+            date, records, user: req.user,
+        });
 
-        const results = [];
+        auditService.logAction({
+            orgId: req.orgId,
+            action: auditService.ACTIONS.ATTENDANCE_MARKED,
+            performedBy: req.user.id,
+            performedByName: req.user.name,
+            targetId: date,
+            targetType: 'attendance',
+            before: null,
+            after: {
+                date,
+                count: saved.length,
+                present: saved.filter(r => r.status === 'present').length,
+                absent: saved.filter(r => r.status === 'absent').length,
+                half_day: saved.filter(r => r.status === 'half_day').length,
+                leave: saved.filter(r => r.status === 'leave').length,
+            },
+        });
 
-        if (!isAvailable()) {
-            for (const r of records) {
-                const payload = { ...r, date, createdAt: new Date().toISOString() };
-                const existing = localStore.getAll(ATTENDANCE_COL).find(d => d.profileId === r.profileId && d.date === date);
-                if (existing) {
-                    localStore.update(ATTENDANCE_COL, existing.id, payload);
-                    results.push({ id: existing.id, ...payload });
-                } else {
-                    const doc = localStore.insert(ATTENDANCE_COL, payload);
-                    results.push({ id: doc.id, ...payload });
-                }
-            }
-        } else {
-            const batch = db.batch();
-            const col = getCol(ATTENDANCE_COL, req);
-            for (const r of records) {
-                const docId = `${r.profileId}_${date}`;
-                const payload = { ...r, date, createdAt: new Date().toISOString() };
-                batch.set(db.collection(col).doc(docId), payload, { merge: true });
-                results.push({ id: docId, ...payload });
-            }
-            await batch.commit();
-        }
-
-        res.json({ saved: results.length, records: results });
+        res.json({ message: 'Attendance saved', saved: saved.length, records: saved });
     } catch (err) {
-        console.error('bulk attendance error:', err);
-        res.status(500).json({ error: err.message });
+        if (/required|invalid|must be/i.test(err.message)) {
+            return res.status(400).json({ error: err.message });
+        }
+        next(err);
     }
 });
 
-// DELETE a specific attendance record
-router.delete('/:id', async (req, res) => {
+/** POST /api/attendance — mark a single person. */
+router.post('/', requirePermission('attendance', 'edit'), async (req, res, next) => {
     try {
-        if (!isAvailable()) {
-            localStore.delete(ATTENDANCE_COL, req.params.id);
-        } else {
-            await db.collection(getCol(ATTENDANCE_COL, req)).doc(req.params.id).delete();
-        }
-        res.json({ message: 'Deleted' });
+        const { date } = req.body;
+        const [saved] = await attendanceService.saveBulk(req.orgId, req, {
+            date, records: [req.body], user: req.user,
+        });
+        res.json(saved);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        if (/required|invalid|must be/i.test(err.message)) {
+            return res.status(400).json({ error: err.message });
+        }
+        next(err);
     }
+});
+
+/** DELETE /api/attendance/:id — clear a mark (id is `{profileId}_{date}`). */
+router.delete('/:id', requirePermission('attendance', 'delete'), async (req, res, next) => {
+    try {
+        const { db, isAvailable } = require('../firebase');
+        const { getCol } = require('../utils/collectionUtils');
+        const localStore = require('../utils/localStore');
+
+        if (!isAvailable()) localStore.delete(ATTENDANCE_COL, req.params.id);
+        else await db.collection(getCol(ATTENDANCE_COL, req)).doc(req.params.id).delete();
+
+        auditService.logAction({
+            orgId: req.orgId,
+            action: auditService.ACTIONS.ATTENDANCE_DELETED,
+            performedBy: req.user.id,
+            performedByName: req.user.name,
+            targetId: req.params.id,
+            targetType: 'attendance',
+            before: null,
+            after: null,
+        });
+
+        res.json({ message: 'Deleted' });
+    } catch (err) { next(err); }
 });
 
 module.exports = router;

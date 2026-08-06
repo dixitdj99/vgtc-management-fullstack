@@ -157,17 +157,45 @@ router.patch('/:id', async (req, res) => {
 
 // ─── Diesel Verification ─────────────────────────────────────────────────────
 router.patch('/:id/verify-diesel', async (req, res) => {
-    const { dieselActualLitres, dieselPumpName } = req.body;
+    const { dieselActualLitres, dieselPumpName, dieselActualAmount } = req.body;
     try {
         const { db, admin, isAvailable } = require('../firebase');
         const col = getCol(BASE_COL, req);
         const update = {
             isDieselVerified: true,
-            dieselActualLitres: parseFloat(dieselActualLitres) || 0,
-            dieselPumpName: dieselPumpName || '',
             dieselVerifiedAt: new Date().toISOString(),
             dieselVerifiedBy: req.user?.name || 'system',
         };
+        // Only written when actually sent. Verification is now about the amount,
+        // so the screens no longer ask for litres or a pump — and writing the
+        // defaults for absent fields would blank whatever an earlier
+        // verification had recorded.
+        if (dieselActualLitres !== undefined && dieselActualLitres !== '') {
+            update.dieselActualLitres = parseFloat(dieselActualLitres) || 0;
+        }
+        if (dieselPumpName !== undefined && dieselPumpName !== '') {
+            update.dieselPumpName = String(dieselPumpName);
+        }
+
+        /**
+         * A full tank is booked as the literal "FULL", which every net
+         * calculation treats as a ₹4,000 estimate — so the voucher stays wrong
+         * until someone knows the real bill. Verification is when that number
+         * arrives, so recording it here replaces the estimate and the net
+         * becomes true. Without this the estimate stood for ever.
+         *
+         * Only ever narrows FULL to a figure; an already-numeric advance is left
+         * alone, because verification is not the place to re-price a trip.
+         */
+        const actual = parseFloat(dieselActualAmount);
+        if (actual > 0) {
+            const existing = await voucherService.getVoucherById(req.params.id, col);
+            const booked = existing ? existing.advanceDiesel : null;
+            if (booked === 'FULL' || (booked && isNaN(parseFloat(booked)))) {
+                update.advanceDiesel = String(actual);
+                update.dieselEstimatedAmount = booked;   // what it replaced
+            }
+        }
         if (isAvailable()) {
             await db.collection(col).doc(req.params.id).update({
                 ...update,

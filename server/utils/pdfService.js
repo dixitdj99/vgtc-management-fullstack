@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit-table');
 const fs = require('fs');
 const path = require('path');
+const { printableExtras } = require('./voucherExtras');
 
 const NONE_PUMP = 'None';
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
@@ -140,8 +141,10 @@ async function generateVoucherPDF(v, outputPath) {
         { label: 'Commission',        value: commission },
         { label: 'Tyre Puncture',     value: tyrePuncture },
         { label: 'Tyre Greasing & Air', value: tyreGreasing },
-        { label: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, value: extraCash },
-    ].filter(d => d.value > 0 || d.isPending);
+    ].filter(d => d.value > 0 || d.isPending)
+        // One row per extra, remark carried as a note. Folded into the label it
+        // ran under the amount, which is printed at the same y.
+        .concat(printableExtras(v).map(e => ({ label: 'Extra Cash', note: e.remark, value: e.amount })));
 
     return new Promise((resolve, reject) => {
         if (isBill) {
@@ -166,7 +169,7 @@ async function generateVoucherPDF(v, outputPath) {
             
             doc.fillColor('#000').fontSize(8).font('Helvetica-Bold').text('Near Gaushala, Rewari Road, Jhajjar (Hr.)', M, y, { align: 'center' });
             y += 10;
-            doc.text('Mob. : 9728284849, 9416319445', M, y, { align: 'center' });
+            doc.text('Mob. : 9416319445, 9728954901, 9728284849', M, y, { align: 'center' });
             y += 10;
             doc.fontSize(7).font('Helvetica').text('Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari', M, y, { align: 'center' });
             doc.fontSize(7).font('Helvetica-Bold').text('GSTIN : 06ARIPK9021C2Z2', PW - M - 100, M + 10);
@@ -387,6 +390,12 @@ async function generateVoucherPDF(v, outputPath) {
             doc.fontSize(9).font('Helvetica').fillColor('#000').text(d.label, M + 6, y);
             doc.font('Helvetica-Bold').text(d.isPending ? 'FULL (Pending)' : `- Rs.${d.value.toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
             y += 13;
+            if (d.note) {
+                // Half the column, so a long remark wraps instead of running into
+                // the amount printed above it.
+                doc.fontSize(7).font('Helvetica').fillColor('#000').text(d.note, M + 10, y - 2, { width: (CW - 20) / 2 });
+                y += Math.max(9, doc.heightOfString(d.note, { width: (CW - 20) / 2 })) + 1;
+            }
         });
 
         if (deductions.length > 0 && !dieselPending) {
@@ -449,7 +458,7 @@ async function generateLoadingReceiptPDF(data, outputPath) {
         y += 16;
         doc.fontSize(12).font('Helvetica-Bold').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
         y += 14;
-        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
+        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849', M, y, { align: 'center', width: CW });
         y += 12;
         doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
         y += 10;

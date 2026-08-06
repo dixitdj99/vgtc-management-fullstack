@@ -1,16 +1,108 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Banknote, Truck, Calendar, CheckCircle2, AlertCircle, ChevronLeft, Search, Check, HandCoins, AlertTriangle, X
+  Banknote, Truck, Calendar, CheckCircle2, AlertCircle, ChevronLeft, Search, Check, HandCoins, AlertTriangle, X, Merge, Loader2
 } from 'lucide-react';
+import { allocateFreightPayment, allocateAcrossTrucks, outstandingOf } from '../utils/freightAllocation';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import VehicleCreditDebitModule from './VehicleCreditDebitModule';
+import LabourAccount from './LabourAccount';
+// A multi-drop voucher keeps its LR numbers on the drops; its own `lrNo` is a
+// leftover form field. Printing that showed a number the yard has never issued.
+import { lrLabelOf } from './BalanceSheet';
+import TableScroll from '../components/TableScroll';
 
 const API_V = '/vouchers';
-const TYPES = ['Dump', 'JK_Lakshmi', 'JK_Super', 'Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill'];
+
+/**
+ * What stays ticked while a whole owner is being settled: every trip on the
+ * panel except the ones the clerk deliberately unticked.
+ *
+ * Expressed as "all minus removed" rather than as a set built once when the
+ * owner opens, because the rows arrive in stages — vouchers, batches and
+ * vehicles each settle at their own pace, and changing the date filter reveals
+ * more. A one-shot tick leaves everything that appeared afterwards out of the
+ * payment, which is money missed rather than a cosmetic slip.
+ */
+/** One truck number, however it was typed. Matches the rest of the app. */
+export const normTruck = (t) => String(t || '').toUpperCase().replace(/\s+/g, '');
+
+export function ownerSelection(rows = [], unticked = new Set()) {
+  return rows.filter(v => !unticked.has(v.id)).map(v => v.id);
+}
+
+const TH_ = { padding: '10px 14px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
+const TD_ = { padding: '9px 12px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
+
+/**
+ * One truck owed money. Rendered identically whether the worklist is flat or
+ * grouped under an owner, so grouping cannot quietly change how a payable looks
+ * or behaves — it only changes where the row sits.
+ */
+function PayableRow({ p, i, indented = false, onOpen, setDueDate }) {
+  return (
+    <tr
+      style={{ background: p.overdue ? 'rgba(244,63,94,0.06)' : (i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'), cursor: 'pointer', transition: 'background 0.12s' }}
+      onClick={onOpen}
+    >
+      <td style={{ ...TD_, textAlign: 'center', fontWeight: 'bold', color: 'var(--text-muted)' }}>{indented ? '' : i + 1}</td>
+      <td style={{ ...TD_, paddingLeft: indented ? '34px' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Truck size={14} color="#f59e0b" />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13px' }}>{p.truck}</div>
+            {p.merged && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99,102,241,0.12)', color: 'var(--primary)', fontSize: '9px', fontWeight: 900, letterSpacing: '0.04em' }}>
+                <Merge size={9} /> MERGED
+              </span>
+            )}
+          </div>
+        </div>
+      </td>
+      {/* Which sheet each slice of the money came from. */}
+      <td style={{ ...TD_ }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          {p.modules.map(m => (
+            <span key={m.batchId} style={{ padding: '2px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(99,102,241,0.09)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+              {m.type.replace(/_/g, ' ')} · {fmtRs(m.amount)}
+            </span>
+          ))}
+        </div>
+      </td>
+      <td style={{ ...TD_, textAlign: 'center', fontWeight: 700 }}>{p.pendingTrips}</td>
+      <td style={{ ...TD_, textAlign: 'right', fontWeight: 800, color: 'var(--warn)', fontSize: '14px' }}>{fmtRs(p.outstanding)}</td>
+      <td style={{ ...TD_, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+        <input type="date" className="fi" style={{ width: '140px', height: '30px', fontSize: '11.5px', borderColor: p.overdue ? 'var(--danger)' : undefined }}
+          value={p.dueDate} onChange={e => setDueDate(p.truck, e.target.value)} />
+        {p.overdue && <div style={{ fontSize: '9px', fontWeight: 800, color: '#f43f5e', marginTop: '2px' }}>OVERDUE</div>}
+      </td>
+      <td style={{ ...TD_, textAlign: 'center' }}>
+        {p.hasUnverified ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(244,63,94,0.1)', color: 'var(--danger)', fontSize: '10px', fontWeight: 700 }}>
+            <AlertTriangle size={11} /> Unverified Diesel
+          </span>
+        ) : p.status === 'Partially Paid' ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: 'var(--warn)', fontSize: '10px', fontWeight: 700 }}>
+            Part paid · {fmtRs(p.paid)}
+          </span>
+        ) : (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '10px', fontWeight: 700 }}>
+            <CheckCircle2 size={11} /> Ready
+          </span>
+        )}
+      </td>
+      <td style={{ ...TD_, textAlign: 'center' }}>
+        <button className="btn btn-p btn-sm">Pay Now</button>
+      </td>
+    </tr>
+  );
+}
 
 function calcNet(v, vehicle) {
   const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -33,6 +125,10 @@ function calcNet(v, vehicle) {
   return net;
 }
 
+/** Deliberately built on this module's own calcNet above, so every figure Pay
+ *  shows and every rupee it moves come from the same rule. */
+const calcOutstanding = (v, vehicle) => Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0));
+
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -51,8 +147,16 @@ function hasUnverifiedDiesel(v) {
 }
 
 export default function PayModule({ brand, role, permissions, initialView }) {
+  // Same ladder the rest of the app uses: view lets you read, edit lets you
+  // change money. The server gates on this too — this only hides the buttons.
+  const canEdit = role === 'admin' || permissions?.pay === 'edit';
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
+  // An owner being settled across all their trucks. The same settlement panel
+  // handles both — paying a whole owner used to open a separate dialog of its
+  // own, which meant a second, poorer way of doing the one thing this screen
+  // exists for.
+  const [selOwner, setSelOwner] = useState(null);
   const [truckAllVouchers, setTruckAllVouchers] = useState([]);
   useEffect(() => {
     if (selTruck) fetchTruckAllVouchers(selTruck);
@@ -66,6 +170,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   };
   const [selectedLrs, setSelectedLrs] = useState(new Set());
   const [view, setView] = useState(initialView || 'freight');
+  // Vehicle balances sent here from the balance sheets. These, not the raw
+  // voucher list, are what the freight worklist shows.
+  const [batches, setBatches] = useState([]);
+  const [payAmount, setPayAmount] = useState('');   // blank = settle in full
 
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
   const [profiles, setProfiles] = useState([]);
@@ -98,7 +206,28 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   const [detailTab, setDetailTab] = useState('pending');
   const [vehiclesInfo, setVehiclesInfo] = useState([]);
-  const selVehicle = useMemo(() => vehiclesInfo.find(v => v.truckNo === selTruck), [vehiclesInfo, selTruck]);
+  /**
+   * The vehicle a trip ran on, matched the way the rest of the app matches a
+   * truck number — case and spacing ignored.
+   *
+   * This used to be an exact string comparison. A truck registered as
+   * HR55EF9012 but written HR55 EF 9012 on the voucher then found no vehicle,
+   * which cost it its owner and dropped it out of that owner's group — so Pay
+   * All quietly skipped it — and cost it the market-vehicle rule in calcNet,
+   * which is money. Every lookup on this screen goes through here.
+   */
+  const vehicleByTruck = useMemo(() => {
+    const m = new Map();
+    (vehiclesInfo || []).forEach(v => { if (v.truckNo) m.set(normTruck(v.truckNo), v); });
+    return m;
+  }, [vehiclesInfo]);
+
+  const vehicleFor = useCallback(
+    (truckNo) => vehicleByTruck.get(normTruck(truckNo)),
+    [vehicleByTruck],
+  );
+
+  const selVehicle = useMemo(() => vehicleFor(selTruck), [vehicleFor, selTruck]);
   const [receiptModal, setReceiptModal] = useState(null);
 
   // Vehicle Advance states (synced with Balance Sheet)
@@ -111,9 +240,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     advances.filter(a => !a.isCleared && !a.isGpsRent && !(a.remark || '').toLowerCase().includes('gps rent')).reduce((bal, a) => bal + (a.type === 'credit' ? a.amount : -a.amount), 0),
   [advances]);
 
-  const getTypesForBrand = () => {
-    // All locations share same trucks — fetch ALL voucher types
-    return [...TYPES];
+  const fetchBatches = async () => {
+    try { setBatches((await ax.get('/freight-batches', { params: { open: 1 }, _skipCache: true })).data || []); }
+    catch { setBatches([]); }
   };
 
   useEffect(() => {
@@ -121,6 +250,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     fetchVehicles();
     fetchProfiles();
     fetchFirmPayments();
+    fetchBatches();
     setSelTruck(null);
     setSelectedLrs(new Set());
     setDateFilter('all');
@@ -216,12 +346,19 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     }
   };
 
+  /**
+   * One request for every voucher, rather than one per type.
+   *
+   * The old version asked for six named types, and GET /vouchers/:type scans the
+   * whole org collection and filters in memory — so six calls meant six full
+   * scans to assemble a list that is just "all of them". Worse, a voucher whose
+   * type was outside that hard-coded six was invisible here: its online advance
+   * never appeared in the pay list, and nothing said so.
+   */
   const fetchVouchers = async () => {
     try {
-      const typesToFetch = getTypesForBrand();
-      const promises = typesToFetch.map(t => ax.get(API_V + '/' + t).then(r => r.data).catch(() => []));
-      const results = await Promise.all(promises);
-      setVouchers(results.flat());
+      const res = await ax.get(API_V);
+      setVouchers(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error('Failed to fetch vouchers for payment module', err);
     }
@@ -237,47 +374,175 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     return map;
   }, [vouchers]);
 
-  const allTrucks = useMemo(() => Object.keys(truckGroups).sort(), [truckGroups]);
+  // ── Payables: what the balance sheets have handed over ────────────────────
+  const voucherById = useMemo(() => {
+    const m = new Map();
+    vouchers.forEach(v => m.set(v.id, v));
+    return m;
+  }, [vouchers]);
 
-  const truckSummaries = useMemo(() => {
-    let list = allTrucks.map(truck => {
-      const rows = truckGroups[truck] || [];
-      const vehicle = (vehiclesInfo || []).find(vh => vh.truckNo === truck);
-      const net = rows.reduce((s, v) => s + calcNet(v, vehicle), 0);
-      const paid = rows.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
-      const pendingRows = rows.filter(v => calcNet(v, vehicle) > (parseFloat(v.paidBalance) || 0));
-      // Calculate outstanding per-row to avoid overpaid rows cancelling unpaid ones
-      const outstanding = rows.reduce((s, v) => s + Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0)), 0);
-      const types = [...new Set(rows.map(r => r.type?.replace('_', ' ') || 'Unknown'))].join(', ');
+  const netOfFor = (truck) => {
+    const vehicle = vehicleFor(truck);
+    return (v) => calcNet(v, vehicle);
+  };
+
+  /**
+   * One row per truck, not per batch. A truck owed money in two modules is a
+   * single payable — merged, marked, and settled in one go — which is the whole
+   * point of routing payment through here rather than through each sheet.
+   */
+  const payables = useMemo(() => {
+    const byTruck = new Map();
+
+    for (const b of batches) {
+      const trips = (b.voucherIds || []).map(id => voucherById.get(id)).filter(Boolean);
+      if (!trips.length) continue;                 // trips deleted since sending
+
+      const netOf = netOfFor(b.truckNo);
+      const owed = outstandingOf(trips, netOf);
+      const paid = trips.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
+      if (owed <= 0) continue;                     // fully settled — drop off the worklist
+
+      if (!byTruck.has(b.truckNo)) {
+        byTruck.set(b.truckNo, { truck: b.truckNo, batches: [], trips: [], modules: [], outstanding: 0, paid: 0 });
+      }
+      const p = byTruck.get(b.truckNo);
+      p.batches.push(b);
+      p.trips.push(...trips);
+      p.modules.push({ type: b.type, amount: owed, batchId: b.id });
+      p.outstanding += owed;
+      p.paid += paid;
+    }
+
+    let list = [...byTruck.values()].map(p => {
+      const dues = p.batches.map(b => b.dueDate).filter(Boolean).sort();
+      const today = new Date().toISOString().slice(0, 10);
       return {
-        truck,
-        trips: String(rows.length),
-        pendingTrips: String(pendingRows.length),
-        net,
-        paid,
-        outstanding,
-        status: (outstanding <= 0 ? 'Cleared' : 'Pending'),
-        hasUnverified: pendingRows.some(hasUnverifiedDiesel),
-        types
+        ...p,
+        // Merged when the money came from more than one balance sheet.
+        merged: new Set(p.modules.map(m => m.type)).size > 1,
+        dueDate: dues[0] || '',
+        overdue: !!dues[0] && dues[0] < today,
+        status: p.paid > 0 ? 'Partially Paid' : 'Pending',
+        pendingTrips: String(p.trips.filter(v => calcOutstanding(v, vehicleFor(p.truck)) > 0).length),
+        hasUnverified: p.trips.some(hasUnverifiedDiesel),
+        types: [...new Set(p.modules.map(m => m.type.replace(/_/g, ' ')))].join(', '),
+        // One person often runs several trucks, and they expect one payment.
+        // Carrying the owner here lets the worklist group by it.
+        ownerName: vehicleFor(p.truck)?.ownerName || '',
       };
     });
 
     Object.keys(filters).forEach(key => {
-      const selectedValues = filters[key];
-      if (selectedValues && selectedValues.length > 0) {
-        list = list.filter(t => selectedValues.includes(String(t[key] ?? '')));
-      }
+      const vals = filters[key];
+      if (vals && vals.length > 0) list = list.filter(t => columnValues(t, key).some(x => vals.includes(x)));
     });
 
-    return list;
-  }, [allTrucks, truckGroups, filters, vehiclesInfo]);
+    // Soonest due first; undated last.
+    return list.sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || a.truck.localeCompare(b.truck));
+  }, [batches, voucherById, vehiclesInfo, filters]);
 
-  // Specific vehicle view
+  const selPayable = useMemo(() => payables.find(p => p.truck === selTruck), [payables, selTruck]);
+
+  /**
+   * The worklist grouped by whoever owns the trucks.
+   *
+   * One owner running four trucks appeared as four unrelated rows scattered
+   * through the list by due date, so the clerk had to add them up by hand to
+   * know what that person is owed. Grouped, the total is on the header and the
+   * trucks sit together.
+   *
+   * Trucks with no recorded owner are left ungrouped rather than lumped into an
+   * "Unknown" bucket, which would read as though they belonged together.
+   */
+  const ownerGroups = useMemo(() => {
+    const byOwner = new Map();
+    const loose = [];
+    for (const p of payables) {
+      const key = (p.ownerName || '').trim();
+      if (!key) { loose.push(p); continue; }
+      if (!byOwner.has(key)) byOwner.set(key, []);
+      byOwner.get(key).push(p);
+    }
+    const groups = [...byOwner.entries()].map(([owner, trucks]) => ({
+      owner,
+      trucks,
+      outstanding: trucks.reduce((s, t) => s + t.outstanding, 0),
+      // Soonest due across the whole group — that is when the owner is waiting.
+      dueDate: trucks.map(t => t.dueDate).filter(Boolean).sort()[0] || '',
+      overdue: trucks.some(t => t.overdue),
+      hasUnverified: trucks.some(t => t.hasUnverified),
+    }));
+    // Biggest owed first: that is the conversation the clerk has next.
+    groups.sort((a, b) => b.outstanding - a.outstanding);
+    return { groups, loose };
+  }, [payables]);
+
+  /* ── Settling a whole owner ───────────────────────────────────────────────
+   *
+   * Paying an owner and paying a truck are the same job, so they share the one
+   * settlement panel: the trips are listed with their tick boxes, the part
+   * payment box works, and the total is the same total.
+   *
+   * The freight only, though. GPS rent, vehicle advances and misc deductions
+   * are judgements made per truck, and rolling them into a payment covering
+   * four trucks would settle decisions nobody made — so those controls only
+   * appear when a single truck is open, and the panel says so.
+   */
+  const selGroup = useMemo(
+    () => ownerGroups.groups.find(g => g.owner === selOwner) || null,
+    [ownerGroups, selOwner],
+  );
+
+  /** The trucks the settlement panel is currently covering. */
+  const activeTrucks = useMemo(() => {
+    if (selOwner) return (selGroup?.trucks || []).map(t => t.truck);
+    return selTruck ? [selTruck] : [];
+  }, [selOwner, selGroup, selTruck]);
+
+  const inDetail = !!(selTruck || selOwner);
+  /** Per-truck deductions belong to one truck, so they are off in owner mode. */
+  const singleTruckMode = !!selTruck && !selOwner;
+
+  const [groupByOwner, setGroupByOwner] = useState(true);
+  const [openOwners, setOpenOwners] = useState(() => new Set());
+  const toggleOwner = (owner) =>
+    setOpenOwners(s => { const n = new Set(s); n.has(owner) ? n.delete(owner) : n.add(owner); return n; });
+
+  /**
+   * Outstanding that no clerk has sent yet. Pay only lists what was sent, so
+   * without this money could sit unpaid and invisible.
+   */
+  const unsent = useMemo(() => {
+    const sent = new Set(batches.flatMap(b => b.voucherIds || []));
+    const byType = {};
+    const trucks = new Set();
+    for (const v of vouchers) {
+      if (sent.has(v.id)) continue;
+      const vehicle = vehicleFor(v.truckNo);
+      if (calcOutstanding(v, vehicle) <= 0) continue;
+      byType[v.type] = (byType[v.type] || 0) + 1;
+      trucks.add(v.truckNo);
+    }
+    return { trucks: trucks.size, byType };
+  }, [vouchers, batches, vehiclesInfo]);
+
+  // The old all-trucks summary that listed every vehicle in the business
+  // regardless of module has been replaced by `payables` above, which lists
+  // only what a clerk has actually sent from a balance sheet.
+
+  // The trips on the settlement panel — one truck's, or every truck an owner
+  // runs when the whole owner is being settled.
   const vehicleLrs = useMemo(() => {
-    if (!selTruck) return [];
-    let rows = truckGroups[selTruck] || [];
+    if (!activeTrucks.length) return [];
+    // Only the trips actually sent for payment — anything else is still the
+    // balance sheet's business and must not be settled from here by accident.
+    const sentIds = new Set(
+      payables.filter(p => activeTrucks.includes(p.truck)).flatMap(p => (p.trips || []).map(v => v.id)),
+    );
+    let rows = activeTrucks.flatMap(t => (truckGroups[t] || []).filter(v => sentIds.has(v.id)));
     // Only show pending or partially paid LRs
-    rows = rows.filter(v => calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0));
+    rows = rows.filter(v => calcNet(v, vehicleFor(v.truckNo)) > (parseFloat(v.paidBalance) || 0));
 
     // Date filtering
     if (dateFilter !== 'all') {
@@ -309,7 +574,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     }
 
     return rows.sort((a, b) => a.date < b.date ? 1 : -1);
-  }, [selTruck, truckGroups, dateFilter, customStart, customEnd]);
+  }, [activeTrucks, truckGroups, dateFilter, customStart, customEnd, payables, vehicleFor]);
 
   // History vehicle view
   const paidLrs = useMemo(() => {
@@ -323,14 +588,6 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       return d2 - d1;
     });
   }, [selTruck, truckGroups]);
-
-  const onCheck = (id) => {
-    setSelectedLrs(s => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  };
 
   const gpsAccrual = useMemo(() => {
     if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
@@ -373,7 +630,51 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     return { months: pendingMonths, gpsCount, perMonth, amount, gpsLabel };
   }, [selTruck, selVehicle, advances, truckAllVouchers, paymentDate]);
 
+  /**
+   * "Pay All" means all of it: every trip on every truck the owner runs stays
+   * ticked, and the panel total is their whole outstanding.
+   *
+   * This tracks what the clerk has deliberately unticked rather than ticking
+   * once on open. Arming once looked equivalent and was not — the rows are
+   * assembled from vouchers, batches and vehicles that settle at their own
+   * pace, and changing the date filter reveals more. Anything that appeared
+   * after that single pass stayed unticked and was quietly left out of the
+   * payment, which is money missed rather than a cosmetic slip.
+   */
+  const [unticked, setUnticked] = useState(() => new Set());
+  useEffect(() => { setUnticked(new Set()); }, [selOwner]);
+
+  useEffect(() => {
+    if (!selOwner) return;
+    const want = ownerSelection(vehicleLrs, unticked);
+    // Only write when it actually differs, or this loops on its own output.
+    setSelectedLrs(prev => {
+      if (prev.size === want.length && want.every(id => prev.has(id))) return prev;
+      return new Set(want);
+    });
+  }, [selOwner, vehicleLrs, unticked]);
+
+  const onCheck = (id) => {
+    if (selOwner) {
+      setUnticked(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+      return;
+    }
+    setSelectedLrs(s => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
   const onCheckAll = (rows, addAll) => {
+    if (selOwner) {
+      setUnticked(s => {
+        const n = new Set(s);
+        rows.forEach(v => addAll ? n.delete(v.id) : n.add(v.id));
+        return n;
+      });
+      return;
+    }
     setSelectedLrs(s => {
       const n = new Set(s);
       rows.forEach(v => addAll ? n.add(v.id) : n.delete(v.id));
@@ -382,11 +683,16 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   };
 
   const selRows = vehicleLrs.filter(v => selectedLrs.has(v.id));
-  const selOutstanding = selRows.reduce((s, v) => s + Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0)), 0);
+  const selOutstanding = selRows.reduce(
+    (s, v) => s + Math.max(0, calcNet(v, vehicleFor(v.truckNo)) - (parseFloat(v.paidBalance) || 0)), 0);
 
   const netPayout = useMemo(() => {
+    // Advances, GPS rent and misc deductions all belong to one truck. Settling
+    // a whole owner pays the freight and nothing else, so they are excluded
+    // rather than applied to a fleet they were never decided for.
+    if (!singleTruckMode) return selOutstanding;
     return selOutstanding + advanceBalance - (gpsAccrual?.amount || 0) - miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
-  }, [selOutstanding, advanceBalance, gpsAccrual, miscDeductions]);
+  }, [singleTruckMode, selOutstanding, advanceBalance, gpsAccrual, miscDeductions]);
 
   // Vehicle expenses from selected entries (or all pending if none selected)
   const expenseSource = selRows.length > 0 ? selRows : vehicleLrs;
@@ -397,10 +703,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       const tga = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
       const ec = parseFloat(v.extraCash) || 0;
       const comm = parseFloat(v.commission) || 0;
-      if (tp > 0) expenses.push({ label: 'Tyre Puncture', amount: tp, date: v.date, lrNo: v.lrNo });
-      if (tga > 0) expenses.push({ label: 'Tyre Greasing & Air', amount: tga, date: v.date, lrNo: v.lrNo });
-      if (ec > 0) expenses.push({ label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash', amount: ec, date: v.date, lrNo: v.lrNo });
-      if (comm > 0) expenses.push({ label: 'Commission', amount: comm, date: v.date, lrNo: v.lrNo });
+      if (tp > 0) expenses.push({ label: 'Tyre Puncture', amount: tp, date: v.date, lrLabel: lrLabelOf(v) });
+      if (tga > 0) expenses.push({ label: 'Tyre Greasing & Air', amount: tga, date: v.date, lrLabel: lrLabelOf(v) });
+      if (ec > 0) expenses.push({ label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash', amount: ec, date: v.date, lrLabel: lrLabelOf(v) });
+      if (comm > 0) expenses.push({ label: 'Commission', amount: comm, date: v.date, lrLabel: lrLabelOf(v) });
     });
     return expenses;
   }, [expenseSource]);
@@ -412,16 +718,39 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   const handlePay = async () => {
     if (!canPay) return;
+
+    // Blank means settle the selection in full. A figure means a part payment,
+    // which is spread oldest trip first — see utils/freightAllocation.js.
+    const entered = payAmount === '' ? selOutstanding : parseFloat(payAmount) || 0;
+    if (entered <= 0) return;
+
+    // One truck allocates straight through; an owner's fleet is filled truck by
+    // truck, because a trip's net depends on the vehicle it ran on.
+    const { patches, unallocated } = activeTrucks.length > 1
+      ? allocateAcrossTrucks(selRows, {
+        amount: entered, paymentDate, paymentMethod,
+        trucks: activeTrucks,
+        netOfTruck: (truck) => { const vehicle = vehicleFor(truck); return v => calcNet(v, vehicle); },
+      })
+      : allocateFreightPayment(selRows, {
+        amount: entered, paymentDate, paymentMethod, netOf: v => calcNet(v, selVehicle),
+      });
+    if (!patches.length) return;
+    if (unallocated > 0 && !window.confirm(
+      `${fmtRs(unallocated)} is more than these trips owe and will not be recorded.\n\nPay ${fmtRs(entered - unallocated)} anyway?`
+    )) return;
+
     setProcessing(true);
     try {
-      await Promise.all(selRows.map(v =>
-        ax.patch(API_V + '/' + v.id, {
-          paidBalance: String(calcNet(v, selVehicle).toFixed(2)),
-          paymentClearedDate: paymentDate,
-          paymentMethod
-        })
-      ));
-      
+      await Promise.all(patches.map(p => {
+        const { id, ...body } = p;
+        return ax.patch(API_V + '/' + id, body);
+      }));
+
+      // GPS rent, misc deductions and clearing advances all name one truck.
+      // Settling a whole owner covers several, so these are left alone rather
+      // than charged to whichever truck happened to be selected.
+      if (singleTruckMode) {
       // Auto-deduct GPS Rent
       if (gpsAccrual && gpsAccrual.amount > 0) {
         await ax.post('/vehicle-advances', {
@@ -457,26 +786,45 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       } catch (clearErr) {
         console.error('Failed to clear vehicle advances:', clearErr);
       }
+      }
 
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 5000);
-      
-      const tv = vehiclesInfo.find(v => v.truckNo === selTruck);
+
+      const tv = singleTruckMode ? vehicleFor(selTruck) : null;
       setReceiptModal({
-        truckNo: selTruck,
+        truckNo: singleTruckMode
+          ? selTruck
+          : `${selOwner} · ${activeTrucks.length} truck${activeTrucks.length === 1 ? '' : 's'}`,
         date: paymentDate,
         amount: netPayout,
-        phone: tv?.ownerContact || ''
+        phone: tv?.ownerContact || '',
       });
 
       setSelectedLrs(new Set());
+      setPayAmount('');
+      // An owner settled in one go is finished with, so it goes back to the
+      // worklist — staying would re-tick whatever the payment left behind.
+      if (!singleTruckMode) { setSelOwner(null); setUnticked(new Set()); }
+      // Batches carry no money — refetching the vouchers is what moves this
+      // payable to Partially Paid, or off the list entirely, and it is the same
+      // read the balance sheets do.
       await fetchVouchers();
-      
+      await fetchBatches();
+
     } catch (err) {
       alert('Payment processing failed. Please try again.');
     } finally {
       setProcessing(false);
     }
+  };
+
+  /** One due date for the whole merged row — it lands on every module it came from. */
+  const setDueDate = async (truck, dueDate) => {
+    try {
+      await ax.patch('/freight-batches/bulk/due-date', { truckNo: truck, dueDate });
+      await fetchBatches();
+    } catch { alert('Could not set the due date'); }
   };
 
 
@@ -553,7 +901,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       <div className="page-hd">
         <div>
           <h1><Banknote size={20} color="#10b981" /> Pay</h1>
-          <p>{selTruck ? `Clearing payments for ${selTruck}` : 'Vehicle & staff payment settlement'}</p>
+          <p>{selOwner ? `Clearing payments for ${selOwner}` : selTruck ? `Clearing payments for ${selTruck}` : 'Vehicle & staff payment settlement'}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
@@ -562,12 +910,15 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <button className={`btn btn-sm ${view === 'vehicle_advances' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('vehicle_advances')}>Vehicle Credit & Debit</button>
             <button className={`btn btn-sm ${view === 'firm' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('firm')}>Firm Pay</button>
             <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Staff Pay</button>
+            <button className={`btn btn-sm ${view === 'labour' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('labour')}>Labour</button>
           </div>
-          {selTruck && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelectedLrs(new Set());}}><ChevronLeft size={14} /> All Trucks</button>}
+          {inDetail && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelOwner(null); setSelectedLrs(new Set()); setPayAmount('');}}><ChevronLeft size={14} /> All Trucks</button>}
         </div>
       </div>
 
-      {view === 'vehicle_advances' ? (
+      {view === 'labour' ? (
+        <LabourAccount canEdit={canEdit} />
+      ) : view === 'vehicle_advances' ? (
         <VehicleCreditDebitModule />
       ) : view === 'online' ? (() => {
         const onlineList = vouchers
@@ -644,7 +995,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       </div>
                       <span style={{ fontWeight: 800, fontSize: '13px', color: '#0ea5e9' }}>Day Total: {fmtRs(dayTotal)}</span>
                     </div>
-                    <div className="tbl-wrap">
+                    <TableScroll>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                         <thead><tr>
                           <th style={TH}>#</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
@@ -656,7 +1007,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                             <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                               <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                               <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
-                              <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>#{v.lrNo}</td>
+                              <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{lrLabelOf(v)}</td>
                               <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{v.type?.replace('_', ' ')}</span></td>
                               <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
                               <td style={{ ...TD, textAlign: 'center' }}>
@@ -673,7 +1024,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </TableScroll>
                   </div>
                 );
               })}
@@ -688,7 +1039,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                     <div className="card-title-text"><h3>Paid Online Advances</h3><p>{paid.length} cleared</p></div>
                   </div>
                 </div>
-                <div className="tbl-wrap">
+                <TableScroll>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                     <thead><tr>
                       <th style={TH}>#</th><th style={TH}>Date</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
@@ -700,18 +1051,18 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
                           <td style={TD}>{fmtDate(v.date)}</td>
                           <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
-                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>#{v.lrNo}</td>
+                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{lrLabelOf(v)}</td>
                           <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{v.type?.replace('_', ' ')}</span></td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
                           <td style={{ ...TD, fontWeight: 700, color: 'var(--accent)' }}>{fmtDate(v.onlinePaidDate)}</td>
                           <td style={{ ...TD, textAlign: 'center' }}>
-                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }} onClick={() => togglePaid(v.id, true)}>Undo</button>
+                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }} onClick={() => markUnpaid(v.id)}>Undo</button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               </div>
             )}
           </div>
@@ -797,7 +1148,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <div className="card-header border-b">
               <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Recent Firm Payments</h3>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
@@ -828,7 +1179,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
         </div>
       ) : view === 'staff' ? (
@@ -862,7 +1213,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <div className="card-header border-b">
               <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Staff & Drivers</h3>
             </div>
-            <div className="tbl-wrap">
+            <TableScroll>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
@@ -912,78 +1263,157 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </div>
         </div>
       ) : (
         <React.Fragment>
-          {!selTruck ? (
-        // OVERVIEW LIST
-        <div className="card">
-          <div className="card-header border-b">
-            <div className="card-title-block">
-              <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><HandCoins size={17} color="#10b981" /></div>
-              <div className="card-title-text">
-                <h3>All Vehicles</h3>
-                <p>Select a vehicle to view details & process payments</p>
+          {!inDetail ? (
+        // PENDING FREIGHT PAYS — driven by what clerks sent from the sheets
+        <div>
+          {unsent.trucks > 0 && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 16px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '10px', marginBottom: '14px' }}>
+              <AlertCircle size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: '1px' }} />
+              <div style={{ fontSize: '12.5px', color: 'var(--text)', lineHeight: 1.5 }}>
+                <b style={{ color: '#f59e0b' }}>{unsent.trucks} vehicle{unsent.trucks === 1 ? '' : 's'} with outstanding freight not yet sent.</b>{' '}
+                Only balances sent from a balance sheet appear here — open the sheet and use Send to Pay.
+                <div style={{ marginTop: '4px', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11.5px' }}>
+                  {Object.entries(unsent.byType).map(([t, n]) => `${t.replace(/_/g, ' ')} (${n} trip${n === 1 ? '' : 's'})`).join(' · ')}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="tbl-wrap">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
-                <tr>
-                  <th style={TH}>#</th>
-                  <th style={TH}><ColumnFilter label="Truck No." colKey="truck" data={truckSummaries} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                  <th style={TH}>Trip Types</th>
-                  <th style={TH}>Pending Trips</th>
-                  <th style={TH}>Outstanding Due</th>
-                  <th style={TH}>Diesel Status</th>
-                  <th style={TH}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {truckSummaries.filter(ts => ts.outstanding > 0).map((ts, i) => (
-                  <tr key={ts.truck}
-                    style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', cursor: 'pointer', transition: 'background 0.12s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}
-                    onClick={() => { setSelTruck(ts.truck); setDetailTab('pending'); }}
-                  >
-                    <td style={{ ...TD, textAlign: 'center', fontWeight: 'bold', color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td style={{ ...TD }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Truck size={14} color="#f59e0b" />
-                        </div>
-                        <span style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13px' }}>{ts.truck}</span>
-                      </div>
-                    </td>
-                    <td style={{ ...TD, textAlign: 'center', fontWeight: 600, color: 'var(--text-sub)' }}>{ts.types}</td>
-                    <td style={{ ...TD, textAlign: 'center', fontWeight: 700 }}>{ts.pendingTrips}</td>
-                    <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--warn)', fontSize: '14px' }}>{fmtRs(ts.outstanding)}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>
-                      {ts.hasUnverified ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(244,63,94,0.1)', color: 'var(--danger)', fontSize: '10px', fontWeight: 700 }}>
-                          <AlertTriangle size={11} /> Unverified Diesel
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', fontSize: '10px', fontWeight: 700 }}>
-                          <CheckCircle2 size={11} /> Clear
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ ...TD, textAlign: 'center' }}>
-                      <button className="btn btn-p btn-sm">Pay Now</button>
-                    </td>
+          )}
+          <div className="card">
+            <div className="card-header border-b">
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><HandCoins size={17} color="#10b981" /></div>
+                <div className="card-title-text">
+                  <h3>Pending Freight Pays</h3>
+                  <p>
+                    {payables.length} vehicle{payables.length === 1 ? '' : 's'} · {fmtRs(payables.reduce((s, p) => s + p.outstanding, 0))} outstanding
+                    {ownerGroups.groups.length > 0 && ` · ${ownerGroups.groups.length} owner${ownerGroups.groups.length === 1 ? '' : 's'}`}
+                  </p>
+                </div>
+              </div>
+              {/* One owner often runs several trucks and expects one payment,
+                  so their rows are gathered under a single total. */}
+              <button className={`btn btn-sm ${groupByOwner ? 'btn-p' : 'btn-g'}`} onClick={() => setGroupByOwner(g => !g)}
+                title={groupByOwner ? 'Show every truck as its own row' : 'Gather each owner’s trucks together'}>
+                <Merge size={13} /> {groupByOwner ? 'Grouped by owner' : 'Group by owner'}
+              </button>
+            </div>
+            <TableScroll>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    <th style={TH}>#</th>
+                    <th style={TH}><ColumnFilter label="Truck No." colKey="truck" data={payables} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={TH}>From</th>
+                    <th style={TH}>Pending Trips</th>
+                    <th style={TH}>Outstanding Due</th>
+                    <th style={TH}>Due Date</th>
+                    <th style={TH}><ColumnFilter label="Status" colKey="status" data={payables} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={TH}>Action</th>
                   </tr>
-                ))}
-                {truckSummaries.filter(ts => ts.outstanding > 0).length === 0 && (
-                  <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>All vehicles clear! No pending payments.</td></tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {/* Owner headers, when grouping is on. Each expands to the
+                      trucks below it, which render through the same row markup —
+                      one row shape, so a truck behaves the same either way. */}
+                  {groupByOwner && ownerGroups.groups.map(g => {
+                    const open = openOwners.has(g.owner);
+                    return (
+                      <React.Fragment key={'owner-' + g.owner}>
+                        <tr onClick={() => toggleOwner(g.owner)}
+                          style={{ cursor: 'pointer', background: g.overdue ? 'rgba(244,63,94,0.09)' : 'var(--bg-tf)', borderTop: '2px solid var(--border)' }}>
+                          <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', fontWeight: 900 }}>▶</span>
+                          </td>
+                          <td style={{ ...TD }} colSpan={2}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>{g.owner}</span>
+                              <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 800, background: 'rgba(99,102,241,0.12)', color: 'var(--primary)' }}>
+                                {g.trucks.length} truck{g.trucks.length === 1 ? '' : 's'}
+                              </span>
+                              {g.hasUnverified && (
+                                <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 800, background: 'rgba(245,158,11,0.12)', color: 'var(--warn)' }}>
+                                  diesel unverified
+                                </span>
+                              )}
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                                {g.trucks.map(t => t.truck).join(' · ')}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ ...TD, textAlign: 'center', fontWeight: 700 }}>
+                            {g.trucks.reduce((s, t) => s + (parseInt(t.pendingTrips) || 0), 0)}
+                          </td>
+                          <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: 'var(--warn)', fontSize: '15px' }}>{fmtRs(g.outstanding)}</td>
+                          <td style={{ ...TD, textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>{g.dueDate || '—'}</td>
+                          <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                            {/* Opens the settlement panel on every one of this
+                                owner's trips, rather than a second dialog that
+                                could only ever do less than the panel does. */}
+                            <button className="btn btn-p btn-sm"
+                              onClick={() => {
+                                setSelTruck(null); setSelOwner(g.owner);
+                                setSelectedLrs(new Set()); setPayAmount(''); setDetailTab('pending');
+                                // A date filter left over from a truck opened
+                                // earlier would hide most of the owner's trips
+                                // and quietly shrink the payment.
+                                setDateFilter('all');
+                              }}
+                              disabled={g.hasUnverified}
+                              title={g.hasUnverified ? 'Verify diesel on these trips first' : `Settle all ${g.trucks.length} trucks in one payment`}>
+                              <HandCoins size={13} /> Pay All
+                            </button>
+                          </td>
+                        </tr>
+                        {open && g.trucks.map((p, i) => (
+                          <PayableRow key={p.truck} p={p} i={i} indented
+                            onOpen={() => { setSelTruck(p.truck); setDetailTab('pending'); setPayAmount(''); }}
+                            setDueDate={setDueDate} />
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                  {/* Trucks with nobody recorded against them. Said out loud,
+                      because they sit under the groups and read as part of the
+                      last one — so Pay All looks like it skipped them when in
+                      truth they belong to no group at all. */}
+                  {groupByOwner && ownerGroups.loose.length > 0 && (
+                    <tr>
+                      <td colSpan={8} style={{ ...TD, padding: '10px 14px', background: 'rgba(245,158,11,0.05)', borderTop: '1px solid var(--border)', whiteSpace: 'normal' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          No owner recorded · {ownerGroups.loose.length} truck{ownerGroups.loose.length === 1 ? '' : 's'}
+                        </span>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                          Not part of any group above, so Pay All does not cover {ownerGroups.loose.length === 1 ? 'it' : 'them'}.
+                          Add {ownerGroups.loose.length === 1 ? 'the truck' : 'these trucks'} in Fleet Management with an owner and {ownerGroups.loose.length === 1 ? 'it groups' : 'they group'} automatically.
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {groupByOwner && ownerGroups.loose.map((p, i) => (
+                    <PayableRow key={p.truck} p={p} i={i}
+                      onOpen={() => { setSelTruck(p.truck); setDetailTab('pending'); setPayAmount(''); }}
+                      setDueDate={setDueDate} />
+                  ))}
+                  {!groupByOwner && payables.map((p, i) => (
+                    <PayableRow key={p.truck} p={p} i={i}
+                      onOpen={() => { setSelTruck(p.truck); setDetailTab('pending'); setPayAmount(''); }}
+                      setDueDate={setDueDate} />
+                  ))}
+                  {payables.length === 0 && (
+                    <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      Nothing waiting to be paid. Balances appear here once a clerk sends them from a balance sheet.
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </TableScroll>
           </div>
+
         </div>
       ) : (
         // DETAIL VIEW
@@ -997,8 +1427,12 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   <Truck size={20} color="#10b981" />
                 </div>
                 <div>
-                  <h2 style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)', margin: 0 }}>{selTruck}</h2>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Vehicle Settlement Details</div>
+                  <h2 style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)', margin: 0 }}>{selOwner || selTruck}</h2>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {selOwner
+                      ? `${activeTrucks.length} truck${activeTrucks.length === 1 ? '' : 's'} · ${activeTrucks.join(', ')}`
+                      : 'Vehicle Settlement Details'}
+                  </div>
                 </div>
               </div>
 
@@ -1007,12 +1441,17 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <button className={`btn btn-sm ${detailTab === 'pending' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('pending')}>
                   Pending ({vehicleLrs.length})
                 </button>
-                <button className={`btn btn-sm ${detailTab === 'advance' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('advance')}>
-                  Advances ({advances.length})
-                </button>
-                <button className={`btn btn-sm ${detailTab === 'history' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('history')}>
-                  History ({paidLrs.length})
-                </button>
+                {/* The advance ledger and payment history are one truck's. */}
+                {singleTruckMode && (
+                  <>
+                    <button className={`btn btn-sm ${detailTab === 'advance' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('advance')}>
+                      Advances ({advances.length})
+                    </button>
+                    <button className={`btn btn-sm ${detailTab === 'history' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setDetailTab('history')}>
+                      History ({paidLrs.length})
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1047,6 +1486,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                         onChange={() => onCheckAll(vehicleLrs, selectedLrs.size !== vehicleLrs.length)}
                         style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
                     </th>
+                    {selOwner && <th style={TH}>Truck</th>}
                     <th style={TH}>Date</th>
                     <th style={TH}>LR No.</th>
                     <th style={TH}>Trip Type</th>
@@ -1058,7 +1498,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <tbody>
                   {vehicleLrs.map((v, i) => {
                     const isChecked = selectedLrs.has(v.id);
-                    const out = Math.max(0, calcNet(v, selVehicle) - (parseFloat(v.paidBalance) || 0));
+                    const out = Math.max(0, calcNet(v, vehicleFor(v.truckNo)) - (parseFloat(v.paidBalance) || 0));
                     const unverified = hasUnverifiedDiesel(v);
                     const bg = isChecked ? (unverified ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)') : (i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
 
@@ -1068,8 +1508,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           <input type="checkbox" checked={isChecked} onChange={() => onCheck(v.id)}
                             style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: unverified ? 'var(--danger)' : 'var(--accent)' }} />
                         </td>
+                        {selOwner && <td style={{ ...TD, fontWeight: 800, color: 'var(--text)' }}>{v.truckNo}</td>}
                         <td style={{ ...TD }}>{fmtDate(v.date)}</td>
-                        <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                        <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>{lrLabelOf(v)}</td>
                         <td style={{ ...TD, fontWeight: 700, color: 'var(--text-sub)' }}>{v.type?.replace('_', ' ') || 'Unknown'}</td>
                         <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
                         <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(out)}</td>
@@ -1154,7 +1595,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       Balance: ₹{advanceBalance.toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="tbl-wrap">
+                  <TableScroll>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
                         <tr>
@@ -1192,7 +1633,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                         )}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
                 </div>
               </div>
             ) : (
@@ -1225,7 +1666,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                             </span>
                           </td>
                           <td style={{ ...TD }}>{fmtDate(v.date)}</td>
-                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                          <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>{lrLabelOf(v)}</td>
                           <td style={{ ...TD, fontWeight: 700, color: 'var(--text-sub)' }}>{v.type?.replace('_', ' ') || 'Unknown'}</td>
                           <td style={{ ...TD }}>{v.destination || v.partyName || '—'}</td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRs(net)}</td>
@@ -1254,6 +1695,16 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 <Banknote size={16} /> Settlement Panel
               </h3>
 
+              {/* Said plainly, because a payment that quietly settled advances
+                  across four trucks would be a nasty surprise. */}
+              {!singleTruckMode && (
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.2)', marginBottom: '14px', fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.5 }}>
+                  Paying <b>{selOwner}</b> across {activeTrucks.length} truck{activeTrucks.length === 1 ? '' : 's'}.
+                  This settles the freight on the ticked trips only — GPS rent, vehicle advances
+                  and misc deductions are decided per truck, so open a truck to apply those.
+                </div>
+              )}
+
               <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Selected LRs:</span>
@@ -1269,7 +1720,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                     <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Vehicle Expenses{selRows.length > 0 ? ' (selected)' : ' (all pending)'} — already deducted</div>
                     {selVehicleExpenses.map((e, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR#{e.lrNo} · {e.date}</span></span>
+                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR {e.lrLabel} · {e.date}</span></span>
                         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
                       </div>
                     ))}
@@ -1291,7 +1742,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </div>
                 )}
                 {/* Misc Deductions */}
-                {miscDeductions.length > 0 && miscDeductions.map((d, i) => (
+                {singleTruckMode && miscDeductions.length > 0 && miscDeductions.map((d, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border)', paddingTop: '6px', marginTop: '6px' }}>
                     <div style={{ flex: 1 }}>
                       <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700 }}>− {d.remark || 'Misc'}</span>
@@ -1303,7 +1754,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </div>
                 ))}
 
-                {advanceBalance !== 0 && (
+                {singleTruckMode && advanceBalance !== 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
                     <span style={{ fontSize: '11px', color: advanceBalance > 0 ? '#10b981' : 'var(--danger)', fontWeight: 700 }}>
                       {advanceBalance > 0 ? '+ Vehicle Credit Balance:' : '− Vehicle Debit Balance:'}
@@ -1332,6 +1783,21 @@ export default function PayModule({ brand, role, permissions, initialView }) {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                {/* Blank pays the selection off in full. A figure is a part
+                    payment and settles the oldest trips first. */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Amount to pay
+                  </label>
+                  <input type="number" className="fi" value={payAmount} placeholder={`Full — ${fmtRs(selOutstanding)}`}
+                    onChange={e => setPayAmount(e.target.value)} style={{ width: '100%' }}
+                    disabled={selectedLrs.size === 0 || hasSelectedUnverified} />
+                  {payAmount !== '' && parseFloat(payAmount) > 0 && parseFloat(payAmount) < selOutstanding && (
+                    <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--warn)', marginTop: '4px' }}>
+                      Part payment — oldest trips settle first, {fmtRs(selOutstanding - parseFloat(payAmount))} stays outstanding
+                    </div>
+                  )}
+                </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
                     Payment Date
@@ -1363,7 +1829,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                 </div>
               </div>
 
-              {/* Misc Deductions — add extra deductions */}
+              {/* Misc Deductions — add extra deductions. One truck's, so it is
+                  not offered while a whole owner is being settled. */}
+              {singleTruckMode && (
               <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border)' }}>
                 <label style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>
                   Extra Deductions
@@ -1385,6 +1853,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   + Add Deduction
                 </button>
               </div>
+              )}
 
               <button className="btn btn-p"
                 style={{ width: '100%', padding: '12px', fontSize: '14px', borderRadius: '10px', pointerEvents: (!canPay || processing) ? 'none' : 'auto', opacity: (!canPay || processing) ? 0.6 : 1 }}

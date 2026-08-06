@@ -11,7 +11,9 @@ const ACTIONS = {
     ORG_UPDATED: 'ORG_UPDATED',
     PERMISSIONS_CHANGED: 'PERMISSIONS_CHANGED',
     ROLE_CHANGED: 'ROLE_CHANGED',
-    MODULE_TOGGLED: 'MODULE_TOGGLED'
+    MODULE_TOGGLED: 'MODULE_TOGGLED',
+    ATTENDANCE_MARKED: 'ATTENDANCE_MARKED',
+    ATTENDANCE_DELETED: 'ATTENDANCE_DELETED'
 };
 
 /**
@@ -66,7 +68,15 @@ const getLog = async (orgId, { limit = 30, offset = 0 } = {}) => {
     if (isAvailable()) {
         const snapshot = await db.collection(col).where('orgId', '==', orgId).get();
         entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        entries.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+        // timestamp is written by logAction as an ISO string, not a Firestore
+        // Timestamp, so `.seconds` is always undefined here — every comparison
+        // returned 0 and the log came back in arbitrary order. Compare the
+        // strings, which sort chronologically in ISO form. Tolerate a real
+        // Timestamp too, in case older rows were written that way.
+        const at = (e) => (typeof e.timestamp === 'string'
+            ? e.timestamp
+            : e.timestamp?.toDate?.()?.toISOString() || '');
+        entries.sort((a, b) => at(b).localeCompare(at(a)));
         entries = entries.slice(offset, offset + limit);
     } else {
         entries = localStore.getAll(col)

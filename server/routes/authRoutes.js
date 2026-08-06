@@ -39,9 +39,9 @@ router.get('/status', (req, res) => {
         database: firebaseConnected ? 'Firestore' : 'Local JSON (Fallback)',
         firebase: firebaseConnected ? 'connected' : 'disconnected',
         stytchConfigured: stytchService.isStytchConfigured(),
-        environment: process.env.NETLIFY ? 'netlify' : 'local',
+        environment: process.env.K_SERVICE ? 'app-hosting' : 'local',
         timestamp: new Date().toISOString(),
-        note: !firebaseConnected ? 'To enable Firestore, add server/serviceAccountKey.json (local) or FIREBASE_SERVICE_ACCOUNT (Netlify)' : 'Firestore is active'
+        note: !firebaseConnected ? 'To enable Firestore, add server/serviceAccountKey.json (local) or FIREBASE_SERVICE_ACCOUNT (cloud)' : 'Firestore is active'
     });
 });
 

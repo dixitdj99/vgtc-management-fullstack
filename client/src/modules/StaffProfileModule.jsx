@@ -11,9 +11,112 @@ const BRAND_LOGOS = {
     'Bharat': 'https://upload.wikimedia.org/wikipedia/en/thumb/c/c5/Bharat_Petroleum_Logo.svg/1200px-Bharat_Petroleum_Logo.svg.png'
 };
 
-const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour', 'Tyre', 'Manual'];
-// Vendor-type profiles: no salary formula, no leaves
+// Roll-call tiles are recognised by face, not by name, since the people being
+// marked cannot necessarily read. Keep the stored image small: it is embedded in
+// the Firestore document, and a document cannot exceed 1 MB.
+const PHOTO_MAX_PX = 256;
+const PHOTO_QUALITY = 0.72;
+
+/**
+ * Downscales and re-encodes a picked image entirely in the browser, so what
+ * reaches the server is a ~10-20 KB JPEG data URI rather than a 4 MB phone photo.
+ */
+const resizeImage = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that file'));
+    reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('That file is not a valid image'));
+        img.onload = () => {
+            // Square centre-crop, so every tile in the grid lines up.
+            const side = Math.min(img.width, img.height);
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = Math.min(side, PHOTO_MAX_PX);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(
+                img,
+                (img.width - side) / 2, (img.height - side) / 2, side, side,
+                0, 0, canvas.width, canvas.height
+            );
+            resolve(canvas.toDataURL('image/jpeg', PHOTO_QUALITY));
+        };
+        img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+function PhotoPicker({ value, name, onChange }) {
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState(null);
+
+    const pick = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // allow re-picking the same file after a removal
+        if (!file) return;
+        setBusy(true);
+        setErr(null);
+        try {
+            onChange(await resizeImage(file));
+        } catch (ex) {
+            setErr(ex.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            {value ? (
+                <img src={value} alt="" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }} />
+            ) : (
+                <div style={{
+                    width: '64px', height: '64px', borderRadius: '50%', border: '2px dashed var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--text-muted)', fontWeight: 900, fontSize: '22px',
+                }}>
+                    {String(name || '?').trim().charAt(0).toUpperCase() || <User size={22} />}
+                </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <label style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px',
+                        borderRadius: '8px', border: '1px solid var(--border)', cursor: busy ? 'wait' : 'pointer',
+                        fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)',
+                    }}>
+                        {busy ? <Loader2 size={13} className="spin" /> : <User size={13} />}
+                        {busy ? 'Processing…' : value ? 'Change photo' : 'Add photo'}
+                        {/* capture opens the camera directly on a phone at the gate */}
+                        <input type="file" accept="image/*" capture="user" onChange={pick} disabled={busy} style={{ display: 'none' }} />
+                    </label>
+                    {value && (
+                        <button type="button" onClick={() => onChange('')} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px',
+                            borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent',
+                            cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#f43f5e',
+                        }}>
+                            <XIcon size={13} /> Remove
+                        </button>
+                    )}
+                </div>
+                <div style={{ fontSize: '11px', color: err ? '#f43f5e' : 'var(--text-muted)' }}>
+                    {err || 'Used on the attendance roll-call so staff are recognised by face.'}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// People only. Tyre / Manual firms moved to Admin → Firms & Vendors; fuel
+// pumps live under Admin → Fuel Stations. Same profiles collection behind all
+// three screens — this list only controls what THIS screen creates and shows.
+const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour'];
+// Vendor-type profiles: no salary formula, no leaves. Kept for rendering any
+// legacy vendor profile that still carries these types.
 const VENDOR_TYPES = ['Tyre', 'Manual'];
+// Managed on their own admin screens, never listed or created here.
+const NON_STAFF_TYPES = ['pump', 'tyre', 'manual', 'firm'];
 const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver'];
 
 const calculateMonthsAndDays = (joined, exit) => {
@@ -35,6 +138,8 @@ const calculateMonthsAndDays = (joined, exit) => {
     return `${months}m ${days}d`;
 };
 
+// Reached from the admin panel only (AdminLayout renders this with role="admin").
+// Creating and editing people is deliberately not exposed in the main app.
 const StaffProfileModule = ({ role }) => {
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -189,6 +294,7 @@ const StaffProfileModule = ({ role }) => {
             type: 'Office Staff',
             department: 'Office',
             name: '',
+            photo: '',
             fatherName: '',
             address: '',
             bankDetails: [{ bankName: '', accountNo: '', ifsc: '' }],
@@ -214,6 +320,7 @@ const StaffProfileModule = ({ role }) => {
                 type: p.type || 'Office Staff',
                 department: p.department || 'Office',
                 name: p.name || '',
+                photo: p.photo || '',
                 fatherName: p.fatherName || '',
                 address: p.address || '',
                 bankDetails: p.bankDetails && p.bankDetails.length ? p.bankDetails : [{ bankName: '', accountNo: '', ifsc: '' }],
@@ -298,8 +405,8 @@ const StaffProfileModule = ({ role }) => {
     };
 
     const filtered = profiles.filter(p => {
-        // Exclude pump profiles — managed in Fuel Stations
-        if ((p.type || '').toLowerCase() === 'pump') return false;
+        // Pumps → Fuel Stations; Tyre/Manual/other firms → Firms & Vendors.
+        if (NON_STAFF_TYPES.includes((p.type || '').toLowerCase())) return false;
         if (filterType !== 'All' && p.type !== filterType) return false;
         const s = searchTerm.toLowerCase();
         return (p.name || '').toLowerCase().includes(s) ||
@@ -524,6 +631,17 @@ const StaffProfileModule = ({ role }) => {
                                     <label>Full Name</label>
                                     <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="fi" />
                                 </div>
+
+                                {!VENDOR_TYPES.includes(form.type) && (
+                                    <div className="field" style={{ gridColumn: '1 / -1' }}>
+                                        <label>Photo</label>
+                                        <PhotoPicker
+                                            value={form.photo}
+                                            name={form.name}
+                                            onChange={photo => setForm(f => ({ ...f, photo }))}
+                                        />
+                                    </div>
+                                )}
 
                                 {form.type === 'Manual' && (
                                     <div className="field" style={{ gridColumn: '1 / -1' }}>

@@ -2,6 +2,12 @@ import React from 'react';
 import { Truck, MapPin, Calendar, Package, MessageSquare } from 'lucide-react';
 import MobileScreen from '../components/MobileScreen';
 
+/** Crossing amber, Direct violet, from the godown green — as on the desktop list. */
+const TYPE_TINT = {
+    'Crossing': '#f59e0b',
+    'Direct': '#8b5cf6',
+};
+
 export default function MobileLRDetail({ lr }) {
     // Normalize materials: newer LRs store materials[]; older store flat fields
     const materials = lr.materials?.length
@@ -28,7 +34,10 @@ export default function MobileLRDetail({ lr }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Package size={15} color="var(--primary)" />
                             <span style={{ fontWeight: 800, color: 'var(--text)' }}>{m.type || '—'}</span>
-                            {m.loadingType && <span className="m-chip" style={{ marginLeft: 'auto', background: m.loadingType === 'Crossing' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', color: m.loadingType === 'Crossing' ? '#f59e0b' : 'var(--accent)' }}>{m.loadingType}</span>}
+                            {m.loadingType && (() => {
+                                const tint = TYPE_TINT[m.loadingType];
+                                return <span className="m-chip" style={{ marginLeft: 'auto', background: tint ? `${tint}26` : 'rgba(16,185,129,0.15)', color: tint || 'var(--accent)' }}>{m.loadingType}</span>;
+                            })()}
                         </div>
                         <div className="m-row" style={{ marginTop: 6 }}><span className="m-row-label">Weight</span><span className="m-row-val">{m.weight || '—'} MT</span></div>
                         <div className="m-row"><span className="m-row-label">Bags</span><span className="m-row-val">{m.bags || m.totalBags || '—'}</span></div>

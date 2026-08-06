@@ -5,8 +5,12 @@ import {
   Truck, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, Clock,
   ChevronUp, ChevronDown, Download, Printer, Search, X
 } from 'lucide-react';
-import { exportToExcel } from '../utils/exportUtils';
+import { exportToExcel, buildExportRows } from '../utils/exportUtils';
+import { printHtml, reportWatermarkCss } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
+import TableScroll from '../components/TableScroll';
 
 const TH = {
   padding: '8px 10px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)',
@@ -65,7 +69,8 @@ function doPrintDashboard(rows, orgName) {
   table{width:100%;border-collapse:collapse}th{padding:6px 8px;background:#333;color:#fff;font-size:10px;text-align:left}
   td{padding:5px 8px;border-bottom:1px solid #eee}
   .tot{background:#eee;font-weight:bold}
-  @media print{body{padding:0}}</style></head><body>
+  @media print{body{padding:0}}    ${reportWatermarkCss()}
+  </style></head><body>
   <h1>${orgName}</h1>
   <div class="sub">Truck Performance Dashboard — Printed: ${new Date().toLocaleDateString('en-IN')}</div>
   <table><thead><tr>
@@ -85,8 +90,14 @@ function doPrintDashboard(rows, orgName) {
   </tr></tfoot></table>
   <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
   </body></html>`;
-  const w = window.open('', '_blank', 'width=1100,height=700');
-  w.document.write(html); w.document.close();
+  printHtml(html, {
+    width: 1100, height: 700,
+    archive: {
+      module: 'Fleet', kind: 'Statements',
+      name: archiveName('Fleet Dashboard', new Date().toISOString().slice(0, 10)),
+      meta: { trucks: rows.length },
+    },
+  });
 }
 
 export default function TruckDashboard({ role, permissions }) {
@@ -174,7 +185,7 @@ export default function TruckDashboard({ role, permissions }) {
     // column filters
     Object.keys(filters).forEach(key => {
       const vals = filters[key];
-      if (vals && vals.length > 0) list = list.filter(r => vals.includes(String(r[key] ?? '')));
+      if (vals && vals.length > 0) list = list.filter(r => columnValues(r, key).some(x => vals.includes(x)));
     });
 
     list.sort((a, b) => {
@@ -223,13 +234,9 @@ export default function TruckDashboard({ role, permissions }) {
             {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={12} /></button>}
           </div>
           <button className="btn btn-g btn-sm" onClick={() => doPrintDashboard(sorted, 'VIKAS GOODS TRANSPORT CO.')}><Printer size={13} /> Print</button>
-          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(sorted.map(r => ({
-            'Truck No.': r.truckNo, 'Owner': r.ownerName, 'Trips': r.trips,
-            'Total Weight (MT)': r.totalWeight.toFixed(2), 'Total Gross (Rs.)': Math.round(r.totalGross),
-            'Total Net (Rs.)': Math.round(r.totalNet), 'Total Deductions': Math.round(r.totalDeductions),
-            'Avg Margin %': r.avgMargin.toFixed(1), 'Outstanding (Rs.)': Math.round(r.outstanding),
-            'Status': r.status, 'Last Trip': r.lastTrip
-          })), 'Truck_Dashboard')}><Download size={13} /> Excel</button>
+          <button className="btn btn-g btn-sm" onClick={() => exportToExcel(buildExportRows(sorted, {
+            order: ['truckNo', 'ownerName', 'trips', 'totalWeight', 'totalGross', 'totalNet', 'totalDeductions', 'avgMargin', 'outstanding', 'status', 'lastTrip'],
+          }), 'Truck_Dashboard')}><Download size={13} /> Excel</button>
         </div>
       </div>
 
@@ -259,7 +266,7 @@ export default function TruckDashboard({ role, permissions }) {
       )}
 
       <div className="card">
-        <div className="tbl-wrap">
+        <TableScroll>
           <table style={{ minWidth: '1200px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <thead>
               <tr>
@@ -341,7 +348,7 @@ export default function TruckDashboard({ role, permissions }) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
       </div>
     </div>
   );

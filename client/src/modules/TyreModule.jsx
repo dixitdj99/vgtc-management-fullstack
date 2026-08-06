@@ -123,19 +123,77 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
 
 const BRANDS = ['MRF', 'Apollo', 'JK Tyre', 'CEAT', 'Michelin', 'Bridgestone', 'Goodyear', 'Double Coin', 'Aeolus', 'Triangle', 'Other'];
 const SIZES = ['10.00R20', '295/80R22.5', '11R22.5', '12R22.5', '10.00-20', '7.50-16', 'Other'];
-const POSITIONS = [
-  { id: 'FL', name: 'Front Left', axle: 'front' },
-  { id: 'FR', name: 'Front Right', axle: 'front' },
-  { id: 'RLO1', name: 'Rear Left Outer 1', axle: 'rear1' },
-  { id: 'RLI1', name: 'Rear Left Inner 1', axle: 'rear1' },
-  { id: 'RRI1', name: 'Rear Right Inner 1', axle: 'rear1' },
-  { id: 'RRO1', name: 'Rear Right Outer 1', axle: 'rear1' },
-  { id: 'RLO2', name: 'Rear Left Outer 2', axle: 'rear2' },
-  { id: 'RLI2', name: 'Rear Left Inner 2', axle: 'rear2' },
-  { id: 'RRI2', name: 'Rear Right Inner 2', axle: 'rear2' },
-  { id: 'RRO2', name: 'Rear Right Outer 2', axle: 'rear2' },
-  { id: 'SP', name: 'Spare Tyre', axle: 'spare' }
-];
+
+// Fleet has only two vehicle types: 18-wheel trailers and 6-wheel canters.
+// Position ids (FL, RLO1, TLI2, SP...) are stored on tyre fitments — keep them
+// stable so existing fitment records keep rendering.
+const AXLE_LAYOUTS = {
+  '18': {
+    name: 'Trailer — 18 Wheels',
+    short: 'Trailer 18W',
+    sections: [
+      {
+        name: 'Tractor (Front Unit)', icon: '🚚',
+        axles: [
+          { name: 'Steering Axle', left: ['FL'], right: ['FR'] },
+          { name: 'Drive Axle 1', left: ['RLO1', 'RLI1'], right: ['RRI1', 'RRO1'] },
+          { name: 'Drive Axle 2', left: ['RLO2', 'RLI2'], right: ['RRI2', 'RRO2'] },
+        ]
+      },
+      {
+        name: 'Trailer (Rear Unit)', icon: '🚛',
+        axles: [
+          { name: 'Trailer Axle 1', left: ['TLO1', 'TLI1'], right: ['TRI1', 'TRO1'] },
+          { name: 'Trailer Axle 2', left: ['TLO2', 'TLI2'], right: ['TRI2', 'TRO2'] },
+        ]
+      }
+    ]
+  },
+  '6': {
+    name: 'Canter — 6 Wheels',
+    short: 'Canter 6W',
+    sections: [
+      {
+        name: 'Canter', icon: '🚚',
+        axles: [
+          { name: 'Steering Axle', left: ['FL'], right: ['FR'] },
+          { name: 'Rear Axle', left: ['RLO1', 'RLI1'], right: ['RRI1', 'RRO1'] },
+        ]
+      }
+    ]
+  }
+};
+
+// Human name for a wheel: single wheel = just the side; dual wheels = Outer/Inner.
+const wheelName = (side, idx, count) => {
+  if (count === 1) return side;
+  return idx === 0
+    ? (side === 'Left' ? 'Left Outer' : 'Right Inner')
+    : (side === 'Left' ? 'Left Inner' : 'Right Outer');
+};
+
+const getPositionsForLayout = (layoutId) => {
+  const layout = AXLE_LAYOUTS[layoutId] || AXLE_LAYOUTS['18'];
+  const posList = [];
+  layout.sections.forEach(section => {
+    section.axles.forEach(axle => {
+      axle.left.forEach((id, i) => posList.push({ id, name: `${axle.name} — ${wheelName('Left', i, axle.left.length)}` }));
+      axle.right.forEach((id, i) => posList.push({ id, name: `${axle.name} — ${wheelName('Right', i, axle.right.length)}` }));
+    });
+  });
+  posList.push({ id: 'SP', name: 'Spare Tyre' });
+  return posList;
+};
+
+const inferLayoutFromVehicle = (vehicle) => {
+  if (!vehicle) return '18';
+  const desc = `${vehicle.vehicleType || ''} ${vehicle.model || ''} ${vehicle.make || ''}`.toLowerCase();
+  if (desc.includes('canter') || desc.includes('6 wheel') || desc.includes('6w')) return '6';
+  if (desc.includes('trailer') || desc.includes('18')) return '18';
+  const gw = parseFloat(vehicle.grossWeight) || 0;
+  if (gw > 0 && gw <= 16000) return '6';
+  return '18';
+};
 
 const fmtRs = n => '₹' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -151,6 +209,8 @@ export default function TyreModule() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [truckFilter, setTruckFilter] = useState('all');
+  
+  const [overrideLayoutId, setOverrideLayoutId] = useState('');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -183,6 +243,35 @@ export default function TyreModule() {
   const [selfVehiclesList, setSelfVehiclesList] = useState([]);
   const [vouchers, setVouchers] = useState([]);
 
+  // Reset overrideLayoutId when truckFilter changes
+  useEffect(() => {
+    setOverrideLayoutId('');
+  }, [truckFilter]);
+
+  const selectedVehicle = useMemo(() => {
+    return selfVehiclesList.find(v => v.truckNo === truckFilter);
+  }, [selfVehiclesList, truckFilter]);
+
+  const inferredLayoutId = useMemo(() => {
+    return inferLayoutFromVehicle(selectedVehicle);
+  }, [selectedVehicle]);
+
+  const activeLayoutId = overrideLayoutId || inferredLayoutId;
+  const activeLayout = AXLE_LAYOUTS[activeLayoutId] || AXLE_LAYOUTS['18'];
+
+  const availablePositions = useMemo(() => {
+    const truckNo = fitForm.truckNo || '';
+    // When fitting the truck shown on the axle map, honour the layout toggle —
+    // otherwise a wheel clicked on an overridden layout (e.g. TLO1) would not
+    // exist in the modal's position list.
+    if (truckNo && truckNo === truckFilter) return getPositionsForLayout(activeLayoutId);
+    const selectedVeh = selfVehiclesList.find(v => v.truckNo === truckNo);
+    const layoutId = inferLayoutFromVehicle(selectedVeh);
+    return getPositionsForLayout(layoutId);
+  }, [fitForm.truckNo, selfVehiclesList, truckFilter, activeLayoutId]);
+
+
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -197,7 +286,11 @@ export default function TyreModule() {
       ]);
       setTyres(tyresRes.data || []);
       const allVeh = vehiclesRes.data || [];
-      const selfVeh = allVeh.filter(v => v.ownershipType === 'self');
+      // Own fleet only — market/vendor vehicles are managed in Market Vehicles,
+      // their tyres are not ours to track. Same rule as MileageModule.
+      const selfVeh = allVeh.filter(v =>
+        v.ownershipType === 'self' || (v.ownerName || '').toLowerCase().includes('vikas')
+      );
       setSelfVehiclesList(selfVeh);
       setVehicles(selfVeh.map(v => v.truckNo));
       setVouchers(vouchersRes.data || []);
@@ -303,7 +396,14 @@ export default function TyreModule() {
 
   const openFitModal = (tyre, position = '') => {
     setSelectedTyre(tyre);
-    setFitForm(f => ({ ...f, position: position || 'FL' }));
+    const targetTruck = truckFilter === 'all' ? '' : truckFilter;
+    // Same layout rule as availablePositions: the map's truck follows the toggle.
+    const layoutId = targetTruck
+      ? activeLayoutId
+      : inferLayoutFromVehicle(selfVehiclesList.find(v => v.truckNo === targetTruck));
+    const posList = getPositionsForLayout(layoutId);
+    const defaultPos = position || (posList[0]?.id || 'FL');
+    setFitForm(f => ({ ...f, position: defaultPos, truckNo: targetTruck }));
     setIsFitModalOpen(true);
   };
 
@@ -331,6 +431,66 @@ export default function TyreModule() {
     return tyres.find(t => t.status === 'fitted' && t.fitment?.truckNo === truck && t.fitment?.position === pos);
   };
 
+  // ── Axle map helpers ──
+  const positionNameMap = useMemo(() => {
+    const m = {};
+    getPositionsForLayout(activeLayoutId).forEach(p => { m[p.id] = p.name; });
+    return m;
+  }, [activeLayoutId]);
+
+  const layoutPositionIds = useMemo(() => {
+    const ids = [];
+    activeLayout.sections.forEach(s => s.axles.forEach(a => ids.push(...a.left, ...a.right)));
+    ids.push('SP');
+    return ids;
+  }, [activeLayout]);
+
+  // Road wheels only — the spare is reported separately so an "18-wheeler"
+  // never reads as "x / 19".
+  const fittedOnLayoutCount = useMemo(() => (
+    truckFilter === 'all' ? 0 : layoutPositionIds.filter(id => id !== 'SP' && getTyreAtPosition(truckFilter, id)).length
+  ), [layoutPositionIds, truckFilter, tyres]);
+
+  // Fitments recorded on positions that existed in the old 10/12/14/22-wheel
+  // layouts — still real data, so surface them instead of hiding.
+  const unmappedFitments = useMemo(() => (
+    truckFilter === 'all' ? [] : tyres.filter(t =>
+      t.status === 'fitted' && t.fitment?.truckNo === truckFilter && !layoutPositionIds.includes(t.fitment.position))
+  ), [tyres, truckFilter, layoutPositionIds]);
+
+  const handleWheelClick = (posId) => {
+    const t = getTyreAtPosition(truckFilter, posId);
+    if (t) { openRemoveModal(t); return; }
+    const av = tyres.find(ty => ty.status === 'available');
+    if (av) openFitModal(av, posId);
+    else alert('No available tyres in stock. Please register a tyre first.');
+  };
+
+  const renderWheel = (posId) => {
+    const t = getTyreAtPosition(truckFilter, posId);
+    const isFitted = !!t;
+    const posName = positionNameMap[posId] || posId;
+    return (
+      <div key={posId} onClick={() => handleWheelClick(posId)}
+        title={isFitted ? `${posName} — ${t.serialNo} (${t.brand}). Click to remove.` : `${posName} — empty. Click to fit a tyre.`}
+        style={{
+          width: '96px', padding: '6px 8px', borderRadius: '10px', textAlign: 'center', cursor: 'pointer',
+          background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
+          border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
+          boxShadow: isFitted ? '0 2px 8px rgba(16,185,129,0.25)' : 'none',
+          color: isFitted ? '#fff' : 'var(--text-muted)',
+          transition: 'transform 0.12s ease', boxSizing: 'border-box'
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+      >
+        <div style={{ fontSize: '9px', fontWeight: 900, opacity: 0.7, letterSpacing: '0.05em' }}>{posId}</div>
+        <div style={{ fontSize: '12px', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isFitted ? t.serialNo : 'EMPTY'}</div>
+        <div style={{ fontSize: '9px', fontWeight: 700, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isFitted ? t.brand : 'tap to fit'}</div>
+      </div>
+    );
+  };
+
   // Filter logic
   const filteredTyres = tyres.filter(t => {
     const matchesSearch = t.serialNo.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -342,6 +502,13 @@ export default function TyreModule() {
 
   // Self Vehicles Set
   const selfTruckSet = useMemo(() => new Set(selfVehiclesList.map(v => v.truckNo)), [selfVehiclesList]);
+
+  // Fitments recorded on trucks that are not in the own fleet (market vehicles,
+  // deleted vehicles, typos). They no longer appear in the dropdown/ledger/KPIs,
+  // so surface them explicitly instead of letting them vanish.
+  const outsideFleetFitments = useMemo(() => (
+    tyres.filter(t => t.status === 'fitted' && t.fitment?.truckNo && !selfTruckSet.has(t.fitment.truckNo))
+  ), [tyres, selfTruckSet]);
 
   // Calculate Tyre Expenses ONLY for Self Vehicles
   const selfTyreExpenses = useMemo(() => {
@@ -382,12 +549,8 @@ export default function TyreModule() {
     };
   }, [vouchers, tyres, selfTruckSet]);
 
-  // Unique self trucks & fitted trucks for filter dropdown
+  // Own-fleet trucks for the axle-map dropdown (market vehicles excluded)
   const selfTrucksList = useMemo(() => selfVehiclesList.map(v => v.truckNo).sort(), [selfVehiclesList]);
-  const fittedTrucks = useMemo(() => {
-    const fitted = tyres.filter(t => t.status === 'fitted').map(t => t.fitment?.truckNo).filter(Boolean);
-    return [...new Set([...selfTrucksList, ...fitted])].sort();
-  }, [tyres, selfTrucksList]);
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
@@ -398,13 +561,15 @@ export default function TyreModule() {
           <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>Tyre Management</h1>
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Track tyre life cycles, assignments, rotating positions, and running distances for Self Vehicles.</p>
         </div>
-        <button onClick={() => setIsAddModalOpen(true)} style={{ 
-          background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
-          borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
-          fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
-        }}>
-          <Plus size={18} /> Register New Tyre
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={() => setIsAddModalOpen(true)} style={{
+            background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
+            borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
+            fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
+          }}>
+            <Plus size={18} /> Register New Tyre
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -440,6 +605,7 @@ export default function TyreModule() {
                 <tr style={{ background: 'var(--bg-th)', borderBottom: '2px solid var(--border)' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Truck No.</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Make / Model</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Type</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Fitted Tyres</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Voucher Tyre Exp.</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Tyre Cost</th>
@@ -457,6 +623,11 @@ export default function TyreModule() {
                       <td style={{ padding: '10px 14px', fontWeight: 900, color: 'var(--primary)' }}>{v.truckNo}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{v.make} {v.model ? `(${v.model})` : ''}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)' }}>
+                          {AXLE_LAYOUTS[inferLayoutFromVehicle(v)]?.short}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                         <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: fittedCount > 0 ? 'rgba(16,185,129,0.1)' : 'var(--bg-th)', color: fittedCount > 0 ? '#10b981' : 'var(--text-muted)' }}>
                           {fittedCount} Tyres
                         </span>
@@ -464,8 +635,12 @@ export default function TyreModule() {
                       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(vExp)}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 900, color: '#10b981' }}>{fmtRs(totalExp)}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <button 
-                          onClick={() => setTruckFilter(v.truckNo)}
+                        <button
+                          onClick={() => {
+                            setTruckFilter(v.truckNo);
+                            // Same normalisation as the truck dropdown — a truck view only shows fitted tyres
+                            if (statusFilter !== 'all' && statusFilter !== 'fitted') setStatusFilter('all');
+                          }}
                           style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}
                         >
                           View Axle Map
@@ -501,7 +676,7 @@ export default function TyreModule() {
               style={{ padding: '8px 16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontWeight: 600 }}
             >
               <option value="all">— Select Vehicle —</option>
-              {fittedTrucks.map(truck => <option key={truck} value={truck}>{truck}</option>)}
+              {selfTrucksList.map(truck => <option key={truck} value={truck}>{truck}</option>)}
             </select>
           </div>
         </div>
@@ -509,171 +684,109 @@ export default function TyreModule() {
         {truckFilter === 'all' ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '16px', background: 'var(--bg-row-even)' }}>
             <Disc size={36} style={{ color: 'var(--text-muted)', marginBottom: '12px', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to render the 10-wheeler visual layout.</p>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to see its tyre layout.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px 0' }}>
-            <div style={{ position: 'relative', width: '280px', background: 'rgba(0,0,0,0.02)', border: '2px solid var(--border)', borderRadius: '30px', padding: '40px 20px', display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div style={{ position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', color: 'white', fontSize: '9px', fontWeight: 800, padding: '3px 10px', borderRadius: '10px' }}>FRONT (CAB)</div>
-              
-              {/* Front Axle */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {['FL', 'FR'].map(pos => {
-                  const t = getTyreAtPosition(truckFilter, pos);
-                  return (
-                    <div key={pos} style={{ width: '80px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px' }}>{pos}</div>
-                      {t ? (
-                        <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '8px', padding: '8px 4px', minHeight: '64px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <div style={{ fontSize: '11px', fontWeight: 900 }}>{t.serialNo}</div>
-                          <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '2px' }}>{t.brand}</div>
-                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>{t.totalKmRun.toLocaleString()} km</div>
-                        </div>
-                      ) : (
-                        <div onClick={() => {
-                          const av = tyres.find(ty => ty.status === 'available');
-                          if (av) openFitModal(av, pos);
-                          else alert('No available tyres in stock. Please register a tyre first.');
-                        }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '8px', padding: '8px 4px', minHeight: '64px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                          <Plus size={14} />
-                          <span style={{ fontSize: '9px', fontWeight: 700 }}>Empty</span>
-                        </div>
-                      )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Vehicle info + layout toggle + fitted summary */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-row-even)', border: '1px solid var(--border)', borderRadius: '14px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '14px', fontWeight: 900, color: 'var(--primary)' }}>{truckFilter}</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {selectedVehicle ? `${selectedVehicle.make || ''} ${selectedVehicle.model || ''}`.trim() : ''}
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '4px 10px', borderRadius: '8px' }}>
+                  {fittedOnLayoutCount} / {layoutPositionIds.length - 1} wheels fitted
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: getTyreAtPosition(truckFilter, 'SP') ? '#10b981' : 'var(--text-muted)', background: 'var(--bg-th)', padding: '4px 10px', borderRadius: '8px' }}>
+                  Spare: {getTyreAtPosition(truckFilter, 'SP') ? 'fitted' : 'empty'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>Vehicle Type:</span>
+                {['18', '6'].map(id => { const layout = AXLE_LAYOUTS[id]; return (
+                  <button key={id} onClick={() => setOverrideLayoutId(id)} style={{
+                    padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                    border: activeLayoutId === id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                    background: activeLayoutId === id ? 'rgba(99,102,241,0.1)' : 'var(--bg-input)',
+                    color: activeLayoutId === id ? 'var(--primary)' : 'var(--text-muted)'
+                  }}>
+                    {layout.name}
+                  </button>
+                ); })}
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '26px', height: '14px', borderRadius: '4px', background: 'linear-gradient(180deg,#1e293b,#0f172a)', border: '2px solid #10b981', display: 'inline-block' }} />
+                Fitted — click to remove
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '26px', height: '14px', borderRadius: '4px', background: 'var(--bg-th)', border: '2px dashed var(--border)', display: 'inline-block' }} />
+                Empty — click to fit
+              </span>
+              <span>Top row = left side of truck · bottom row = right side · front is on the left</span>
+            </div>
+
+            {/* Axle schematic — front of vehicle on the left */}
+            <div style={{ overflowX: 'auto', paddingBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: '16px', minWidth: 'min-content' }}>
+
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 4px' }}>
+                  <span style={{ fontSize: '20px' }}>🚚</span>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: 'var(--text-muted)', letterSpacing: '0.1em', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>FRONT</span>
+                </div>
+
+                {activeLayout.sections.map(section => (
+                  <div key={section.name} style={{ border: '2px solid var(--border)', borderRadius: '16px', padding: '14px 18px', background: 'var(--bg-row-even)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '12px', textAlign: 'center' }}>
+                      {section.icon} {section.name}
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ display: 'flex', gap: '22px' }}>
+                      {section.axles.map(axle => (
+                        <div key={axle.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {axle.left.map(id => renderWheel(id))}
+                          </div>
+                          <div style={{ width: '10px', height: '30px', borderRadius: '5px', background: 'var(--border)' }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {axle.right.map(id => renderWheel(id))}
+                          </div>
+                          <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text)', marginTop: '6px', whiteSpace: 'nowrap' }}>{axle.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
 
-              {/* Rear Axle 1 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Left side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RLO1', 'RLI1'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RRI1', 'RRO1'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Rear Axle 2 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Left side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RLO2', 'RLI2'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right side duals */}
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['RRI2', 'RRO2'].map(pos => {
-                    const t = getTyreAtPosition(truckFilter, pos);
-                    return (
-                      <div key={pos} style={{ width: '42px', textAlign: 'center' }}>
-                        {t ? (
-                          <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.serialNo}</div>
-                            <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                          </div>
-                        ) : (
-                          <div onClick={() => {
-                            const av = tyres.find(ty => ty.status === 'available');
-                            if (av) openFitModal(av, pos);
-                            else alert('No available tyres in stock.');
-                          }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '6px', padding: '6px 2px', minHeight: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            <Plus size={10} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Spare Tyre */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '15px' }}>
-                <div style={{ width: '80px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '3px' }}>SPARE (SP)</div>
-                  {(() => {
-                    const t = getTyreAtPosition(truckFilter, 'SP');
-                    return t ? (
-                      <div onClick={() => openRemoveModal(t)} style={{ cursor: 'pointer', background: 'var(--bg-input)', border: '2px solid #10b981', borderRadius: '8px', padding: '6px 4px', minHeight: '54px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 900 }}>{t.serialNo}</div>
-                        <div style={{ fontSize: '8px', color: '#10b981', marginTop: '2px' }}>{t.totalKmRun} km</div>
-                      </div>
-                    ) : (
-                      <div onClick={() => {
-                        const av = tyres.find(ty => ty.status === 'available');
-                        if (av) openFitModal(av, 'SP');
-                        else alert('No available tyres in stock.');
-                      }} style={{ cursor: 'pointer', border: '2px dashed var(--border)', borderRadius: '8px', padding: '6px 4px', minHeight: '54px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                        <Plus size={12} />
-                      </div>
-                    );
-                  })()}
+                <div style={{ border: '2px dashed var(--border)', borderRadius: '16px', padding: '14px 18px', background: 'var(--bg-row-even)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Spare</div>
+                  {renderWheel('SP')}
                 </div>
               </div>
             </div>
+
+            {/* Tyres fitted on positions that are not part of the selected layout */}
+            {unmappedFitments.length > 0 && (
+              <div style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
+                <strong>{unmappedFitments.length} fitted tyre(s) are on positions outside the selected layout:</strong>{' '}
+                {unmappedFitments.map(t => `${t.serialNo} (${t.fitment.position})`).join(', ')}.
+                If the vehicle type above is wrong, switch the toggle — otherwise use the tyre cards below to remove and refit them.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fitments recorded on trucks that are not in the own fleet */}
+        {outsideFleetFitments.length > 0 && (
+          <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
+            <strong>{outsideFleetFitments.length} fitted tyre(s) are recorded on trucks outside your own fleet:</strong>{' '}
+            {outsideFleetFitments.slice(0, 10).map(t => `${t.serialNo} (${t.fitment.truckNo})`).join(', ')}
+            {outsideFleetFitments.length > 10 ? ` +${outsideFleetFitments.length - 10} more` : ''}.
+            These trucks are not listed above — set the tyre list below to "All" / "Fitted" to find and remove them.
           </div>
         )}
       </div>
@@ -824,23 +937,23 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleAddSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Serial No. *</label>
                     <input className="fi" type="text" placeholder="e.g. MRF-84930129" value={addForm.serialNo} onChange={e => setAddForm({ ...addForm, serialNo: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Brand</label>
                     <select className="fi" value={addForm.brand} onChange={e => setAddForm({ ...addForm, brand: e.target.value })}>
                       {BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Size</label>
                     <select className="fi" value={addForm.size} onChange={e => setAddForm({ ...addForm, size: e.target.value })}>
                       {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Type</label>
                     <select className="fi" value={addForm.type} onChange={e => setAddForm({ ...addForm, type: e.target.value })}>
                       <option value="new">New Tyre</option>
@@ -848,15 +961,15 @@ export default function TyreModule() {
                       <option value="old">Old / Used Tyre</option>
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Cost</label>
                     <input className="fi" type="number" placeholder="₹" value={addForm.purchasePrice} onChange={e => setAddForm({ ...addForm, purchasePrice: e.target.value })} />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Purchase Date</label>
                     <input className="fi" type="date" value={addForm.purchaseDate} onChange={e => setAddForm({ ...addForm, purchaseDate: e.target.value })} />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Notes</label>
                     <textarea className="fi" rows={2} placeholder="Optional purchase notes..." value={addForm.notes} onChange={e => setAddForm({ ...addForm, notes: e.target.value })} />
                   </div>
@@ -884,7 +997,7 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleFitSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Truck No. *</label>
                     <AutocompleteInput 
                       value={fitForm.truckNo} 
@@ -894,17 +1007,17 @@ export default function TyreModule() {
                       required={true}
                     />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Position *</label>
                     <select className="fi" value={fitForm.position} onChange={e => setFitForm({ ...fitForm, position: e.target.value })}>
-                      {POSITIONS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                      {availablePositions.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
                     </select>
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Fit Odometer *</label>
                     <input className="fi" type="number" placeholder="KM" value={fitForm.fittedAtKm} onChange={e => setFitForm({ ...fitForm, fittedAtKm: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Fit Date *</label>
                     <input className="fi" type="date" value={fitForm.fittedDate} onChange={e => setFitForm({ ...fitForm, fittedDate: e.target.value })} required />
                   </div>
@@ -937,15 +1050,15 @@ export default function TyreModule() {
                       Fitted to <strong style={{ color: '#10b981' }}>{selectedTyre.fitment.truckNo}</strong> at position <strong>{selectedTyre.fitment.position}</strong> with Odometer <strong>{selectedTyre.fitment.fittedAtKm.toLocaleString()} KM</strong>.
                     </div>
                   )}
-                  <div className="field-h">
+                  <div className="field">
                     <label>Removal KM *</label>
                     <input className="fi" type="number" placeholder="KM" value={removeForm.removalKm} onChange={e => setRemoveForm({ ...removeForm, removalKm: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Removal Date *</label>
                     <input className="fi" type="date" value={removeForm.removalDate} onChange={e => setRemoveForm({ ...removeForm, removalDate: e.target.value })} required />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Next Status *</label>
                     <select className="fi" value={removeForm.nextStatus} onChange={e => setRemoveForm({ ...removeForm, nextStatus: e.target.value })}>
                       <option value="available">Available (Put back in stock)</option>
@@ -977,19 +1090,19 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleRetreadSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Retread Date *</label>
                     <input className="fi" type="date" value={retreadForm.retreadDate} onChange={e => setRetreadForm({ ...retreadForm, retreadDate: e.target.value })} required />
                   </div>
-                  <div className="field-h">
+                  <div className="field">
                     <label>Retread Cost *</label>
                     <input className="fi" type="number" placeholder="₹" value={retreadForm.retreadCost} onChange={e => setRetreadForm({ ...retreadForm, retreadCost: e.target.value })} required />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Retreader Vendor</label>
                     <input className="fi" type="text" placeholder="e.g. Apollo Retread Center" value={retreadForm.retreaderName} onChange={e => setRetreadForm({ ...retreadForm, retreaderName: e.target.value })} />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Notes</label>
                     <textarea className="fi" rows={2} placeholder="Retreading comments..." value={retreadForm.notes} onChange={e => setRetreadForm({ ...retreadForm, notes: e.target.value })} />
                   </div>
@@ -1017,11 +1130,11 @@ export default function TyreModule() {
               </div>
               <form onSubmit={handleScrapSubmit} style={{ padding: '20px' }}>
                 <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Scrap Date *</label>
                     <input className="fi" type="date" value={scrapForm.scrapDate} onChange={e => setScrapForm({ ...scrapForm, scrapDate: e.target.value })} required />
                   </div>
-                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
                     <label>Reason / Notes</label>
                     <textarea className="fi" rows={3} placeholder="Provide details e.g. Side cut, worn out, tread wear limit..." value={scrapForm.notes} onChange={e => setScrapForm({ ...scrapForm, notes: e.target.value })} />
                   </div>

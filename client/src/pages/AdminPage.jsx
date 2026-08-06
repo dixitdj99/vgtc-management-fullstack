@@ -2,120 +2,31 @@ import React, { useState, useEffect } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, 
+  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
   Users, Truck, Eye, EyeOff, ExternalLink, Fuel, Settings, Globe, Mail, Save, Building2, Server,
-  BarChart3, TrendingUp, Cloud, LayoutDashboard
+  BarChart3, TrendingUp, Cloud, LayoutDashboard, UserCircle, Briefcase
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import ProfitLossSheet from '../pages/admin/ProfitLossSheet';
 import AdminModule from '../modules/AdminModule';
+import StaffProfileModule from '../modules/StaffProfileModule';
+import FuelStationManager from '../pages/admin/FuelStationManager';
+import FirmManager from '../pages/admin/FirmManager';
+import PartyMaster from '../modules/PartyMaster';
+import PermissionEditor from '../components/PermissionEditor';
+import TableScroll from '../components/TableScroll';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
 const ROLE_COLOR = { admin: '#6366f1', user: '#10b981' };
 const ROLE_ICON = { admin: Crown, user: Users };
 
-const MODULES = [
-  // Kosli
-  { key: 'lr_kosli', label: 'Kosli LR' },
-  { key: 'bill_kosli', label: 'Kosli Bill' },
-  { key: 'balance_kosli', label: 'Balance - Kosli' },
-  { key: 'stock_kosli', label: 'Kosli Stock' },
-  // Jhajjar
-  { key: 'lr_jhajjar', label: 'Jhajjar LR' },
-  { key: 'bill_jhajjar', label: 'Jhajjar Bill' },
-  { key: 'balance_jhajjar', label: 'Balance - Jhajjar' },
-  { key: 'stock_jhajjar', label: 'Jhajjar Stock' },
-  // JK Lakshmi (Jharli)
-  { key: 'lr_jkl', label: 'JK Lakshmi LR' },
-  { key: 'voucher_jkl_dump', label: 'JKL Dump Voucher' },
-  { key: 'voucher_jkl', label: 'JK Lakshmi Voucher' },
-  { key: 'balance_jkl_dump', label: 'Balance - JKL Dump' },
-  { key: 'balance_jkl', label: 'Balance - JK Lakshmi' },
-  { key: 'stock_jkl', label: 'JK Lakshmi Stock' },
-  // JK Super (Jharli)
-  { key: 'voucher_jksuper', label: 'JK Super Voucher' },
-  { key: 'balance_jksuper', label: 'Balance - JK Super' },
-  // Shared / Utilities
-  { key: 'cashbook', label: 'Cashbook' },
-  { key: 'pay', label: 'Pay Vehicles' },
-  { key: 'invoice', label: 'Generate Invoice' },
-  { key: 'vehicle', label: 'Vehicle Management' },
-  { key: 'diesel', label: 'Diesel Module' },
-  { key: 'mileage', label: 'Mileage Tracker' },
-  { key: 'sell', label: 'Sell Management' },
-  { key: 'loading_status', label: 'Loading Realtime' },
-];
+// MODULES and HIERARCHY used to be defined here and again in
+// AdminUserManagement.jsx. The two copies had already drifted — attendance was
+// missing from this one, lr_dump from both — so the list now lives in
+// permissions/catalogue.js and the editor is shared.
 
-const HIERARCHY = [
-  {
-    id: 'jharli',
-    label: 'Jharli Dump & Plant',
-    color: '#f59e0b',
-    groups: [
-      {
-        id: 'jkl_dump',
-        label: 'JK Lakshmi Dump',
-        modules: ['voucher_jkl_dump', 'balance_jkl_dump', 'stock_jkl', 'sell', 'loading_status'],
-      },
-      {
-        id: 'jkl_factory',
-        label: 'JK Lakshmi Factory',
-        modules: ['lr_jkl', 'voucher_jkl', 'balance_jkl'],
-      },
-      {
-        id: 'jksuper_factory',
-        label: 'JK Super Factory',
-        modules: ['voucher_jksuper', 'balance_jksuper'],
-      },
-      {
-        id: 'jharli_shared',
-        label: 'Shared Utilities',
-        modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage'],
-      },
-    ],
-    plantKey: 'jklakshmi',
-  },
-  {
-    id: 'kosli',
-    label: 'Kosli Dump',
-    color: '#6366f1',
-    groups: [
-      {
-        id: 'kosli_plant',
-        label: 'Kosli Plant Modules',
-        modules: ['lr_kosli', 'bill_kosli', 'balance_kosli', 'stock_kosli'],
-      },
-      {
-        id: 'kosli_shared',
-        label: 'Shared Utilities',
-        modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'],
-      },
-    ],
-    plantKey: 'jksuper',
-    godownKey: 'kosli',
-  },
-  {
-    id: 'jhajjar',
-    label: 'Jajjhar Dump',
-    color: '#14b8a6',
-    groups: [
-      {
-        id: 'jhajjar_plant',
-        label: 'Jhajjar Plant Modules',
-        modules: ['lr_jhajjar', 'bill_jhajjar', 'balance_jhajjar', 'stock_jhajjar'],
-      },
-      {
-        id: 'jhajjar_shared',
-        label: 'Shared Utilities',
-        modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'],
-      },
-    ],
-    plantKey: 'jksuper',
-    godownKey: 'jhajjar',
-  },
-];
 
 function DeleteConfirm({ u, onClose, onConfirm }) {
   const [busy, setBusy] = useState(false);
@@ -254,17 +165,15 @@ export default function AdminPage() {
     email: '', isOtpEnabled: false, permissions: {}
   });
   const [formError, setFormError] = useState('');
+  // Second pass of user creation: the emailed code and the id Stytch gave us.
+  // The user list is reference material, not the task — hidden until asked for.
+  const [showUsers, setShowUsers] = useState(false);
+  const [otpMode, setOtpMode] = useState(false);
+  const [methodId, setMethodId] = useState('');
+  const [otpCode, setOtpCode] = useState('');
 
   // ── State: System Settings ──
   const [sysSettings, setSysSettings] = useState({
-    nicEway: {
-      gstin: '06AAAAA0000A1Z5',
-      username: '',
-      password: '',
-      clientId: '',
-      clientSecret: '',
-      env: 'sandbox'
-    },
     smtp: {
       host: 'smtp.gmail.com',
       port: '587',
@@ -279,10 +188,9 @@ export default function AdminPage() {
   });
   const [sysSaving, setSysSaving] = useState(false);
 
-  useEffect(() => { 
-    fetchUsers(); 
-    fetchWorkers(); 
-    fetchFuelStations(); 
+  useEffect(() => {
+    fetchUsers();
+    fetchWorkers();
     fetchSysSettings();
   }, []);
 
@@ -293,7 +201,6 @@ export default function AdminPage() {
         setSysSettings(s => ({
           ...s,
           ...res.data,
-          nicEway: { ...s.nicEway, ...(res.data.nicEway || {}) },
           smtp: { ...s.smtp, ...(res.data.smtp || {}) },
           org: { ...s.org, ...(res.data.org || {}) }
         }));
@@ -345,47 +252,9 @@ export default function AdminPage() {
   const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi', dump: 'Dump (JK Super General)' };
   const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#f59e0b', jkl: '#10b981', dump: '#f43f5e' };
 
-  // ── Fuel Stations ───────────────────────────────────────────
-  const [fuelStations, setFuelStations] = useState([]);
-  const [fuelForm, setFuelForm] = useState('');
-  const [fuelBusy, setFuelBusy] = useState(false);
-  const [fuelEditId, setFuelEditId] = useState(null);
-  const [fuelEditName, setFuelEditName] = useState('');
-
-  const fetchFuelStations = async () => {
-    try {
-      const all = (await ax.get('/profiles')).data;
-      setFuelStations(all.filter(p => p.type === 'pump'));
-    } catch {}
-  };
-
-  const handleAddFuel = async e => {
-    e.preventDefault();
-    if (!fuelForm.trim()) return;
-    setFuelBusy(true);
-    try {
-      await ax.post('/profiles', { name: fuelForm.trim(), type: 'pump' });
-      setFuelForm('');
-      fetchFuelStations();
-    } catch (err) { alert(err.response?.data?.error || 'Failed to add'); }
-    finally { setFuelBusy(false); }
-  };
-
-  const handleDeleteFuel = async id => {
-    if (!confirm('Delete this fuel station?')) return;
-    try { await ax.delete(`/profiles/${id}`); fetchFuelStations(); }
-    catch { alert('Delete failed'); }
-  };
-
-  const handleEditFuel = async id => {
-    if (!fuelEditName.trim()) return;
-    try {
-      await ax.put(`/profiles/${id}`, { name: fuelEditName.trim(), type: 'pump' });
-      setFuelEditId(null);
-      setFuelEditName('');
-      fetchFuelStations();
-    } catch { alert('Update failed'); }
-  };
+  // Fuel stations are managed by the full FuelStationManager component now
+  // (contact, rate, opening balance, bill-pending, statement export) — the
+  // name-only CRUD that lived here went with the old tab body.
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -393,14 +262,31 @@ export default function AdminPage() {
     catch { } finally { setLoading(false); }
   };
 
+  /**
+   * Creating a user takes two passes: send a code to the address, then create
+   * with that code. This posted straight to /users with neither, so the server
+   * answered "Email verification code is required" every single time.
+   */
   const handleCreate = async e => {
     e.preventDefault(); setFormError(''); setBusy(true);
     try {
-      await ax.post(API, form);
-      setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
+      if (!otpMode) {
+        const res = await ax.post(`${API}/send-otp`, { email: form.email });
+        setMethodId(res.data.methodId);
+        setOtpMode(true);
+        setFormError(`Verification code sent to ${form.email}. Enter it below to finish.`);
+        return;
+      }
+      await ax.post(API, { ...form, otpCode, methodId });
+      resetCreateForm();
       fetchUsers();
     } catch (e) { setFormError(e.response?.data?.error || 'Failed to create user'); }
     finally { setBusy(false); }
+  };
+
+  const resetCreateForm = () => {
+    setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} });
+    setOtpMode(false); setMethodId(''); setOtpCode(''); setFormError('');
   };
 
   const handleUpdate = async (id, data) => {
@@ -419,73 +305,8 @@ export default function AdminPage() {
     ...f, permissions: { ...f.permissions, [mod]: val }
   }));
 
-  const PermissionToggle = ({ moduleKey, current, onChange }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-card)', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '4px' }}>
-      <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-sub)' }}>
-        {MODULES.find(m => m.key === moduleKey)?.label}
-      </span>
-      <div style={{ display: 'flex', gap: '4px' }}>
-        {[
-          { label: 'None', val: null, color: 'var(--text-muted)' },
-          { label: 'View', val: 'view', color: '#6366f1' },
-          { label: 'Edit', val: 'edit', color: 'var(--accent)' },
-          { label: 'Delete', val: 'delete', color: 'var(--danger)' },
-        ].map(({ label, val, color }) => {
-          const isActive = current === val;
-          return (
-            <button key={label} type="button" onClick={() => onChange(moduleKey, val)}
-              title={val === 'delete' ? 'Can view, edit, and delete' : val === 'edit' ? 'Can view and edit' : val === 'view' ? 'Read-only access' : 'No access'}
-              style={{
-                fontSize: '9px', fontWeight: 800, padding: '3px 6px', borderRadius: '4px',
-                border: '1px solid', borderColor: isActive ? color : 'var(--border)',
-                background: isActive ? color + '20' : 'transparent',
-                color: isActive ? color : 'var(--text-muted)',
-                cursor: 'pointer', transition: 'all 0.15s'
-              }}>
-              {label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 
-  const isLocAllowed = (locId) => {
-    const loc = HIERARCHY.find(h => h.id === locId);
-    if (!loc) return false;
-    const allowedPlants = form.permissions.allowedPlants || [];
-    if (!allowedPlants.includes(loc.plantKey)) return false;
-    if (loc.godownKey) {
-      const allowedGodowns = form.permissions.allowedGodowns || [];
-      return allowedGodowns.includes(loc.godownKey);
-    }
-    return true;
-  };
 
-  const toggleLocation = (loc, checked) => {
-    const currentPlants = form.permissions.allowedPlants || [];
-    let nextPlants = checked
-      ? (currentPlants.includes(loc.plantKey) ? currentPlants : [...currentPlants, loc.plantKey])
-      : currentPlants.filter(p => {
-          const otherLocs = HIERARCHY.filter(h => h.id !== loc.id && isLocAllowed(h.id));
-          return otherLocs.some(h => h.plantKey === p) || p !== loc.plantKey;
-        });
-    if (!checked) {
-      const otherActiveWithSamePlant = HIERARCHY.filter(h => h.id !== loc.id && h.plantKey === loc.plantKey && isLocAllowed(h.id));
-      if (otherActiveWithSamePlant.length === 0) {
-        nextPlants = nextPlants.filter(p => p !== loc.plantKey);
-      }
-    }
-    SPerm('allowedPlants', nextPlants);
-
-    if (loc.godownKey) {
-      const currentGodowns = form.permissions.allowedGodowns || [];
-      const nextGodowns = checked
-        ? (currentGodowns.includes(loc.godownKey) ? currentGodowns : [...currentGodowns, loc.godownKey])
-        : currentGodowns.filter(g => g !== loc.godownKey);
-      SPerm('allowedGodowns', nextGodowns);
-    }
-  };
 
   return (
     <>
@@ -500,7 +321,7 @@ export default function AdminPage() {
             <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Settings size={22} color="#6366f1" /> System Settings &amp; Admin Hub
             </h1>
-            <p>Unified administration panel for users, permissions, fuel pumps, system statistics, and Govt E-Way API credentials.</p>
+            <p>Unified administration panel for users, permissions, fuel pumps, system statistics, and SMTP settings.</p>
           </div>
           <button className="btn btn-g btn-sm" onClick={fetchUsers}><RefreshCw size={14} className={loading ? 'ani-spin' : ''} /> Refresh</button>
         </div>
@@ -509,9 +330,12 @@ export default function AdminPage() {
         <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid var(--border)', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }}>
           {[
             { id: 'users', label: 'Users & Permissions', icon: Users, color: '#6366f1' },
+            { id: 'profiles', label: 'Driver & Staff Profiles', icon: UserCircle, color: '#6366f1' },
+            { id: 'firms', label: 'Firms & Vendors', icon: Briefcase, color: '#10b981' },
+            { id: 'parties', label: 'Party Master', icon: Building2, color: '#8b5cf6' },
             { id: 'workers', label: 'Labour Workers', icon: Truck, color: '#10b981' },
             { id: 'fuel', label: 'Fuel Stations', icon: Fuel, color: '#3b82f6' },
-            { id: 'system', label: 'Govt E-Way API & SMTP Settings', icon: Globe, color: '#f59e0b' },
+            { id: 'system', label: 'SMTP Settings', icon: Globe, color: '#f59e0b' },
             { id: 'overview', label: 'System Overview & Fleet', icon: LayoutDashboard, color: '#8b5cf6' },
             { id: 'pl_sheet', label: 'Profit & Loss', icon: TrendingUp, color: '#ec4899' },
             { id: 'backup', label: 'Google Drive Backup', icon: Cloud, color: '#14b8a6' },
@@ -539,8 +363,31 @@ export default function AdminPage() {
 
         {/* ── TAB 1: USERS & PERMISSIONS ── */}
         {activeTab === 'users' && (
-          <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '18px', alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {/* The form and the user list used to sit side by side, which left the
+                form — and the permission editor inside it — squeezed into 400px.
+                The list is the reference, not the task, so it moved behind a
+                button and the form got the full width. */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                {users.length} account{users.length === 1 ? '' : 's'} in this organisation
+              </div>
+              {/* The label names what the button does next, not the mechanic —
+                  "Hide Users" left no obvious way back to creating one. */}
+              <button type="button" className={`btn btn-sm ${showUsers ? 'btn-a' : 'btn-g'}`}
+                onClick={() => {
+                  if (showUsers) { setEditTarget(null); resetCreateForm(); }
+                  setShowUsers(v => !v);
+                }} style={{ fontWeight: 800 }}>
+                {showUsers
+                  ? <><Plus size={14} /> Create User</>
+                  : <><Users size={14} /> Show Users ({users.length})</>}
+              </button>
+            </div>
             {/* User Form (Create/Edit) */}
+            {/* One panel at a time: opening the list closes the form, and editing
+                someone from the list brings the form back with them loaded. */}
+            {!showUsers && (
             <div className="card">
               <div className="card-header">
                 <div className="card-title-block">
@@ -561,11 +408,13 @@ export default function AdminPage() {
               <div className="card-body">
                 <form onSubmit={editTarget ? (e) => { e.preventDefault(); handleUpdate(editTarget.id, form); } : handleCreate}
                   style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div className="field">
-                    <label>Full Name</label>
-                    <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {/* Account details read as a row on a wide card, wrapping to one
+                      column on a narrow screen. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div className="field">
+                      <label>Full Name</label>
+                      <input className="fi" type="text" placeholder="Ramesh Kumar" value={form.name} onChange={e => S('name', e.target.value)} required />
+                    </div>
                     <div className="field">
                       <label><User size={11} /> Username</label>
                       <input className="fi" type="text" placeholder="ramesh" value={form.username} onChange={e => S('username', e.target.value.toLowerCase().replace(/\s/g, ''))} required disabled={!!editTarget} />
@@ -574,11 +423,11 @@ export default function AdminPage() {
                       <label><Lock size={11} /> {editTarget ? 'New Password' : 'Password'}</label>
                       <input className="fi" type="text" placeholder={editTarget ? 'Leave blank to keep' : 'e.g. pass@123'} value={form.password} onChange={e => S('password', e.target.value)} required={!editTarget} />
                     </div>
-                  </div>
-
-                  <div className="field">
-                    <label>Email Address</label>
-                    <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} />
+                    <div className="field">
+                      <label>Email Address</label>
+                      <input className="fi" type="email" placeholder="ramesh@gmail.com" value={form.email} onChange={e => S('email', e.target.value)} required={!editTarget} />
+                      {!editTarget && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>The verification code is sent here</div>}
+                    </div>
                   </div>
 
                   <div className="field">
@@ -604,57 +453,29 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  <div style={{
-                    marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
-                    background: form.isOtpEnabled ? 'rgba(99,102,241,0.05)' : 'transparent'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Email OTP Security</div>
-                      <input type="checkbox" checked={form.isOtpEnabled} onChange={e => S('isOtpEnabled', e.target.checked)} style={{ cursor: 'pointer' }} />
+                  {/* The "Email OTP Security" tick box used to sit here. It offered a
+                      choice that did not exist: isOtpEnabled is never read at login, and
+                      every new user is verified by an emailed code regardless. */}
+                  {!editTarget && otpMode && (
+                    <div style={{ marginTop: '4px', padding: '12px', borderRadius: '12px', border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.05)' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Verification Code</div>
+                      <input className="fi" value={otpCode} onChange={e => setOtpCode(e.target.value.trim())}
+                        placeholder="6-digit code sent to the email above" required />
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4, marginTop: '6px' }}>
+                        Sent to {form.email}. The account is created once this is verified.
+                      </div>
                     </div>
-                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                      Requires two-step verification using a code sent to the email above.
-                    </div>
-                  </div>
+                  )}
 
                   <div style={{ marginTop: '8px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.05)' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
                       Location &amp; Module Access
                     </div>
-
-                    {HIERARCHY.map(loc => {
-                      const allowed = isLocAllowed(loc.id);
-                      return (
-                        <div key={loc.id} style={{ marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
-                            <input type="checkbox" checked={allowed} onChange={e => toggleLocation(loc, e.target.checked)} />
-                            <span style={{
-                              display: 'flex', alignItems: 'center', gap: '6px',
-                              fontSize: '13px', fontWeight: 800,
-                              color: allowed ? loc.color : 'var(--text)'
-                            }}>
-                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: loc.color, display: 'inline-block', flexShrink: 0 }} />
-                              {loc.label}
-                            </span>
-                          </label>
-
-                          {allowed && (
-                            <div style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              {loc.groups.map(grp => (
-                                <div key={grp.id}>
-                                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: loc.color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', opacity: 0.8 }}>
-                                    {grp.label}
-                                  </div>
-                                  {grp.modules.map(mKey => (
-                                    <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    <PermissionEditor
+                      permissions={form.permissions}
+                      onChange={next => setForm(f => ({ ...f, permissions: next }))}
+                      users={users.filter(u => u.id !== editTarget)}
+                    />
                   </div>
 
                   {formError && (
@@ -666,18 +487,21 @@ export default function AdminPage() {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                    {editTarget && (
-                      <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); setForm({ name: '', username: '', password: '', role: 'user', email: '', isOtpEnabled: false, permissions: {} }); }}>Cancel</button>
+                    {(editTarget || otpMode) && (
+                      <button type="button" className="btn btn-g" style={{ flex: 1 }} onClick={() => { setEditTarget(null); resetCreateForm(); }}>Cancel</button>
                     )}
                     <button type="submit" className="btn btn-p" style={{ flex: 2, padding: '11px' }} disabled={busy}>
-                      {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : <><Plus size={14} /> Create User</>)}
+                      {busy ? 'Processing...' : (editTarget ? <><Check size={14} /> Update User</> : (otpMode ? <><Check size={14} /> Verify & Create User</> : <><Plus size={14} /> Send Verification Code</>))}
                     </button>
                   </div>
                 </form>
               </div>
             </div>
 
-            {/* Users Table */}
+            )}
+
+            {/* Users Table — reference, shown on demand */}
+            {showUsers && (
             <div className="card">
               <div className="card-header">
                 <div className="card-title-block">
@@ -688,7 +512,7 @@ export default function AdminPage() {
               {loading ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Loading...</div>
               ) : (
-                <div className="tbl-wrap">
+                <TableScroll>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
                       <tr style={{ background: 'var(--bg-th)' }}>
@@ -710,6 +534,7 @@ export default function AdminPage() {
                         return (
                           <UserRow key={u.id} u={u} i={i} RIcon={RIcon} isMe={isMe}
                             onEdit={() => {
+                              setShowUsers(false);
                               setEditTarget(u);
                               setForm({
                                 name: u.name, username: u.username, password: '', role: u.role,
@@ -723,13 +548,18 @@ export default function AdminPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableScroll>
               )}
             </div>
+            )}
           </div>
         )}
 
         {/* ── TAB 2: LABOUR WORKERS ── */}
+        {/* Driver & staff records. These feed the attendance roll-call and the
+            driver dropdown on vouchers, so photos matter here. */}
+        {activeTab === 'profiles' && <StaffProfileModule role="admin" />}
+
         {activeTab === 'workers' && (
           <div className="card">
             <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -801,118 +631,20 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── TAB 3: FUEL STATIONS ── */}
-        {activeTab === 'fuel' && (
-          <div className="card">
-            <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
-              <div className="card-title-block">
-                <div className="card-icon" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}><Fuel size={17} /></div>
-                <div className="card-title-text">
-                  <h3>Fuel Stations Management</h3>
-                  <p>Manage diesel pump list shown in voucher &amp; LR forms</p>
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '24px', padding: '20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Add New Station</div>
-                <form onSubmit={handleAddFuel} style={{ display: 'flex', gap: '10px' }}>
-                  <input className="fi" type="text" placeholder="e.g. HP Petrol Pump, Jharli" value={fuelForm} onChange={e => setFuelForm(e.target.value)} required style={{ flex: 1 }} />
-                  <button type="submit" className="btn btn-p" disabled={fuelBusy} style={{ whiteSpace: 'nowrap' }}>
-                    {fuelBusy ? '...' : <><Plus size={13} /> Add</>}
-                  </button>
-                </form>
-              </div>
+        {/* ── TAB 3: FUEL STATIONS ──
+            The full manager (contact, rate, opening balance, bill-pending,
+            monthly statement export) replaces the old name-only list. */}
+        {activeTab === 'fuel' && <FuelStationManager />}
 
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>Registered Stations ({fuelStations.length})</div>
-                {fuelStations.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '10px' }}>No fuel stations added yet.</div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-                    {fuelStations.map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Fuel size={16} color="#3b82f6" />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {fuelEditId === s.id ? (
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <input className="fi" type="text" value={fuelEditName} onChange={e => setFuelEditName(e.target.value)} style={{ flex: 1, height: '32px', fontSize: '13px' }} />
-                              <button className="btn btn-p btn-sm" onClick={() => handleEditFuel(s.id)}><Check size={12} /></button>
-                              <button className="btn btn-g btn-sm" onClick={() => { setFuelEditId(null); setFuelEditName(''); }}><X size={12} /></button>
-                            </div>
-                          ) : (
-                            <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{s.name}</div>
-                          )}
-                        </div>
-                        {fuelEditId !== s.id && (
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button className="btn btn-g btn-sm btn-icon" onClick={() => { setFuelEditId(s.id); setFuelEditName(s.name); }} title="Edit"><Users size={12} /></button>
-                            <button className="btn btn-d btn-sm btn-icon" onClick={() => handleDeleteFuel(s.id)} title="Remove"><Trash2 size={13} /></button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ── FIRMS & VENDORS — tyre sellers, manual vendors, other firms ── */}
+        {activeTab === 'firms' && <FirmManager />}
+
+        {/* ── PARTY MASTER ── */}
+        {activeTab === 'parties' && <PartyMaster />}
 
         {/* ── TAB 4: SYSTEM & GOVT API SETTINGS ── */}
         {activeTab === 'system' && (
           <form onSubmit={handleSaveSysSettings} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* ── NIC Govt E-Way API Configuration Card ── */}
-            <div className="card">
-              <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div className="card-title-block">
-                  <div className="card-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}><Globe size={18} /></div>
-                  <div className="card-title-text">
-                    <h3>Government NIC E-Way Portal Credentials</h3>
-                    <p>API integration settings for live ewaybillgst.gov.in verification and auto validity extension</p>
-                  </div>
-                </div>
-              </div>
-              <div style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field">
-                    <label>Company GSTIN *</label>
-                    <input className="fi" type="text" placeholder="06AAAAA0000A1Z5" value={sysSettings.nicEway.gstin} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, gstin: e.target.value.toUpperCase() } })} required />
-                  </div>
-
-                  <div className="field">
-                    <label>API Environment</label>
-                    <select className="fi" value={sysSettings.nicEway.env} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, env: e.target.value } })}>
-                      <option value="sandbox">Sandbox / Test Mode</option>
-                      <option value="production">Production (Live ewaybillgst.gov.in)</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label>E-Way Portal Username *</label>
-                    <input className="fi" type="text" placeholder="NIC E-Way Portal API Username" value={sysSettings.nicEway.username} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, username: e.target.value } })} />
-                  </div>
-
-                  <div className="field">
-                    <label>E-Way Portal Password *</label>
-                    <input className="fi" type="password" placeholder="••••••••" value={sysSettings.nicEway.password} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, password: e.target.value } })} />
-                  </div>
-
-                  <div className="field">
-                    <label>GSP Client ID (ClearTax / MasterIndia / NIC)</label>
-                    <input className="fi" type="text" placeholder="Client ID string" value={sysSettings.nicEway.clientId} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, clientId: e.target.value } })} />
-                  </div>
-
-                  <div className="field">
-                    <label>GSP Client Secret</label>
-                    <input className="fi" type="password" placeholder="Client secret string" value={sysSettings.nicEway.clientSecret} onChange={e => setSysSettings({ ...sysSettings, nicEway: { ...sysSettings.nicEway, clientSecret: e.target.value } })} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* ── SMTP Email & OTP Configuration Card ── */}
             <div className="card">
               <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>

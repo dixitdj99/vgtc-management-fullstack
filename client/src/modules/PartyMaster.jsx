@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { Building2, Plus, Search, MapPin, Phone, Mail, Edit3, Trash2, ArrowLeft, Briefcase, FileText, CheckCircle2, XCircle, BookOpen, Loader2, X as XIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PARTY_BRANDS } from '../utils/partyBrands';
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -15,6 +16,7 @@ export default function PartyMaster() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [filterBrand, setFilterBrand] = useState('all'); // all | jklakshmi | jksuper | untagged
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -37,8 +39,16 @@ export default function PartyMaster() {
   
   const [formData, setFormData] = useState({
     name: '', type: 'customer', contactPerson: '', phone: '', email: '',
-    address: '', gstin: '', pan: '', bankDetails: '', openingBalance: 0, balanceType: 'credit', isActive: true
+    address: '', gstin: '', pan: '', bankDetails: '', openingBalance: 0, balanceType: 'credit', isActive: true,
+    brands: [],
   });
+
+  const toggleBrand = (id) => setFormData(f => ({
+    ...f,
+    brands: (f.brands || []).includes(id)
+      ? (f.brands || []).filter(b => b !== id)
+      : [...(f.brands || []), id],
+  }));
 
   useEffect(() => {
     fetchParties();
@@ -59,12 +69,13 @@ export default function PartyMaster() {
   const handleOpenModal = (party = null) => {
     if (party) {
       setEditingId(party.id);
-      setFormData({ ...party });
+      setFormData({ ...party, brands: Array.isArray(party.brands) ? party.brands : [] });
     } else {
       setEditingId(null);
       setFormData({
         name: '', type: 'customer', contactPerson: '', phone: '', email: '',
-        address: '', gstin: '', pan: '', bankDetails: '', openingBalance: 0, balanceType: 'credit', isActive: true
+        address: '', gstin: '', pan: '', bankDetails: '', openingBalance: 0, balanceType: 'credit', isActive: true,
+        brands: [],
       });
     }
     setIsModalOpen(true);
@@ -96,12 +107,18 @@ export default function PartyMaster() {
     }
   };
 
+  const brandsOf = p => (Array.isArray(p.brands) ? p.brands : []);
+
   const filteredParties = parties.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (p.gstin && p.gstin.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesType = filterType === 'all' || p.type === filterType;
-    return matchesSearch && matchesType;
+    const matchesBrand = filterBrand === 'all'
+      || (filterBrand === 'untagged' ? brandsOf(p).length === 0 : brandsOf(p).includes(filterBrand));
+    return matchesSearch && matchesType && matchesBrand;
   });
+
+  const untaggedCount = parties.filter(p => brandsOf(p).length === 0).length;
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
@@ -144,6 +161,24 @@ export default function PartyMaster() {
             </button>
           ))}
         </div>
+        {/* Brand filter — 'untagged' surfaces the parties the backfill could
+            not classify, which still show in every module until tagged. */}
+        <div style={{ display: 'flex', gap: '8px', background: 'var(--bg-card)', padding: '6px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+          {[
+            { id: 'all', label: 'All Brands' },
+            ...PARTY_BRANDS,
+            { id: 'untagged', label: `Untagged${untaggedCount ? ` (${untaggedCount})` : ''}` },
+          ].map(b => (
+            <button key={b.id} onClick={() => setFilterBrand(b.id)} style={{
+              padding: '6px 12px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              background: filterBrand === b.id ? (b.id === 'untagged' ? 'var(--warn)' : 'var(--primary)') : 'transparent',
+              color: filterBrand === b.id ? 'white' : 'var(--text-muted)',
+              transition: 'all 0.2s'
+            }}>
+              {b.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Grid */}
@@ -159,6 +194,18 @@ export default function PartyMaster() {
                 <div>
                   <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>{party.type}</div>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{party.name}</h3>
+                  <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                    {brandsOf(party).length === 0 ? (
+                      <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '9.5px', fontWeight: 800, background: 'rgba(245,158,11,0.12)', color: 'var(--warn)' }}>UNTAGGED</span>
+                    ) : brandsOf(party).map(bid => {
+                      const b = PARTY_BRANDS.find(x => x.id === bid);
+                      return b && (
+                        <span key={bid} style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '9.5px', fontWeight: 800, background: bid === 'jklakshmi' ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)', color: bid === 'jklakshmi' ? '#f59e0b' : '#10b981' }}>
+                          {b.label.toUpperCase()}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button onClick={() => openLedger(party)} title="View Party Ledger" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: '4px' }}><BookOpen size={14} /></button>
@@ -327,6 +374,24 @@ export default function PartyMaster() {
                       <option value="broker">Broker</option>
                       <option value="transporter">Transporter</option>
                     </select>
+                  </div>
+                  {/* Which party lists this party appears in. JK Super covers
+                      Kosli, Jajjhar and Bahadurgarh. Both ticked = trades on
+                      both sides. Neither = shows everywhere (untagged). */}
+                  <div className="field-h">
+                    <label>Cement Brand</label>
+                    <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {PARTY_BRANDS.map(b => (
+                        <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={(formData.brands || []).includes(b.id)} onChange={() => toggleBrand(b.id)}
+                            style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                          {b.label}
+                        </label>
+                      ))}
+                      {(formData.brands || []).length === 0 && (
+                        <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>Untagged — will show in every module</span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Contact Info */}

@@ -34,14 +34,6 @@ router.get('/', async (req, res) => {
             // Default configuration
             settings = {
                 id: SETTINGS_DOC_ID,
-                nicEway: {
-                    gstin: process.env.EWAY_GSTIN || '06AAAAA0000A1Z5',
-                    username: process.env.EWAY_USERNAME || '',
-                    password: process.env.EWAY_PASSWORD || '',
-                    clientId: process.env.EWAY_CLIENT_ID || '',
-                    clientSecret: process.env.EWAY_CLIENT_SECRET || '',
-                    env: process.env.EWAY_ENV || 'sandbox'
-                },
                 smtp: {
                     host: process.env.SMTP_HOST || 'smtp.gmail.com',
                     port: process.env.SMTP_PORT || '587',
@@ -74,7 +66,9 @@ router.post('/', async (req, res) => {
         };
 
         if (!isAvailable()) {
-            localStore.update(SETTINGS_COL, SETTINGS_DOC_ID, payload);
+            // upsert, not update: the settings document does not exist until the
+            // first save, and `update` throws on a missing id.
+            localStore.upsert(SETTINGS_COL, SETTINGS_DOC_ID, payload);
         } else {
             await db.collection(getCol(SETTINGS_COL, req)).doc(SETTINGS_DOC_ID).set(payload, { merge: true });
         }

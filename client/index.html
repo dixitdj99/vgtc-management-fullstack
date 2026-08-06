@@ -7,10 +7,43 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json" id="app-manifest" />
+    <script>
+      /*
+       * The labour portal installs as its own app.
+       *
+       * There is one manifest for the whole origin and its start_url is "/",
+       * so installing while standing on the labour board produced a shortcut
+       * that opened the office login screen — no use to someone at the gate.
+       * Point the manifest at the labour one before the document finishes
+       * parsing, so it is already correct whenever the install prompt appears.
+       *
+       * Routing in App.jsx compares the path exactly, so this must stay
+       * "/labour" with no trailing slash, and so must start_url.
+       */
+      if (window.location.pathname === '/labour') {
+        document.getElementById('app-manifest').href = '/manifest-labour.json';
+      }
+    </script>
     <meta name="theme-color" content="#6366F1" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/vgtc-logo.svg" />
+    <!--
+      The tab icon is the truck cab off the VGTC logo, not the logo itself. The
+      full wordmark is 3:1, so squeezed into a 32px tile it draws about 10px
+      tall and reads as a smudge; the cab survives the size and is the part
+      people recognise. Sizes are declared so the browser picks rather than
+      resampling one of them badly.
+    -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <!--
+      The old placeholder favicon.svg used to be listed here as well. Browsers
+      prefer an SVG icon over any PNG when both are offered, so it won this
+      outright and the tab kept showing the old mark no matter what the PNGs
+      were changed to. Left in the folder, out of the head.
+    -->
+    <!-- iOS composites a transparent icon onto black, and this logo is navy. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

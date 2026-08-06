@@ -3,75 +3,17 @@ import ax from '../../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown, Users, Truck, Eye, EyeOff, ExternalLink, Search, Pencil, ChevronDown, ChevronUp, Mail, KeyRound } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import PermissionEditor from '../../components/PermissionEditor';
 
 const API = `/users`;
 const DEFAULT_ROLES = ['admin', 'user'];
 const ROLE_COLOR = { admin: '#ef4444', user: '#10b981', manager: '#f59e0b', viewer: '#6366f1', accountant: '#14b8a6' };
 const ROLE_ICON = { admin: Crown, user: Users };
 
-const MODULES = [
-  { key: 'lr_kosli', label: 'Kosli LR' },
-  { key: 'bill_kosli', label: 'Kosli Bill' },
-  { key: 'balance_kosli', label: 'Balance - Kosli' },
-  { key: 'stock_kosli', label: 'Kosli Stock' },
-  { key: 'lr_jhajjar', label: 'Jhajjar LR' },
-  { key: 'bill_jhajjar', label: 'Jhajjar Bill' },
-  { key: 'balance_jhajjar', label: 'Balance - Jhajjar' },
-  { key: 'stock_jhajjar', label: 'Jhajjar Stock' },
-  { key: 'lr_bahadurgarh', label: 'Bahadurgarh LR' },
-  { key: 'bill_bahadurgarh', label: 'Bahadurgarh Bill' },
-  { key: 'balance_bahadurgarh', label: 'Balance - Bahadurgarh' },
-  { key: 'stock_bahadurgarh', label: 'Bahadurgarh Stock' },
-  { key: 'lr_jkl', label: 'JK Lakshmi LR' },
-  { key: 'voucher_jkl_dump', label: 'JKL Dump Voucher' },
-  { key: 'voucher_jkl', label: 'JK Lakshmi Voucher' },
-  { key: 'balance_jkl_dump', label: 'Balance - JKL Dump' },
-  { key: 'balance_jkl', label: 'Balance - JK Lakshmi' },
-  { key: 'stock_jkl', label: 'JK Lakshmi Stock' },
-  { key: 'voucher_jksuper', label: 'JK Super Voucher' },
-  { key: 'balance_jksuper', label: 'Balance - JK Super' },
-  { key: 'cashbook', label: 'Cashbook' },
-  { key: 'pay', label: 'Pay Vehicles' },
-  { key: 'invoice', label: 'Generate Invoice' },
-  { key: 'vehicle', label: 'Vehicle Management' },
-  { key: 'diesel', label: 'Diesel Module' },
-  { key: 'mileage', label: 'Mileage Tracker' },
-  { key: 'sell', label: 'Sell Management' },
-  { key: 'loading_status', label: 'Loading Realtime' },
-];
+// MODULES and HIERARCHY moved to permissions/catalogue.js — this screen and
+// AdminPage each kept their own copy and they had already drifted apart.
 
-const HIERARCHY = [
-  {
-    id: 'jharli', label: 'Jharli Dump & Plant', color: '#f59e0b', plantKey: 'jklakshmi',
-    groups: [
-      { id: 'jkl_dump', label: 'JK Lakshmi Dump', modules: ['voucher_jkl_dump', 'balance_jkl_dump', 'stock_jkl', 'sell', 'loading_status'] },
-      { id: 'jkl_factory', label: 'JK Lakshmi Factory', modules: ['lr_jkl', 'voucher_jkl', 'balance_jkl'] },
-      { id: 'jksuper_factory', label: 'JK Super Factory', modules: ['voucher_jksuper', 'balance_jksuper'] },
-      { id: 'jharli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage'] },
-    ],
-  },
-  {
-    id: 'kosli', label: 'Kosli Dump', color: '#6366f1', plantKey: 'jksuper', godownKey: 'kosli',
-    groups: [
-      { id: 'kosli_plant', label: 'Kosli Plant Modules', modules: ['lr_kosli', 'bill_kosli', 'balance_kosli', 'stock_kosli'] },
-      { id: 'kosli_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] },
-    ],
-  },
-  {
-    id: 'jhajjar', label: 'Jajjhar Dump', color: '#14b8a6', plantKey: 'jksuper', godownKey: 'jhajjar',
-    groups: [
-      { id: 'jhajjar_plant', label: 'Jhajjar Plant Modules', modules: ['lr_jhajjar', 'bill_jhajjar', 'balance_jhajjar', 'stock_jhajjar'] },
-      { id: 'jhajjar_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] },
-    ],
-  },
-  {
-    id: 'bahadurgarh', label: 'Bahadurgarh Dump', color: '#d97706', plantKey: 'jksuper', godownKey: 'bahadurgarh',
-    groups: [
-      { id: 'bahadurgarh_plant', label: 'Bahadurgarh Plant Modules', modules: ['lr_bahadurgarh', 'bill_bahadurgarh', 'balance_bahadurgarh', 'stock_bahadurgarh'] },
-      { id: 'bahadurgarh_shared', label: 'Shared Utilities', modules: ['cashbook', 'pay', 'invoice', 'vehicle', 'diesel', 'mileage', 'sell', 'loading_status'] },
-    ],
-  },
-];
+
 
 const GODOWN_LABEL = { kosli: 'Kosli', jhajjar: 'Jhajjar', bahadurgarh: 'Bahadurgarh', jkl: 'JK Lakshmi', dump: 'Dump' };
 const GODOWN_COLOR = { kosli: '#6366f1', jhajjar: '#14b8a6', bahadurgarh: '#d97706', jkl: '#f59e0b', dump: '#f43f5e' };
@@ -118,29 +60,6 @@ function DeleteModal({ title, name, subtitle, onClose, onConfirm }) {
   );
 }
 
-function PermissionToggle({ moduleKey, current, onChange }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-input)', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '4px' }}>
-      <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>
-        {MODULES.find(m => m.key === moduleKey)?.label || GENERIC_MODULES.find(m => m.key === moduleKey)?.label || moduleKey}
-      </span>
-      <div style={{ display: 'flex', gap: '4px' }}>
-        {['None', 'View', 'Edit'].map(opt => {
-          const val = opt === 'None' ? null : opt.toLowerCase();
-          const isActive = current === val;
-          const c = opt === 'Edit' ? '#10b981' : opt === 'View' ? '#6366f1' : 'var(--text-muted)';
-          return (
-            <button key={opt} type="button" onClick={() => onChange(moduleKey, val)} style={{
-              fontSize: '9px', fontWeight: 800, padding: '3px 7px', borderRadius: '5px', border: '1px solid',
-              borderColor: isActive ? c : 'var(--border)', background: isActive ? `${c}20` : 'transparent',
-              color: isActive ? c : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.15s'
-            }}>{opt}</button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function RoleBadge({ role }) {
   const c = ROLE_COLOR[role] || '#8b5cf6';
@@ -320,37 +239,7 @@ export default function AdminUserManagement() {
   const S = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const SPerm = (mod, val) => setForm(f => ({ ...f, permissions: { ...f.permissions, [mod]: val } }));
 
-  const isLocAllowed = (locId) => {
-    const loc = HIERARCHY.find(h => h.id === locId);
-    if (!loc) return false;
-    const allowedPlants = form.permissions.allowedPlants || [];
-    if (!allowedPlants.includes(loc.plantKey)) return false;
-    if (loc.godownKey) {
-      const allowedGodowns = form.permissions.allowedGodowns || [];
-      return allowedGodowns.includes(loc.godownKey);
-    }
-    return true;
-  };
 
-  const toggleLocation = (loc, checked) => {
-    const currentPlants = form.permissions.allowedPlants || [];
-    let nextPlants = checked
-      ? (currentPlants.includes(loc.plantKey) ? currentPlants : [...currentPlants, loc.plantKey])
-      : currentPlants.filter(p => {
-          const otherLocs = HIERARCHY.filter(h => h.id !== loc.id && isLocAllowed(h.id));
-          return otherLocs.some(h => h.plantKey === p) || p !== loc.plantKey;
-        });
-    if (!checked) {
-      const otherActiveWithSamePlant = HIERARCHY.filter(h => h.id !== loc.id && h.plantKey === loc.plantKey && isLocAllowed(h.id));
-      if (otherActiveWithSamePlant.length === 0) nextPlants = nextPlants.filter(p => p !== loc.plantKey);
-    }
-    SPerm('allowedPlants', nextPlants);
-    if (loc.godownKey) {
-      const currentGodowns = form.permissions.allowedGodowns || [];
-      const nextGodowns = checked ? (currentGodowns.includes(loc.godownKey) ? currentGodowns : [...currentGodowns, loc.godownKey]) : currentGodowns.filter(g => g !== loc.godownKey);
-      SPerm('allowedGodowns', nextGodowns);
-    }
-  };
 
   const handleRoleChange = (newRole) => {
     S('role', newRole);
@@ -447,28 +336,12 @@ export default function AdminUserManagement() {
                   {showPerms ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
                 {showPerms && (
-                  <div style={{ padding: '16px', maxHeight: '400px', overflowY: 'auto' }}>
-                    {HIERARCHY.map(loc => {
-                      const allowed = isLocAllowed(loc.id);
-                      return (
-                        <div key={loc.id} style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: '10px' }}>
-                            <input type="checkbox" checked={allowed} onChange={e => toggleLocation(loc, e.target.checked)} style={{ width: '15px', height: '15px' }} />
-                            <span style={{ fontSize: '13px', fontWeight: 800, color: allowed ? loc.color : 'var(--text-muted)' }}>{loc.label}</span>
-                          </label>
-                          {allowed && (
-                            <div style={{ paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              {loc.groups.map(grp => (
-                                <div key={grp.id}>
-                                  <div style={{ fontSize: '10px', fontWeight: 800, color: loc.color, opacity: 0.6, marginBottom: '6px', textTransform: 'uppercase' }}>{grp.label}</div>
-                                  {grp.modules.map(mKey => <PermissionToggle key={mKey} moduleKey={mKey} current={form.permissions[mKey]} onChange={SPerm} />)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div>
+                    <PermissionEditor
+                      permissions={form.permissions}
+                      onChange={next => setForm(f => ({ ...f, permissions: next }))}
+                      users={users.filter(u => u.id !== editTarget?.id)}
+                    />
                   </div>
                 )}
               </div>

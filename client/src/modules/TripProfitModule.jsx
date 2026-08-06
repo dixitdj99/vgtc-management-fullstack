@@ -33,8 +33,14 @@ export default function TripProfitModule() {
   const [vouchers, setVouchers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('All');
+  // null = not chosen yet; an effect below parks it on the newest month once the
+  // data is in, so the screen opens on the month being worked rather than on
+  // every trip ever recorded.
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const [selectedTruck, setSelectedTruck] = useState('All');
+  const [selectedType, setSelectedType] = useState('All');
+  const [selectedParty, setSelectedParty] = useState('All');
+  const [selectedDest, setSelectedDest] = useState('All');
   const [expandedId, setExpandedId] = useState(null);
   const [sortBy, setSortBy] = useState('date'); // date, profit, margin
 
@@ -53,40 +59,44 @@ export default function TripProfitModule() {
     fetchData();
   }, []);
 
-  // Build a set of self-owned truck numbers
+  /**
+   * Own fleet only. Same rule as Mileage and Tyre — a truck registered before
+   * `ownershipType` existed carries the firm's name instead, and matching on
+   * the flag alone would drop those trips off this screen entirely.
+   */
   const selfTrucks = useMemo(() => {
     const s = new Set();
-    vehicles.forEach(v => { if (v.ownershipType === 'self' && v.truckNo) s.add(v.truckNo.trim().toUpperCase()); });
+    vehicles.forEach(v => {
+      const isSelf = v.ownershipType === 'self' || (v.ownerName || '').toLowerCase().includes('vikas');
+      if (isSelf && v.truckNo) s.add(v.truckNo.trim().toUpperCase());
+    });
     return s;
   }, [vehicles]);
 
-  // Compute trip-level profit for each voucher
+  // Trip-level profit, own trucks only. On a market truck the firm earns a
+  // commission rather than the trip's margin, which is a different question
+  // from the one this screen answers.
   const trips = useMemo(() => {
-    return vouchers.map(v => {
-      const nums = calcNet(v);
-      const truckNo = (v.truckNo || '').trim().toUpperCase();
-      const isSelf = selfTrucks.has(truckNo);
-      // Commission is firm revenue from market trucks
-      const firmRevenue = isSelf ? nums.net : (parseFloat(v.commission) || 0);
-      const firmCost = isSelf ? nums.deductions : 0;
-      const margin = nums.gross > 0 ? ((firmRevenue / nums.gross) * 100) : 0;
-
-      return {
-        id: v.id || v._id,
-        lrNo: v.lrNo || '',
-        truckNo,
-        destination: v.destination || '',
-        partyName: v.partyName || '',
-        date: v.date || '',
-        type: v.type || '',
-        weight: parseFloat(v.weight) || (v.deliveries?.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0) || 0),
-        ...nums,
-        isSelf,
-        firmRevenue,
-        firmCost,
-        margin,
-      };
-    }).filter(t => t.gross > 0); // only trips with actual freight
+    return vouchers
+      .filter(v => selfTrucks.has((v.truckNo || '').trim().toUpperCase()))
+      .map(v => {
+        const nums = calcNet(v);
+        const margin = nums.gross > 0 ? ((nums.net / nums.gross) * 100) : 0;
+        return {
+          id: v.id || v._id,
+          lrNo: v.lrNo || '',
+          truckNo: (v.truckNo || '').trim().toUpperCase(),
+          destination: v.destination || '',
+          partyName: v.partyName || '',
+          date: v.date || '',
+          type: v.type || '',
+          weight: parseFloat(v.weight) || (v.deliveries?.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0) || 0),
+          ...nums,
+          firmRevenue: nums.net,
+          margin,
+        };
+      })
+      .filter(t => t.gross > 0); // only trips with actual freight
   }, [vouchers, selfTrucks]);
 
   // Unique months & trucks for filters
@@ -101,17 +111,42 @@ export default function TripProfitModule() {
     return Array.from(s).sort().reverse();
   }, [trips]);
 
-  const truckList = useMemo(() => {
+  // Open on the newest month that has trips. Runs once — picking "All Months"
+  // afterwards must stick.
+  useEffect(() => {
+    if (selectedMonth === null && months.length > 0) setSelectedMonth(months[0]);
+  }, [months, selectedMonth]);
+
+  const uniq = (key) => {
     const s = new Set();
-    trips.forEach(t => { if (t.truckNo) s.add(t.truckNo); });
+    trips.forEach(t => { if (t[key]) s.add(t[key]); });
     return Array.from(s).sort();
-  }, [trips]);
+  };
+  const truckList = useMemo(() => uniq('truckNo'), [trips]);
+  const typeList = useMemo(() => uniq('type'), [trips]);
+  const partyList = useMemo(() => uniq('partyName'), [trips]);
+  const destList = useMemo(() => uniq('destination'), [trips]);
+
+  const filtersActive =
+    (selectedMonth !== null && selectedMonth !== 'All') ||
+    selectedTruck !== 'All' || selectedType !== 'All' ||
+    selectedParty !== 'All' || selectedDest !== 'All' || !!searchTerm;
+
+  const resetFilters = () => {
+    setSelectedMonth(months[0] || 'All');
+    setSelectedTruck('All'); setSelectedType('All');
+    setSelectedParty('All'); setSelectedDest('All');
+    setSearchTerm('');
+  };
 
   // Filter
   const filtered = useMemo(() => {
     let list = trips;
-    if (selectedMonth !== 'All') list = list.filter(t => t.date?.startsWith(selectedMonth));
+    if (selectedMonth && selectedMonth !== 'All') list = list.filter(t => t.date?.startsWith(selectedMonth));
     if (selectedTruck !== 'All') list = list.filter(t => t.truckNo === selectedTruck);
+    if (selectedType !== 'All') list = list.filter(t => t.type === selectedType);
+    if (selectedParty !== 'All') list = list.filter(t => t.partyName === selectedParty);
+    if (selectedDest !== 'All') list = list.filter(t => t.destination === selectedDest);
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       list = list.filter(t => t.lrNo?.toLowerCase().includes(q) || t.truckNo?.toLowerCase().includes(q) || t.destination?.toLowerCase().includes(q) || t.partyName?.toLowerCase().includes(q));
@@ -121,7 +156,7 @@ export default function TripProfitModule() {
     else if (sortBy === 'margin') list = [...list].sort((a, b) => b.margin - a.margin);
     else list = [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     return list;
-  }, [trips, selectedMonth, selectedTruck, searchTerm, sortBy]);
+  }, [trips, selectedMonth, selectedTruck, selectedType, selectedParty, selectedDest, searchTerm, sortBy]);
 
   // KPIs
   const kpi = useMemo(() => {
@@ -138,8 +173,22 @@ export default function TripProfitModule() {
     </div>
   );
 
+  const monthLabel = (m) => new Date(m + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Header — says plainly what is on screen, since it is no longer everything */}
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <TrendingUp size={19} color="#10b981" /> Trip Profit Analysis
+        </h1>
+        <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+          Own fleet only ({selfTrucks.size} truck{selfTrucks.size === 1 ? '' : 's'}) ·{' '}
+          {selectedMonth && selectedMonth !== 'All' ? monthLabel(selectedMonth) : 'All months'}
+          {' '}· market trucks are excluded — the firm earns a commission there, not a trip margin
+        </p>
+      </div>
+
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', marginBottom: '22px' }}>
         {[
@@ -165,19 +214,36 @@ export default function TripProfitModule() {
           <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input className="fi" placeholder="Search LR, truck, party, destination..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ paddingLeft: '34px', width: '100%' }} />
         </div>
-        <select className="fi" style={{ width: 'auto', minWidth: '140px' }} value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+        <select className="fi" style={{ width: 'auto', minWidth: '140px' }} value={selectedMonth ?? 'All'} onChange={e => setSelectedMonth(e.target.value)}>
           <option value="All">All Months</option>
           {months.map(m => <option key={m} value={m}>{new Date(m + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</option>)}
         </select>
-        <select className="fi" style={{ width: 'auto', minWidth: '140px' }} value={selectedTruck} onChange={e => setSelectedTruck(e.target.value)}>
+        <select className="fi" style={{ width: 'auto', minWidth: '130px' }} value={selectedTruck} onChange={e => setSelectedTruck(e.target.value)}>
           <option value="All">All Trucks</option>
-          {truckList.map(t => <option key={t} value={t}>{t} {selfTrucks.has(t) ? '(Own)' : '(Market)'}</option>)}
+          {truckList.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="fi" style={{ width: 'auto', minWidth: '130px' }} value={selectedType} onChange={e => setSelectedType(e.target.value)}>
+          <option value="All">All Types</option>
+          {typeList.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+        </select>
+        <select className="fi" style={{ width: 'auto', minWidth: '140px' }} value={selectedParty} onChange={e => setSelectedParty(e.target.value)}>
+          <option value="All">All Parties</option>
+          {partyList.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select className="fi" style={{ width: 'auto', minWidth: '150px' }} value={selectedDest} onChange={e => setSelectedDest(e.target.value)}>
+          <option value="All">All Destinations</option>
+          {destList.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
         <select className="fi" style={{ width: 'auto', minWidth: '120px' }} value={sortBy} onChange={e => setSortBy(e.target.value)}>
           <option value="date">Sort: Date</option>
           <option value="profit">Sort: Profit</option>
           <option value="margin">Sort: Margin</option>
         </select>
+        {filtersActive && (
+          <button className="btn btn-g btn-sm" onClick={resetFilters} style={{ fontWeight: 700 }}>
+            <Filter size={13} /> Clear filters
+          </button>
+        )}
       </div>
 
       {/* Trip List */}
@@ -196,8 +262,8 @@ export default function TripProfitModule() {
               <div key={t.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', cursor: 'pointer' }} onClick={() => setExpandedId(isExpanded ? null : t.id)}>
                   {/* Left: Truck badge */}
-                  <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: t.isSelf ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Truck size={18} color={t.isSelf ? '#10b981' : '#f59e0b'} />
+                  <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Truck size={18} color="#10b981" />
                   </div>
 
                   {/* Center: Trip info */}
@@ -205,7 +271,7 @@ export default function TripProfitModule() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 800, fontSize: '13px' }}>{t.truckNo}</span>
                       {t.lrNo && <span style={{ fontSize: '10px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>LR #{t.lrNo}</span>}
-                      <span style={{ fontSize: '10px', background: t.isSelf ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)', color: t.isSelf ? '#10b981' : '#f59e0b', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>{t.isSelf ? 'OWN' : 'MARKET'}</span>
+                      {t.type && <span style={{ fontSize: '10px', background: 'rgba(168,85,247,0.1)', color: '#a855f7', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>{t.type.replace(/_/g, ' ')}</span>}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                       {t.destination && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} /> {t.destination}</span>}

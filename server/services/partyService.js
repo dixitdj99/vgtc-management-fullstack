@@ -1,5 +1,6 @@
 const localStore = require('../utils/localStore');
 const { db, admin, isAvailable } = require('../firebase');
+const { cleanBrands } = require('../utils/partyBrands');
 const firebaseAvailable = () => isAvailable();
 
 const COLLECTION_PARTIES = 'parties';
@@ -8,6 +9,9 @@ const normalizePayload = (data = {}) => ({
     ...data,
     name: String(data.name || '').trim().toUpperCase(),
     type: data.type || 'customer', // customer, supplier, broker, transporter
+    // Which party lists this party appears in — 'jklakshmi', 'jksuper', or
+    // both. Empty means untagged, which every module still shows.
+    brands: cleanBrands(data.brands),
     contactPerson: String(data.contactPerson || '').trim(),
     phone: String(data.phone || '').trim(),
     email: String(data.email || '').trim(),
@@ -88,14 +92,15 @@ const getAllParties = async (orgId) => {
 
 const updateParty = async (id, data) => {
     const patch = {};
-    const allowedFields = ['name', 'type', 'contactPerson', 'phone', 'email', 'address', 'gstin', 'pan', 'bankDetails', 'openingBalance', 'balanceType', 'isActive'];
-    
+    const allowedFields = ['name', 'type', 'contactPerson', 'phone', 'email', 'address', 'gstin', 'pan', 'bankDetails', 'openingBalance', 'balanceType', 'isActive', 'brands'];
+
     allowedFields.forEach(field => {
         if (data[field] !== undefined) {
             patch[field] = data[field];
         }
     });
 
+    if (patch.brands !== undefined) patch.brands = cleanBrands(patch.brands);
     if (patch.name) patch.name = patch.name.trim().toUpperCase();
     if (patch.gstin) patch.gstin = patch.gstin.trim().toUpperCase();
     if (patch.pan) patch.pan = patch.pan.trim().toUpperCase();

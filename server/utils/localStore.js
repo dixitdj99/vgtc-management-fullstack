@@ -8,7 +8,8 @@ const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
 
-const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.LAMBDA_TASK_ROOT);
+// Hosts with a read-only application directory; only /tmp is writable there.
+const IS_LAMBDA = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.K_SERVICE || process.env.AWS_EXECUTION_ENV || process.env.LAMBDA_TASK_ROOT);
 const DATA_DIR = IS_LAMBDA
     ? '/tmp/vgtc-data'
     : path.join(__dirname, '..', 'data');
@@ -65,6 +66,26 @@ const localStore = {
         const docs = readCollection(collection);
         const idx = docs.findIndex(d => d.id === id);
         if (idx === -1) throw new Error('Document not found: ' + id);
+        docs[idx] = { ...docs[idx], ...data, updatedAt: new Date().toISOString() };
+        writeCollection(collection, docs);
+        return docs[idx];
+    },
+
+    /**
+     * Creates the document if it is absent, merges into it if present — the
+     * local equivalent of a Firestore `set(..., { merge: true })`. Needed for
+     * fixed-id singleton documents such as system_settings/global_config, where
+     * `update` throws on a fresh install that has never saved before.
+     */
+    upsert(collection, id, data) {
+        const docs = readCollection(collection);
+        const idx = docs.findIndex(d => d.id === id);
+        if (idx === -1) {
+            const doc = { id, ...data, createdAt: new Date().toISOString() };
+            docs.push(doc);
+            writeCollection(collection, docs);
+            return doc;
+        }
         docs[idx] = { ...docs[idx], ...data, updatedAt: new Date().toISOString() };
         writeCollection(collection, docs);
         return docs[idx];

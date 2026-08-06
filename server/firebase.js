@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { isProduction } = require('./utils/envConfig');
 
 let db;
 let isFirebaseInitialized = false;
@@ -17,7 +18,7 @@ try {
             throw e;
         }
     } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        // Load from environment variable (Netlify)
+        // Load from environment variable (cloud hosts without a key file)
         try {
             console.log('[Firebase] Attempting initialization via environment variable...');
             const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -56,11 +57,26 @@ try {
         }
     }
 } catch (error) {
-    if (process.env.NETLIFY) {
+    if (process.env.K_SERVICE) {
         console.error('[Firebase] Serverless Error: Cannot initialize cloud database.');
-        console.error('[Firebase] INSTRUCTIONS: Add your serviceAccountKey.json content to the "FIREBASE_SERVICE_ACCOUNT" environment variable in Netlify Site Settings.');
+        console.error('[Firebase] INSTRUCTIONS: App Hosting normally supplies Application Default Credentials. If they are unavailable, set FIREBASE_SERVICE_ACCOUNT to the contents of serviceAccountKey.json.');
     }
-    // ... rest of mock db
+
+    // In production there is no safe fallback. The local JSON store lives on an
+    // ephemeral container disk: writes would appear to succeed and then vanish on
+    // the next restart, and would diverge between instances. Refuse to start
+    // instead of silently accepting data we cannot keep.
+    if (isProduction()) {
+        console.error('[Firebase] FATAL: Firestore is unavailable in production. Refusing to start.');
+        console.error('[Firebase] Reason:', error && error.message);
+        console.error('[Firebase] Fix the service account credentials and redeploy. The local JSON');
+        console.error('[Firebase] fallback is disabled in production because it loses data on restart.');
+        process.exit(1);
+    }
+
+    // Local/beta only: fall through to the in-memory mock so the app can boot
+    // without credentials. Services check isAvailable() and route to localStore.
+    console.warn('[Firebase] Falling back to local JSON store (non-production environment only).');
     db = {
         collection: () => ({
             doc: () => ({ 

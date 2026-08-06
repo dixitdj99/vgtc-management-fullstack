@@ -1,20 +1,57 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Fuel, Search, Filter, Calendar, Check, X, Pencil, Droplet, ArrowRight, Save, AlertCircle, ChevronDown, ChevronUp, Printer, BookOpen } from 'lucide-react';
+import { Fuel, Search, Filter, Calendar, Check, X, Pencil, Droplet, ArrowRight, Save, AlertCircle, ChevronDown, ChevronUp, Printer, BookOpen, FileCheck, Banknote, Loader2 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { useAuth } from '../auth/AuthContext';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
+import TableScroll from '../components/TableScroll';
 
 const API_V = `/vouchers`;
 
-export default function DieselModule({ role = 'user', permissions = {} }) {
+/**
+ * @param {string[]} [types]  voucher types this Diesel Control covers — the same
+ *   sheets the surrounding module's Balance Sheet shows. Passed in by App.jsx so
+ *   one location's diesel never appears inside another's. Left unset it falls
+ *   back to the old plant guess, which is wrong for the Bill locations.
+ */
+export default function DieselModule({ role = 'user', permissions = {}, types }) {
     const { plant } = useAuth();
     const [vouchers, setVouchers] = useState([]);
     const [filters, setFilters] = useState({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [dieselTab, setDieselTab] = useState('records'); // records|pump_ledger
+    const [dieselTab, setDieselTab] = useState('records'); // records|pump_ledger|bill
+
+    // Fuel stations are saved with type 'pump' (lowercase) by the admin
+    // screens; older data may carry 'Pump'. Match case-insensitively or the
+    // stations silently vanish from the dropdown and the ledger.
+    const isPumpProfile = p => (p.type || '').toLowerCase() === 'pump';
+
+    // ── Monthly pump bill ──────────────────────────────────────────────────
+    // The pump's paper bill for a month is checked off entry by entry, then
+    // paid in one go. A settled entry carries dieselBillPaymentId (the
+    // /payments doc id), which is what keeps it out of every later bill run —
+    // derived, never duplicated, like paidBalance on the freight side.
+    const [billPump, setBillPump] = useState('');
+    const [billMonth, setBillMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [billTotal, setBillTotal] = useState('');      // typed from the paper bill
+    const [billPayOpen, setBillPayOpen] = useState(false);
+    const [billPaying, setBillPaying] = useState(false);
+    const [billPayForm, setBillPayForm] = useState({ date: new Date().toISOString().slice(0, 10), paymentMethod: 'Online', remark: '' });
+
+    // Admin → Fuel Stations → "Monthly Bill" lands here with the pump chosen.
+    // One-shot handoff via localStorage (the admin panel is a separate layout,
+    // so it cannot set this module's state directly).
+    useEffect(() => {
+        const pump = localStorage.getItem('vgtc-diesel-bill-pump');
+        if (pump) {
+            localStorage.removeItem('vgtc-diesel-bill-pump');
+            setBillPump(pump);
+            setDieselTab('bill');
+        }
+    }, []);
     const [expandedPump, setExpandedPump] = useState(null);
     const [profiles, setProfiles] = useState([]);
     const [pumpPayments, setPumpPayments] = useState([]);
@@ -28,7 +65,9 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
 
     useEffect(() => {
         fetchData();
-    }, [plant]);
+        // Refetch when the location changes, not just the plant — switching
+        // godown swaps which sheets this module covers.
+    }, [plant, JSON.stringify(types)]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -41,9 +80,15 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
             setProfiles(pRes.data || []);
             setPumpPayments((payRes.data || []).filter(p => p.category === 'Pump'));
 
-            // Types change based on plant
-            const types = plant === 'jklakshmi' ? ['Dump', 'JK_Lakshmi'] : ['Dump', 'JK_Super'];
-            const all = await Promise.all(types.map(t => ax.get(`${API_V}/${t}`)));
+            // Only this location's sheets. The previous rule always included
+            // 'Dump' whichever section you were in, so Jharli's diesel showed up
+            // inside Kosli, Jhajjar and Bahadurgarh — two rows against a truck
+            // the local balance sheet had once — and the three Bill types were
+            // never fetched at all, so their diesel never appeared anywhere.
+            const scoped = (types && types.length)
+                ? types
+                : (plant === 'jklakshmi' ? ['Dump', 'JK_Lakshmi'] : ['JK_Super']);
+            const all = await Promise.all(scoped.map(t => ax.get(`${API_V}/${t}`)));
             const combined = all.flatMap(res => res.data)
                 .filter(v => v.advanceDiesel || v.isFullTank); // Only show those with diesel advances
             
@@ -116,7 +161,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                         return vals.includes(s);
                     });
                 } else {
-                    list = list.filter(v => vals.includes(String(v[key] ?? '')));
+                    list = list.filter(v => columnValues(v, key).some(x => vals.includes(x)));
                 }
             }
         });
@@ -131,19 +176,22 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
     const pumpGroups = useMemo(() => {
         const map = {};
         // Initialize with all pump profiles
-        profiles.filter(p => p.type === 'Pump').forEach(p => {
-            map[p.name] = { pump: p.name, profileId: p.id, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: 0, payments: [] };
+        profiles.filter(isPumpProfile).forEach(p => {
+            map[p.name] = { pump: p.name, profileId: p.id, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: 0, payments: [], unbilledVerified: 0 };
         });
 
         vouchers.forEach(v => {
             const pump = v.pump || 'Unknown Pump';
-            if (!map[pump]) map[pump] = { pump, profileId: null, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: 0, payments: [] };
+            if (!map[pump]) map[pump] = { pump, profileId: null, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: 0, payments: [], unbilledVerified: 0 };
             map[pump].entries.push(v);
             const amt = v.advanceDiesel === 'FULL' ? 0 : (parseFloat(v.advanceDiesel) || 0);
             map[pump].totalAmount += amt;
             if (v.isDieselVerified) {
                 map[pump].totalVerified += amt;
                 map[pump].countVerified++;
+                // Verified but not yet settled by a monthly bill payment — what
+                // the Monthly Bill tab would pay this pump today.
+                if (!v.dieselBillPaymentId) map[pump].unbilledVerified += amt;
             } else {
                 map[pump].totalUnverified += amt;
                 map[pump].countPending++;
@@ -158,7 +206,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                 map[pumpName].payments.push(pay);
             } else if (pumpName) {
                 // Pump profile exists in payments but not in vouchers
-                map[pumpName] = { pump: pumpName, profileId: pay.profileId, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: parseFloat(pay.amount) || 0, payments: [pay] };
+                map[pumpName] = { pump: pumpName, profileId: pay.profileId, entries: [], totalVerified: 0, totalUnverified: 0, totalAmount: 0, countVerified: 0, countPending: 0, totalPaid: parseFloat(pay.amount) || 0, payments: [pay], unbilledVerified: 0 };
             }
         });
 
@@ -167,6 +215,110 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
 
     const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
     const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+    // ── Monthly bill derivations ───────────────────────────────────────────
+    const amtOf = v => v.advanceDiesel === 'FULL' ? 0 : (parseFloat(v.advanceDiesel) || 0);
+
+    /** Pumps to bill against: profiles plus any name found on vouchers. */
+    const billPumpOptions = useMemo(() => {
+        const names = new Set(profiles.filter(isPumpProfile).map(p => p.name));
+        vouchers.forEach(v => { if (v.pump && v.pump !== 'None') names.add(v.pump); });
+        return [...names].sort();
+    }, [profiles, vouchers]);
+
+    /**
+     * The bill run: this pump's entries not yet settled by a pump payment, up
+     * to the end of the chosen month. Older unpaid entries roll forward into
+     * the current run (flagged in the UI) instead of falling out of sight —
+     * a disputed line waits, it does not disappear.
+     */
+    const billEntries = useMemo(() => {
+        if (!billPump || !billMonth) return [];
+        const monthEnd = `${billMonth}-31`;
+        return vouchers
+            .filter(v => (v.pump || '') === billPump)
+            .filter(v => !v.dieselBillPaymentId)
+            .filter(v => (v.date || '').slice(0, 10) <= monthEnd)
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    }, [vouchers, billPump, billMonth]);
+
+    /**
+     * Entries a recorded pump payment already covers but whose settled marker
+     * failed to write (crash mid-loop, network drop). They must never be paid
+     * again — they are offered a one-click re-mark instead, recovered from the
+     * payment's own meta.voucherIds.
+     */
+    const paidButUnmarked = useMemo(() => {
+        const covered = new Map(); // voucherId -> paymentId
+        pumpPayments.forEach(p => (p.meta?.voucherIds || []).forEach(vid => covered.set(vid, p.id)));
+        const m = new Map();
+        billEntries.forEach(v => { if (covered.has(v.id)) m.set(v.id, covered.get(v.id)); });
+        return m;
+    }, [billEntries, pumpPayments]);
+
+    const billVerified = useMemo(
+        () => billEntries.filter(v => v.isDieselVerified && !paidButUnmarked.has(v.id)),
+        [billEntries, paidButUnmarked],
+    );
+    const billVerifiedTotal = useMemo(() => billVerified.reduce((s, v) => s + amtOf(v), 0), [billVerified]);
+    const billDiff = billTotal === '' ? null : (parseFloat(billTotal) || 0) - billVerifiedTotal;
+
+    const remarkSettled = async (v) => {
+        const paymentId = paidButUnmarked.get(v.id);
+        if (!paymentId) return;
+        try {
+            await ax.patch(`${API_V}/${v.id}`, { dieselBillPaymentId: paymentId, dieselBillPaidAt: new Date().toISOString().slice(0, 10) });
+            fetchData();
+        } catch { alert('Could not mark settled — try again.'); }
+    };
+
+    /**
+     * Pay the pump the verified total and settle those entries.
+     * Payment FIRST, markers second: an unmarked payment is visible in the
+     * ledger and recoverable, but a marker without a payment would hide diesel
+     * from every future bill. Failed markers are reported by LR so the clerk
+     * can re-run — re-marking with the same payment id is harmless.
+     */
+    const executeBillPay = async () => {
+        if (!billVerified.length || billPaying) return;
+        setBillPaying(true);
+        try {
+            const pumpProfile = profiles.find(p => isPumpProfile(p) && p.name === billPump);
+            const { data: payment } = await ax.post('/payments', {
+                profileId: pumpProfile?.id || null,
+                profileName: billPump,
+                otherProfileName: pumpProfile ? '' : billPump,
+                category: 'Pump',
+                amount: billVerifiedTotal,
+                date: billPayForm.date,
+                paymentMethod: billPayForm.paymentMethod,
+                remark: billPayForm.remark || `Diesel bill ${billMonth} — ${billPump}`,
+                meta: { billMonth, voucherIds: billVerified.map(v => v.id) },
+            });
+
+            const failed = [];
+            for (const v of billVerified) {
+                try {
+                    await ax.patch(`${API_V}/${v.id}`, {
+                        dieselBillPaymentId: payment.id,
+                        dieselBillPaidAt: billPayForm.date,
+                    });
+                } catch { failed.push(v.lrNo || v.id); }
+            }
+
+            setBillPayOpen(false);
+            setBillTotal('');
+            await fetchData();
+            const pRes = await ax.get('/payments').catch(() => ({ data: [] }));
+            setPumpPayments((pRes.data || []).filter(p => p.category === 'Pump'));
+
+            if (failed.length) {
+                alert(`Payment recorded (${fmtRs(billVerifiedTotal)}), but these entries could not be marked settled: LR ${failed.join(', ')}.\n\nThey now show a "Mark settled" button in the bill list — they will NOT be counted in a new payment.`);
+            }
+        } catch (err) {
+            alert('Payment failed: ' + (err.response?.data?.error || err.message));
+        } finally { setBillPaying(false); }
+    };
 
     return (
         <div className="page-container">
@@ -196,6 +348,16 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                 color: dieselTab === 'pump_ledger' ? '#fff' : 'var(--text-muted)'
                             }}>
                             <BookOpen size={13} /> Pump Ledger
+                        </button>
+                        <button
+                            onClick={() => setDieselTab('bill')}
+                            style={{
+                                padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s',
+                                background: dieselTab === 'bill' ? '#3b82f6' : 'transparent',
+                                color: dieselTab === 'bill' ? '#fff' : 'var(--text-muted)'
+                            }}>
+                            <FileCheck size={13} /> Monthly Bill
                         </button>
                     </div>
                 </div>
@@ -229,7 +391,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                         </div>
                     </div>
                 </div>
-                <div className="tbl-wrap">
+                <TableScroll>
                     {loading ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading records...</div>
                     ) : (
@@ -324,7 +486,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                             </tbody>
                         </table>
                     )}
-                </div>
+                </TableScroll>
             </div>
             </>)}
 
@@ -379,6 +541,12 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                             <div style={{ fontSize: '8px', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>Paid</div>
                                             <div style={{ fontSize: '13px', fontWeight: 900, color: '#6366f1' }}>{fmtRs(pg.totalPaid)}</div>
                                         </div>}
+                                        {/* Verified but not settled by a monthly bill yet — what the
+                                            Monthly Bill tab would pay this pump right now. */}
+                                        {pg.unbilledVerified > 0 && <div style={{ textAlign: 'center', padding: '4px 10px', borderRadius: '6px', background: 'rgba(59,130,246,0.1)' }}>
+                                            <div style={{ fontSize: '8px', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase' }}>Bill Pending</div>
+                                            <div style={{ fontSize: '13px', fontWeight: 900, color: '#3b82f6' }}>{fmtRs(pg.unbilledVerified)}</div>
+                                        </div>}
                                         {(pg.totalAmount - pg.totalPaid) > 0 && <div style={{ textAlign: 'center', padding: '4px 10px', borderRadius: '6px', background: 'rgba(244,63,94,0.1)' }}>
                                             <div style={{ fontSize: '8px', fontWeight: 700, color: '#f43f5e', textTransform: 'uppercase' }}>Balance</div>
                                             <div style={{ fontSize: '13px', fontWeight: 900, color: '#f43f5e' }}>{fmtRs(pg.totalAmount - pg.totalPaid)}</div>
@@ -391,7 +559,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                             <AnimatePresence>
                                 {expandedPump === pg.pump && (
                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-                                        <div className="tbl-wrap">
+                                        <TableScroll>
                                             <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
                                                 <thead>
                                                     <tr style={{ background: 'var(--bg-th)' }}>
@@ -437,7 +605,7 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
                                                     </tr>
                                                 </tfoot>
                                             </table>
-                                        </div>
+                                        </TableScroll>
                                         {/* Pump Payments from Firm Pay */}
                                         {pg.payments.length > 0 && (
                                             <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
@@ -465,6 +633,155 @@ export default function DieselModule({ role = 'user', permissions = {} }) {
 
                     {pumpGroups.length === 0 && (
                         <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>No diesel records found</div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Monthly Bill — check the pump's bill off entry by entry, then pay it ── */}
+            {dieselTab === 'bill' && (
+                <div>
+                    {/* Scope + tally */}
+                    <div className="card" style={{ padding: '14px 18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <select className="fi" style={{ width: '220px' }} value={billPump} onChange={e => { setBillPump(e.target.value); setBillTotal(''); }}>
+                            <option value="">— Select pump —</option>
+                            {billPumpOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <input type="month" className="fi" style={{ width: '150px' }} value={billMonth} onChange={e => setBillMonth(e.target.value)} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Bill total</span>
+                            <input type="number" className="fi" style={{ width: '130px' }} placeholder="from bill" value={billTotal} onChange={e => setBillTotal(e.target.value)} />
+                        </div>
+                        <div style={{ flex: 1 }} />
+                        {billPump && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>Verified: <b style={{ color: '#10b981' }}>{fmtRs(billVerifiedTotal)}</b> ({billVerified.length}/{billEntries.length})</span>
+                                {billDiff !== null && (
+                                    <span style={{ fontSize: '12.5px', fontWeight: 800, color: Math.abs(billDiff) < 1 ? '#10b981' : '#f43f5e' }}>
+                                        {Math.abs(billDiff) < 1 ? '✓ Matches the bill' : `${billDiff > 0 ? 'Bill is' : 'Books are'} ${fmtRs(Math.abs(billDiff))} higher`}
+                                    </span>
+                                )}
+                                <button className="btn btn-p btn-sm" disabled={!billVerified.length}
+                                    onClick={() => { setBillPayForm(f => ({ ...f, remark: `Diesel bill ${billMonth} — ${billPump}` })); setBillPayOpen(true); }}>
+                                    <Banknote size={13} /> Pay {fmtRs(billVerifiedTotal)} · {billVerified.length} entries
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {!billPump ? (
+                        <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            Pick a pump and the month of its bill. Every unpaid diesel entry up to that month appears here for checking off.
+                        </div>
+                    ) : billEntries.length === 0 ? (
+                        <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            Nothing unpaid for {billPump} up to {billMonth}. All settled.
+                        </div>
+                    ) : (
+                        <div className="card" style={{ overflow: 'hidden' }}>
+                            <TableScroll>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr>
+                                        <th style={TH}>Date</th>
+                                        <th style={TH}>Truck</th>
+                                        <th style={TH}>LR</th>
+                                        <th style={{ ...TH, textAlign: 'right' }}>Our Amount</th>
+                                        <th style={{ ...TH, textAlign: 'center' }}>Status</th>
+                                        <th style={{ ...TH, textAlign: 'center' }}>Check off</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {billEntries.map(v => {
+                                            const isFull = v.advanceDiesel === 'FULL' || (v.isFullTank && isNaN(parseFloat(v.advanceDiesel)));
+                                            const rolled = (v.date || '').slice(0, 7) < billMonth;
+                                            const awaitingMark = paidButUnmarked.has(v.id);
+                                            return (
+                                                <tr key={v.id} style={{ opacity: v.isDieselVerified && !awaitingMark ? 0.85 : 1 }}>
+                                                    <td style={TD}>
+                                                        {fmtDate(v.date)}
+                                                        {rolled && <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 800, background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>FROM {(v.date || '').slice(0, 7)}</span>}
+                                                    </td>
+                                                    <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo}</td>
+                                                    <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                                                    <td style={{ ...TD, textAlign: 'right', fontWeight: 800 }}>
+                                                        {editingId === v.id ? (
+                                                            <input type="number" className="fi" autoFocus style={{ width: '110px', height: '30px', textAlign: 'right' }}
+                                                                value={editForm.advanceDiesel}
+                                                                onChange={e => setEditForm(f => ({ ...f, advanceDiesel: e.target.value }))}
+                                                                onKeyDown={e => { if (e.key === 'Enter') handleSave(v.id); if (e.key === 'Escape') setEditingId(null); }} />
+                                                        ) : isFull ? (
+                                                            <span style={{ color: '#f43f5e', fontWeight: 900 }}>FULL — enter cost</span>
+                                                        ) : fmtRs(amtOf(v))}
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'center' }}>
+                                                        {awaitingMark
+                                                            ? <span className="badge badge-tag" style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1' }}>Paid — settle pending</span>
+                                                            : v.isDieselVerified
+                                                                ? <span className="badge badge-tag" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>Verified</span>
+                                                                : <span className="badge badge-tag" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>Pending</span>}
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'center' }}>
+                                                        {awaitingMark ? (
+                                                            // Money already went out for this one in an earlier
+                                                            // payment whose marker write failed — never re-pay it.
+                                                            <button className="btn btn-p btn-sm" onClick={() => remarkSettled(v)}>Mark settled</button>
+                                                        ) : editingId === v.id ? (
+                                                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                                                <button className="btn btn-p btn-sm" disabled={saving} onClick={() => handleSave(v.id)}>{saving ? '…' : 'Save'}</button>
+                                                                <button className="btn btn-g btn-sm" onClick={() => setEditingId(null)}><X size={12} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                                                {!v.isDieselVerified && !isFull && (
+                                                                    <button className="btn btn-g btn-sm" title="Amount matches the bill" onClick={() => handleQuickVerify(v)}><Check size={12} /> Matches</button>
+                                                                )}
+                                                                <button className="btn btn-g btn-sm" title={isFull ? 'Enter the actual cost from the bill' : 'Correct the amount to what the bill says'} onClick={() => handleEdit(v)}>
+                                                                    <Pencil size={12} /> {isFull ? 'Enter cost' : 'Correct'}
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{ background: 'var(--bg-tf)' }}>
+                                            <td colSpan={3} style={{ ...TD, fontWeight: 800, borderTop: '2px solid var(--border)', fontSize: '10px', textTransform: 'uppercase' }}>Verified total ({billVerified.length} of {billEntries.length})</td>
+                                            <td style={{ ...TD, textAlign: 'right', fontWeight: 900, borderTop: '2px solid var(--border)', color: '#10b981', fontSize: '14px' }}>{fmtRs(billVerifiedTotal)}</td>
+                                            <td colSpan={2} style={{ ...TD, borderTop: '2px solid var(--border)' }}></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </TableScroll>
+                        </div>
+                    )}
+
+                    {/* Pay confirmation */}
+                    {billPayOpen && (
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }} onClick={() => !billPaying && setBillPayOpen(false)}>
+                            <div onClick={e => e.stopPropagation()} style={{ width: '94%', maxWidth: '400px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', padding: '24px' }}>
+                                <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Pay {billPump}</div>
+                                <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                                    {billVerified.length} verified entr{billVerified.length === 1 ? 'y' : 'ies'} · <b style={{ color: '#10b981' }}>{fmtRs(billVerifiedTotal)}</b>
+                                    {billEntries.length > billVerified.length && <> — {billEntries.length - billVerified.length} unverified entr{billEntries.length - billVerified.length === 1 ? 'y stays' : 'ies stay'} open for the next bill</>}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
+                                    <div className="field-h"><label>Payment date</label>
+                                        <input type="date" className="fi" value={billPayForm.date} onChange={e => setBillPayForm(f => ({ ...f, date: e.target.value }))} /></div>
+                                    <div className="field-h"><label>Method</label>
+                                        <select className="fi" value={billPayForm.paymentMethod} onChange={e => setBillPayForm(f => ({ ...f, paymentMethod: e.target.value }))}>
+                                            <option>Online</option><option>Cash</option><option>Cheque</option>
+                                        </select></div>
+                                    <div className="field-h"><label>Remark</label>
+                                        <input type="text" className="fi" value={billPayForm.remark} onChange={e => setBillPayForm(f => ({ ...f, remark: e.target.value }))} /></div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-g" disabled={billPaying} onClick={() => setBillPayOpen(false)}>Cancel</button>
+                                    <button className="btn btn-p" disabled={billPaying} onClick={executeBillPay}>
+                                        {billPaying ? <Loader2 size={14} className="spin" /> : <Banknote size={14} />} {billPaying ? 'Paying…' : `Pay ${fmtRs(billVerifiedTotal)}`}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </div>
             )}

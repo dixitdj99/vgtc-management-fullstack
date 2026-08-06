@@ -11,6 +11,10 @@ router.use(requireAuth, tenancyMiddleware);
 const JKL_LR_COL = 'jkl_loading_receipts';
 const JKL_META_COL = 'jkl_metadata';
 
+// Advisory: has a voucher already been written on this LR number?
+const { mountLrVoucherCheck } = require('./lrVoucherCheck');
+mountLrVoucherCheck(router, JKL_LR_COL);
+
 // Create
 router.post('/', async (req, res) => {
     try {
@@ -60,7 +64,7 @@ router.post('/', async (req, res) => {
 
         res.status(201).json(result);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
@@ -70,7 +74,7 @@ router.get('/', async (req, res) => {
         const receipts = await lrService.getAllLoadingReceipts(req.orgId, getCol(JKL_LR_COL, req));
         res.json(receipts);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
@@ -87,7 +91,7 @@ router.patch('/:id/billing', async (req, res) => {
         }
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
@@ -103,7 +107,7 @@ router.put('/:id', async (req, res) => {
         }
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
@@ -118,7 +122,7 @@ router.patch('/:id', async (req, res) => {
         }
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
@@ -133,7 +137,7 @@ router.delete('/:id', async (req, res) => {
         }
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 

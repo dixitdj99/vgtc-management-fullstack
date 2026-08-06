@@ -1,8 +1,13 @@
 # apphosting.yaml
 runConfig:
   cpu: 1
-  memoryMiB: 256
+  # 256 MiB left no headroom for firebase-admin + googleapis + pdfkit in a single
+  # Node process; PDF generation and backup runs risk an OOM kill.
+  memoryMiB: 512
   concurrency: 80
+  # Scales to zero to keep cost near nothing at low traffic. Trade-off: the first
+  # request after an idle period pays a cold start (~8s measured locally).
+  # Set to 1 if that delay is unacceptable — it costs one always-on instance.
   minInstances: 0
   maxInstances: 2
 
@@ -13,6 +18,32 @@ env:
       - RUNTIME
   - variable: BLOCK_PROD_WRITES
     value: "false"
+    availability:
+      - RUNTIME
+
+  # CORS allowlist — comma-separated exact origins. The server additionally
+  # allows vgtc.site (and its subdomains) plus this backend's own *.hosted.app
+  # URLs; see isAllowedOrigin() in server/index.js.
+  - variable: ALLOWED_ORIGINS
+    value: "https://vgtc.site,https://www.vgtc.site"
+    availability:
+      - RUNTIME
+  # App Hosting backend id, so we accept only our own *.hosted.app URLs rather
+  # than every tenant on the platform.
+  - variable: APP_HOSTING_BACKEND
+    value: "vgtc-management"
+    availability:
+      - RUNTIME
+  - variable: CRON_TIMEZONE
+    value: "Asia/Kolkata"
+    availability:
+      - RUNTIME
+
+  # REQUIRED: replace with the real Gmail address that sends OTP, password reset,
+  # and daily fleet alert mail. While this is left at the placeholder the server
+  # logs an error on startup and all outbound email is disabled.
+  - variable: SMTP_USER
+    value: "your-email@gmail.com"
     availability:
       - RUNTIME
   - variable: SMTP_HOST
@@ -27,14 +58,50 @@ env:
     value: "false"
     availability:
       - RUNTIME
-  - variable: SMTP_USER
-    value: "your-email@gmail.com"
+
+  # Stytch — emails the one-time code an admin must enter to create a user.
+  # The project id is an identifier, not a credential, so it sits here; the
+  # secret is in Secret Manager.
+  #
+  # STYTCH_API_URL matters: the code defaults to test.stytch.com, and this is a
+  # LIVE project, so it has to be set explicitly or every OTP call goes to the
+  # test host and fails.
+  #
+  # Until STYTCH_SECRET exists, isStytchConfigured() is false and the server
+  # falls back to a simulated OTP that accepts the constant 123456.
+  - variable: STYTCH_PROJECT_ID
+    value: "project-live-2d2df9ff-68e0-43e9-a2fa-544c1573f5c2"
     availability:
       - RUNTIME
+  - variable: STYTCH_API_URL
+    value: "https://api.stytch.com"
+    availability:
+      - RUNTIME
+
   # Reference secure variables stored in Cloud Secret Manager
   - variable: JWT_SECRET
     secret: JWT_SECRET
+  - variable: STYTCH_SECRET
+    secret: STYTCH_SECRET
   - variable: SMTP_PASS
     secret: SMTP_PASS
   - variable: GOOGLE_CREDENTIALS
     secret: GOOGLE_CREDENTIALS
+  # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling
+  # /api/jobs/*. Kept as a literal so the existing Scheduler jobs keep working
+  # unchanged — the value here must match the header they already send.
+  #
+  # Worth hardening when there is a moment: a value committed to the repo is not
+  # really a secret, and this is the only thing between the public internet and
+  # the backup/alert jobs. Moving it means creating the secret, switching this to
+  # `secret: CRON_SECRET`, and updating the Scheduler header in the same change:
+  #   firebase apphosting:secrets:set CRON_SECRET --project vgtc-management
+  - variable: CRON_SECRET
+    value: "vgtc-cron-secret-default-2026"
+    availability:
+      - RUNTIME
+# `availability` was listed twice under CRON_SECRET above. App Hosting validates
+# this file before it builds anything and rejects duplicate keys outright, so the
+# whole rollout failed with "Invalid apphosting.yaml" and production silently
+# stayed on the previous bundle. Note that a plain yaml.safe_load does NOT catch
+# this — it keeps the last duplicate and reports the file as fine.

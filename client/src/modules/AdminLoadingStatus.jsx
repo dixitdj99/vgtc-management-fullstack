@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause, Shield, Users, Package } from 'lucide-react';
+import TableScroll from '../components/TableScroll';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -58,12 +59,36 @@ function InlineVoicePlayer({ base64Audio, heard, heardBy }) {
   );
 }
 
-// Maps a plant/godown string to the brand key used for API calls
+/**
+ * Where each godown's loading receipts live, and what to call it on screen.
+ *
+ * These two maps used to be three separate lists — one inside fetchReceipts,
+ * another inside updateStatus, and a chain of ternaries for the label — so
+ * Bahadurgarh was added to the app and missed here. A Bahadurgarh user then
+ * fell through every default and was shown the Kosli board.
+ */
+const LR_ENDPOINT = {
+  kosli: '/kosli/lr',
+  jhajjar: '/jhajjar/lr',
+  bahadurgarh: '/bahadurgarh/lr',
+  jklakshmi: '/jkl/lr',
+  dump: '/lr',
+};
+
+const BRAND_LABEL = {
+  kosli: 'Kosli Godown',
+  jhajjar: 'Jhajjar Godown',
+  bahadurgarh: 'Bahadurgarh Godown',
+  jklakshmi: 'JK Lakshmi',
+  dump: 'Dump (JK Super General)',
+};
+
+// Maps a plant/godown string to the brand key used for API calls. A godown the
+// map does not know must not silently become Kosli — it is named explicitly.
 const getInitialBrand = (plant, godown) => {
   if (plant === 'jklakshmi') return 'jklakshmi';
-  if (godown === 'jhajjar') return 'jhajjar';
-  if (godown === 'dump') return 'dump';
-  return 'kosli'; // fallback to kosli (covers godown='kosli' and default)
+  if (godown && LR_ENDPOINT[godown]) return godown;
+  return 'kosli';
 };
 
 export default function AdminLoadingStatus({ globalWeather, role = 'user', userGodown = null, userPlant = null }) {
@@ -93,14 +118,10 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
   const fetchReceipts = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const endpointMap = {
-        kosli: '/kosli/lr',
-        jhajjar: '/jhajjar/lr',
-        jklakshmi: '/jkl/lr',
-        dump: '/lr',
-      };
-      const endpoint = endpointMap[brand] || '/kosli/lr';
-      const res = await api.get(endpoint);
+      const endpoint = LR_ENDPOINT[brand] || LR_ENDPOINT.kosli;
+      // _skipCache: polled every 10s below, and the default 3-minute GET cache
+      // would hold the board still between refreshes.
+      const res = await api.get(endpoint, { _skipCache: true });
       const today = new Date().toISOString().split('T')[0];
       setReceipts(res.data.filter(r => r.date && r.date.split('T')[0] === today).reverse());
       setLastSync(new Date());
@@ -142,13 +163,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const endpointMap = {
-        kosli: '/kosli/lr',
-        jhajjar: '/jhajjar/lr',
-        jklakshmi: '/jkl/lr',
-        dump: '/lr',
-      };
-      const base = endpointMap[brand] || '/kosli/lr';
+      const base = LR_ENDPOINT[brand] || LR_ENDPOINT.kosli;
       await api.patch(`${base}/${id}`, { status: newStatus });
       setReceipts(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
       setEditingId(null);
@@ -218,15 +233,14 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
           {/* Only admins can switch brands */}
           {role === 'admin' && (
             <select value={brand} onChange={e => setBrand(e.target.value)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold' }}>
-              <option value="kosli">Kosli Godown</option>
-              <option value="jhajjar">Jhajjar Godown</option>
-              <option value="dump">Dump (JK Super General)</option>
-              <option value="jklakshmi">JK Lakshmi</option>
+              {Object.entries(BRAND_LABEL).map(([k, label]) => (
+                <option key={k} value={k}>{label}</option>
+              ))}
             </select>
           )}
           {role !== 'admin' && (
             <span style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '13px' }}>
-              {brand === 'jklakshmi' ? 'JK Lakshmi' : brand === 'jhajjar' ? 'Jhajjar Godown' : brand === 'dump' ? 'Dump Godown' : 'Kosli Godown'}
+              {BRAND_LABEL[brand] || BRAND_LABEL.kosli}
             </span>
           )}
           <button onClick={fetchReceipts} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
@@ -260,7 +274,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
           No loading orders found for today.
         </div>
       ) : (
-        <div className="tbl-wrap" style={{ background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <TableScroll style={{ background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'rgba(0,0,0,0.02)' }}>
@@ -383,7 +397,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </div>
   );

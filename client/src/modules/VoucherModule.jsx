@@ -6,11 +6,16 @@ import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
+import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
+import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -36,6 +41,24 @@ const getAllowedPump = (pump, advanceDiesel, pumpOptions = []) => {
     return pump && pump !== NONE_PUMP ? pump : (pumps[0] || NONE_PUMP);
 };
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
+
+/**
+ * A diesel advance must name a real fuel station. Saved with pump "None" it
+ * lands in the pump ledger under no station, can never be matched to any
+ * monthly bill, and therefore can never be verified or paid — the "None" rows
+ * the ledger used to accumulate. Returns a user-facing reason, or null if fine.
+ */
+const dieselPumpProblem = (advanceDiesel, isFullTank, pump, pumpOptions = []) => {
+    if (!hasDieselAdvance(advanceDiesel) && !isFullTank) return null;
+    const stations = pumpOptions.filter(p => p !== NONE_PUMP);
+    if (!stations.length) {
+        return 'No fuel station is registered, so a diesel advance cannot be recorded. Add the station first under Admin Settings → Fuel Stations.';
+    }
+    if (!pump || pump === NONE_PUMP) {
+        return 'Select the fuel station this diesel was taken from — a diesel advance cannot be saved without one.';
+    }
+    return null;
+};
 const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill' || type === 'Bahadurgarh_Bill';
 
 const getCalc = (w, r, hasComm) => {
@@ -56,18 +79,59 @@ const getNet = (v) => {
     const commission = parseFloat(v.commission) || 0;
     const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
     const tyreGreasingAir = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
-    const extraCash = parseFloat(v.extraCash) || 0;
+    const extraCash = extrasTotal(readExtras(v));
     const vehicleExpenses = tyrePuncture + tyreGreasingAir + extraCash;
     const totalDeductions = diesel + cash + online + munshi + commission + vehicleExpenses;
     return { gross, diesel, cash, online, munshi, commission, tyrePuncture, tyreGreasingAir, extraCash, vehicleExpenses, totalDeductions, net: gross - totalDeductions, dieselPending };
 };
 
 /* ── Print ── */
-function printVoucher(v, org = {}) {
+function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     const orgName = org.name || 'VIKAS GOODS TRANSPORT CO.';
     const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
 
     const n = getNet(v);
+    const hasDeliveries = v.deliveries && v.deliveries.length > 0;
+    const totalWeight = hasDeliveries
+        ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
+        : (parseFloat(v.weight) || 0);
+    const totalBags = hasDeliveries
+        ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
+        : (parseInt(v.bags) || 0);
+
+    /**
+     * The LR numbers this voucher actually covers.
+     *
+     * A multi-delivery voucher's own `lrNo` is a parent reference — often blank,
+     * printed as "AUTO" — while the real numbers sit on the drops. The driver and
+     * the party both identify the load by those, so the slip has to carry them.
+     */
+    const lrLabel = hasDeliveries
+        ? v.deliveries.map(d => d.lrNo).filter(Boolean).map(n => `#${n}`).join(', ')
+          || (v.lrNo ? `#${v.lrNo}` : 'AUTO')
+        : (v.lrNo ? `#${v.lrNo}` : 'AUTO');
+
+    /**
+     * Nobody has priced this trip yet. Gross is then zero, so net comes out as
+     * the bare deductions — a negative "NET PAYABLE" that reads as though the
+     * driver owes the company. The slip says the rate is missing and lists the
+     * deductions instead.
+     */
+    const rateMissing = hasDeliveries
+        ? !v.deliveries.some(d => parseFloat(d.rate) > 0)
+        : !(parseFloat(v.rate) > 0);
+
+    // The rate the freight was worked out at. Multi-delivery vouchers can carry a
+    // different rate per drop, so show each one rather than a misleading single figure.
+    const rateLabel = (() => {
+        const rates = [...new Set((hasDeliveries ? v.deliveries.map(d => d.rate) : [v.rate])
+            .map(r => parseFloat(r) || 0).filter(r => r > 0))];
+        if (!rates.length) return '';
+        return rates.map(r => `Rs. ${r.toLocaleString('en-IN')}`).join(' / ') + ' / MT';
+    })();
+
+    // Each extra is its own row carrying its own remark. Folding the remark into
+    // the label made a long note push the amount clean off the slip.
     const deductionRows = [
         { lbl: 'Diesel Advance', val: n.diesel, raw: v.advanceDiesel },
         { lbl: 'Cash Advance', val: n.cash, raw: v.advanceCash },
@@ -76,16 +140,267 @@ function printVoucher(v, org = {}) {
         { lbl: 'Commission', val: n.commission, raw: v.commission },
         { lbl: 'Tyre Puncture', val: n.tyrePuncture },
         { lbl: 'Tyre Greasing & Air', val: n.tyreGreasingAir },
-        { lbl: `Extra Cash${v.extraCashRemark ? ' (' + v.extraCashRemark + ')' : ''}`, val: n.extraCash },
-    ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'));
+    ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'))
+        .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', note: e.remark, val: e.amount })));
 
-    const deductionHTML = deductionRows.map(d => {
-        const isDieselPending = d.lbl === 'Diesel Advance' && n.dieselPending;
-        const valDisplay = isDieselPending
-            ? `FULL`
-            : `- Rs.${d.val.toLocaleString()}`;
-        return `<tr><td style="padding:5px 0;color:#000;font-size:13px;font-weight:600">${d.lbl}</td><td style="padding:5px 0;text-align:right;font-size:13px;font-weight:700;color:#000">${valDisplay}</td></tr>`;
-    }).join('');
+    // One archive descriptor for all three voucher layouts — same document,
+    // whichever way it is drawn.
+    const archive = {
+        module: 'Vouchers',
+        kind: isBill ? 'Statements' : 'Documents',
+        plant: (v.type || '').replace(/_/g, ' ') || 'Other',
+        name: archiveName('Voucher', v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join('-') : v.id?.slice(0, 6)), v.truckNo, v.date),
+        meta: { lrNo: v.lrNo, truckNo: v.truckNo, date: v.date, type: v.type },
+    };
+
+    if (brand === 'jklakshmi') {
+        openReceiptWindow({
+            archive,
+            title: `Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join(',') : '')}`,
+            fontSize: '9.5pt',
+            styles: `
+      .hd {
+        text-align: center;
+        border-bottom: 2.5px solid #000;
+        padding-bottom: 1.5mm;
+        margin-bottom: 2mm;
+      }
+      .hd .co {
+        font-size: 13pt;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .hd .sub {
+        font-size: 8.5pt;
+        font-weight: bold;
+        color: #000;
+        margin-top: 1px;
+      }
+      .lr-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10pt;
+        font-weight: bold;
+        margin-bottom: 2mm;
+      }
+      .sec {
+        border: 2px solid #000;
+        border-radius: 4px;
+        margin-bottom: 2mm;
+        background: #fff;
+        overflow: hidden;
+      }
+      .line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 2.5px 6px;
+        border-bottom: 1.5px solid #000;
+        font-size: 9.5pt;
+      }
+      .line:last-child { border-bottom: none; }
+      .lbl {
+        font-weight: 800;
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        color: #000;
+        /* Must be allowed to shrink. A long remark used to hold the label at its
+           full width and squeeze the amount off the right-hand edge. */
+        min-width: 0;
+      }
+      /* The remark sits under its label in normal case — uppercase runs long and
+         a remark is a sentence, not a heading. */
+      .lbl .note {
+        display: block;
+        font-weight: 600;
+        font-size: 7.5pt;
+        text-transform: none;
+        letter-spacing: 0;
+        line-height: 1.2;
+        margin-top: 0.5px;
+        word-break: break-word;
+      }
+      .val {
+        font-weight: 900;
+        text-align: right;
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .net-banner {
+        background: #000;
+        color: #fff;
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 8px;
+        font-size: 11pt;
+        font-weight: 900;
+        border-radius: 3px;
+        margin: 2mm 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .sig-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: auto;
+        padding-top: 2mm;
+      }
+      .sig-box {
+        text-align: center;
+        font-size: 8.5pt;
+        font-weight: bold;
+        border-top: 2px solid #000;
+        padding-top: 2px;
+        width: 18mm;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .digital-sig-box {
+        border: 2px solid #000;
+        background: #fff;
+        border-radius: 4px;
+        padding: 2px 6px;
+        text-align: center;
+        width: 30mm;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .digital-sig-title {
+        font-size: 6pt;
+        color: #000;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.1px;
+        display: block;
+      }
+      .digital-sig-text {
+        font-family: 'Brush Script MT', cursive, sans-serif;
+        font-size: 14pt;
+        color: #000;
+        font-weight: bold;
+        line-height: 0.95;
+        margin: 1px 0;
+      }
+      .digital-sig-footer {
+        font-size: 5.5pt;
+        color: #000;
+        display: block;
+      }
+      /* One card per LR — the JK Super layout, which states each drop's own
+         destination, bags, weight and rate instead of one combined line. */
+      .dlv-list { margin-bottom: 2mm; }
+      .dlv {
+        border: 1.5px solid #000;
+        border-radius: 3px;
+        padding: 1.5mm 2mm;
+        margin-bottom: 1.2mm;
+      }
+      .dlv-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 2mm;
+        font-weight: 900;
+        font-size: 9.5pt;
+      }
+      .dlv-dest { text-align: right; }
+      .dlv-party { font-size: 8pt; font-weight: 700; margin-top: 0.3mm; }
+      .dlv-nums {
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1.5mm;
+        font-size: 8.5pt;
+        font-weight: 800;
+        margin-top: 0.8mm;
+      }
+      .dlv-gross { font-weight: 900; }
+      .dlv-total {
+        display: flex;
+        justify-content: space-between;
+        gap: 2mm;
+        font-weight: 900;
+        font-size: 9pt;
+        border-top: 2px solid #000;
+        padding-top: 1mm;
+      }`,
+            body: `
+    <div class="container">
+      <div>
+        <div class="hd">
+          <div class="co">Vikas Goods Transport</div>
+          <div class="sub">Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849</div>
+        </div>
+
+        <div class="lr-row">
+          <span>Voucher for LR: ${lrLabel}</span>
+          <span>Date: ${v.date}</span>
+        </div>
+
+        <div class="sec">
+          <div class="line"><span class="lbl">Truck No</span><span class="val" style="font-size: 11pt; font-weight: 900;">${v.truckNo}</span></div>
+          ${hasDeliveries ? '' : `
+          <div class="line"><span class="lbl">Party Name</span><span class="val">${v.partyName || '—'}</span></div>
+          <div class="line"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
+          <div class="line"><span class="lbl">Bags / Weight</span><span class="val">${totalBags} Bags / ${totalWeight} MT</span></div>
+          ${rateLabel ? `<div class="line"><span class="lbl">Rate</span><span class="val">${rateLabel}</span></div>` : ''}`}
+        </div>
+
+        ${hasDeliveries ? `
+        <!-- One card per LR, the way the JK Super slip does it. A combined
+             "Bags / Weight" line hid which drop carried what, and the rates can
+             differ per destination — so each LR states its own. -->
+        <div class="dlv-list">
+          ${v.deliveries.map(d => {
+            const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+            return `<div class="dlv">
+              <div class="dlv-top"><span class="dlv-lr">LR #${d.lrNo || '—'}</span><span class="dlv-dest">${d.destination || '—'}</span></div>
+              ${d.partyName ? `<div class="dlv-party">${d.partyName}</div>` : ''}
+              <div class="dlv-nums">
+                <span><b>${parseFloat(d.weight || 0).toFixed(2)}</b> MT</span>
+                <span><b>${d.bags || '—'}</b> bags</span>
+                <span>@ ${d.rate || '—'}</span>
+                <span class="dlv-gross">${rowGross > 0 ? 'Rs. ' + Math.round(rowGross).toLocaleString('en-IN') : 'rate?'}</span>
+              </div>
+            </div>`;
+          }).join('')}
+          <div class="dlv-total">
+            <span>TOTAL · ${v.deliveries.length} destinations</span>
+            <span>${totalWeight} MT · ${totalBags} bags</span>
+          </div>
+        </div>` : ''}
+
+        <div class="sec">
+          <div class="line"><span class="lbl">Gross Freight</span><span class="val">${rateMissing ? '—' : 'Rs. ' + Math.round(n.gross).toLocaleString('en-IN')}</span></div>
+          ${deductionRows.map(d => `<div class="line"><span class="lbl">${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</span><span class="val">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : 'Rs. ' + Math.round(d.val).toLocaleString('en-IN')}</span></div>`).join('')}
+        </div>
+
+        ${rateMissing
+            ? `<div style="background:#92400e;color:#fff;text-align:center;padding:5px 6px;font-size:9pt;font-weight:800;margin-top:2mm;border-radius:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+                 RATE NOT UPDATED — BALANCE PENDING
+                 <div style="font-size:7.5pt;font-weight:600;margin-top:1px;">Deductions above total Rs. ${Math.round(n.totalDeductions).toLocaleString('en-IN')}</div>
+               </div>`
+            : n.dieselPending
+            ? `<div style="background:#92400e;color:#fff;text-align:center;padding:5px;font-size:9.5pt;font-weight:800;margin-top:2mm;border-radius:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">DIESEL PENDING (FULL TANK)</div>`
+            : `<div class="net-banner"><span>NET PAYABLE</span><span>Rs. ${Math.round(n.net).toLocaleString('en-IN')}</span></div>`}
+      </div>
+
+      <div class="sig-section">
+        <div class="sig-box">Driver</div>
+        <div class="sig-box">Receiver</div>
+        <div class="digital-sig-box">
+          <span class="digital-sig-title">Digitally Signed</span>
+          <span class="digital-sig-text">${signedBy}</span>
+          <span class="digital-sig-footer">System Verified</span>
+        </div>
+      </div>
+    </div>`,
+        });
+        return;
+    }
+    // deductionRows already defined above
 
     let html = '';
 
@@ -138,7 +453,7 @@ function printVoucher(v, org = {}) {
         .hindi-note { margin: 2px 0; }
         .signatures { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; font-weight: bold; padding: 0 10px; }
         @media print { body { padding: 0; background-color: #fff; } .receipt-container { margin: 0; } }
-    </style>
+  </style>
 </head>
 <body>
     <div class="receipt-container">
@@ -150,7 +465,7 @@ function printVoucher(v, org = {}) {
                 <div class="company-name">${orgName}</div>
                 <div class="auth-badge">Authorised Transport for : J.K. Super Cement Ltd.</div>
                 <div class="address-text">Near Gaushala, Rewari Road, Jhajjar (Hr.)</div>
-                <div class="address-text">Mob. : 9728284849, 9416319445</div>
+                <div class="address-text">Mob. : 9416319445, 9728954901, 9728284849</div>
                 <div class="head-office">Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari</div>
             </div>
             <div class="header-right">GSTIN : 06ARIPK9021C2Z2</div>
@@ -194,11 +509,11 @@ function printVoucher(v, org = {}) {
             </thead>
             <tbody>
                 ${(() => {
-                    const mats = (v.materials && v.materials.length > 0)
-                        ? v.materials
-                        : [{ type: v.materialName || 'CEMENT', bags: v.bags, weight: v.weight }];
-                    const rowspan = mats.length;
-                    return mats.map((mat, idx) => `
+                const mats = (v.materials && v.materials.length > 0)
+                    ? v.materials
+                    : [{ type: v.materialName || 'CEMENT', bags: v.bags, weight: v.weight }];
+                const rowspan = mats.length;
+                return mats.map((mat, idx) => `
                     <tr class="body-row" style="height: ${Math.max(80, Math.floor(160 / rowspan))}px;">
                         <td style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${mat.bags || ''}</td>
                         <td class="desc-text" style="border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">
@@ -207,7 +522,7 @@ function printVoucher(v, org = {}) {
                             <b><i>J.K. Super Cement</i></b><br>
                             ${idx === 0 ? 'Bill No. : ' + (v.billNo || '') + '<br>Shipment No. :<br>D.I. No.' : ''}
                         </td>
-                        <td colspan="2" style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${ parseFloat(mat.weight || 0).toFixed(2)} MT</td>
+                        <td colspan="2" style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${parseFloat(mat.weight || 0).toFixed(2)} MT</td>
                         <td style="text-align: center; font-size: 12px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${idx === 0 ? (v.rate || '') : ''}</td>
                         ${idx === 0 ? `
                         <td colspan="2" class="advance-cell" rowspan="${rowspan}">Advance = <br/>${n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString())}</td>
@@ -217,7 +532,7 @@ function printVoucher(v, org = {}) {
                         <td class="remark-text" rowspan="${rowspan}">Driver Name<br>D.L. No.<br>Owner Permit No.<br>Permit No.<br>Address<br/><br/>${getPumpDisplay(v.pump) !== '—' ? 'Pump: ' + getPumpDisplay(v.pump) : ''}</td>
                         ` : ''}
                     </tr>`).join('');
-                })()}
+            })()}
                 <tr>
                     <td colspan="2" style="font-weight: bold; border-top: 1px solid #000; text-align: center;">Total</td>
                     <td colspan="2" style="border-top: 1px solid #000; text-align: center; font-weight: bold;">${v.weight || ''} MT</td>
@@ -242,7 +557,7 @@ function printVoucher(v, org = {}) {
 </body>
 </html>`;
     } else {
-        // A4 slip for JK_Lakshmi / JK_Super (supports multi-delivery)
+        // Counter slip for Dump / JK_Lakshmi / JK_Super (supports multi-delivery)
         const fmtRsP = (x) => 'Rs.' + Math.round(x).toLocaleString('en-IN');
         const hasDeliveries = v.deliveries && v.deliveries.length > 0;
         const totalWeight = hasDeliveries
@@ -252,126 +567,243 @@ function printVoucher(v, org = {}) {
             ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
             : (parseInt(v.bags) || 0);
 
+        // Seven columns across a 79mm roll would be unreadable, so each delivery
+        // is a block of its own. The slip has no fixed height any more, so a
+        // voucher with six destinations simply prints longer.
         const deliveryTableHTML = hasDeliveries ? `
-<table style="width:100%;border-collapse:collapse;margin-bottom:5px;font-size:8px">
-  <thead>
-    <tr style="background:#000;color:#fff">
-      <th style="padding:3px 4px;text-align:left;font-weight:700">LR No.</th>
-      <th style="padding:3px 4px;text-align:left;font-weight:700">Destination</th>
-      <th style="padding:3px 4px;text-align:left;font-weight:700">Party</th>
-      <th style="padding:3px 4px;text-align:right;font-weight:700">Wt(MT)</th>
-      <th style="padding:3px 4px;text-align:right;font-weight:700">Bags</th>
-      <th style="padding:3px 4px;text-align:right;font-weight:700">Rate</th>
-      <th style="padding:3px 4px;text-align:right;font-weight:700">Gross</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${v.deliveries.map((d, i) => {
-        const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
-        return `<tr style="background:${i % 2 === 0 ? '#f5f5f5' : '#fff'}">
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd;font-weight:800">#${d.lrNo || '—'}</td>
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd">${d.destination || '—'}</td>
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd">${d.partyName || '—'}</td>
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right;font-weight:700">${parseFloat(d.weight||0).toFixed(2)}</td>
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right">${d.bags||'—'}</td>
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right">${d.rate||'—'}</td>
-          <td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:right;font-weight:800">${rowGross>0?fmtRsP(rowGross):'—'}</td>
-        </tr>`;
-    }).join('')}
-  </tbody>
-  <tfoot>
-    <tr style="background:#e8e8e8;border-top:1.5px solid #000">
-      <td colspan="3" style="padding:3px 4px;font-weight:800">TOTAL (${v.deliveries.length} dest.)</td>
-      <td style="padding:3px 4px;text-align:right;font-weight:900">${totalWeight.toFixed(2)}</td>
-      <td style="padding:3px 4px;text-align:right;font-weight:900">${totalBags.toLocaleString('en-IN')}</td>
-      <td style="padding:3px 4px;text-align:right">—</td>
-      <td style="padding:3px 4px;text-align:right;font-weight:900;font-size:10px">${fmtRsP(n.gross)}</td>
-    </tr>
-  </tfoot>
-</table>` : `
-<table style="width:100%;border-collapse:collapse;margin-bottom:4px">
-  <tr><td style="padding:3px 5px;font-weight:800;width:28%;background:#f5f5f5;border:1px solid #000;font-size:9px">Date</td><td style="padding:3px 5px;border:1px solid #000;font-size:9px">${v.date}</td><td style="padding:3px 5px;font-weight:800;background:#f5f5f5;border:1px solid #000;font-size:9px">Truck</td><td style="padding:3px 5px;border:1px solid #000;font-size:9px;font-weight:700">${v.truckNo}</td></tr>
-  <tr><td style="padding:3px 5px;font-weight:800;background:#f5f5f5;border:1px solid #000;font-size:9px">Dest.</td><td style="padding:3px 5px;border:1px solid #000;font-size:9px" colspan="3">${v.destination||'—'}</td></tr>
-</table>
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-bottom:5px">
-  <div style="border:1px solid #000;padding:3px 5px;text-align:center"><div style="font-size:7px;font-weight:700;text-transform:uppercase">Weight</div><div style="font-size:12px;font-weight:900">${v.weight} MT</div></div>
-  <div style="border:1px solid #000;padding:3px 5px;text-align:center"><div style="font-size:7px;font-weight:700;text-transform:uppercase">Bags</div><div style="font-size:12px;font-weight:900">${v.bags}</div></div>
-  <div style="border:1px solid #000;padding:3px 5px;text-align:center"><div style="font-size:7px;font-weight:700;text-transform:uppercase">Rate</div><div style="font-size:12px;font-weight:900">${v.rate}/MT</div></div>
+<div class="dlv-list">
+  ${v.deliveries.map(d => {
+            const rowGross = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+            return `<div class="dlv">
+      <div class="dlv-top"><span class="dlv-lr">#${d.lrNo || '—'}</span><span class="dlv-dest">${d.destination || '—'}</span></div>
+      ${d.partyName ? `<div class="dlv-party">${d.partyName}</div>` : ''}
+      <div class="dlv-nums">
+        <span><b>${parseFloat(d.weight || 0).toFixed(2)}</b> MT</span>
+        <span><b>${d.bags || '—'}</b> bags</span>
+        <span>@ ${d.rate || '—'}</span>
+        <span class="dlv-gross">${rowGross > 0 ? fmtRsP(rowGross) : '—'}</span>
+      </div>
+    </div>`;
+        }).join('')}
+  <div class="dlv-total">
+    <span>TOTAL · ${v.deliveries.length} dest.</span>
+    <span>${totalWeight.toFixed(2)} MT · ${totalBags.toLocaleString('en-IN')} bags</span>
+  </div>
+</div>` : `
+<div class="sec">
+  <div class="line"><span class="lbl">Date</span><span class="val">${v.date}</span></div>
+  <div class="line"><span class="lbl">Truck</span><span class="val">${v.truckNo}</span></div>
+  <div class="line"><span class="lbl">Party</span><span class="val">${v.partyName || '—'}</span></div>
+  <div class="line"><span class="lbl">Destination</span><span class="val">${v.destination || '—'}</span></div>
+</div>
+<div class="stat-row">
+  <div class="stat"><div class="stat-k">Weight</div><div class="stat-v">${v.weight} MT</div></div>
+  <div class="stat"><div class="stat-k">Bags</div><div class="stat-v">${v.bags}</div></div>
+  <div class="stat"><div class="stat-k">Rate</div><div class="stat-v">${v.rate}/MT</div></div>
 </div>`;
 
-        html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d=>d.lrNo).join(',') : '')}</title>
-<style>
-@page{size:105mm 148mm;margin:4mm}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size:9px;width:97mm;margin:0 auto;color:#000}
-@media print{body{padding:0}}
-</style></head>
-<body>
-<div style="text-align:center;border-bottom:1.5px solid #000;padding-bottom:4px;margin-bottom:5px">
-  <h1 style="font-size:13px;font-weight:900;margin:0">VIKAS GOODS TRANSPORT</h1>
-  <p style="font-size:8px;margin:1px 0">Jharli, Jhajjar | 9416319445</p>
-</div>
-
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+        openReceiptWindow({
+            archive,
+            title: `Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join(',') : '')}`,
+            fontSize: '10px',
+            styles: `
+.hd { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 4px; margin-bottom: 5px; }
+.hd h1 { font-size: 15px; font-weight: 900; margin: 0; }
+.hd p { font-size: 9.5px; font-weight: 800; margin: 1px 0; }
+.ref-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 5px; }
+.ref-lr { display: inline-block; border: 1.5px solid #000; padding: 2px 10px; font-size: 13px; font-weight: 900; }
+.ref-meta { text-align: right; font-size: 9.5px; font-weight: 800; }
+.ref-type { font-weight: 900; text-transform: uppercase; }
+.sec { border: 1.5px solid #000; border-radius: 3px; margin-bottom: 5px; overflow: hidden; }
+.line { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3.5px 6px; border-bottom: 1px solid #000; }
+.line:last-child { border-bottom: none; }
+.lbl { font-weight: 800; font-size: 9px; text-transform: uppercase; flex-shrink: 0; }
+.val { font-weight: 900; text-align: right; font-size: 10.5px; }
+.stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin-bottom: 5px; }
+.stat { border: 1px solid #000; padding: 3px 4px; text-align: center; }
+.stat-k { font-size: 7.5px; font-weight: 800; text-transform: uppercase; }
+.stat-v { font-size: 12.5px; font-weight: 900; }
+.dlv-list { margin-bottom: 5px; }
+.dlv { border: 1px solid #000; border-radius: 3px; padding: 3px 5px; margin-bottom: 3px; }
+.dlv-top { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; }
+.dlv-lr { font-size: 11.5px; }
+.dlv-dest { text-align: right; }
+.dlv-party { font-size: 9.5px; font-weight: 800; }
+.dlv-nums { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; font-size: 9.5px; font-weight: 800; margin-top: 2px; }
+.dlv-gross { font-weight: 900; }
+.dlv-total { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; font-size: 10px; border-top: 1.5px solid #000; padding-top: 3px; }
+.money { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+.money td { padding: 3px 4px; font-weight: 800; }
+.money .amt { text-align: right; font-weight: 900; white-space: nowrap; vertical-align: top; }
+.money .note { display: block; font-size: 8.5px; font-weight: 600; line-height: 1.2; margin-top: 0.5px; }
+.money .ded td { border-bottom: 1px solid #000; }
+.money .tot td { border-top: 1.5px solid #000; font-weight: 900; }
+.net {
+  display: flex; justify-content: space-between; gap: 6px;
+  padding: 5px 8px; background: #000; color: #fff;
+  font-size: 12px; font-weight: 900; margin: 4px 0;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.net-pending {
+  background: #92400e; color: #fff; text-align: center; padding: 5px;
+  font-size: 10px; font-weight: 800; margin: 4px 0;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.pump { font-size: 9.5px; font-weight: 800; text-align: center; margin-bottom: 3px; }
+.sig-foot { margin-top: auto; }
+.sig { display: flex; justify-content: space-between; gap: 6px; padding-top: 12px; }
+.sig div { flex: 1; text-align: center; font-size: 9px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; }
+.signed { margin-top: 6px; border: 1.5px solid #000; border-radius: 3px; padding: 3px 6px; text-align: center; }
+.signed-k { display: block; font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
+.signed-v { display: block; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.1; }
+.signed-f { display: block; font-size: 7px; font-weight: 700; }`,
+            body: `
+<div class="container">
   <div>
-    ${hasDeliveries
-        ? `<div style="font-size:9px;font-weight:800">Ref: <span style="font-size:11px;font-weight:900">#${v.lrNo || 'AUTO'}</span></div>
-           <div style="font-size:8px;color:#444">LRs: ${v.deliveries.map(d => '#'+d.lrNo).join(', ')}</div>`
-        : `<div style="display:inline-block;border:1.5px solid #000;padding:2px 10px;font-size:12px;font-weight:900">LR #${v.lrNo}</div>`}
+    <div class="hd">
+      <h1>VIKAS GOODS TRANSPORT</h1>
+      <p>Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</p>
+    </div>
+
+    <div class="ref-row">
+      <div>
+        ${hasDeliveries
+                    ? `<div class="ref-lr">LR ${lrLabel}</div>
+           ${v.lrNo ? `<div style="font-size:9px;font-weight:800;margin-top:2px">Ref: #${v.lrNo}</div>` : ''}`
+                    : `<div class="ref-lr">LR ${lrLabel}</div>`}
+      </div>
+      <div class="ref-meta">
+        <div class="ref-type">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
+        <div style="margin-top:1px"><b>Date:</b> ${v.date}</div>
+        <div><b>Truck:</b> ${v.truckNo}</div>
+      </div>
+    </div>
+
+    ${deliveryTableHTML}
+
+    <table class="money">
+      <tr><td style="font-weight:700">Gross ${rateMissing ? '(rate not entered)' : hasDeliveries ? `(${v.deliveries.length} destinations)` : `(${v.weight}×${v.rate})`}</td><td class="amt">${rateMissing ? '—' : fmtRsP(n.gross)}</td></tr>
+      ${deductionRows.map(d => `<tr class="ded"><td>${d.lbl}${d.note ? `<span class="note">${d.note}</span>` : ''}</td><td class="amt">- ${n.dieselPending && d.lbl === 'Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
+      ${deductionRows.length > 0 && !n.dieselPending ? `<tr class="tot"><td>Total Deductions</td><td class="amt">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
+    </table>
+
+    ${rateMissing
+                    ? `<div class="net-pending">RATE NOT UPDATED — BALANCE PENDING</div>`
+                    : n.dieselPending
+                    ? `<div class="net-pending">NET PAYABLE — DIESEL PENDING (FULL TANK)</div>`
+                    : `<div class="net"><span>NET PAYABLE</span><span>${fmtRsP(n.net)}</span></div>`}
+
+    ${getPumpDisplay(v.pump) !== '—' ? `<div class="pump">Pump: ${getPumpDisplay(v.pump)}</div>` : ''}
   </div>
-  <div style="text-align:right">
-    <div style="font-size:8px;font-weight:700;text-transform:uppercase">${v.type ? v.type.replace(/_/g,' ') : ''}</div>
-    <div style="font-size:8px;margin-top:1px"><b>Date:</b> ${v.date} &nbsp;<b>Truck:</b> ${v.truckNo}</div>
+
+  <div class="sig-foot">
+    <div class="sig">
+      <div>Driver</div>
+      <div>Accountant</div>
+    </div>
+    <div class="signed">
+      <span class="signed-k">Digitally Signed</span>
+      <span class="signed-v">${signedBy}</span>
+      <span class="signed-f">System Verified</span>
+    </div>
   </div>
-</div>
-
-${deliveryTableHTML}
-
-<table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:9px">
-  <tr><td style="padding:2px 4px;font-weight:700">Gross ${hasDeliveries ? '(Σ)' : `(${v.weight}×${v.rate})`}</td><td style="padding:2px 4px;text-align:right;font-weight:700">${fmtRsP(n.gross)}</td></tr>
-  ${deductionRows.map(d => `<tr><td style="padding:2px 4px;border-bottom:1px solid #eee">${d.lbl}</td><td style="padding:2px 4px;text-align:right;font-weight:700;color:#c00;border-bottom:1px solid #eee">- ${n.dieselPending && d.lbl==='Diesel Advance' ? 'FULL' : fmtRsP(d.val)}</td></tr>`).join('')}
-  ${deductionRows.length > 0 && !n.dieselPending ? `<tr style="border-top:1.5px solid #000"><td style="padding:2px 4px;font-weight:800">Total Deductions</td><td style="padding:2px 4px;text-align:right;font-weight:800;color:#c00">- ${fmtRsP(n.totalDeductions)}</td></tr>` : ''}
-</table>
-
-${n.dieselPending
-    ? `<div style="background:#92400e;color:#fff;text-align:center;padding:5px;font-size:10px;font-weight:800;margin:4px 0">NET PAYABLE — DIESEL PENDING (FULL TANK)</div>`
-    : `<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#000;color:#fff;font-size:12px;font-weight:900;margin:4px 0"><span>NET PAYABLE</span><span>${fmtRsP(n.net)}</span></div>`}
-
-${getPumpDisplay(v.pump) !== '—' ? `<div style="font-size:8px;text-align:center;margin-bottom:3px">Pump: ${getPumpDisplay(v.pump)}</div>` : ''}
-
-<div style="display:flex;justify-content:space-between;margin-top:16px">
-  <div style="text-align:center;font-size:8px;font-weight:700;min-width:55px;border-top:1px solid #000;padding-top:3px">Driver</div>
-  <div style="text-align:center;font-size:8px;font-weight:700;min-width:55px;border-top:1px solid #000;padding-top:3px">Accountant</div>
-  <div style="text-align:center;font-size:8px;font-weight:700;min-width:55px;border-top:1px solid #000;padding-top:3px">Auth. Sign</div>
-</div>
-<script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
-</body></html>`;
+</div>`,
+        });
+        return;
     }
 
-    const win = window.open('', '_blank', isBill ? 'width=850,height=600' : 'width=700,height=620');
-    win.document.write(html); win.document.close();
+    printHtml(html, { width: 850, height: 600, archive });
+}
+
+/* ── Extra money ── */
+
+/**
+ * The extra-money lines on a voucher: an amount and its own remark, as many as
+ * the trip needed. Grease at one dhaba and a puncture tip at the next are two
+ * different things, and lumping them into one figure loses the reason for both.
+ *
+ * Shared by the create form and the edit modal. The edit modal went a long time
+ * with no expense fields at all, which is what a second copy of a form invites.
+ */
+function ExtraMoneyList({ extras = [], onChange }) {
+    const update = (i, k, val) => onChange(extras.map((e, j) => (j === i ? { ...e, [k]: val } : e)));
+    const add = () => onChange([...extras, { amount: '', remark: '' }]);
+    const remove = (i) => onChange(extras.filter((_, j) => j !== i));
+    const total = extrasTotal(extras);
+
+    return (
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>💰 Extra Money</span>
+                {total > 0 && <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b', marginLeft: 'auto' }}>₹{total.toLocaleString('en-IN')}</span>}
+            </div>
+
+            {extras.map((e, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input className="fi" type="number" placeholder="₹0" value={e.amount ?? ''}
+                        onChange={ev => update(i, 'amount', ev.target.value)}
+                        style={{ width: '110px', flexShrink: 0 }} />
+                    <input className="fi" type="text" placeholder="Reason — e.g. grease ke paise" value={e.remark || ''}
+                        onChange={ev => update(i, 'remark', ev.target.value)}
+                        style={{ flex: 1, minWidth: 0 }} />
+                    <button type="button" onClick={() => remove(i)} title="Remove this line"
+                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '7px', color: '#f43f5e', cursor: 'pointer', padding: '8px', display: 'flex', flexShrink: 0 }}>
+                        <X size={14} />
+                    </button>
+                </div>
+            ))}
+
+            <button type="button" onClick={add}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '9px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 700 }}>
+                <Plus size={13} /> {extras.length ? 'Add another' : 'Add extra money'}
+            </button>
+        </div>
+    );
 }
 
 /* ── Edit Modal ── */
-function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, pumpOptions = [] }) {
+function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, pumpOptions = [], driverOptions = [] }) {
     const [form, setForm] = useState({
+        // Older vouchers pre-date the driver field and have only a name, so fall
+        // back to matching that name against the roster to pre-select the row.
+        driverId: v.driverId || driverOptions.find(d => d.name === v.driverName)?.id || '',
+        driverName: v.driverName || '',
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
         weight: v.weight, bags: v.bags, rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
-        startKm: v.startKm || '', endKm: v.endKm || ''
+        startKm: v.startKm || '', endKm: v.endKm || '',
+        // A voucher covering several LRs prices each drop separately. Editing has
+        // to reach them, or the rate shown on the sheet cannot be corrected.
+        deliveries: (v.deliveries || []).map(d => ({ ...d })),
+        tyrePuncture: v.tyrePuncture || '',
+        // Older vouchers split this across tyreGreasing and tyreAir, and getNet
+        // still adds all three. Show the sum, or the field reads empty on a
+        // voucher that is plainly deducting for greasing.
+        tyreGreasingAir: (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) || '',
+        extras: readExtras(v),
     });
     const [saving, setSaving] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
     const S = (k, val) => setForm(f => ({ ...f, [k]: val }));
     const setPartyName = (value) => S('partyName', resolvePartyName(value, partySuggestions));
+    const isSelf = isVGTCTruck(form.truckNo);
+
+    const isMultiLr = form.deliveries.length > 0;
+    const setDelivery = (i, key, val) =>
+        S('deliveries', form.deliveries.map((d, j) => (j === i ? { ...d, [key]: val } : d)));
+    const deliveriesGross = form.deliveries.reduce(
+        (s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
 
     // Validate BEFORE the confirm modal opens — not after the user already confirmed
     const requestSave = () => {
         if (markInvalidFields(modalRef.current)) return;
         if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) return;
+        // Same rule as the create form: diesel needs a real station or the
+        // pump ledger gets an unbillable "None" row.
+        const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
+        if (pumpProblem) { alert(pumpProblem); return; }
         setIsConfirming(true);
     };
 
@@ -390,9 +822,35 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
 
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
-        const calc = getCalc(form.weight, form.rate, form.hasCommission);
+        // A multi-LR voucher's weight and total come from the drops. Running
+        // getCalc on the blank top-level weight would have written total: 0 and
+        // wiped the freight — which is why editing a rate here appeared not to
+        // save: the number went in and the figure everything else reads went to
+        // nothing.
+        const totalWeight = isMultiLr
+            ? form.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
+            : form.weight;
+        const calc = isMultiLr
+            ? {
+                ...getCalc(totalWeight, 0, form.hasCommission),
+                total: String(Math.round(deliveriesGross)),
+                weight: String(totalWeight),
+                bags: String(form.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)),
+            }
+            : getCalc(form.weight, form.rate, form.hasCommission);
         try {
-            await ax.patch(API_V + '/' + v.id, { ...form, partyName: resolvePartyName(form.partyName, partySuggestions), ...calc });
+            await ax.patch(API_V + '/' + v.id, {
+                ...form,
+                partyName: resolvePartyName(form.partyName, partySuggestions),
+                ...calc,
+                // The greasing field above holds the sum of the legacy pair, so
+                // clear them or the old amounts get deducted a second time.
+                tyreGreasing: '', tyreAir: '',
+                // Deliberately not blanking the tyre fields for a market truck:
+                // isSelf reads a vehicle list that loads asynchronously, and a
+                // modal opened before it arrives would wipe a real charge.
+                ...extrasPayload(form.extras),
+            });
             onSave();
         } catch { alert('Update failed'); } finally { setSaving(false); }
     };
@@ -404,7 +862,11 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={16} color="#10b981" /></div>
-                        <div><div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Voucher</div><div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>LR #{v.lrNo}</div></div>
+                        <div><div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Voucher</div><div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>
+                            {v.deliveries?.length > 0
+                                ? `LR ${v.deliveries.map(d => '#' + d.lrNo).filter(Boolean).join(', ')}`
+                                : `LR #${v.lrNo}`}
+                        </div></div>
                     </div>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex' }}><X size={18} /></button>
                 </div>
@@ -425,6 +887,22 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                                 {vehicleNumbers.map(no => <option key={no} value={no} />)}
                             </datalist>
                         </div>
+                    </div>
+                    <div className="field-h">
+                        <label>Driver</label>
+                        <select
+                            className="fi"
+                            value={form.driverId}
+                            onChange={e => {
+                                const d = driverOptions.find(x => x.id === e.target.value);
+                                setForm(f => ({ ...f, driverId: d?.id || '', driverName: d?.name || '' }));
+                            }}
+                        >
+                            <option value="">— not recorded —</option>
+                            {driverOptions.map(d => (
+                                <option key={d.id} value={d.id}>{d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="field-h">
                         <label>Destination</label>
@@ -456,28 +934,83 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         </>
                     )}
                     <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
+
+                    {/* One voucher, several LRs: each drop has its own destination
+                        and its own rate, so each is priced on its own line. The
+                        single weight/rate below would be meaningless here. */}
+                    {isMultiLr && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                                {form.deliveries.length} LRs on this voucher
+                            </div>
+                            <TableScroll>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                    <thead><tr>
+                                        {['LR No.', 'Destination', 'Party', 'Bags', 'Weight (MT)', 'Rate', 'Gross'].map(h => (
+                                            <th key={h} style={{ padding: '6px 8px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                                        ))}
+                                    </tr></thead>
+                                    <tbody>
+                                        {form.deliveries.map((d, i) => {
+                                            const g = (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0);
+                                            const cell = (k, w, type = 'text') => (
+                                                <input className="fi" type={type} step="any" value={d[k] ?? ''}
+                                                    onChange={e => setDelivery(i, k, e.target.value)}
+                                                    style={{ width: w, padding: '4px 7px', fontSize: '12px', height: '30px' }} />
+                                            );
+                                            return (
+                                                <tr key={i}>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('lrNo', '70px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('destination', '120px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('partyName', '120px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('bags', '70px', 'number')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('weight', '80px', 'number')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>{cell('rate', '75px', 'number')}</td>
+                                                    <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 800, color: g > 0 ? 'var(--accent)' : 'var(--warn)', whiteSpace: 'nowrap' }}>
+                                                        {g > 0 ? 'Rs.' + Math.round(g).toLocaleString('en-IN') : 'rate?'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </TableScroll>
+                            <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                                Total gross: {deliveriesGross > 0
+                                    ? 'Rs.' + Math.round(deliveriesGross).toLocaleString('en-IN')
+                                    : <span style={{ color: 'var(--warn)' }}>rate not entered</span>}
+                            </div>
+                        </div>
+                    )}
+
+                    {!isMultiLr && (
                     <div className="field-h">
                         <label>Weight (MT)</label>
-                        <input className="fi" type="number" step="0.01" value={form.weight} 
+                        <input className="fi" type="number" step="0.01" value={form.weight}
                             onChange={e => {
                                 const val = e.target.value;
                                 setForm(f => ({ ...f, weight: val, bags: val ? Math.round(parseFloat(val) * 20) : '' }));
-                            }} 
+                            }}
                         />
                     </div>
+                    )}
+                    {!isMultiLr && (
                     <div className="field-h">
                         <label>Bags</label>
-                        <input className="fi" type="number" value={form.bags} 
+                        <input className="fi" type="number" value={form.bags}
                             onChange={e => {
                                 const val = e.target.value;
                                 setForm(f => ({ ...f, bags: val, weight: val ? (parseFloat(val) * 0.05).toFixed(2) : '' }));
-                            }} 
+                            }}
                         />
                     </div>
+                    )}
+                    {!isMultiLr && (
                     <div className="field-h">
                         <label>Rate (Rs/MT)</label>
                         <input className="fi" type="number" value={form.rate} onChange={e => S('rate', e.target.value)} />
                     </div>
+                    )}
                     <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
                     <div className="field-h">
                         <label>Diesel Advance</label>
@@ -504,12 +1037,30 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             <label htmlFor="ec" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>Rs.20/MT</label>
                         </div>
                     </div>
-                    {isVGTCTruck(form.truckNo) && (
+                    {isSelf && (
                         <div className="field-h">
                             <label><Gauge size={11} style={{ marginRight: '4px' }} /> Odometer</label>
                             <input className="fi" type="number" value={form.endKm} onChange={e => S('endKm', e.target.value)} />
                         </div>
                     )}
+
+                    {/* Same rule as the create form: tyre work on our own trucks,
+                        extra money on any of them. These were missing here entirely,
+                        so an expense entered at creation could not be corrected. */}
+                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0', gridColumn: '1 / -1' }} />
+                    {isSelf && (
+                        <>
+                            <div className="field-h">
+                                <label>🔧 Tyre Puncture</label>
+                                <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => S('tyrePuncture', e.target.value)} />
+                            </div>
+                            <div className="field-h">
+                                <label>⚙️ Tyre Greasing & Air</label>
+                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => S('tyreGreasingAir', e.target.value)} />
+                            </div>
+                        </>
+                    )}
+                    <ExtraMoneyList extras={form.extras} onChange={list => S('extras', list)} />
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
@@ -559,6 +1110,8 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
     const { user } = useAuth();
     const org = user?.org || {};
+    // Whoever is logged in signs the vouchers they print.
+    const signedBy = user?.name || user?.username || 'VGTC';
     // canEdit: checks brand-specific voucher key and generic fallback
     const voucherKey = brand === 'jklakshmi' ? 'voucher_jkl' : 'voucher_jksuper';
     const canEdit = role === 'admin'
@@ -579,7 +1132,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [lrAlreadyUsed, setLrAlreadyUsed] = useState(false);
     const [editVoucher, setEditVoucher] = useState(null);
     const [delVoucher, setDelVoucher] = useState(null);
-    const [formOpen, setFormOpen] = useState(true);
+    // Opens on the list. The form was taking the whole first screen on a module
+    // people mostly come to in order to look something up.
+    const [formOpen, setFormOpen] = useState(false);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -601,14 +1156,31 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         return [NONE_PUMP, ...new Set(names)];
     }, [profiles]);
 
+    // Recording who actually drove is what lets attendance be derived instead of
+    // marked by hand — see server/services/attendanceService.js.
+    const driverOptions = useMemo(
+        () => profiles
+            .filter(p => p.type === 'Driver' && !p.dateExit)
+            .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+        [profiles]
+    );
+
+    /** The driver a truck is normally assigned to, used to pre-fill the field. */
+    const defaultDriverForTruck = useCallback((truckNo) => {
+        const key = cleanTruckNo(truckNo);
+        if (!key) return null;
+        return driverOptions.find(d => cleanTruckNo(d.vehicleNo) === key) || null;
+    }, [driverOptions]);
+
     const [form, setForm] = useState({
         lrNo: '', date: getSticky('voucher.date', new Date().toISOString().split('T')[0]),
+        driverId: '', driverName: '',
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
         rate: '', pump: NONE_PUMP, advanceDiesel: '', advanceCash: '', advanceOnline: '',
         hasCommission: false, isFullTank: false,
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
         materials: [],
-        tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '',
+        tyrePuncture: '', tyreGreasingAir: '', extras: [],
     });
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
 
@@ -633,8 +1205,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const deliveryTotals = useMemo(() => {
         const totalWeight = deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0);
-        const totalBags   = deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0);
-        const totalGross  = deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
+        const totalBags = deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0);
+        const totalGross = deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
         return { totalWeight, totalBags, totalGross };
     }, [deliveries]);
 
@@ -659,9 +1231,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             );
             setVehicleNumbers(numbers);
             setVgtcTrucks(vgtcSet);
-        }).catch(() => {});
+        }).catch(() => { });
 
-        ax.get('/profiles').then(r => setProfiles(r.data || [])).catch(() => {});
+        ax.get('/profiles').then(r => setProfiles(r.data || [])).catch(() => { });
     }, []);
 
     useEffect(() => {
@@ -673,14 +1245,18 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     }, [formOpen, refreshData]);
 
     const isVGTCTruck = (truckNo) => vgtcTrucks.has(cleanTruckNo(truckNo));
+    const isSelfTruck = isVGTCTruck(form.truckNo);
+    // Tyre work only counts towards the total when it is actually on offer.
+    const formExpenseTotal = (isSelfTruck ? (parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) : 0)
+        + extrasTotal(form.extras);
 
     // Update tab when initialTab prop changes from sidebar navigation
     useEffect(() => {
         if (initialTab) setVType(initialTab);
     }, [initialTab]);
 
-    useEffect(() => { 
-        fetchVouchers(); 
+    useEffect(() => {
+        fetchVouchers();
         setCurrentPage(1);
     }, [vType]);
 
@@ -803,10 +1379,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 const combinedPartyName = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' & ');
                 const combinedPartyCode = [...new Set(rows.map(r => r.partyCode).filter(Boolean))].join(', ');
                 const combinedDestination = [...new Set(rows.map(r => r.destination).filter(Boolean))].join(', ');
-                
+
+                const assignedDriver = defaultDriverForTruck(truck);
                 setForm(f => ({
                     ...f,
                     truckNo: truck,
+                    ...(f.driverId ? {} : { driverId: assignedDriver?.id || '', driverName: assignedDriver?.name || '' }),
                     date: rows[0].date || f.date,
                     weight: tw.toFixed(2),
                     bags: String(tb),
@@ -826,8 +1404,21 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     // When user manually changes truckNo (not via LR auto-fill), also fetch last km
     const handleTruckNoChange = (val) => {
         const clean = cleanTruckNo(val);
-        set('truckNo', clean);
+        const assigned = defaultDriverForTruck(clean);
+        setForm(f => ({
+            ...f,
+            truckNo: clean,
+            // Pre-fill the truck's usual driver, but never overwrite a driver the
+            // user has already picked — a relief driver is exactly the case this
+            // field exists for.
+            ...(f.driverId ? {} : { driverId: assigned?.id || '', driverName: assigned?.name || '' }),
+        }));
         fetchLastKm(clean);
+    };
+
+    const handleDriverChange = (driverId) => {
+        const d = driverOptions.find(x => x.id === driverId);
+        setForm(f => ({ ...f, driverId: d?.id || '', driverName: d?.name || '' }));
     };
     const handlePartyNameChange = (val) => set('partyName', resolvePartyName(val, knownPartyNames));
 
@@ -843,6 +1434,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             alert('Truck No. is required');
             return;
         }
+        // Diesel advance without a station would create an unbillable "None"
+        // row in the pump ledger.
+        const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
+        if (pumpProblem) { alert(pumpProblem); return; }
 
         // Check delivery LR duplicates for factory types
         if (isFactory) {
@@ -871,8 +1466,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         const validDeliveries = isFactory ? deliveries.filter(d => d.weight || d.lrNo || d.destination) : [];
         const hasMultiDelivery = validDeliveries.length > 0;
         const totalW = hasMultiDelivery ? deliveryTotals.totalWeight : parseFloat(form.weight) || 0;
-        const totalB = hasMultiDelivery ? deliveryTotals.totalBags   : parseInt(form.bags) || 0;
-        const calc   = getCalc(totalW, validDeliveries[0]?.rate || form.rate, form.hasCommission);
+        const totalB = hasMultiDelivery ? deliveryTotals.totalBags : parseInt(form.bags) || 0;
+        const calc = getCalc(totalW, validDeliveries[0]?.rate || form.rate, form.hasCommission);
         const payload = {
             ...form,
             partyName: hasMultiDelivery ? (validDeliveries.map(d => d.partyName).filter(Boolean).join(', ') || form.partyName) : resolvePartyName(form.partyName, knownPartyNames),
@@ -882,16 +1477,27 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             type: vType, brand,
             ...calc,
             materials: form.materials || [],
+            // Tyre work is only offered on our own trucks; if the number was
+            // switched to a market vehicle after typing, those figures go with it.
+            ...(isSelfTruck ? {} : { tyrePuncture: '', tyreGreasingAir: '' }),
+            ...extrasPayload(form.extras),
             ...(hasMultiDelivery ? { deliveries: validDeliveries } : {}),
         };
         try {
-            await ax.post(API_V, payload);
+            const res = await ax.post(API_V, payload);
             rememberSticky('voucher.date', form.date);
             if (!lockedType && !isGeneric) rememberSticky('voucher.type', vType);
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extraCash: '', extraCashRemark: '' }));
+            const newVoucher = res.data;
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [] }));
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
+
+            if (window.confirm('Voucher created successfully! Do you want to print it?')) {
+                // Merge over the payload: the response is authoritative for what
+                // was stored, but a partial response must not blank the slip.
+                printVoucher({ ...payload, ...newVoucher }, org, brand, signedBy);
+            }
         } catch { alert('Error saving voucher'); } finally { setSaving(false); }
     };
 
@@ -916,12 +1522,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     /* Filtered + sorted vouchers */
     const filtered = useMemo(() => {
         let list = [...vouchers];
-        
+
         // Dynamic filtering based on active column filters
         Object.keys(filters).forEach(key => {
             const selectedValues = filters[key];
             if (selectedValues && selectedValues.length > 0) {
-                list = list.filter(v => selectedValues.includes(String(v[key] ?? '')));
+                list = list.filter(v => columnValues(v, key).some(x => selectedValues.includes(x)));
             }
         });
 
@@ -948,8 +1554,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         total: filtered.reduce((s, v) => s + ((parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
     }), [filtered]);
 
-    const exportVoucherExcel = () => exportToExcel(filtered.map(v => ({ LR: v.lrNo, Date: v.date, Truck: v.truckNo, Dest: v.destination, Weight: v.weight, Bags: v.bags, Rate: v.rate, Pump: getPumpDisplay(v.pump), Diesel_Adv: v.advanceDiesel, Cash_Adv: v.advanceCash, Online_Adv: v.advanceOnline, Munshi: v.munshi, Total: (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0) })), `Vouchers_${vType}_${new Date().toISOString().slice(0, 10)}`);
-    const exportVoucherPDF = () => exportToPDF(filtered, `${vType.replace('_', ' ')} Vouchers`, ['lrNo', 'date', 'truckNo', 'destination', 'weight', 'bags', 'rate', 'pump', 'advanceDiesel', 'advanceCash', 'advanceOnline', 'total']);
+    // Everything the voucher holds, including the deductions the old thirteen
+    // columns omitted — commission, tyre work, every extra payment and its
+    // remark, and the multi-delivery breakdown.
+    const voucherExportRows = () => buildExportRows(filtered, {
+        order: ['lrNo', 'date', 'truckNo', 'partyName', 'destination', 'weight', 'bags', 'rate'],
+        computed: {
+            Pump: v => getPumpDisplay(v.pump),
+            Gross: v => Math.round(calcGrossV(v)),
+            'Net Payable': v => Math.round(getNet(v).net),
+        },
+    });
+    const exportVoucherExcel = () => exportToExcel(voucherExportRows(), `Vouchers_${vType}_${new Date().toISOString().slice(0, 10)}`);
+    const exportVoucherPDF = () => exportToPDF(voucherExportRows(), `${vType.replace('_', ' ')} Vouchers`, null, {
+        archive: {
+            module: 'Vouchers',
+            plant: vType.replace(/_/g, ' '),
+            name: archiveName('Vouchers Export', vType, new Date().toISOString().slice(0, 10)),
+        },
+    });
 
     return (
         <>
@@ -961,7 +1584,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 message={`Are you sure you want to create a new Voucher for LR #${form.lrNo}?`}
                 isSaving={saving}
             />
-            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} driverOptions={driverOptions} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
 
             {/* Duplicate LR popup */}
@@ -1002,10 +1625,17 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 {TYPES.map(t => <button key={t} className={`tab-btn${vType === t ? ' tab-indigo' : ''}`} onClick={() => setVType(t)}>{t.replace('_', ' ')}</button>)}
                             </div>
                         )}
+                        {canEdit && (
+                            <button className={`btn ${formOpen ? 'btn-g' : 'btn-p'}`} onClick={() => setFormOpen(o => !o)}
+                                title={formOpen ? 'Close the form' : 'Create a new voucher'}>
+                                {formOpen ? <><X size={15} /> Close Form</> : <><Plus size={15} /> Create New Voucher</>}
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                {/* ── Entry Form (collapsible) ── */}
+                {/* ── Entry Form — hidden until asked for ── */}
+                {formOpen && (
                 <div className="card" style={{ marginBottom: '18px' }}>
                     <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setFormOpen(o => !o)}>
                         <div className="card-title-block">
@@ -1013,7 +1643,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             <div className="card-title-text"><h3>New {isGeneric ? 'Voucher' : vType.replace('_', ' ') + ' Voucher'}</h3><p>{form.date}</p></div>
                         </div>
                         <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700 }}>
-                            {formOpen ? <><ChevronUp size={15} /> Collapse</> : <><ChevronDown size={15} /> Expand</>}
+                            <X size={15} /> Close
                         </button>
                     </div>
 
@@ -1023,7 +1653,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 <div className="card-body">
                                     <form onSubmit={handleFormRequest} ref={voucherFormRef}>
                                         <div className="fg fg-2">
-                                                {!isFactory && (
+                                            {!isFactory && (
                                                 <div className="field-h">
                                                     <label><Search size={11} style={{ marginRight: '4px' }} /> LR Number *</label>
                                                     <input
@@ -1034,17 +1664,41 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         required
                                                     />
                                                 </div>
-                                                )}
-                                                <div className="field-h">
-                                                    <label>Truck No. *</label>
-                                                    <div style={{ position: 'relative', width: '100%' }}>
-                                                        <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
-                                                        <datalist id="voucher-truck-list">
-                                                            {vehicleNumbers.map(no => <option key={no} value={no} />)}
-                                                        </datalist>
-                                                    </div>
+                                            )}
+                                            <div className="field-h">
+                                                <label>Truck No. *</label>
+                                                <div style={{ position: 'relative', width: '100%' }}>
+                                                    <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
+                                                    <datalist id="voucher-truck-list">
+                                                        {vehicleNumbers.map(no => <option key={no} value={no} />)}
+                                                    </datalist>
                                                 </div>
-                                                {!isFactory && <>
+                                            </div>
+                                            <div className="field-h">
+                                                <label>Driver</label>
+                                                <select
+                                                    className="fi"
+                                                    value={form.driverId}
+                                                    onChange={e => handleDriverChange(e.target.value)}
+                                                >
+                                                    <option value="">— not recorded —</option>
+                                                    {driverOptions.map(d => (
+                                                        <option key={d.id} value={d.id}>
+                                                            {d.name}{d.vehicleNo ? ` (${d.vehicleNo})` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                                                    {form.driverId
+                                                        ? (defaultDriverForTruck(form.truckNo)?.id === form.driverId
+                                                            ? 'Usual driver for this truck. Change it if someone else drove.'
+                                                            : 'Relief driver — attendance will be credited to this person.')
+                                                        : driverOptions.length
+                                                            ? 'Pick who drove, so their attendance is marked automatically.'
+                                                            : 'No drivers yet. Add them under Staff Profiles.'}
+                                                </div>
+                                            </div>
+                                            {!isFactory && <>
                                                 <div className="field-h">
                                                     <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
                                                     <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
@@ -1058,27 +1712,27 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         </datalist>
                                                     </div>
                                                 </div>
-                                                </>}
-                                                {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
-                                                    <>
-                                                        <div className="field-h">
-                                                            <label>Party Code</label>
-                                                            <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
-                                                        </div>
-                                                        <div className="field-h">
-                                                            <label>Bill No *</label>
-                                                            <input className="fi" type="text" placeholder="Enter bill number" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
-                                                        </div>
-                                                        <div className="field-h">
-                                                            <label>Material Name</label>
-                                                            <input className="fi" type="text" placeholder="To print with CEMENT" value={form.materialName} onChange={e => set('materialName', e.target.value)} />
-                                                        </div>
-                                                    </>
-                                                )}
-                                                <div className="field-h">
-                                                    <label>Date *</label>
-                                                    <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
-                                                </div>
+                                            </>}
+                                            {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
+                                                <>
+                                                    <div className="field-h">
+                                                        <label>Party Code</label>
+                                                        <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
+                                                    </div>
+                                                    <div className="field-h">
+                                                        <label>Bill No *</label>
+                                                        <input className="fi" type="text" placeholder="Enter bill number" value={form.billNo} onChange={e => set('billNo', e.target.value)} required />
+                                                    </div>
+                                                    <div className="field-h">
+                                                        <label>Material Name</label>
+                                                        <input className="fi" type="text" placeholder="To print with CEMENT" value={form.materialName} onChange={e => set('materialName', e.target.value)} />
+                                                    </div>
+                                                </>
+                                            )}
+                                            <div className="field-h">
+                                                <label>Date *</label>
+                                                <input className="fi" type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
+                                            </div>
 
                                             {lrAlreadyUsed && (
                                                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '9px', padding: '9px 14px' }}>
@@ -1138,7 +1792,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                                             <td style={{ padding: '5px 8px' }}>
                                                                                 <input className="fi" type="text" placeholder="e.g. 101" value={d.lrNo}
                                                                                     onChange={e => updateDelivery(idx, 'lrNo', e.target.value)}
-                                                                                    style={{ width: '80px', padding: '4px 7px', fontSize: '12px',
+                                                                                    style={{
+                                                                                        width: '80px', padding: '4px 7px', fontSize: '12px',
                                                                                         ...(isDupLR ? { borderColor: '#f43f5e', boxShadow: '0 0 0 2px rgba(244,63,94,0.15)' } : {})
                                                                                     }} />
                                                                                 {isDupLR && <div style={{ fontSize: '9px', color: '#f43f5e', fontWeight: 800, marginTop: '2px' }}>⚠ Already used</div>}
@@ -1250,11 +1905,20 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             )}
                                             <div className="field-h">
                                                 <label><Fuel size={11} style={{ marginRight: '4px' }} /> Diesel Advance</label>
-                                                <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                                                    <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
-                                                    <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
-                                                        onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
-                                                </div>
+                                                {/* No registered station → diesel cannot be recorded at all.
+                                                    Saved with pump "None" it can never be matched to a monthly
+                                                    bill, so it is blocked here instead of failing at save. */}
+                                                {pumpOptions.filter(p => p !== NONE_PUMP).length === 0 ? (
+                                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--warn)', padding: '9px 12px', background: 'rgba(245,158,11,0.08)', border: '1px dashed rgba(245,158,11,0.4)', borderRadius: '8px', width: '100%' }}>
+                                                        No fuel station registered — add one under Admin Settings → Fuel Stations to record diesel.
+                                                    </div>
+                                                ) : (
+                                                    <div className="fi-row" style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                                        <input className="fi" type="text" placeholder="Amount" value={form.advanceDiesel} disabled={form.isFullTank} onChange={e => set('advanceDiesel', e.target.value)} />
+                                                        <button type="button" style={{ minWidth: '60px' }} className={`btn ${form.isFullTank ? 'btn-p' : 'btn-g'}`}
+                                                            onClick={() => setForm(f => ({ ...f, isFullTank: !f.isFullTank, advanceDiesel: !f.isFullTank ? 'FULL' : '' }))}>Full</button>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="field-h">
                                                 <label><Wallet size={11} style={{ marginRight: '4px' }} /> Cash Advance</label>
@@ -1279,35 +1943,35 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             </div>
 
-                                            {/* ── Vehicle Expenses — VGTC self-trucks only ── */}
-                                            {form.truckNo && isVGTCTruck(cleanTruckNo(form.truckNo)) && (
+                                            {/* ── Vehicle Expenses ──
+                                                Extra money can be handed to any driver, so it shows on every
+                                                truck. Tyre work is VGTC's own maintenance bill and stays on
+                                                self trucks — a market vehicle's punctures are not ours. */}
+                                            {form.truckNo && (
                                                 <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     <button type="button" onClick={() => setShowVehicleExpenses(s => !s)}
                                                         style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
                                                         <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
-                                                        🔧 Vehicle Expenses (Tyre, Extra Cash)
-                                                        {(parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0) > 0 && (
-                                                            <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{((parseFloat(form.tyrePuncture) || 0) + (parseFloat(form.tyreGreasingAir) || 0) + (parseFloat(form.extraCash) || 0)).toLocaleString('en-IN')}</span>
+                                                        {isSelfTruck ? '🔧 Vehicle Expenses (Tyre, Extra Money)' : '💰 Extra Money'}
+                                                        {formExpenseTotal > 0 && (
+                                                            <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{formExpenseTotal.toLocaleString('en-IN')}</span>
                                                         )}
                                                     </button>
                                                     {showVehicleExpenses && (
                                                         <div className="fg fg-2" style={{ padding: '14px', background: 'var(--bg)', borderRadius: '10px', border: '1px solid var(--border)', gap: '12px' }}>
-                                                            <div className="field-h">
-                                                                <label>🔧 Tyre Puncture</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
-                                                            </div>
-                                                            <div className="field-h">
-                                                                <label>⚙️ Tyre Greasing & Air</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => set('tyreGreasingAir', e.target.value)} />
-                                                            </div>
-                                                            <div className="field-h">
-                                                                <label>💰 Extra Cash</label>
-                                                                <input className="fi" type="number" placeholder="₹0" value={form.extraCash} onChange={e => set('extraCash', e.target.value)} />
-                                                            </div>
-                                                            <div className="field-h">
-                                                                <label>Remark</label>
-                                                                <input className="fi" type="text" placeholder="Reason for extra cash" value={form.extraCashRemark} onChange={e => set('extraCashRemark', e.target.value)} />
-                                                            </div>
+                                                            {isSelfTruck && (
+                                                                <>
+                                                                    <div className="field-h">
+                                                                        <label>🔧 Tyre Puncture</label>
+                                                                        <input className="fi" type="number" placeholder="₹0" value={form.tyrePuncture} onChange={e => set('tyrePuncture', e.target.value)} />
+                                                                    </div>
+                                                                    <div className="field-h">
+                                                                        <label>⚙️ Tyre Greasing & Air</label>
+                                                                        <input className="fi" type="number" placeholder="₹0" value={form.tyreGreasingAir} onChange={e => set('tyreGreasingAir', e.target.value)} />
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                            <ExtraMoneyList extras={form.extras} onChange={list => set('extras', list)} />
                                                         </div>
                                                     )}
                                                 </div>
@@ -1360,6 +2024,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                         )}
                     </AnimatePresence>
                 </div>
+                )}
 
                 {/* ── Voucher Sheet ── */}
                 <div className="card">
@@ -1394,7 +2059,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     )}
 
                     {/* Sheet table */}
-                    <div className="tbl-wrap">
+                    <TableScroll className="tbl-cards">
                         <table className="tbl" style={{ minWidth: '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                             <thead>
                                 <tr style={{ background: 'var(--bg-th)' }}>
@@ -1423,12 +2088,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 <div onClick={() => toggleSort(col.key)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     {col.label} <SortIcon col={col.key} />
                                                 </div>
-                                                <ColumnFilter 
-                                                    label="" 
-                                                    colKey={col.key} 
-                                                    data={vouchers} 
-                                                    activeFilters={filters} 
-                                                    onFilterChange={handleFilterChange} 
+                                                <ColumnFilter
+                                                    label=""
+                                                    colKey={col.key}
+                                                    data={vouchers}
+                                                    activeFilters={filters}
+                                                    onFilterChange={handleFilterChange}
                                                 />
                                             </div>
                                         </th>
@@ -1453,8 +2118,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                     <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', transition: 'background 0.12s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
-                                        <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                                        <td style={{ ...TD }}>
+                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * PAGE_SIZE + i + 1}</td>
+                                        <td className="t-card-title" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     {v.deliveries.map((d, di) => (
@@ -1463,8 +2128,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                                 : <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span>}
                                         </td>
-                                        <td style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
-                                        <td style={{ ...TD, fontWeight: 700 }}>
+                                        <td data-label="Date" style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
+                                        <td data-label="Truck" style={{ ...TD, fontWeight: 700 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 {v.truckNo}
                                                 {v.endKm && (
@@ -1475,7 +2140,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 )}
                                             </div>
                                         </td>
-                                        <td style={{ ...TD }}>
+                                        <td data-label="Destination" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     {v.deliveries.map((d, di) => (
@@ -1487,40 +2152,43 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                                 : v.destination || '—'}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
+                                        <td data-label="Weight" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.weight || '—'}</span>)}
-                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px' }}>
-                                                        Σ {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight)||0), 0).toFixed(2)}
+                                                    {/* The lines above are one destination each; this is the load.
+                                                        Spelled out — a sigma reads as noise to anyone who did not
+                                                        put it there. */}
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                                                        Total {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0).toFixed(2)}
                                                     </span>
                                                 </div>
                                                 : v.weight}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                        <td data-label="Bags" style={{ ...TD, textAlign: 'right' }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px', fontWeight: 700 }}>{d.bags || '—'}</span>)}
-                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px' }}>
-                                                        Σ {v.deliveries.reduce((s, d) => s + (parseInt(d.bags)||0), 0).toLocaleString('en-IN')}
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                                                        Total {v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0).toLocaleString('en-IN')}
                                                     </span>
                                                 </div>
                                                 : <><div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>
-                                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div></>}
+                                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div></>}
                                         </td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                        <td data-label="Rate" style={{ ...TD, textAlign: 'right' }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.rate || '—'}</span>)}
                                                 </div>
                                                 : v.rate}
                                         </td>
-                                        <td style={{ ...TD }}>{getPumpDisplay(v.pump)}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
-                                        <td style={{ ...TD, textAlign: 'right' }}>
+                                        <td data-label="Pump" style={{ ...TD }}>{getPumpDisplay(v.pump)}</td>
+                                        <td data-label="Diesel Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
+                                        <td data-label="Cash Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
+                                        <td data-label="Online Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
+                                        <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
+                                        <td data-label="Total" style={{ ...TD, textAlign: 'right' }}>
                                             {(() => {
                                                 const n = getNet(v);
                                                 return (
@@ -1548,11 +2216,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 );
                                             })()}
                                         </td>
-                                        {role === 'admin' && <td style={{ ...TD }}>{v.createdBy || '—'}</td>}
-                                        {role === 'admin' && <td style={{ ...TD }}>{v.updatedBy || '—'}</td>}
-                                        <td style={{ ...TD, textAlign: 'center' }}>
+                                        {role === 'admin' && <td data-label="Created By" style={{ ...TD }}>{v.createdBy || '—'}</td>}
+                                        {role === 'admin' && <td data-label="Updated By" style={{ ...TD }}>{v.updatedBy || '—'}</td>}
+                                        <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org)}><Printer size={13} /></button>
+                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org, brand, signedBy)}><Printer size={13} /></button>
                                                 {canEdit && (
                                                     <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
                                                 )}
@@ -1566,9 +2234,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                             </tbody>
 
                         </table>
-                    </div>
+                    </TableScroll>
 
-                    <Pagination 
+                    <Pagination
                         currentPage={currentPage}
                         totalItems={filtered.length}
                         pageSize={PAGE_SIZE}

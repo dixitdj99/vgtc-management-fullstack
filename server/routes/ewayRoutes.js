@@ -1,220 +1,94 @@
+/**
+ * ewayRoutes.js — the e-way bill feed behind Stock → Challans.
+ *
+ * The feed is one list per GSTIN, not per plant, so the raw bill is stored once
+ * and each plant asks for it with its own material names. That is why /pending
+ * takes `materials`: "PPC" has to resolve against the JK Lakshmi list on one tab
+ * and the JK Super list on another, from the same stored bill.
+ *
+ * Nothing here 500s when the API is unconfigured. Most of the time it will be —
+ * credentials take weeks to arrive — and a yard that has never had the feed
+ * should see "not connected", not a red error on a screen it uses all day.
+ */
+
 const express = require('express');
 const router = express.Router();
-const { db, isAvailable } = require('../firebase');
-const { getCol } = require('../utils/collectionUtils');
-const localStore = require('../utils/localStore');
+const { requireAuth } = require('../middleware/auth');
+const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { getEnvCol } = require('../utils/collectionUtils');
+const ewbService = require('../utils/ewbService');
+const ewbStore = require('../utils/ewbStore');
+const ewbSync = require('../utils/ewbSync');
 
-const EWAY_COL = 'eway_bills';
-const CHALLAN_COL = 'challans';
+router.use(requireAuth, tenancyMiddleware);
 
-// Helper to determine status based on validity date and loading state
-function calculateEwayStatus(doc) {
-    if (doc.status === 'cancelled' || doc.status === 'loaded' || doc.status === 'reissued') {
-        return doc.status;
-    }
-    const now = new Date();
-    const validUntil = new Date(doc.validUntil);
-    if (!isNaN(validUntil.getTime()) && validUntil < now) {
-        return 'expired_unloaded';
-    }
-    return doc.status || 'active';
-}
+// The feed is per-GSTIN, so it is not split by plant the way stock is.
+const BILLS_COL = () => getEnvCol('eway_bills');
+const STATE_COL = () => getEnvCol(ewbStore.STATE_COL);
 
-// GET all E-Way Bills
-router.get('/', async (req, res) => {
+const parseMaterials = (q) =>
+    String(q || '').split(',').map(s => s.trim()).filter(Boolean);
+
+/** Whether the feed can run at all, and when it last did. */
+router.get('/status', async (req, res) => {
     try {
-        let docs = [];
-        if (!isAvailable()) {
-            docs = localStore.getAll(EWAY_COL);
-        } else {
-            const snapshot = await db.collection(getCol(EWAY_COL, req)).get();
-            docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        }
-
-        // Dynamically update status for expired bills
-        docs = docs.map(d => {
-            const calcStatus = calculateEwayStatus(d);
-            return { ...d, calculatedStatus: calcStatus };
+        const configured = ewbService.isConfigured();
+        const state = configured ? await ewbStore.readState(req.orgId, STATE_COL()) : null;
+        res.json({
+            configured,
+            missing: configured ? [] : ewbService.missingConfig(),
+            lastSyncAt: state?.lastSyncAt || null,
+            lastError: state?.lastError || null,
+            lastCounts: state?.lastCounts || null,
         });
-
-        docs.sort((a, b) => new Date(b.createdAt || b.issuedDate || 0) - new Date(a.createdAt || a.issuedDate || 0));
-        res.json(docs);
-    } catch (err) {
-        console.error('get eway bills error:', err);
-        res.status(500).json({ error: err.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST — Create new E-Way Bill
-router.post('/', async (req, res) => {
+/**
+ * Bills waiting to become challans, each already shaped like the form.
+ * @query materials comma-separated material names for the calling plant
+ */
+router.get('/pending', async (req, res) => {
     try {
-        const { ewayBillNo, challanNo, truckNo, partyName, destination, material, quantity, consignmentValue, validUntil, brand } = req.body;
-        if (!ewayBillNo || !truckNo) {
-            return res.status(400).json({ error: 'ewayBillNo and truckNo are required' });
+        if (!ewbService.isConfigured()) {
+            return res.json({ configured: false, missing: ewbService.missingConfig(), bills: [] });
         }
-
-        const issuedDate = req.body.issuedDate || new Date().toISOString();
-        // Default validity to 24 hours if not provided
-        const defaultValid = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-        const payload = {
-            ewayBillNo: ewayBillNo.trim(),
-            challanNo: (challanNo || '').trim(),
-            truckNo: (truckNo || '').trim(),
-            partyName: (partyName || '').trim(),
-            destination: (destination || '').trim(),
-            material: material || 'PPC',
-            quantity: quantity ? parseFloat(quantity) : 0,
-            consignmentValue: consignmentValue ? parseFloat(consignmentValue) : 0,
-            issuedDate,
-            validUntil: validUntil || defaultValid,
-            status: 'active',
-            brand: brand || 'all',
-            createdAt: new Date().toISOString()
-        };
-
-        let created;
-        if (!isAvailable()) {
-            created = localStore.insert(EWAY_COL, payload);
-        } else {
-            const ref = await db.collection(getCol(EWAY_COL, req)).add(payload);
-            created = { id: ref.id, ...payload };
-        }
-
-        res.status(201).json(created);
-    } catch (err) {
-        console.error('create eway bill error:', err);
-        res.status(500).json({ error: err.message });
-    }
+        const materials = parseMaterials(req.query.materials);
+        const stored = await ewbStore.listBills(req.orgId, BILLS_COL(), 'pending');
+        const bills = stored.map(b => ({
+            ewbNo: b.ewbNo,
+            ewbDate: b.ewbDate || '',
+            validUpto: b.validUpto || '',
+            draft: ewbService.toChallanDraft(b.detail || {}, { materials }),
+        }));
+        res.json({ configured: true, bills });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-const nicEwayService = require('../services/nicEwayService');
-
-// POST — Live Sync E-Way Bill status directly from Govt NIC Portal
-router.post('/sync-nic/:ewbNo', async (req, res) => {
+/** Manual refresh, for when a load is on the gate and nobody wants to wait. */
+router.post('/sync', async (req, res) => {
     try {
-        const { ewbNo } = req.params;
-        const liveDetails = await nicEwayService.getLiveEwayBill(ewbNo);
-        res.json({ ok: true, liveDetails });
-    } catch (err) {
-        console.error('NIC Live Sync Error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
+        const result = await ewbSync.syncOrg(req.orgId, {
+            billsCol: BILLS_COL(),
+            stateCol: STATE_COL(),
+        });
+        res.json(result);
+    } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// POST — Auto Re-issue E-Way Bill for Expired Unloaded Challan/Order (with Govt Extension option)
-router.post('/:id/reissue', async (req, res) => {
+/**
+ * Records what the operator did with a bill.
+ * @body {'used'|'ignored'|'pending'} status, and challanId when used
+ */
+router.post('/:ewbNo/status', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { newEwayBillNo, validUntilHours = 24, extendOnGovtPortal = false } = req.body;
-
-        let existingDoc;
-        if (!isAvailable()) {
-            existingDoc = localStore.getAll(EWAY_COL).find(d => d.id === id);
-        } else {
-            const docSnap = await db.collection(getCol(EWAY_COL, req)).doc(id).get();
-            if (docSnap.exists) existingDoc = { id: docSnap.id, ...docSnap.data() };
+        const { status, challanId } = req.body || {};
+        if (!['used', 'ignored', 'pending'].includes(status)) {
+            return res.status(400).json({ error: 'status must be used, ignored or pending' });
         }
-
-        if (!existingDoc) {
-            return res.status(404).json({ error: 'E-Way bill not found' });
-        }
-
-        let govtAck = null;
-        if (extendOnGovtPortal) {
-            try {
-                govtAck = await nicEwayService.extendGovtEwayBillValidity(
-                    existingDoc.ewayBillNo, 
-                    req.body.truckNo || existingDoc.truckNo, 
-                    '124106'
-                );
-            } catch (gErr) {
-                console.warn('[Govt Portal Extension Warning]:', gErr.message);
-            }
-        }
-
-        const effectiveNewNo = govtAck?.newEwayBillNo || newEwayBillNo || `EWAY-${Date.now().toString().slice(-6)}`;
-
-        // 1. Mark existing document as reissued
-        const updatedOld = {
-            ...existingDoc,
-            status: 'reissued',
-            reissuedAt: new Date().toISOString(),
-            replacedBy: effectiveNewNo,
-            govtAck: govtAck || existingDoc.govtAck || null
-        };
-
-        if (!isAvailable()) {
-            localStore.update(EWAY_COL, id, updatedOld);
-        } else {
-            await db.collection(getCol(EWAY_COL, req)).doc(id).set(updatedOld, { merge: true });
-        }
-
-        // 2. Create new active E-Way Bill linked to the same challan/order
-        const now = new Date();
-        const validUntil = govtAck?.validUpto || new Date(now.getTime() + (parseInt(validUntilHours) || 24) * 60 * 60 * 1000).toISOString();
-
-        const newPayload = {
-            ewayBillNo: effectiveNewNo,
-            challanNo: existingDoc.challanNo,
-            truckNo: req.body.truckNo || existingDoc.truckNo,
-            partyName: existingDoc.partyName,
-            destination: existingDoc.destination,
-            material: existingDoc.material,
-            quantity: existingDoc.quantity,
-            consignmentValue: existingDoc.consignmentValue,
-            issuedDate: now.toISOString(),
-            validUntil,
-            status: 'active',
-            brand: existingDoc.brand || 'all',
-            reissuedFrom: existingDoc.ewayBillNo,
-            govtAck: govtAck || null,
-            createdAt: now.toISOString()
-        };
-
-        let newDoc;
-        if (!isAvailable()) {
-            newDoc = localStore.insert(EWAY_COL, newPayload);
-        } else {
-            const ref = await db.collection(getCol(EWAY_COL, req)).add(newPayload);
-            newDoc = { id: ref.id, ...newPayload };
-        }
-
-        res.json({ message: 'E-Way Bill re-issued successfully', oldBill: updatedOld, newBill: newDoc, govtAck });
-    } catch (err) {
-        console.error('reissue eway bill error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// PATCH — Update E-Way Bill status / details
-router.patch('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!isAvailable()) {
-            localStore.update(EWAY_COL, id, req.body);
-        } else {
-            await db.collection(getCol(EWAY_COL, req)).doc(id).set(req.body, { merge: true });
-        }
-        res.json({ ok: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// DELETE — Remove E-Way Bill
-router.delete('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!isAvailable()) {
-            localStore.delete(EWAY_COL, id);
-        } else {
-            await db.collection(getCol(EWAY_COL, req)).doc(id).delete();
-        }
-        res.json({ ok: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        const doc = await ewbStore.setStatus(req.orgId, req.params.ewbNo, status, BILLS_COL(), challanId || null);
+        res.json(doc);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 module.exports = router;

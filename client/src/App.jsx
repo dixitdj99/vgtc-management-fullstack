@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X, Search, Building2, TrendingUp, ClipboardList, Bell, Sparkles, FileCheck } from 'lucide-react';
 import TruckLoader from './components/TruckLoader';
@@ -10,6 +10,7 @@ import AdminPage from './pages/AdminPage';
 import LRModule from './modules/LRModule';
 import VoucherModule from './modules/VoucherModule';
 import BalanceSheet from './modules/BalanceSheet';
+import AllBalanceSheet from './modules/AllBalanceSheet';
 import CashbookModule from './modules/CashbookModule';
 import StockModule from './modules/StockModule';
 import VehicleModule from './modules/VehicleModule';
@@ -27,18 +28,24 @@ import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
 import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
+import {
+  detectWeatherAlert, loadAlerts, addAlert, markRead, markAllRead,
+  clearAlert, clearAll, unreadCount, playAlertChime,
+  loadUpdateState, visibleUpdates, markUpdateRead, markAllUpdatesRead,
+  clearUpdate, clearAllUpdates, unreadUpdateCount,
+} from './utils/weatherAlerts';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import TruckDashboard from './modules/TruckDashboard';
 import DashboardHome from './modules/DashboardHome';
 import CommandPalette from './components/CommandPalette';
 import useViewport from './hooks/useViewport';
 import MobileApp from './mobile/MobileApp';
+import BottomTabBar from './components/BottomTabBar';
 import { processSyncQueue, count as queueCount } from './utils/offlineQueue';
 import TyreModule from './modules/TyreModule';
 import VendorModule from './modules/VendorModule';
 import TripProfitModule from './modules/TripProfitModule';
 import AttendanceModule from './modules/AttendanceModule';
-import EwayModule from './modules/EwayModule';
 import VehicleCreditDebitModule from './modules/VehicleCreditDebitModule';
 
 const THEMES = [
@@ -55,6 +62,68 @@ const ENV_BANNER = APP_ENV === 'production' ? null
     ? { label: 'BETA', bg: '#f97316', glow: 'rgba(249,115,22,0.4)' }
     : { label: 'LOCAL DEV', bg: '#eab308', glow: 'rgba(234,179,8,0.4)' };
 
+/**
+ * Kosli, Jhajjar and Bahadurgarh are loading sites. Every module below is run
+ * for all three by one clerk working from Jharli, so putting them on these
+ * sidebars only offers a screen nobody there is meant to use.
+ *
+ * This hides the nav entry and nothing else. The APIs behind these modules stay
+ * reachable on purpose, because the screens that remain read through them: a
+ * voucher and an LR need the vehicle list (which includes market vehicles), the
+ * voucher form looks up the last odometer reading through /mileage, and the
+ * balance sheet reads the freight batches. Hiding a module is not the same as
+ * revoking the permission it shares, and treating them as the same thing would
+ * empty the truck dropdowns here.
+ */
+const DUMP_GODOWNS = new Set(['kosli', 'jhajjar', 'bahadurgarh']);
+const HIDDEN_AT_DUMP_GODOWNS = new Set([
+  'cashbook_dump',      // Cashbook
+  'pay_dump',           // Pay
+  'trip_profit_dump',   // Trip Profit Analysis
+  'vehicles_dump',      // Fleet Management
+  'diesel_dump',        // Diesel Control
+  'mileage_dump',       // Mileage Tracker
+  'tyres_dump',         // Tyre Management
+  'vendors_dump',       // Market Vehicles
+  'invoice_dump',       // Generate Invoice
+]);
+
+// Release notes shown in the notification panel. Lifted out of the JSX so the
+// panel can store which of them have been read or cleared.
+const UPDATE_ITEMS = [
+  {
+    id: 'n2',
+    title: 'Trip Profitability Analysis',
+    desc: 'Track freight revenue vs driver advances, diesel, and maintenance expenses per trip.',
+    time: 'Today',
+    icon: TrendingUp,
+    color: '#6366f1',
+  },
+  {
+    id: 'n3',
+    title: 'Tyre & Vendor Management',
+    desc: 'Full tyre lifecycle tracking (serial #, retreads) and market vendor ledger.',
+    time: 'Yesterday',
+    icon: Disc,
+    color: '#f59e0b',
+  },
+  {
+    id: 'n4',
+    title: 'Labour & Attendance Portal',
+    desc: 'Realtime truck loading status + daily staff attendance marking.',
+    time: '2 days ago',
+    icon: ClipboardList,
+    color: '#ec4899',
+  },
+  {
+    id: 'n5',
+    title: 'Tax Invoice Generator',
+    desc: 'Generate Invoice is live — upload the plant Excel and create JK Super freight bills. More invoice formats coming.',
+    time: 'New',
+    icon: FileText,
+    color: '#10b981',
+  }
+];
 
 function AppInner() {
   const { user, logout, ready, plant, godown } = useAuth();
@@ -138,6 +207,10 @@ function AppInner() {
 
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [weather, setWeather] = useState({ temp: null, cond: 'Clear', code: 1000, isDay: true, advice: 'Loading weather...' });
+  // Rain/thunderstorm warnings raised from the same feed, kept in localStorage
+  // so read and cleared survive a reload.
+  const [wxAlerts, setWxAlerts] = useState(() => loadAlerts());
+  const [updateState, setUpdateState] = useState(() => loadUpdateState());
   const [currentHour, setCurrentHour] = useState(new Date().getHours());
   const city = 'Jharli, Jhajjar, Haryana';
 
@@ -198,7 +271,9 @@ function AppInner() {
       // Using WeatherAPI.com directly as requested
       const API_KEY = 'e98e8f62e87e49de8db164340262603';
       const city = 'Jharli, Jhajjar, Haryana';
-      const res = await ax.get(`https://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(city)}`);
+      // forecast.json returns the same `current` block plus the coming hours,
+      // which is what lets an alert be raised before the rain arrives.
+      const res = await ax.get(`https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(city)}&days=1&aqi=no&alerts=no`);
 
       if (res.data && res.data.current) {
         const cur = res.data.current;
@@ -241,6 +316,16 @@ function AppInner() {
         const icon = rawIcon ? (rawIcon.startsWith('//') ? 'https:' + rawIcon : rawIcon) : null;
 
         setWeather({ temp, cond, code, isDay, advice, icon });
+
+        // Raise a warning if the feed says rain, storm or ice — now or soon.
+        const alert = detectWeatherAlert(res.data);
+        if (alert) {
+          setWxAlerts(prev => {
+            const { list, added } = addAlert(prev, alert);
+            if (added) playAlertChime();
+            return added ? [...list] : prev;
+          });
+        }
       }
     } catch (err) {
       console.error('Weather fetch failed:', err.message);
@@ -304,6 +389,23 @@ function AppInner() {
     // Ctrl+K / Cmd+K — command palette (window capture beats form-shortcut hooks)
     const [paletteOpen, setPaletteOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // The panel only closed via its own X. Clicking away left it hovering over
+  // whatever you were trying to reach, which is not how a popover should behave.
+  const notifRef = useRef(null);
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onDown = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setNotifOpen(false); };
+    // Capture phase, so a click on something that stops propagation still closes it.
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('touchstart', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('touchstart', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [notifOpen]);
   const [unreadNotif, setUnreadNotif] = useState(true);
     useEffect(() => {
         const handler = (e) => {
@@ -341,6 +443,9 @@ function AppInner() {
         { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
+    // The read-across sheet. Two entries because the nav filters strictly on
+    // section, and this one belongs under both plants — same component.
+    { id: 'balance_all_dump', label: 'All Balance Sheet', Icon: BarChart3, color: '#0ea5e9', section: 'jksuper', permKey: 'balance_all' },
     {
       id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli', sub: [
         { id: 'overview', label: 'Overview' },
@@ -348,6 +453,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -358,6 +464,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -368,6 +475,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -394,11 +502,10 @@ function AppInner() {
       ]
     },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'SOON' },
+    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'NEW' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'SOON' },
-    { id: 'eway_dump', label: 'E-Way Bills', Icon: FileCheck, color: '#10b981', section: 'jksuper', permKey: 'eway', badge: 'SOON' },
+    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'NEW' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -417,6 +524,7 @@ function AppInner() {
         { id: 'JK_Super', label: 'JK Super Sheet', permKey: 'balance_jksuper' },
       ]
     },
+    { id: 'balance_all_jharli', label: 'All Balance Sheet', Icon: BarChart3, color: '#0ea5e9', section: 'jharli', permKey: 'balance_all' },
     {
       id: 'stock_jharli', label: 'JK Lakshmi Stock', Icon: Package, color: '#f59e0b', section: 'jharli', permKey: 'stock_jkl', sub: [
         { id: 'overview', label: 'Overview' },
@@ -424,6 +532,7 @@ function AppInner() {
         { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
+        { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
@@ -449,11 +558,10 @@ function AppInner() {
       ]
     },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
-    { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'SOON' },
+    { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'NEW' },
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle', badge: 'NEW' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'SOON' },
-    { id: 'eway_jharli', label: 'E-Way Bills', Icon: FileCheck, color: '#f59e0b', section: 'jharli', permKey: 'eway', badge: 'SOON' },
+    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'NEW' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -490,6 +598,10 @@ function AppInner() {
       if (nid.includes('kosli') && godown !== 'kosli') return false;
       if (nid.includes('jhajjar') && godown !== 'jhajjar') return false;
       if (nid.includes('bahadurgarh') && godown !== 'bahadurgarh') return false;
+      // Kosli, Jhajjar and Bahadurgarh are loading sites. The money and fleet
+      // side for all three is run by one clerk from Jharli, so those modules are
+      // not on the sidebar here — see HIDDEN_AT_DUMP_GODOWNS.
+      if (DUMP_GODOWNS.has(godown) && HIDDEN_AT_DUMP_GODOWNS.has(n.id)) return false;
     }
     
     if (n.sub && n.sub.length === 0) return false;
@@ -513,6 +625,25 @@ function AppInner() {
   const DASHBOARD_ITEM = { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard, color: '#6366f1' };
   const FULL_NAV = [DASHBOARD_ITEM, ...FILTERED_NAV];
   const filteredNavIds = new Set(FULL_NAV.map(n => n.id));
+
+  /**
+   * Send the user home if the module they were last on is no longer theirs.
+   *
+   * `active` is restored from localStorage, and renderModule matches on the id
+   * directly — so without this a clerk who was on Pay before it was hidden for
+   * their location would still land on Pay, off the menu, every morning. The
+   * same applies after a permission is revoked.
+   *
+   * Keyed on a joined string rather than the Set, whose identity changes every
+   * render.
+   */
+  const navKey = FULL_NAV.map(n => n.id).join(',');
+  useEffect(() => {
+    if (!ready || !user) return;                       // nav is empty until both land
+    if (active === 'dashboard' || active === 'admin_settings') return;
+    if (!filteredNavIds.has(active)) setActive('dashboard');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user, active, navKey]);
 
   // Command palette registry — flattened nav + quick actions
   const navCommand = (id, subId) =>
@@ -570,13 +701,18 @@ function AppInner() {
   const renderModule = (id, sub = '') => (
     <>
       {id === 'admin_settings' && <AdminPage />}
-      {id === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} />}
+      {/* FILTERED_NAV carries the label, icon and colour of every module this
+          user may open — the dashboard shows them as cards to navigate by. */}
+      {id === 'dashboard' && <DashboardHome filteredNavIds={filteredNavIds} navItems={FILTERED_NAV} />}
       {id === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : godown === 'bahadurgarh' ? 'bahadurgarh' : 'kosli'} />}
       {(id === 'lr_jkl' || id === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
       {id === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
       {id === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
       {id === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
       {id === 'balance_jharli' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
+      {/* One component, two nav ids — the sheet reads across every plant the
+          user is allowed, so it does not vary by which section they came from. */}
+      {(id === 'balance_all_dump' || id === 'balance_all_jharli') && <AllBalanceSheet role={user.role} permissions={user.permissions} />}
       {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
       {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule />}
@@ -586,7 +722,32 @@ function AppInner() {
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
       {(id === 'vehicles_dump' || id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
       {id === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
-      {(id === 'diesel_dump' || id === 'diesel_jkl' || id === 'diesel_jharli') && <DieselModule permissions={user.permissions} />}
+      {/* Diesel Control covers exactly the sheets its own location has — the
+          same mapping the Balance Sheet nav uses above. Without this it pulled
+          Jharli's 'Dump' vouchers into every location.
+       *
+       * Every voucher type must stay reachable from exactly one of these, or
+       * its diesel can never be verified — and an unverified entry can no
+       * longer be sent to Pay, so it would become unpayable. Full coverage,
+       * each type in exactly one place:
+       *   Dump, JK_Lakshmi, JK_Super → Jharli — JK Super's records live with
+       *                                these, so it is verified alongside them
+       *   Kosli_Bill                 → Kosli
+       *   Jajjhar_Bill               → Jhajjar
+       *   Bahadurgarh_Bill           → Bahadurgarh
+       *   main                       → generic orgs, below
+       */}
+      {(id === 'diesel_dump' || id === 'diesel_jkl' || id === 'diesel_jharli') && (
+        <DieselModule
+          role={user.role}
+          permissions={user.permissions}
+          types={
+            (id === 'diesel_jkl' || id === 'diesel_jharli')
+              ? ['Dump', 'JK_Lakshmi', 'JK_Super']
+              : [godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill')]
+          }
+        />
+      )}
       {(id === 'mileage_dump' || id === 'mileage_jkl' || id === 'mileage_jharli') && <MileageModule />}
       {(id === 'tyres_dump' || id === 'tyres_jkl' || id === 'tyres_jharli') && <TyreModule />}
       {(id === 'pay_dump' || id === 'pay_jkl' || id === 'pay_jharli') && <PayModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={sub || 'freight'} />}
@@ -598,7 +759,6 @@ function AppInner() {
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
       {(id === 'attendance_dump' || id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
-      {(id === 'eway_dump' || id === 'eway_jharli' || id === 'eway_main') && <EwayModule />}
       {/* ── Generic (non-VGTC orgs) ── */}
       {id === 'lr_main' && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
       {id === 'voucher_main' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Bill'} brand="main" />}
@@ -606,7 +766,10 @@ function AppInner() {
       {id === 'stock_main' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="main" />}
       {id === 'cashbook_main' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="main" />}
       {id === 'vehicles_main' && <VehicleModule permissions={user.permissions} />}
-      {id === 'diesel_main' && <DieselModule permissions={user.permissions} />}
+      {/* Generic orgs keep their vouchers under type 'main'. Without this it fell
+          back to the VGTC types and a generic org saw no diesel at all — which
+          would now also make its entries permanently unsendable to Pay. */}
+      {id === 'diesel_main' && <DieselModule role={user.role} permissions={user.permissions} types={['main']} />}
       {id === 'mileage_main' && <MileageModule />}
       {id === 'tyres_main' && <TyreModule />}
       {id === 'pay_main' && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
@@ -635,7 +798,12 @@ function AppInner() {
       <div className={`sidebar-overlay${showMobileMenu ? ' show-mobile' : ''}`} onClick={() => setShowMobileMenu(false)} />
       <aside className={`sidebar${col ? ' collapsed' : ''}${showMobileMenu ? ' show-mobile' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand-icon"><img src="/vgtc-logo.svg" alt="VGTC" width={26} height={26} style={{ borderRadius: 4 }} /></div>
+          {/* The wordmark itself, at its own 3:1 shape. Collapsed, the sidebar
+              gives this slot no room for it, so it falls back to the square
+              icon — which is the cab, and stays legible at that size. */}
+          <div className="brand-icon">
+            <img src={col ? '/vgtc-mark.png' : (theme === 'dark' ? '/vgtc-logo-dark.png' : '/vgtc-logo.png')} alt="VGTC" height={32} />
+          </div>
           {!col && <div className="brand-text">
             <div className="brand-name">Vikas Goods</div>
             <div className="brand-sub">Transport System</div>
@@ -693,7 +861,10 @@ function AppInner() {
                     }}
                   >
                     <span className="nav-indicator" style={{ background: color, opacity: active === id ? 1 : 0 }} />
-                    <Icon size={20} color={active === id ? (sub ? color : '#fff') : 'currentColor'} />
+                    {/* The active pill is a 7% tint of `color`, not a solid fill —
+                        a white icon on it is invisible in light mode and clashes
+                        with the accent-coloured label in dark. */}
+                    <Icon size={20} color={active === id ? color : 'currentColor'} />
                     {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
                     {!col && badge === 'NEW' && <span className="nav-badge-new">NEW</span>}
                     {!col && badge === 'SOON' && <span className="nav-badge-soon">SOON</span>}
@@ -717,7 +888,7 @@ function AppInner() {
                             border: 'none', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
                             display: 'flex', alignItems: 'center', fontSize: '12.5px',
                             fontWeight: active === id && subActive === s.id ? 600 : 500, transition: 'all 0.15s',
-                            color: active === id && subActive === s.id ? color : '#6B7280',
+                            color: active === id && subActive === s.id ? color : 'var(--text-muted)',
                           }}
                         >
                           <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor', marginRight: '8px', opacity: active === id && subActive === s.id ? 1 : 0.4 }} />
@@ -733,7 +904,7 @@ function AppInner() {
 
             // Sidebar groups — module ids map by prefix; unknown ids fall through ungrouped
             const groupOf = (id) => {
-              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_|eway_)/.test(id)) return 'Operations';
+              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_)/.test(id)) return 'Operations';
               if (/^(balance_|cashbook_|pay_|trip_profit_|vehicle_credit_debit_)/.test(id)) return 'Money';
               if (/^(vehicles_|truck_dashboard|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
               return null;
@@ -802,11 +973,10 @@ function AppInner() {
           </div>
           <div className="topbar-right">
             {/* Command palette trigger */}
-            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#F3F4F6', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', marginRight: '8px' }}>
-              <Search size={13} color="#9CA3AF" />
-              <span style={{ fontSize: '12px', fontWeight: 500, color: '#9CA3AF' }}>Search</span>
-              <kbd style={{ fontSize: '9px', fontWeight: 700, color: '#9CA3AF', background: '#fff', border: '1px solid var(--border)', borderRadius: '4px', padding: '1px 5px' }}>Ctrl K</kbd>
+            <button onClick={() => setPaletteOpen(true)} title="Search & jump anywhere (Ctrl+K)" className="search-trigger">
+              <Search size={13} />
+              <span>Search</span>
+              <kbd>Ctrl K</kbd>
             </button>
             {/* Offline/sync indicator */}
             {(pendingSync > 0 || !isOnline) && (
@@ -830,7 +1000,7 @@ function AppInner() {
             </div>
 
             {/* Notifications Bell Icon */}
-            <div style={{ position: 'relative', marginRight: '10px' }}>
+            <div ref={notifRef} style={{ position: 'relative', marginRight: '10px' }}>
               <button
                 onClick={() => {
                   setNotifOpen(prev => !prev);
@@ -852,7 +1022,15 @@ function AppInner() {
                 }}
               >
                 <Bell size={16} />
-                {unreadNotif && (
+                {(unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 || unreadNotif) && (
+                  unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 ? (
+                    <span style={{
+                      position: 'absolute', top: '2px', right: '2px', minWidth: '15px', height: '15px',
+                      padding: '0 3px', borderRadius: '8px', background: '#EF4444', color: '#fff',
+                      fontSize: '9px', fontWeight: 900, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', boxShadow: '0 0 6px #EF4444',
+                    }}>{unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState)}</span>
+                  ) : (
                   <span style={{
                     position: 'absolute',
                     top: '6px',
@@ -863,6 +1041,7 @@ function AppInner() {
                     background: '#EF4444',
                     boxShadow: '0 0 6px #EF4444',
                   }} />
+                  )
                 )}
               </button>
 
@@ -900,7 +1079,25 @@ function AppInner() {
                       background: 'var(--bg-th)',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
-                        <Sparkles size={15} color="#6366f1" /> What's New & Updates
+                        <Sparkles size={15} color="#6366f1" /> Notifications
+                      </div>
+                      {/* Acts on everything in the panel — clearing only the weather
+                          would leave it looking just as full. */}
+                      <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto', marginRight: '10px' }}>
+                        <button onClick={() => {
+                            setWxAlerts([...markAllRead(wxAlerts)]);
+                            setUpdateState({ ...markAllUpdatesRead(updateState, UPDATE_ITEMS) });
+                          }}
+                          style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700 }}>
+                          Mark all read
+                        </button>
+                        <button onClick={() => {
+                            setWxAlerts([...clearAll(wxAlerts)]);
+                            setUpdateState({ ...clearAllUpdates(updateState, UPDATE_ITEMS) });
+                          }}
+                          style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 800 }}>
+                          Clear all
+                        </button>
                       </div>
                       <button
                         onClick={() => setNotifOpen(false)}
@@ -912,48 +1109,80 @@ function AppInner() {
 
                     {/* Notification List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
-                      {[
-                        {
-                          id: 'n1',
-                          title: 'E-Way Bill Auto-Regeneration',
-                          desc: 'Auto-option to create a new e-way bill for expired or un-loaded vehicle orders.',
-                          time: 'Just now',
-                          icon: FileCheck,
-                          color: '#10b981',
-                        },
-                        {
-                          id: 'n2',
-                          title: 'Trip Profitability Analysis',
-                          desc: 'Track freight revenue vs driver advances, diesel, and maintenance expenses per trip.',
-                          time: 'Today',
-                          icon: TrendingUp,
-                          color: '#6366f1',
-                        },
-                        {
-                          id: 'n3',
-                          title: 'Tyre & Vendor Management',
-                          desc: 'Full tyre lifecycle tracking (serial #, retreads) and market vendor ledger.',
-                          time: 'Yesterday',
-                          icon: Disc,
-                          color: '#f59e0b',
-                        },
-                        {
-                          id: 'n4',
-                          title: 'Labour & Attendance Portal',
-                          desc: 'Realtime truck loading status + daily staff attendance marking.',
-                          time: '2 days ago',
-                          icon: ClipboardList,
-                          color: '#ec4899',
-                        },
-                        {
-                          id: 'n5',
-                          title: 'Tax Invoice Generator',
-                          desc: 'Automated direct tax billing module is under final preparation (Coming Soon).',
-                          time: 'Upcoming',
-                          icon: FileText,
-                          color: '#f59e0b',
-                        },
-                      ].map((n) => {
+
+                      {/* Weather status, always shown. With no warnings there was
+                          nothing in the panel to say the watch was even running —
+                          silence read as "not working" rather than "all clear". */}
+                      {wxAlerts.length === 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', padding: '6px', borderRadius: '8px', display: 'flex', flexShrink: 0 }}>
+                            <Cloud size={14} />
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>No weather warnings</div>
+                            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                              {weather.cond || '—'}{weather.temp !== null ? ` · ${weather.temp}°C` : ''} at Jharli · watching for rain and storms
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Weather warnings — newest first, above the release notes */}
+                      {wxAlerts.length > 0 && (
+                        <div style={{ borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: 'rgba(239,68,68,0.06)' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 900, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Weather Alerts ({wxAlerts.length})
+                            </span>
+                            <span style={{ display: 'flex', gap: '10px' }}>
+                              <button onClick={() => setWxAlerts([...markAllRead(wxAlerts)])}
+                                style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700 }}>
+                                Mark all read
+                              </button>
+                              <button onClick={() => setWxAlerts([...clearAll(wxAlerts)])}
+                                style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700 }}>
+                                Clear all
+                              </button>
+                            </span>
+                          </div>
+                          {wxAlerts.map(a => {
+                            const tone = a.severity === 'severe' ? '#ef4444' : a.severity === 'high' ? '#f59e0b' : '#6366f1';
+                            return (
+                              <div key={a.id} style={{
+                                padding: '10px 14px', borderBottom: '1px solid var(--border-row)',
+                                display: 'flex', gap: '10px', alignItems: 'flex-start',
+                                background: a.read ? 'transparent' : 'rgba(239,68,68,0.04)',
+                              }}>
+                                <span style={{ background: `${tone}18`, color: tone, padding: '6px', borderRadius: '8px', display: 'flex', flexShrink: 0 }}>
+                                  <CloudRain size={14} />
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {!a.read && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: tone, flexShrink: 0 }} />}
+                                    <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)' }}>{a.title}</span>
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.4 }}>{a.message}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 800, color: tone }}>{a.timeLabel}</span>
+                                    {!a.read && (
+                                      <button onClick={() => setWxAlerts([...markRead(wxAlerts, a.id)])}
+                                        style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                        Mark as read
+                                      </button>
+                                    )}
+                                    <button onClick={() => setWxAlerts([...clearAlert(wxAlerts, a.id)])}
+                                      style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                      Clear
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {visibleUpdates(UPDATE_ITEMS, updateState).map((n) => {
                         const IconComponent = n.icon;
                         return (
                           <div
@@ -982,14 +1211,35 @@ function AppInner() {
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>{n.title}</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                                  {!n.read && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: n.color, flexShrink: 0 }} />}
+                                  {n.title}
+                                </span>
                                 <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>{n.time}</span>
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.35 }}>{n.desc}</div>
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                                {!n.read && (
+                                  <button onClick={() => setUpdateState({ ...markUpdateRead(updateState, n.id) })}
+                                    style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                    Mark as read
+                                  </button>
+                                )}
+                                <button onClick={() => setUpdateState({ ...clearUpdate(updateState, n.id) })}
+                                  style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}>
+                                  Clear
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
                       })}
+
+                      {wxAlerts.length === 0 && visibleUpdates(UPDATE_ITEMS, updateState).length === 0 && (
+                        <div style={{ padding: '26px 20px', textAlign: 'center', fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          Nothing left here. New weather warnings will still arrive.
+                        </div>
+                      )}
                     </div>
 
                     {/* Footer */}
@@ -1209,6 +1459,9 @@ function AppInner() {
       {/* Ctrl+K command palette */}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={COMMANDS} />
 
+      {/* Mobile bottom tab bar (≤768px) */}
+      <BottomTabBar active={active} plant={plant} filteredNavIds={filteredNavIds} onMore={() => setShowMobileMenu(true)} />
+
       {/* Global Waking Up indicator for inside the app */}
       <AnimatePresence>
         {isWakingUp && ready && (
@@ -1226,6 +1479,7 @@ function AppInner() {
     </div>
   );
 }
+
 
 export default function App() {
   return (

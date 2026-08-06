@@ -51,6 +51,25 @@ const preventProdWrite = (req, res, next) => {
 };
 
 /**
+ * The permission ladder: holding a level grants everything below it, so
+ * `delete` implies `edit` implies `view`. Exported because permissionGate.js
+ * answers the same question for several keys at once, and two copies of this
+ * table would eventually disagree.
+ */
+const PERMISSION_LADDER = {
+    view: ['view', 'edit', 'delete'],
+    edit: ['edit', 'delete'],
+    delete: ['delete'],
+};
+
+/** Does this user's stored level satisfy `action` on `permKey`? Admins always do. */
+const permits = (user, permKey, action) => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    return (PERMISSION_LADDER[action] || []).includes(user.permissions?.[permKey]);
+};
+
+/**
  * requirePermission(permKey, action) — Middleware factory for granular permission checks.
  * Permission levels: view < edit < delete. Admins bypass all checks.
  * Usage: router.delete('/:id', requirePermission('balance', 'delete'), handler)
@@ -60,10 +79,9 @@ const requirePermission = (permKey, action = 'view') => (req, res, next) => {
         if (req.user.role === 'admin') return next();
         const perm = req.user.permissions?.[permKey];
         if (!perm) return res.status(403).json({ error: `No access to ${permKey}` });
-        const allows = { view: ['view', 'edit', 'delete'], edit: ['edit', 'delete'], delete: ['delete'] };
-        if ((allows[action] || []).includes(perm)) return next();
+        if (permits(req.user, permKey, action)) return next();
         return res.status(403).json({ error: `Requires ${action} permission for ${permKey}` });
     });
 };
 
-module.exports = { requireAuth, requireAdmin, preventProdWrite, requirePermission, SECRET };
+module.exports = { requireAuth, requireAdmin, preventProdWrite, requirePermission, permits, PERMISSION_LADDER, SECRET };

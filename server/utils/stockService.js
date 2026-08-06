@@ -8,6 +8,7 @@ const MATERIALS = ['PPC', 'OPC43', 'Adstar', 'OPC FS', 'OPC53 FS', 'Weather'];
 const SCOL = 'stock_additions';
 const CCOL = 'challans';
 const MCOL = 'materials';
+const SETCOL = 'set_stock';
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ module.exports = {
     },
 
     addStock: async (orgId, data, sCol = SCOL, allowedMaterialsCol = MCOL) => {
-        const { material, quantity, date, remark, truckNo } = data;
+        const { material, quantity, date, remark, truckNo, unloadingType } = data;
         
         let validMatNames = [];
         if (Array.isArray(allowedMaterialsCol)) {
@@ -159,12 +160,19 @@ module.exports = {
         const qty = parseFloat(quantity);
         if (!qty || qty <= 0) throw new Error('Quantity must be positive');
         
+        // Whose hands moved the bags. Only a godown unload is labour the firm
+        // pays for; a crossing goes truck to truck and a direct never stops
+        // here. Entries made before this field existed were all godown
+        // unloads, which is what the labour account assumes when it is absent.
+        const UNLOADING_TYPES = ['Godown Unload', 'Crossing', 'Direct'];
+
         const payload = {
             material,
             quantity: qty,
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '',
             truckNo: truckNo || '',
+            unloadingType: UNLOADING_TYPES.includes(unloadingType) ? unloadingType : 'Godown Unload',
         };
 
         if (firebaseAvailable()) return await firestoreAddStock(orgId, payload, sCol);
@@ -193,14 +201,102 @@ module.exports = {
         localStore.delete(sCol, id);
     },
 
+    /* ── Set (water-damaged) bags ──────────────────────────────────────────────
+     *
+     * A second stack, kept beside the good one. Bags land here two ways: found
+     * set in our own godown, or returned by a party who refused them. The
+     * difference matters to the good balance and nothing else:
+     *
+     *   godown        — the bags are still ours and were still countable, so
+     *                   the good stack loses them.
+     *   party_return  — their LR already consumed them from the good stack.
+     *                   Touching it again would count the same bags twice.
+     *
+     * Quantities are always positive; `direction` says which way they move, so
+     * disposing of set bags is an 'out' row rather than a negative quantity.
+     */
+    getSetStock: async (orgId, setCol = SETCOL) => {
+        // Without this the missing id reaches Firestore as an undefined query
+        // constraint, and the route answers with a message about argument
+        // values instead of the actual fault: the router mounted these handlers
+        // above its tenancy middleware.
+        if (!orgId) throw new Error('Missing organisation context for set stock');
+        if (firebaseAvailable()) {
+            const snap = await db.collection(setCol)
+                .where('orgId', '==', orgId)
+                .get();
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        }
+        return localStore.getAll(setCol)
+            .filter(s => s.orgId === orgId)
+            .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+    },
+
+    addSetStock: async (orgId, data, setCol = SETCOL, allowedMaterialsCol = MCOL) => {
+        if (!orgId) throw new Error('Missing organisation context for set stock');
+        const { material, quantity, direction, source, date, remark, truckNo, lrNo, partyName, createdBy } = data;
+
+        let validMatNames = [];
+        if (Array.isArray(allowedMaterialsCol)) {
+            validMatNames = allowedMaterialsCol;
+        } else {
+            const dynamicMats = await module.exports.getMaterialsList(orgId, allowedMaterialsCol);
+            validMatNames = dynamicMats.map(m => m.name);
+        }
+        if (!validMatNames.includes(material)) throw new Error('Invalid material: ' + material);
+
+        const qty = parseInt(quantity);
+        if (!qty || qty <= 0) throw new Error('Quantity must be positive');
+
+        const dir = direction === 'out' ? 'out' : 'in';
+        const validSources = dir === 'in' ? ['godown', 'party_return'] : ['disposed'];
+        const src = validSources.includes(source) ? source : validSources[0];
+
+        // A return has to say which load it came back from, or it cannot be
+        // reconciled against the trip that delivered the bags.
+        if (src === 'party_return' && (!String(truckNo || '').trim() || !String(lrNo || '').trim())) {
+            throw new Error('Truck number and LR number are required for a party return');
+        }
+
+        const payload = {
+            material,
+            quantity: qty,
+            direction: dir,
+            source: src,
+            date: date || new Date().toISOString().slice(0, 10),
+            remark: remark || '',
+            truckNo: String(truckNo || '').toUpperCase().replace(/\s/g, ''),
+            lrNo: String(lrNo || '').trim(),
+            partyName: normalizePartyName(partyName || ''),
+            createdBy: createdBy || '',
+        };
+
+        if (firebaseAvailable()) return await firestoreAddStock(orgId, payload, setCol);
+        return localStore.insert(setCol, { ...payload, orgId });
+    },
+
+    deleteSetStock: async (id, setCol = SETCOL) => {
+        if (firebaseAvailable()) {
+            await db.collection(setCol).doc(id).delete();
+            return;
+        }
+        localStore.delete(setCol, id);
+    },
+
     getAllChallans: async (orgId, cCol = CCOL) => {
         if (firebaseAvailable()) return await firestoreGetChallans(orgId, cCol);
         return localStore.getAll(cCol).filter(c => c.orgId === orgId);
     },
 
     createChallan: async (orgId, data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
-        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity } = data;
+        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity, factoryCode } = data;
         const normalizedPartyName = normalizePartyName(partyName || '');
+        // The loading gate the bags came off — FC1, FC5 and so on. Typed by
+        // hand off the slip, so it is upper-cased and trimmed here rather than
+        // trusting whatever shift-key state it arrived in; a code that only
+        // differs by case would read as a second gate in every grouping.
+        const cleanFactoryCode = String(factoryCode || '').trim().toUpperCase().slice(0, 16);
         if (material && quantity && !materials) materials = [{ type: material, totalBags: parseInt(quantity) }];
         if (!materials || !materials.length) throw new Error('Materials required');
 
@@ -233,6 +329,7 @@ module.exports = {
                 partyCode: partyCode || '',
                 billNo: billNo || '',
                 destination: destination || '',
+                factoryCode: cleanFactoryCode,
                 date: date || new Date().toISOString().slice(0, 10),
                 remark: remark || '', status: 'open'
             }, cCol);
@@ -250,6 +347,7 @@ module.exports = {
             partyCode: partyCode || '',
             billNo: billNo || '',
             destination: destination || '',
+            factoryCode: cleanFactoryCode,
             date: date || new Date().toISOString().slice(0, 10),
             remark: remark || '', status: 'open'
         });

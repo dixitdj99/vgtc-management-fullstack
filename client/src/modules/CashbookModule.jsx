@@ -8,10 +8,11 @@ import {
   User, Truck, RotateCcw, Users
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -46,15 +47,30 @@ const DelConfirm = ({ id, label, apiCb, onClose, onDone }) => {
   );
 };
 
+// Sentinel for "someone not on the roster". Not an entity key, so it cannot
+// collide with a real `type::id`.
+const CUSTOM_KEY = '__custom__';
+
 const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles }) => {
-  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: '' });
+  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: '', customName: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
   const isDeposit = type === 'deposit';
 
+  const isCustom = form.entityKey === CUSTOM_KEY;
+
+  /**
+   * Not everyone paid out of the cashbook is on the roster — a labourer for the
+   * day, a mechanic, someone's brother collecting on their behalf. A custom
+   * entry carries the name and no id, so it records who took the money without
+   * inventing a profile that then has to be maintained.
+   */
   const parseEntityKey = (key) => {
     if (!key) return {};
+    if (key === CUSTOM_KEY) {
+      return { entityType: 'custom', entityId: '', entityName: form.customName.trim() };
+    }
     const [entityType, entityId] = key.split('::');
     let entityName = '';
     if (entityType === 'driver') entityName = drivers.find(d => d.id === entityId)?.name || '';
@@ -67,6 +83,9 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
     setErr('');
     if (markInvalidFields(formRef.current)) return;
     if (!form.amount || parseFloat(form.amount) <= 0) { setErr('Enter a valid amount'); return; }
+    // An unnamed custom entry is the one thing worse than no entry: cash out of
+    // the book with nobody attached to it.
+    if (isCustom && !form.customName.trim()) { setErr('Enter the name of whoever took the cash'); return; }
     setIsConfirming(true);
   };
   const handleFormRequest = e => { e.preventDefault(); requestSave(); };
@@ -87,7 +106,7 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
         await ax.post(apiCb + (isDeposit ? '/deposit' : '/cash-out'), form);
       }
       rememberSticky('cashbook.date', form.date);
-      setForm({ amount: '', date: form.date, remark: '', entityKey: '' }); onSave();
+      setForm({ amount: '', date: form.date, remark: '', entityKey: '', customName: '' }); onSave();
     }
     catch (e) { setErr(e.response?.data?.error || 'Error'); }
     finally { setSaving(false); }
@@ -123,7 +142,15 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
                 {staffList.length > 0 && <optgroup label="Staff Members">
                   {staffList.map(s => <option key={s.id} value={`staff::${s.id}`}>{s.name}{s.department ? ` (${s.department})` : ''}</option>)}
                 </optgroup>}
+                <option value={CUSTOM_KEY}>— Someone else (type a name) —</option>
               </select>
+            </div>
+          )}
+          {!isDeposit && isCustom && (
+            <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+              <label>Name *</label>
+              <input className="fi" type="text" autoFocus placeholder="e.g. Ramesh (labour), mechanic, Sai Traders"
+                value={form.customName} onChange={e => setForm(f => ({ ...f, customName: e.target.value }))} />
             </div>
           )}
           <div className="field-h">
@@ -215,44 +242,82 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   };
 
   /* ── Derived voucher lists ── */
+
+  /**
+   * Get the real LR number label for a voucher.
+   * For multi-delivery vouchers, LR numbers live on the drops; the top-level
+   * `lrNo` is a parent reference (often blank). We surface the real numbers so
+   * the cashbook matches what the driver and the party see on the load slip.
+   */
+  const getVoucherLrLabel = (v) => {
+    if (v.deliveries && v.deliveries.length > 0) {
+      const dlrNos = v.deliveries.map(d => d.lrNo).filter(Boolean);
+      if (dlrNos.length > 0) return dlrNos.join(', ');
+    }
+    return v.lrNo || '?';
+  };
+
   const voucherCashAdv = useMemo(() =>
     allVouchers
-      .filter(v => parseFloat(v.advanceCash) > 0)
-      .map(v => ({
-        id: 'v_cash_' + v.id,
-        voucherId: v.id,
-        date: v.date,
-        type: 'voucher_cash',
-        amount: -(parseFloat(v.advanceCash) || 0),
-        remark: `Cash Advance — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'} [${v.vType}]`,
-        truckNo: v.truckNo,
-        lrNo: v.lrNo,
-        vType: v.vType,
-        createdBy: v.createdBy,
-        updatedBy: v.updatedBy
-      }))
+      .filter(v => parseFloat(v.advanceCash) > 0 || parseFloat(v.extraCash) > 0)
+      .map(v => {
+        const lrLabel = getVoucherLrLabel(v);
+        const advCash = parseFloat(v.advanceCash) || 0;
+        const extraCash = parseFloat(v.extraCash) || 0;
+        const totalCash = advCash + extraCash;
+        // Build a readable sub-note when extra cash is present alongside the advance.
+        // "Advance Rs.X + Extra Rs.Y" lets the cashbook explain the combined total
+        // without needing a second row for the same trip.
+        let breakdownNote = '';
+        if (advCash > 0 && extraCash > 0) {
+          const extraLabel = v.extraCashRemark ? `Extra (${v.extraCashRemark})` : 'Extra Cash';
+          breakdownNote = `Advance Rs.${Math.round(advCash).toLocaleString('en-IN')} + ${extraLabel} Rs.${Math.round(extraCash).toLocaleString('en-IN')}`;
+        } else if (extraCash > 0) {
+          breakdownNote = v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash';
+        }
+        return {
+          id: 'v_cash_' + v.id,
+          voucherId: v.id,
+          date: v.date,
+          type: 'voucher_cash',
+          amount: -totalCash,
+          remark: `Cash Advance — Truck ${v.truckNo || '?'} | LR #${lrLabel} [${v.vType}]`,
+          breakdownNote,
+          advanceCash: advCash,
+          extraCash,
+          truckNo: v.truckNo,
+          lrNo: lrLabel,
+          vType: v.vType,
+          createdBy: v.createdBy,
+          updatedBy: v.updatedBy
+        };
+      })
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
 
-  // Vehicle expenses from vouchers (tyre puncture, greasing, air, extra cash)
+  // Vehicle expenses from vouchers (tyre puncture, greasing/air only).
+  // Extra cash is now merged into the cash advance row above so it is not
+  // double-counted here as a separate cashbook entry.
   const voucherVehicleExpenses = useMemo(() => {
     const expenses = [];
     allVouchers.forEach(v => {
-      const fields = [
-        { key: 'tyrePuncture', label: 'Tyre Puncture' },
-        { key: 'tyreGreasingAir', label: 'Tyre Greasing & Air' },
-        { key: 'extraCash', label: v.extraCashRemark ? `Extra Cash (${v.extraCashRemark})` : 'Extra Cash' },
-      ];
+      const lrLabel = getVoucherLrLabel(v);
       // Also check old separate fields for backward compatibility
       const greasingAmt = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
       if (greasingAmt > 0 && !parseFloat(v.tyreGreasingAir)) {
-        const amt = greasingAmt;
-        if (amt > 0) expenses.push({
+        expenses.push({
           id: `v_tyreGA_${v.id}`, voucherId: v.id, date: v.date, type: 'voucher_expense',
-          amount: -amt, remark: `Tyre Greasing & Air — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'}`,
-          truckNo: v.truckNo, lrNo: v.lrNo, vType: v.vType,
+          amount: -greasingAmt, remark: `Tyre Greasing & Air — Truck ${v.truckNo || '?'} | LR #${lrLabel}`,
+          truckNo: v.truckNo, lrNo: lrLabel, vType: v.vType,
         });
       }
+      const fields = [
+        { key: 'tyrePuncture', label: 'Tyre Puncture' },
+        { key: 'tyreGreasingAir', label: 'Tyre Greasing & Air' },
+        // extraCash is intentionally excluded here — it is now bundled with the
+        // cash advance row in voucherCashAdv so the ledger shows one combined line
+        // per trip instead of a fragmented second entry.
+      ];
       fields.forEach(f => {
         const amt = parseFloat(v[f.key]) || 0;
         if (amt > 0) {
@@ -260,8 +325,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             id: `v_${f.key}_${v.id}`,
             voucherId: v.id, date: v.date, type: 'voucher_expense',
             amount: -amt,
-            remark: `${f.label} — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'}`,
-            truckNo: v.truckNo, lrNo: v.lrNo, vType: v.vType,
+            remark: `${f.label} — Truck ${v.truckNo || '?'} | LR #${lrLabel}`,
+            truckNo: v.truckNo, lrNo: lrLabel, vType: v.vType,
           });
         }
       });
@@ -272,19 +337,22 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const onlineAdvList = useMemo(() =>
     allVouchers
       .filter(v => parseFloat(v.advanceOnline) > 0)
-      .map(v => ({
-        id: 'v_online_' + v.id,
-        date: v.date,
-        amount: parseFloat(v.advanceOnline) || 0,
-        remark: `Online Advance — Truck ${v.truckNo || '?'} | LR #${v.lrNo || '?'} [${v.vType}]`,
-        truckNo: v.truckNo,
-        lrNo: v.lrNo,
-        vType: v.vType,
-        isOnlinePaid: v.isOnlinePaid || false,
-        onlinePaidDate: v.onlinePaidDate || null,
-        createdBy: v.createdBy,
-        updatedBy: v.updatedBy
-      }))
+      .map(v => {
+        const lrLabel = getVoucherLrLabel(v);
+        return {
+          id: 'v_online_' + v.id,
+          date: v.date,
+          amount: parseFloat(v.advanceOnline) || 0,
+          remark: `Online Advance — Truck ${v.truckNo || '?'} | LR #${lrLabel} [${v.vType}]`,
+          truckNo: v.truckNo,
+          lrNo: lrLabel,
+          vType: v.vType,
+          isOnlinePaid: v.isOnlinePaid || false,
+          onlinePaidDate: v.onlinePaidDate || null,
+          createdBy: v.createdBy,
+          updatedBy: v.updatedBy
+        };
+      })
       .sort((a, b) => b.date > a.date ? 1 : -1),
     [allVouchers]);
 
@@ -318,8 +386,31 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       })),
     ].sort((a, b) => {
       const da = a.date || '', db = b.date || '';
-      if (da !== db) return da > db ? 1 : -1;
-      return (a.createdAt || '') > (b.createdAt || '') ? 1 : -1;
+      if (da !== db) return da < db ? -1 : 1;
+
+      // Money in before money out, within the day.
+      //
+      // Rows built from vouchers carry no createdAt — they are derived, not
+      // stored — so comparing timestamps put every one of them ahead of the
+      // day's deposit ('' is never greater than a real date). A day that opened
+      // with cash in hand was drawn down first and topped up afterwards, and
+      // the running balance dived to a five-figure minus before the deposit
+      // that had actually been made first. That is what the office meant by
+      // "we added the balance and it still went minus".
+      //
+      // A cash box cannot be overdrawn, so receipts lead. It is also how a cash
+      // book is read.
+      const ca = a.credit > 0 ? 0 : 1, cb = b.credit > 0 ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+
+      // Then whatever ordering the records themselves support, and finally the
+      // id so the sequence is the same on every render. The old comparator
+      // returned -1 for equal rows and never 0, which is not a valid ordering:
+      // it claims a < b and b < a at once, and leaves the result up to the
+      // sort implementation.
+      const ta = a.createdAt || '', tb = b.createdAt || '';
+      if (ta !== tb) return ta < tb ? -1 : 1;
+      return String(a.id || '').localeCompare(String(b.id || ''));
     });
     let bal = 0;
     return rows.map(r => {
@@ -373,11 +464,24 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const filteredDeposits = useMemo(() => filterRows(deposits.map(e => ({ ...e, credit: e.amount, debit: 0, label: e.remark || 'Deposit', badge: 'deposit', deletable: true }))), [deposits, fFrom, fTo, fSearch]);
   const filteredVoucherCash = useMemo(() => filterRows(voucherCashAdv.map(e => ({ ...e, credit: 0, debit: Math.abs(e.amount), label: e.remark, badge: 'voucher_cash', deletable: false }))), [voucherCashAdv, fFrom, fTo, fSearch]);
   const filteredCashOuts = useMemo(() => filterRows(cashOuts.map(e => ({ ...e, credit: 0, debit: e.amount, label: e.remark || 'Cash Out', badge: 'cash_out', deletable: true }))), [cashOuts, fFrom, fTo, fSearch]);
+  // Tyre work and extra cash off a voucher. These were in the running ledger and
+  // in the totals but had no list of their own, so the only way to see the
+  // Rs.5,700 they came to was to read all 72 rows and pick them out. Deposits,
+  // cash advances and cash-outs added up to 64 of a 72-row ledger and nothing
+  // on the screen said where the other eight were.
+  const filteredVehicleExpenses = useMemo(
+    () => filterRows(voucherVehicleExpenses.map(e => ({
+      ...e, credit: 0, debit: Math.abs(e.amount),
+      label: e.remark, badge: 'voucher_expense', deletable: false,
+    }))),
+    [voucherVehicleExpenses, fFrom, fTo, fSearch],
+  );
   const filteredOnline = useMemo(() => filterRows(onlineAdvList, true), [onlineAdvList, fFrom, fTo, fSearch, fPaid]);
 
   const activeRows = tab === 'ledger' ? filteredLedger :
     tab === 'deposits' ? filteredDeposits :
       tab === 'voucher_cash' ? filteredVoucherCash :
+        tab === 'voucher_expense' ? filteredVehicleExpenses :
           filteredCashOuts;
 
   const paginatedRows = useMemo(() => {
@@ -386,7 +490,20 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   }, [activeRows, currentPage]);
 
   /* ── Summary stats ── */
-  const currentBalance = deposits.reduce((s, e) => s + e.amount, 0) - cashOuts.reduce((s, e) => s + e.amount, 0) - voucherCashAdv.reduce((s, e) => s + Math.abs(e.amount), 0);
+  /**
+   * The last line of the ledger, not a second sum of the same money.
+   *
+   * This used to add deposits and subtract cash-outs and voucher cash advances,
+   * and stop there — it never subtracted the vehicle expenses a voucher carries
+   * (tyre puncture, greasing and air, extra cash), though the ledger below
+   * counts every one of them as a debit. The headline figure therefore read
+   * high by exactly that total and disagreed with the balance printed on the
+   * last row of the same screen. It also ignored returns, counting money that
+   * had been handed back.
+   */
+  const currentBalance = ledgerWithBalance.length
+    ? ledgerWithBalance[ledgerWithBalance.length - 1].balance
+    : 0;
   const totalDeposited = filteredDeposits.reduce((s, e) => s + e.credit, 0);
   const currentMonthYM = new Date().toISOString().slice(0, 7);
   const currentMonthDeposit = deposits.filter(e => (e.date || '').startsWith(currentMonthYM)).reduce((s, e) => s + e.amount, 0);
@@ -438,7 +555,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
 
   /* ── Render helper: ledger table ── */
   const LedgerTable = ({ rows, showBalance = true, showBadge = true }) => (
-    <div className="tbl-wrap">
+    <TableScroll className="tbl-cards">
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
           <th style={TH}>Date</th>
@@ -460,11 +577,16 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             return (
               <tr key={r.id}
                 style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
-                <td style={{ ...TD, maxWidth: '320px' }}>
+                <td className="t-card-title" style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                <td data-label="Description" style={{ ...TD, maxWidth: '320px' }}>
                   <div style={{ fontWeight: 600, color: r.isReturned ? 'var(--text-muted)' : 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.isReturned ? 'line-through' : 'none' }}>
                     {r.label}
                   </div>
+                  {r.breakdownNote && (
+                    <div style={{ fontSize: '10.5px', color: '#f97316', marginTop: '2px', fontWeight: 600 }}>
+                      ↳ {r.breakdownNote}
+                    </div>
+                  )}
                   {r.entityType && r.entityName && (() => {
                     const EIcon = ENTITY_ICON[r.entityType] || User;
                     return (
@@ -494,29 +616,29 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   )}
                 </td>
                 {showBadge && (
-                  <td style={{ ...TD }}>
+                  <td data-label="Type" style={{ ...TD }}>
                     <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 700, background: bs.bg, color: bs.color }}>
                       {bs.label}
                     </span>
                   </td>
                 )}
-                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)', fontSize: '13px' }}>
+                <td data-label="Credit (In)" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)', fontSize: '13px' }}>
                   {r.credit > 0 ? fmtRs(r.credit) : '—'}
                 </td>
-                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)', fontSize: '13px' }}>
+                <td data-label="Debit (Out)" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--danger)', fontSize: '13px' }}>
                   {r.debit > 0 ? fmtRs(r.debit) : '—'}
                 </td>
                 {showBalance && (
-                  <td style={{
+                  <td data-label="Balance" style={{
                     ...TD, textAlign: 'right', fontWeight: 800, fontSize: '13px',
                     color: r.balance >= 0 ? 'var(--accent)' : 'var(--danger)'
                   }}>
                     {fmtRs(r.balance)}
                   </td>
                 )}
-                {role === 'admin' && <td style={TD}>{r.createdBy || '—'}</td>}
-                {role === 'admin' && <td style={TD}>{r.updatedBy || '—'}</td>}
-                <td style={{ ...TD, textAlign: 'center' }}>
+                {role === 'admin' && <td data-label="Created By" style={TD}>{r.createdBy || '—'}</td>}
+                {role === 'admin' && <td data-label="Updated By" style={TD}>{r.updatedBy || '—'}</td>}
+                <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                     {r.type === 'cash_out' && r.entityType && !r.isReturned && (role === 'admin' || permissions?.cashbook === 'edit') && (
                       <button className="btn btn-sm" title="Mark as Returned" style={{ padding: '3px 7px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9', border: '1px solid rgba(14,165,233,0.2)', borderRadius: '6px', cursor: 'pointer' }}
@@ -556,7 +678,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           );
         })()}
       </table>
-    </div>
+    </TableScroll>
   );
 
   /* Online advances table (grouped by date) */
@@ -569,9 +691,13 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     }, {});
     
     const sortedDates = Object.keys(groupedRows).sort((a, b) => b > a ? 1 : -1);
+    // Running serial counter across ALL date groups so the number doesn't reset
+    // when you move from one day's block to the next (the user was reading each
+    // date group as a "page" and each one restarted at #1).
+    let runningSerial = 0;
 
     return (
-      <div className="tbl-wrap">
+      <TableScroll>
         {sortedDates.length === 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <tbody>
@@ -603,9 +729,12 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   <th style={{ ...TH, textAlign: 'center' }}>Status</th>
                 </tr></thead>
                 <tbody>
-                  {dateRows.map((r, i) => (
+                  {dateRows.map((r, i) => {
+                    runningSerial++;
+                    const serial = runningSerial;
+                    return (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                      <td style={{ ...TD, color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>{i + 1}</td>
+                      <td style={{ ...TD, color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>{serial}</td>
                       <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>{r.truckNo || '—'}</td>
                       <td style={{ ...TD }}><span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{r.lrNo}</span></td>
                       <td style={{ ...TD }}><span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{r.vType}</span></td>
@@ -623,7 +752,8 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                           </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -636,7 +766,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
             <span style={{ fontWeight: 900, fontSize: '15px', color: '#0ea5e9' }}>{fmtRs(rows.reduce((sum, r) => sum + r.amount, 0))}</span>
           </div>
         )}
-      </div>
+      </TableScroll>
     );
   };
 
@@ -647,25 +777,25 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     cash_out: filteredCashOuts,
   };
 
-  const handleExportExcel = () => {
-    exportToExcel(activeRows.map(r => ({
-      Date: r.date,
-      Description: r.label || r.remark,
-      Type: r.badge,
-      Credit: r.credit || 0,
-      Debit: r.debit || 0,
-      Amount: r.amount,
-      Balance: r.balance !== undefined ? r.balance : '',
-      TruckNo: r.truckNo || '',
-      LRNo: r.lrNo || ''
-    })), `${tab}_export_${new Date().toISOString().slice(0, 10)}`);
-  };
+  // Every field on the ledger row. The old lists dropped who took the cash, the
+  // remark behind it, and whether a cash-out had been returned.
+  const cashbookExportRows = () => buildExportRows(
+    // Amount is signed the same way for every row: out is negative.
+    // It used to be whatever the source record happened to hold, so a voucher
+    // advance of 1,200 exported as -1200 while a cash-out of 2,000 exported as
+    // +2000 — both money leaving the box, on the same printed page.
+    activeRows.map(r => ({
+      ...r,
+      label: r.label || r.remark,
+      amount: (r.credit || 0) - (r.debit || 0),
+    })),
+    { order: ['date', 'label', 'badge', 'entityType', 'entityName', 'credit', 'debit', 'amount', 'balance', 'truckNo', 'lrNo', 'remark'] },
+  );
 
-  const handleExportPDF = () => {
-    const cols = ['date', 'label', 'badge', 'credit', 'debit', 'balance'];
-    const safeData = activeRows.map(r => ({ ...r, label: r.label || r.remark }));
-    exportToPDF(safeData, `Cashbook - ${tab}`, cols);
-  };
+  const handleExportExcel = () => exportToExcel(cashbookExportRows(), `${tab}_export_${new Date().toISOString().slice(0, 10)}`);
+  const handleExportPDF = () => exportToPDF(cashbookExportRows(), `Cashbook - ${tab}`, null, {
+    archive: { module: 'Cashbook', name: `Cashbook ${tab} ${new Date().toISOString().slice(0, 10)}` },
+  });
 
   return (
     <div>
@@ -793,6 +923,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           { id: 'monthly', label: 'Monthly Summary', count: '' },
           { id: 'deposits', label: 'Deposits', count: deposits.length },
           { id: 'voucher_cash', label: 'Voucher Cash Adv', count: voucherCashAdv.length },
+          { id: 'voucher_expense', label: 'Vehicle Expenses', count: voucherVehicleExpenses.length },
           { id: 'cash_out', label: 'Cash Outs', count: cashOuts.length },
         ].map(({ id, label, count }) => (
           <button key={id} onClick={() => onTabChange(id)}
@@ -823,7 +954,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               </div>
             </div>
           </div>
-          <div className="tbl-wrap">
+          <TableScroll>
             <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
               <thead><tr>
                 <th style={TH}>Month</th>
@@ -876,7 +1007,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 </tfoot>
               )}
             </table>
-          </div>
+          </TableScroll>
         </div>
       ) : (
       <div className="card">
@@ -890,6 +1021,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                 {tab === 'ledger' ? 'Full Ledger (with running balance)' :
                   tab === 'deposits' ? 'Deposits' :
                     tab === 'voucher_cash' ? 'Voucher Cash Advances (auto-deducted)' :
+                      tab === 'voucher_expense' ? 'Vehicle Expenses off Vouchers (recovered from the owner)' :
                         'Cash Outs & Other Expenses'}
               </h3>
               <p>

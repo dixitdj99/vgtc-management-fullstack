@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ax from '../api';
+import { useAuth } from '../auth/AuthContext';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
-import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
+import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
+import { openReceiptWindow, RECEIPT_WIDTH_MM } from '../utils/receiptPrint';
+import { archiveName } from '../utils/archiveDoc';
+import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
+import TableScroll from '../components/TableScroll';
 
 const PAGE_SIZE = 20;
 
@@ -145,8 +151,75 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
   );
 }
 
-/* ── Print helper ── */
-function printReceipt(allRows, lrNo, allChallans = []) {
+/**
+ * Print helper.
+ *
+ * There is deliberately no CHALLAN summary line in the header. It was built
+ * from `rows[0].billing` — the first material's challan — so an LR loading two
+ * materials against two different challans printed only one of them, and read
+ * as though the whole load sat on that one challan. It also showed the
+ * challan's own total bags, which is a different quantity from the bags loaded
+ * on this LR and sat right above a table column of the latter.
+ *
+ * Every material row already carries its own challan next to its own bag count,
+ * which is what reconciliation actually needs, and being the row's own data it
+ * cannot drift out of step with the table.
+ */
+/**
+ * An LR is one label: ${RECEIPT_WIDTH_MM}mm wide, as tall as its own content, never a second page.
+ *
+ * The shell's tear-off floor is switched off per-call (`fitContent`), but these
+ * rules make the slip independent of it — the body may not be stretched to a
+ * floor, nothing in it may grow to fill one, and the signature block is not
+ * allowed to be pushed to the bottom of one (that push, not the design, is what
+ * left a blank band down the middle and spilled the signature onto sheet 2).
+ * `max-width` rather than `width` so a printer that can only offer a wider page
+ * centres the slip at its true width instead of stretching it.
+ */
+const LR_FIT_CSS = `
+  body {
+    min-height: 0 !important; height: auto !important;
+    max-width: ${RECEIPT_WIDTH_MM}mm; margin: 0 auto !important;
+    /* The slip carries Hindi as well as English. Arial has no Devanagari, and
+       the fallback a browser picks on its own is not always a printable one. */
+    font-family: Arial, 'Nirmala UI', 'Noto Sans Devanagari', 'Mangal', Helvetica, sans-serif;
+  }
+  body > *, body > .container { flex: 0 0 auto !important; }
+  .container, .content-wrap, table, tr, .sig-section, .sig, .signed, .digital-sig-box {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+`;
+
+/**
+ * The slip is read at a loading gate by a driver who may not read English, so
+ * everything that tells him what to do is printed in both languages.
+ */
+const LOADING_TYPE_LABEL = {
+  'From Godown': 'From Godown · गोदाम से',
+  'Crossing': 'Crossing · क्रॉसिंग',
+  'Direct': 'Direct · डायरेक्ट',
+  'Godown': 'From Godown · गोदाम से',   // legacy rows saved before the label changed
+};
+
+/**
+ * A Direct load never passes through the godown, so no labour lifted it and the
+ * labour account leaves it out. Colour-coded on screen for the same reason it
+ * is printed: the man at the gate has to be able to tell at a glance.
+ */
+const LOADING_TYPE_COLOR = {
+  'Crossing': '#f59e0b',
+  'Direct': '#8b5cf6',
+};
+const loadingColor = (t) => LOADING_TYPE_COLOR[t] || '#10b981';
+const loadingLabel = (t) => (t ? (LOADING_TYPE_LABEL[t] || String(t)) : '');
+
+const normTruck = (t) => String(t || '').toUpperCase().replace(/\s/g, '');
+
+/** Driver on record for the truck this LR was loaded onto, '' when none is set. */
+const driverForTruck = (truckNo, vehicles) =>
+  String((vehicles || []).find(v => normTruck(v.truckNo) === normTruck(truckNo))?.driverName || '').trim();
+
+function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = []) {
   const rows = allRows.filter(r => r.lrNo === lrNo);
   if (!rows.length) return;
   const base = rows[0];
@@ -154,70 +227,348 @@ function printReceipt(allRows, lrNo, allChallans = []) {
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
   const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
   const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  // The LR itself stores no driver — the truck does. An unassigned truck simply
+  // prints an empty signature line, the same as before.
+  const driverName = driverForTruck(base.truckNo, vehicles);
 
-  const materialLines = rows.map(m =>
-    `<div class="line"><span class="lbl">${m.material}</span><span class="val">${m.totalBags} bags · ${Number(m.weight).toFixed(2)} MT${m.loadingType && m.loadingType !== 'Godown' ? ` · ${m.loadingType}` : ''}</span></div>`
-  ).join('');
+  // Filed under the plant it belongs to, keyed on the LR number so a reprint
+  // replaces the copy rather than adding another.
+  const archive = {
+    module: 'Loading Receipts', kind: 'Documents',
+    plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
+    name: archiveName('LR', lrNo, base.truckNo, base.date),
+    meta: { lrNo, truckNo: base.truckNo, date: base.date, partyName: base.partyName },
+  };
 
-  const html = `<!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>LR #${lrNo}</title>
-      <style>
-        @page { size: 105mm 148mm; margin: 5mm; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; width: 95mm; margin: 0 auto; color: #000; font-size: 11px; line-height: 1.3; }
-        .hd { text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 6px; }
-        .hd .co { font-size: 13px; font-weight: 900; }
-        .hd .sub { font-size: 9px; margin-top: 2px; }
-        .lr { text-align: center; font-size: 16px; font-weight: 900; border: 1.5px solid #000; display: inline-block; padding: 2px 16px; margin: 4px auto 8px; letter-spacing: 1px; }
-        .lr-wrap { text-align: center; }
-        .sec { border: 1px solid #000; border-radius: 3px; margin-bottom: 6px; }
-        .line { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 0.5px solid #ccc; font-size: 11px; }
+  if (brand === 'jkl') {
+    openReceiptWindow({
+      archive,
+      title: `LR #${lrNo}`,
+      fontSize: '9.5pt',
+      // An LR is a slip, not a roll receipt: the page is cut to the material
+      // table so a one-material LR is short and a six-material one is taller.
+      // The floor only guards against something absurdly short.
+      fitContent: true,
+      minHeightMm: 75,
+      styles: LR_FIT_CSS + `
+      .hd {
+        text-align: center;
+        border-bottom: 2.5px solid #000;
+        padding-bottom: 1.5mm;
+        margin-bottom: 2mm;
+      }
+      .hd .co {
+        font-size: 12.5pt;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .hd .slip {
+        font-size: 9pt;
+        font-weight: 900;
+        letter-spacing: 0.4px;
+        margin-top: 0.8mm;
+      }
+      .hd .sub {
+        font-size: 8pt;
+        font-weight: bold;
+        color: #000;
+        margin-top: 1px;
+      }
+      .lr-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9.5pt;
+        font-weight: bold;
+        margin-bottom: 1.5mm;
+      }
+      .sec {
+        border: 2px solid #000;
+        border-radius: 3px;
+        margin-bottom: 2mm;
+        background: #fff;
+        overflow: hidden;
+      }
+      .line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 4mm;
+        padding: 2px 5px;
+        border-bottom: 1.5px solid #000;
+        font-size: 9pt;
+      }
+      .line:last-child { border-bottom: none; }
+      .lbl {
+        font-weight: bold;
+        font-size: 8pt;
+        text-transform: uppercase;
+        color: #000;
+        flex-shrink: 0;
+      }
+      .val {
+        font-weight: 800;
+        text-align: right;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 2mm;
+      }
+      th {
+        font-size: 8pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        padding: 3px 5px;
+        border: 2px solid #000;
+        background: #e0e0e0;
+        text-align: left;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      td {
+        padding: 3px 5px;
+        border: 1.5px solid #000;
+        font-size: 9pt;
+        font-weight: 700;
+      }
+      .tot-row td {
+        font-weight: 900;
+        font-size: 9.5pt;
+        background: #d0d0d0;
+        border-top: 2.5px solid #000;
+        padding: 3.5px 5px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .sig-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding-top: 3mm;
+      }
+      .sig-box {
+        text-align: center;
+        font-size: 8pt;
+        font-weight: bold;
+        border-top: 2px solid #000;
+        padding-top: 1.5px;
+        /* Wide enough for a name under the line; the space above it is what the
+           driver actually signs on. */
+        min-width: 26mm;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      /* Printed under the role, so the slip says who signed even when the
+         signature itself is a scrawl. */
+      .sig-name {
+        display: block;
+        font-size: 8.5pt;
+        font-weight: 900;
+        text-transform: none;
+        margin-top: 0.5mm;
+      }
+      .digital-sig-box {
+        border: 2px solid #000;
+        background: #fff;
+        border-radius: 4px;
+        padding: 2px 5px;
+        text-align: center;
+        width: 34mm;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .digital-sig-title {
+        font-size: 6pt;
+        color: #000;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.1px;
+        display: block;
+      }
+      .digital-sig-text {
+        font-family: 'Brush Script MT', cursive, sans-serif;
+        font-size: 14pt;
+        color: #000;
+        font-weight: bold;
+        line-height: 0.95;
+      }
+      .digital-sig-footer {
+        font-size: 5.5pt;
+        color: #000;
+        display: block;
+      }`,
+      body: `
+    <div class="container">
+      <div>
+        <div class="hd">
+          <div class="co">Vikas Goods Transport</div>
+          <div class="sub">Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</div>
+          <div class="slip">LOADING SLIP · लोडिंग स्लिप</div>
+        </div>
+
+        <div class="lr-row">
+          <span>नं0 / No. ${lrNo}</span>
+          <span>दिनांक / Date: ${fmtDate}</span>
+        </div>
+
+        <div class="sec">
+          <div class="line"><span class="lbl">गाड़ी नं0 / Truck No.</span><span class="val" style="font-size: 11pt; font-weight: 900;">${base.truckNo}</span></div>
+          ${driverName ? `<div class="line"><span class="lbl">चालक / Driver</span><span class="val" style="font-size: 9.5pt;">${driverName}</span></div>` : ''}
+          <div class="line"><span class="lbl">पार्टी / Party</span><span class="val" style="font-size: 9.5pt;">${parties}</span></div>
+          <div class="line"><span class="lbl">वजन / Weight</span><span class="val" style="font-size: 9.5pt;">${totalWeight} MT</span></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>सामान / Material</th>
+              <th style="text-align:center; width: 14mm;">बैग / Bags</th>
+              <th style="text-align:right; width: 18mm;">वजन / Wt</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(m => `
+              <tr>
+                <td>
+                  ${m.material}
+                  ${m.loadingType ? `<span style="font-size: 8pt; font-weight: 700; display: block; margin-top: 1px;">${loadingLabel(m.loadingType)}</span>` : ''}
+                  ${m.billing && m.billing !== 'No' ? `<span style="font-size: 8pt; font-weight: 700; display: block; color: #000; margin-top: 1px;">Challan: ${m.billing}</span>` : ''}
+                </td>
+                <td style="text-align:center">${m.totalBags}</td>
+                <td style="text-align:right">${Number(m.weight).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+            <tr class="tot-row">
+              <td>कुल / TOTAL</td>
+              <td style="text-align:center">${totalBags}</td>
+              <td style="text-align:right">${totalWeight}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sig-section">
+        <div class="sig-box">
+          चालक / Driver
+          ${driverName ? `<span class="sig-name">${driverName}</span>` : ''}
+        </div>
+        <div class="digital-sig-box">
+          <span class="digital-sig-title">हस्ताक्षर / Signature</span>
+          <span class="digital-sig-text">${signedBy}</span>
+          <span class="digital-sig-footer">Auth. Signatory</span>
+        </div>
+      </div>
+    </div>`,
+    });
+    return;
+  }
+
+  const materialRowsHtml = rows.map(m => `
+    <tr>
+      <td style="padding:4px 8px;border:1px solid #000;font-size:11px;font-weight:800;">
+        ${m.material}
+        ${m.loadingType ? `<span style="font-size:9.5px;font-weight:700;display:block;margin-top:1px;">${loadingLabel(m.loadingType)}</span>` : ''}
+        ${m.billing && m.billing !== 'No' ? `<span style="font-size:9.5px;font-weight:700;display:block;margin-top:1px;">Challan: ${m.billing}</span>` : ''}
+      </td>
+      <td style="padding:4px 8px;border:1px solid #000;text-align:center;font-size:11.5px;font-weight:800;">${m.totalBags}</td>
+      <td style="padding:4px 8px;border:1px solid #000;text-align:right;font-size:11.5px;font-weight:800;">${Number(m.weight).toFixed(2)} MT</td>
+    </tr>
+  `).join('');
+
+  openReceiptWindow({
+    archive,
+    title: `LR #${lrNo}`,
+    fontSize: '11px',
+    lineHeight: '1.3',
+    // Page cut to the material table — see the JKL variant above.
+    fitContent: true,
+    minHeightMm: 75,
+    styles: LR_FIT_CSS + `
+        .content-wrap { display: flex; flex-direction: column; justify-content: flex-start; }
+        .hd { text-align: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+        .hd .co { font-size: 14.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15; }
+        .hd .sub { font-size: 10px; margin-top: 2px; color: #000; font-weight: 800; }
+        .lr-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .lr-badge {
+          font-size: 14px;
+          font-weight: 900;
+          border: 2px solid #000;
+          display: inline-block;
+          padding: 3px 12px;
+          letter-spacing: 1px;
+          background: #fff;
+        }
+        .lr-date { font-size: 11px; font-weight: 800; }
+        .sec { border: 1.5px solid #000; border-radius: 3px; margin-bottom: 6px; background: #fff; overflow: hidden; }
+        .line { display: flex; justify-content: space-between; align-items: center; gap: 4mm; padding: 4px 8px; border-bottom: 1px solid #000; font-size: 11px; }
         .line:last-child { border-bottom: none; }
-        .lbl { font-weight: 800; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
-        .val { font-weight: 600; text-align: right; }
-        .tot { background: #eee; font-weight: 900; font-size: 12px; border-top: 1.5px solid #000; }
-        .sig { display: flex; justify-content: space-between; margin-top: 20px; }
-        .sig-box { text-align: center; font-size: 9px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; min-width: 60px; text-transform: uppercase; }
-        .no-print { display: block; width: 100%; padding: 10px; background: #10b981; color: #fff; text-align: center; font-weight: 800; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; margin-top: 12px; }
-        @media print { .no-print { display: none; } }
-      </style>
-    </head>
-    <body>
-      <div class="hd">
-        <div class="co">Vikas Goods Transport Company</div>
-        <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar</div>
-      </div>
+        .lbl { font-weight: 900; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0; color: #000; }
+        .val { font-weight: 800; text-align: right; color: #000; font-size: 11.5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 0; }
+        th { font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 4px 8px; border: 1px solid #000; background: #ddd; text-align: left; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .tot-row td { font-weight: 900; font-size: 12.5px; background: #ddd; border-top: 2px solid #000; padding: 5px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .sig { display: flex; justify-content: space-between; padding-top: 10px; gap: 6px; }
+        .sig-box { flex: 1; text-align: center; font-size: 9.5px; font-weight: 900; border-top: 1.5px solid #000; padding-top: 3px; text-transform: uppercase; white-space: nowrap; }
+        /* Printed under the role, so the slip says who signed even when the
+           signature itself is a scrawl. */
+        .sig-name { display: block; font-size: 10px; font-weight: 900; text-transform: none; margin-top: 1px; }
+        .signed { margin-top: 6px; border: 1.5px solid #000; border-radius: 3px; padding: 3px 6px; text-align: center; }
+        .signed-k { display: block; font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
+        .signed-v { display: block; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.1; }
+        .signed-f { display: block; font-size: 7px; font-weight: 700; }`,
+    body: `
+      <div class="content-wrap">
+        <div class="hd">
+          <div class="co">Vikas Goods Transport Company</div>
+          <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</div>
+        </div>
 
-      <div class="lr-wrap"><div class="lr">LR # ${lrNo}</div></div>
+        <div class="lr-row">
+          <div class="lr-badge">LR # ${lrNo}</div>
+          <div class="lr-date"><strong>Date:</strong> ${fmtDate}</div>
+        </div>
 
-      <div class="sec">
-        <div class="line"><span class="lbl">Date</span><span class="val">${fmtDate}</span></div>
-        <div class="line"><span class="lbl">Truck No.</span><span class="val" style="font-size:13px;font-weight:900;">${base.truckNo}</span></div>
-        <div class="line"><span class="lbl">Party</span><span class="val">${parties}</span></div>
-        ${base.billing ? `<div class="line"><span class="lbl">Challans</span><span class="val">${base.billing}</span></div>` : ''}
-      </div>
+        <div class="sec">
+          <div class="line"><span class="lbl">Truck No. · गाड़ी</span><span class="val" style="font-size:13.5px;font-weight:900;">${base.truckNo}</span></div>
+          ${driverName ? `<div class="line"><span class="lbl">Driver · चालक</span><span class="val">${driverName}</span></div>` : ''}
+          <div class="line"><span class="lbl">Party Name · पार्टी</span><span class="val">${parties}</span></div>
+        </div>
 
-      <div class="sec">
-        <div class="line" style="background:#eee;"><span class="lbl">Material</span><span class="lbl">Details</span></div>
-        ${materialLines}
-        <div class="line tot"><span class="lbl">Total</span><span class="val">${totalBags} bags · ${totalWeight} MT</span></div>
+        <div class="sec">
+          <table>
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th style="text-align:center">Bags</th>
+                <th style="text-align:right">Weight (MT)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${materialRowsHtml}
+              <tr class="tot-row">
+                <td>TOTAL</td>
+                <td style="text-align:center">${totalBags}</td>
+                <td style="text-align:right">${totalWeight} MT</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="sig">
-        <div class="sig-box">Driver</div>
-        <div class="sig-box">Receiver</div>
-        <div class="sig-box">Authorised</div>
+        <div class="sig-box">
+          Driver · चालक
+          ${driverName ? `<span class="sig-name">${driverName}</span>` : ''}
+        </div>
+        <div class="sig-box">Receiver · प्राप्तकर्ता</div>
       </div>
-
-      <button class="no-print" onclick="window.print()">Print</button>
-      <script>setTimeout(() => window.print(), 500);</script>
-    </body>
-  </html>`;
-  const w = window.open('', '_blank', 'width=800,height=600');
-  w.document.write(html); w.document.close();
+      <div class="signed">
+        <span class="signed-k">Digitally Signed</span>
+        <span class="signed-v">${signedBy}</span>
+        <span class="signed-f">Auth. Signatory</span>
+      </div>`,
+  });
 }
 
 /* ── Edit Modal ── */
@@ -325,33 +676,33 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
     // 1. Strict Quantity Validation
     const lrBags = parseInt(form.totalBags || 0);
     let totalChallanBags = 0;
-    
+
     form.usedChallans.forEach(c => {
       if (c.materials) {
         const mat = c.materials.find(m => m.type === form.material);
         if (mat) {
-           totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
-           if (row.billing.includes(c.challanNo) && row.material === form.material) {
-             totalChallanBags += parseInt(row.totalBags || 0);
-           }
+          totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
+          if (row.billing.includes(c.challanNo) && row.material === form.material) {
+            totalChallanBags += parseInt(row.totalBags || 0);
+          }
         }
       } else if (c.material === form.material) {
         totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
         if (row.billing.includes(c.challanNo) && row.material === form.material) {
-           totalChallanBags += parseInt(row.totalBags || 0);
+          totalChallanBags += parseInt(row.totalBags || 0);
         }
       }
     });
 
     if (form.usedChallans.length > 0 && lrBags > totalChallanBags) {
-       alert(`Not Enough Bags!\nLoading Receipt has ${lrBags} bags, but selected challans only provide ${totalChallanBags} bags of ${form.material}.\n\nPlease select more challans or reduce LR bags.`);
-       return;
+      alert(`Not Enough Bags!\nLoading Receipt has ${lrBags} bags, but selected challans only provide ${totalChallanBags} bags of ${form.material}.\n\nPlease select more challans or reduce LR bags.`);
+      return;
     }
 
     setLoading(true);
     const oldBags = parseInt(row.totalBags || 0);
     const newBags = parseInt(form.totalBags || 0);
-    
+
     // Validate physical stock
     if (form.material === row.material) {
       if (newBags > oldBags) {
@@ -392,9 +743,9 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 
       await ax.put(`${ENDPOINT.replace('/stock/challans', '/lr')}/${row.id}`, payload);
       onSave();
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
-      alert('Update failed: ' + (e.response?.data?.error || e.message)); 
+      alert('Update failed: ' + (e.response?.data?.error || e.message));
     } finally { setLoading(false); }
   };
 
@@ -425,7 +776,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <X size={18} />
           </button>
         </div>
-        
+
         {/* Modal body */}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '70vh', overflowY: 'auto' }}>
           <div className="fg fg-2">
@@ -471,6 +822,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
                 <option value="From Godown">From Godown</option>
                 <option value="Crossing">Crossing</option>
+                <option value="Direct">Direct (no labour)</option>
               </select>
             </div>
             <div className="field-h">
@@ -485,14 +837,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             </div>
             <div className="field-h"><label>Weight (MT)</label><input className="fi" type="number" step="0.01" value={form.weight} onChange={e => S('weight', e.target.value)} /></div>
           </div>
-          
+
           <div className="field-h">
             <label><Tag size={11} /> Challan Selection</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
               <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                   <Tag size={14} color="#f59e0b" />
-                   {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
+                  <Tag size={14} color="#f59e0b" />
+                  {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
                 </span>
                 <Pencil size={12} opacity={0.5} />
               </button>
@@ -508,7 +860,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           </div>
 
           <hr className="sep" style={{ margin: '4px 0' }} />
-          
+
           <div className="field-h">
             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note for Labour</label>
             <textarea className="fi" rows={2} placeholder="Add instructions..." value={form.note} onChange={e => S('note', e.target.value)} style={{ resize: 'vertical', minHeight: '60px' }} />
@@ -549,22 +901,22 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
         </div>
 
         {showChalPopup && (
-           <ChallanPopup 
-             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
-             selectedChallans={form.usedChallans}
-             onClose={() => setShowChalPopup(false)}
-             onToggleSelect={(ch) => {
-                const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
-                if (isSelected) {
-                   setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
-                } else {
-                   if (form.truckNo && ch.truckNo !== form.truckNo) {
-                      if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
-                   }
-                   setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
+          <ChallanPopup
+            brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
+            selectedChallans={form.usedChallans}
+            onClose={() => setShowChalPopup(false)}
+            onToggleSelect={(ch) => {
+              const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
+              if (isSelected) {
+                setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
+              } else {
+                if (form.truckNo && ch.truckNo !== form.truckNo) {
+                  if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
                 }
-             }}
-           />
+                setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
+              }
+            }}
+          />
         )}
       </motion.div>
       <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title="Save Changes" message="Update this loading receipt?" isSaving={loading} />
@@ -579,12 +931,12 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
   const filteredChallans = challanSearch
     ? openChallans.filter(c => {
-        const s = challanSearch.toLowerCase();
-        return (c.challanNo || '').toLowerCase().includes(s) ||
-               (c.truckNo || '').toLowerCase().includes(s) ||
-               (c.partyName || '').toLowerCase().includes(s) ||
-               (c.destination || '').toLowerCase().includes(s);
-      })
+      const s = challanSearch.toLowerCase();
+      return (c.challanNo || '').toLowerCase().includes(s) ||
+        (c.truckNo || '').toLowerCase().includes(s) ||
+        (c.partyName || '').toLowerCase().includes(s) ||
+        (c.destination || '').toLowerCase().includes(s);
+    })
     : openChallans;
 
   // For 'create' tab
@@ -609,6 +961,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     partyName: resolvePartyName(preFill?.partyName || '', partySuggestions),
     destination: preFill?.destination || '',
     remark: preFill?.remark || '',
+    factoryCode: '',
     challanNo: ''
   });
 
@@ -640,7 +993,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
       const created = res.data;
       // Go back to select tab so user can see newly created challan
       setTab('select');
-      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', challanNo: '' });
+      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', factoryCode: '', challanNo: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
       // Pass full challan object (with quantity) to parent
@@ -772,7 +1125,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                         placeholder="GJ01AB1234"
                         required={true}
                       />
-                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px'}}>Invalid format</div>}
+                      {!validateTruckNo(chalForm.truckNo) && chalForm.truckNo && <div style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px' }}>Invalid format</div>}
                     </div>
                     <div className="field">
                       <label><Calendar size={11} /> Date *</label>
@@ -800,6 +1153,16 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                     <div className="field">
                       <label>Destination</label>
                       <input className="fi" type="text" placeholder="Delivery location" value={chalForm.destination} onChange={e => S('destination', e.target.value)} />
+                    </div>
+                    {/* Offered here as well as on the Stock form — a challan
+                        raised from the LR screen would otherwise be the only
+                        one with no gate against it. */}
+                    <div className="field">
+                      <label>Factory Code</label>
+                      <input className="fi" type="text" placeholder="e.g. FC1, FC5" maxLength={16}
+                        style={{ textTransform: 'uppercase' }}
+                        value={chalForm.factoryCode || ''}
+                        onChange={e => S('factoryCode', e.target.value.toUpperCase())} />
                     </div>
                     <div className="field" style={{ gridColumn: '1 / -1' }}>
                       <label>Remark</label>
@@ -867,9 +1230,9 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
       }
       await ax.delete(apiUrl + '/' + row.id);
       onConfirm();
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
-      alert('Delete failed: ' + (e.response?.data?.error || e.message)); 
+      alert('Delete failed: ' + (e.response?.data?.error || e.message));
     } finally { setDeleting(false); }
   };
   return (
@@ -899,6 +1262,14 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
 
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
+  // Whoever is logged in signs the receipts they print.
+  const { user } = useAuth();
+  const signedBy = user?.name || user?.username || 'VGTC';
+
+  // The module opens on the list. Most visits are to look a receipt up, and the
+  // form used to take the whole first screen before anyone could see one.
+  const [formOpen, setFormOpen] = useState(false);
+
   // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
   const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : brand === 'bahadurgarh' ? 'lr_bahadurgarh' : 'lr_jkl';
   const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
@@ -921,7 +1292,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     API_STOCK = `${BASE_API}/stock`;
   }
   const API_CHAL = `${API_STOCK}/challans`;
-  
+
   const [materialObjs, setMaterialObjs] = useState([]);
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
@@ -967,6 +1338,32 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     materials: [{ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }],
   });
 
+  /**
+   * Has a voucher already been written on the number being typed?
+   *
+   * The books were not started together: vouchers have been kept for months
+   * while the receipts are only being entered now. So a clerk typing an LR
+   * number is usually typing one a voucher already refers to, and that is
+   * normally right — the receipt is catching up to a trip that happened. It is
+   * still worth saying, because it confirms the number is the one they meant.
+   *
+   * Advisory only, and debounced: this runs while someone is still typing, so
+   * it must not fire a request per keystroke or block the form.
+   */
+  const [lrCheck, setLrCheck] = useState(null);   // { checking, receiptExists, voucher }
+  useEffect(() => {
+    const typed = String(form.lrNo ?? '').trim();
+    if (!typed) { setLrCheck(null); return; }
+    setLrCheck({ checking: true });
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await ax.get(`${API}/voucher-for/${encodeURIComponent(typed)}`);
+        setLrCheck({ checking: false, ...data });
+      } catch { setLrCheck(null); }   // never let a lookup stop someone working
+    }, 450);
+    return () => clearTimeout(t);
+  }, [form.lrNo, API]);
+
   // ── Voice Recording State ──────────────────────────────
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -975,14 +1372,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [voicePreviewAudio, setVoicePreviewAudio] = useState(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const partySuggestions = useMemo(() => {
-    const validParties = parties.filter(p => p.type === 'customer' || p.type === 'broker');
+    // Only this side's parties. JK Lakshmi and JK Super trade with different
+    // dealers, so offering the whole pool here put the wrong names one
+    // keystroke away. Untagged parties still appear (partyVisibleIn) until the
+    // backfill or Party Master sorts them. The legacy names below come from
+    // this module's own receipts and challans, so they are already scoped.
+    const group = brandOfLr(brand);
+    const validParties = parties.filter(p =>
+      (p.type === 'customer' || p.type === 'broker') && partyVisibleIn(p, group));
     const legacyNames = buildPartySuggestions(
       receipts.map(r => r.partyName),
       allChallans.map(c => c.partyName),
       openChallans.map(c => c.partyName)
     );
     return [...new Set([...validParties.map(p => p.name), ...legacyNames])].sort();
-  }, [parties, receipts, allChallans, openChallans]);
+  }, [parties, receipts, allChallans, openChallans, brand]);
 
   const startRecording = async () => {
     try {
@@ -1059,9 +1463,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       setReceipts([...dataRes.data].sort((a, b) => b.lrNo - a.lrNo));
       setParties(partiesRes.data);
       try {
-         const vRes = await ax.get(`/vouchers`);
-         setAllVouchers(vRes.data || []);
-      } catch(e) { console.error('Failed to fetch vouchers', e); }
+        const vRes = await ax.get(`/vouchers`);
+        setAllVouchers(vRes.data || []);
+      } catch (e) { console.error('Failed to fetch vouchers', e); }
     } catch { }
     finally { setTableLoading(false); }
   };
@@ -1090,8 +1494,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const fetchMaterials = async () => {
     try {
-       const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
-       if (data && data.length > 0) setMaterialObjs(data);
+      const data = (await ax.get(`${API_STOCK}/materials/list`)).data;
+      if (data && data.length > 0) setMaterialObjs(data);
     } catch (e) { console.error('fetchMaterials failed:', e.message); }
   };
 
@@ -1244,28 +1648,28 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const executeSaveLR = async () => {
     setIsConfirmingSave(false);
-    
+
     // 1. Strict Quantity Validation
     for (const m of form.materials) {
       if (m.billing && m.billing !== 'No') {
-          const lrBags = parseInt(m.bags || 0);
-          let totalChallanBags = 0;
-          const nos = m.billing.split(',').map(s => s.trim());
-          const used = allChallans.filter(c => nos.includes(c.challanNo));
+        const lrBags = parseInt(m.bags || 0);
+        let totalChallanBags = 0;
+        const nos = m.billing.split(',').map(s => s.trim());
+        const used = allChallans.filter(c => nos.includes(c.challanNo));
 
-          used.forEach(c => {
-             if (c.materials) {
-                const mat = c.materials.find(cm => cm.type === m.type);
-                if (mat) totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
-             } else if (c.material === m.type) {
-                totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
-             }
-          });
-
-          if (lrBags > totalChallanBags) {
-             alert(`Not Enough Bags in ${m.type}!\nLR needs ${lrBags} bags, but selected challan(s) only provide ${totalChallanBags} bags.\n\nPlease fix the bag count or selection.`);
-             return;
+        used.forEach(c => {
+          if (c.materials) {
+            const mat = c.materials.find(cm => cm.type === m.type);
+            if (mat) totalChallanBags += (mat.totalBags - (mat.loadedBags || 0));
+          } else if (c.material === m.type) {
+            totalChallanBags += (parseInt(c.quantity || 0) - (c.loadedBags || 0));
           }
+        });
+
+        if (lrBags > totalChallanBags) {
+          alert(`Not Enough Bags in ${m.type}!\nLR needs ${lrBags} bags, but selected challan(s) only provide ${totalChallanBags} bags.\n\nPlease fix the bag count or selection.`);
+          return;
+        }
       }
     }
 
@@ -1294,7 +1698,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       };
 
       const res = await ax.post(API, payload);
-      
+
       let SYNC_API;
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
@@ -1311,28 +1715,53 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         }
       }
 
-      alert('Receipt #' + res.data.lrNo + ' created!');
       fetchLRData(); fetchChallans();
       clearVoice();
       rememberSticky('lr.date', form.date);
       setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
 
+      // POST /lr answers with { lrNo, ids } — a receipt number and the document
+      // ids it wrote, NOT the rows themselves. Handing that to the printer as if
+      // it were a row printed a slip with the number filled in and every other
+      // field undefined. Rebuild the rows we just submitted instead; the shape
+      // below mirrors lrService.createLoadingReceipt field for field, so this
+      // slip is identical to one printed from the list afterwards.
+      const printedRows = materialsWithParty.map(m => ({
+        lrNo: res.data.lrNo,
+        date: payload.date || new Date().toISOString().slice(0, 10),
+        truckNo: payload.truckNo,
+        destination: payload.destination || '',
+        material: m.type,
+        loadingType: m.loadingType || 'From Godown',
+        weight: parseFloat(m.weight) || 0,
+        totalBags: parseInt(m.bags) || 0,
+        billing: m.billing || payload.billing || 'No',
+        partyName: m.partyName,
+      }));
+      printReceipt(printedRows, res.data.lrNo, brand, signedBy, vehicles);
+
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
-      alert('Error creating receipt: ' + JSON.stringify(errDetails));
+      // A refused LR number is the clerk's to fix, and the server already says
+      // exactly what is wrong — showing that plainly beats a JSON dump.
+      if (e.response?.status === 409 || e.response?.status === 400) {
+        alert(typeof errDetails === 'string' ? errDetails : JSON.stringify(errDetails));
+      } else {
+        alert('Error creating receipt: ' + JSON.stringify(errDetails));
+      }
     } finally { setLoading(false); }
   };
 
   const filteredReceipts = useMemo(() => {
     let list = [...receipts];
-    
+
     // Dynamic filtering
     Object.keys(filters).forEach(key => {
-        const vals = filters[key];
-        if (vals && vals.length > 0) {
-            list = list.filter(r => vals.includes(String(r[key] ?? '')));
-        }
+      const vals = filters[key];
+      if (vals && vals.length > 0) {
+        list = list.filter(r => columnValues(r, key).some(x => vals.includes(x)));
+      }
     });
 
     return list;
@@ -1344,13 +1773,20 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     return filteredReceipts.slice(start, start + PAGE_SIZE);
   }, [filteredReceipts, currentPage]);
 
-  const exportExcel = () => {
-    exportToExcel(filteredReceipts.map(r => ({ LR_No: r.lrNo, Date: r.date, Truck: r.truckNo, Material: r.material, Weight_MT: r.weight, Bags: r.totalBags, Party: r.partyName, Challan: r.billing || '' })), `Receipts_${new Date().toISOString().slice(0, 10)} `);
-  };
+  // Every field on the receipt — the old eight-column list left out loading
+  // type, destination, driver, challan status and the material breakdown.
+  const lrExportRows = () => buildExportRows(filteredReceipts, {
+    order: ['lrNo', 'date', 'truckNo', 'partyName', 'destination', 'material', 'totalBags', 'weight', 'loadingType', 'billing'],
+  });
 
-  const dlPDF = () => {
-    exportToPDF(filteredReceipts, 'Loading Receipts', ['lrNo', 'date', 'truckNo', 'material', 'weight', 'totalBags', 'partyName', 'billing']);
-  };
+  const exportExcel = () => exportToExcel(lrExportRows(), `Receipts_${new Date().toISOString().slice(0, 10)}`);
+  const dlPDF = () => exportToPDF(lrExportRows(), 'Loading Receipts', null, {
+    archive: {
+      module: 'Loading Receipts',
+      plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
+      name: archiveName('Receipts Export', new Date().toISOString().slice(0, 10)),
+    },
+  });
 
   return (
     <>
@@ -1521,24 +1957,100 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <p>Create and manage loading receipts</p>
           </div>
           <div className="page-hd-right" style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn btn-p" onClick={() => setShowChalPopup('create')} title="Add a new Challan"><Plus size={15} /> Add New Challan</button>
+            {/* The list is what the module opens on now — this is how the form
+                is reached. Prominent, because creating is the common task. */}
+            <button className={`btn ${formOpen ? 'btn-g' : 'btn-p'}`} onClick={() => setFormOpen(o => !o)}
+              title={formOpen ? 'Close the form' : 'Create a new loading receipt'}>
+              {formOpen ? <><X size={15} /> Close Form</> : <><Plus size={15} /> Create New Loading Receipt</>}
+            </button>
+            <button className="btn btn-s" onClick={() => setShowChalPopup('create')} title="Add a new Challan"><Plus size={15} /> Add New Challan</button>
             <button className="btn btn-s" onClick={exportExcel} title="Export to Excel Spreadsheet"><Download size={15} /> Export Excel</button>
             <button className="btn btn-s" onClick={dlPDF} title="Export to PDF Document"><Printer size={15} /> Export PDF</button>
           </div>
         </div>
         <div className="tc-form-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* FORM */}
+          {/* FORM — hidden until asked for. It used to sit above the list and
+              push the receipts off the first screen on every visit, when most
+              visits are to look something up rather than to add one. */}
+          {formOpen && (
           <div className="card">
             <div className="card-header">
               <div className="card-title-block">
                 <div className="card-icon ci-indigo"><Plus size={17} /></div>
                 <div className="card-title-text"><h3>New Entry</h3><p>Fill loading details</p></div>
               </div>
+              <button className="btn btn-g btn-sm" onClick={() => setFormOpen(false)}><X size={13} /> Close</button>
             </div>
             <div className="card-body">
               <form onSubmit={handleFormRequest} ref={createFormRef}>
                 <div className="fg fg-2">
-                  <div className="field-h"><label><Calendar size={11} /> Date <span style={{color:'var(--danger)'}}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
+                  {/*
+                    The number normally comes from the counter, which also
+                    reuses numbers freed by deleted receipts. Typing one is for
+                    the case the counter cannot know about: a paper bilty
+                    already written at the gate, or a book being caught up
+                    after the fact. The server refuses a number already in use
+                    and walks the counter past a manual one, so the automatic
+                    sequence never collides with it later.
+                  */}
+                  <div className="field-h">
+                    <label>LR Number</label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                      {form.lrNo === undefined ? (
+                        <input className="fi" value="Next number, automatically" readOnly
+                          style={{ flex: 1, minWidth: 0, color: 'var(--text-muted)', fontStyle: 'italic' }} />
+                      ) : (
+                        <input className="fi" type="number" min="1" step="1" autoFocus
+                          placeholder="e.g. 1247" style={{ flex: 1, minWidth: 0 }}
+                          value={form.lrNo}
+                          onChange={e => setForm({ ...form, lrNo: e.target.value })} />
+                      )}
+                      {/* Auto is the default and stays first: the counter also
+                          reuses numbers freed by deleted receipts, which a
+                          person typing cannot know about. */}
+                      <div style={{
+                        display: 'flex', flexShrink: 0, borderRadius: '8px', overflow: 'hidden',
+                        border: '1px solid var(--border)',
+                      }}>
+                        {[
+                          { id: 'auto', label: 'Auto', on: form.lrNo === undefined },
+                          { id: 'manual', label: 'Manual', on: form.lrNo !== undefined },
+                        ].map(opt => (
+                          <button key={opt.id} type="button"
+                            onClick={() => setForm(f => ({ ...f, lrNo: opt.id === 'auto' ? undefined : (f.lrNo ?? '') }))}
+                            style={{
+                              padding: '0 14px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                              fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
+                              background: opt.on ? 'var(--primary)' : 'var(--bg-input)',
+                              color: opt.on ? '#fff' : 'var(--text-muted)',
+                              transition: 'background .12s, color .12s',
+                            }}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Advisory, not a block: a voucher on this number is
+                        evidence the receipt belongs to it, not against it. */}
+                    {form.lrNo !== undefined && lrCheck && !lrCheck.checking && (
+                      lrCheck.receiptExists ? (
+                        <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#f43f5e' }}>
+                          A receipt already uses LR #{lrCheck.lrNo} — pick another number.
+                        </span>
+                      ) : lrCheck.voucher ? (
+                        <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
+                          Voucher already created on LR #{lrCheck.lrNo}
+                          {lrCheck.voucher.truckNo ? ` · ${lrCheck.voucher.truckNo}` : ''}
+                          {lrCheck.voucher.date ? ` · ${lrCheck.voucher.date}` : ''}
+                          {lrCheck.voucher.destination ? ` · ${lrCheck.voucher.destination}` : ''}
+                          <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
+                            Receipt not created yet — carry on if this is that trip.
+                          </span>
+                        </span>
+                      ) : null
+                    )}
+                  </div>
+                  <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field-h">
                     <label>Truck No. *</label>
                     <AutocompleteInput
@@ -1548,7 +2060,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       placeholder="Enter truck number e.g. HR47G1234"
                       required={true}
                     />
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block'}}>Invalid format</span>}
+                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block' }}>Invalid format</span>}
                   </div>
                   <div className="field-h">
                     <label><User size={11} /> Party Name</label>
@@ -1648,6 +2160,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
                           <option value="From Godown">From Godown</option>
                           <option value="Crossing">Crossing</option>
+                          <option value="Direct">Direct (no labour)</option>
                         </select>
                       </div>
                       <div className="field-h">
@@ -1710,6 +2223,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </form>
             </div>
           </div>
+          )}
 
           {/* LIST */}
           <div className="card">
@@ -1724,32 +2238,32 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               <div style={{ display: 'flex', gap: '8px', padding: '10px 14px', background: 'var(--bg-filter)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>Active Filters:</span>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {Object.keys(filters).map(k => filters[k].length > 0 && (
-                        <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
-                            {k}: {filters[k].length} selected
-                        </span>
-                    ))}
+                  {Object.keys(filters).map(k => filters[k].length > 0 && (
+                    <span key={k} className="badge badge-tag" style={{ fontSize: '9px' }}>
+                      {k}: {filters[k].length} selected
+                    </span>
+                  ))}
                 </div>
                 <button className="btn btn-sm btn-g" style={{ marginLeft: 'auto', height: '24px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear All Filters</button>
               </div>
             )}
 
-            <div className="tbl-wrap">
+            <TableScroll className="tbl-cards">
               <table className="tbl" style={{ minWidth: '1200px' }}>
                 <thead><tr>
                   <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
                   <th style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
                     </div>
                   </th>
                   <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
@@ -1771,17 +2285,21 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
-                        <td><span className="t-lr">#{lr.lrNo}</span></td>
-                        <td>
-                          <div className="t-main">{lr.truckNo}</div>
-                          <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
+                        <td className="t-card-title"><span className="t-lr">#{lr.lrNo}</span></td>
+                        <td data-label="Vehicle / Party">
+                          <div>
+                            <div className="t-main">{lr.truckNo}</div>
+                            <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
+                          </div>
                         </td>
-                        <td>
-                          <span className="badge badge-tag">{lr.material}</span>
-                          <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
-                          {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
+                        <td data-label="Material">
+                          <div>
+                            <span className="badge badge-tag">{lr.material}</span>
+                            <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
+                            {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
+                          </div>
                         </td>
-                        <td className="c">
+                        <td className="c" data-label="Source Challan">
                           {(() => {
                             // Determine how many bags are not yet covered by any challan
                             const lrBags = parseInt(lr.totalBags || 0);
@@ -1857,31 +2375,31 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        <td className="c">
+                        <td className="c" data-label="Voucher Status">
                           {(() => {
                             const usedInVouchers = allVouchers.filter(v => {
-                               if (!v.lrNo) return false;
-                               const vLrs = String(v.lrNo).split(',').map(s => s.trim());
-                               return vLrs.includes(String(lr.lrNo));
+                              if (!v.lrNo) return false;
+                              const vLrs = String(v.lrNo).split(',').map(s => s.trim());
+                              return vLrs.includes(String(lr.lrNo));
                             });
-                            
+
                             if (usedInVouchers.length === 0) {
-                               return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)' }}>Unbilled</span>;
+                              return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)' }}>Unbilled</span>;
                             }
-                            
+
                             return (
-                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                 {usedInVouchers.map(v => (
-                                    <div key={v.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '3px 8px' }}>
-                                       <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981' }}>{v.type ? v.type.replace('_', ' ') : 'Voucher'}</span>
-                                       {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>Bill: {v.billNo}</span>}
-                                    </div>
-                                 ))}
-                               </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                {usedInVouchers.map(v => (
+                                  <div key={v.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '3px 8px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981' }}>{v.type ? v.type.replace('_', ' ') : 'Voucher'}</span>
+                                    {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>Bill: {v.billNo}</span>}
+                                  </div>
+                                ))}
+                              </div>
                             );
                           })()}
                         </td>
-                        <td className="c">
+                        <td className="c" data-label="Trip Status">
                           {(() => {
                             const status = lr.status || 'Created';
                             const idx = LR_STATUS_FLOW.indexOf(status);
@@ -1900,11 +2418,11 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
-                        {role === 'admin' && <td style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
-                        <td className="c">
+                        {role === 'admin' && <td data-label="Created By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
+                        {role === 'admin' && <td data-label="Updated By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
+                        <td className="c t-card-actions">
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, allChallans)}>
+                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, brand, signedBy, vehicles)}>
                               <Printer size={14} />
                             </button>
                             {canEdit && (
@@ -1923,9 +2441,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
 
-            <Pagination 
+            <Pagination
               currentPage={currentPage}
               totalItems={filteredReceipts.length}
               pageSize={PAGE_SIZE}
