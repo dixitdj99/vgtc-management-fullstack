@@ -7,7 +7,7 @@ const VGTC_INFO = {
     company: 'VIKAS GOODS TRANSPORT CO.',
     address: 'H.O. :Near Rao Gopal Dev Chowk, Narnaul Road Rewari',
     email: 'vikasgoodstransport1234@gmail.com',
-    contact: '9416319445, 9728954901, 9728284849',
+    contact: '9416319445',
     gstin: '06ARIPK9021C2Z2',
     pan: 'ARIPK9021C',
     sacCode: '996511 GTA Services',
