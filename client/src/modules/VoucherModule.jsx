@@ -331,7 +331,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
       <div>
         <div class="hd">
           <div class="co">Vikas Goods Transport</div>
-          <div class="sub">Jharli, Jhajjar | Mob: 9416319445</div>
+          <div class="sub">Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849</div>
         </div>
 
         <div class="lr-row">
@@ -465,7 +465,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
                 <div class="company-name">${orgName}</div>
                 <div class="auth-badge">Authorised Transport for : J.K. Super Cement Ltd.</div>
                 <div class="address-text">Near Gaushala, Rewari Road, Jhajjar (Hr.)</div>
-                <div class="address-text">Mob. : 9728284849, 9416319445</div>
+                <div class="address-text">Mob. : 9416319445, 9728954901, 9728284849</div>
                 <div class="head-office">Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari</div>
             </div>
             <div class="header-right">GSTIN : 06ARIPK9021C2Z2</div>
@@ -662,7 +662,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
   <div>
     <div class="hd">
       <h1>VIKAS GOODS TRANSPORT</h1>
-      <p>Jharli, Jhajjar | 9416319445</p>
+      <p>Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</p>
     </div>
 
     <div class="ref-row">

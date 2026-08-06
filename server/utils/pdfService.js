@@ -169,7 +169,7 @@ async function generateVoucherPDF(v, outputPath) {
             
             doc.fillColor('#000').fontSize(8).font('Helvetica-Bold').text('Near Gaushala, Rewari Road, Jhajjar (Hr.)', M, y, { align: 'center' });
             y += 10;
-            doc.text('Mob. : 9728284849, 9416319445', M, y, { align: 'center' });
+            doc.text('Mob. : 9416319445, 9728954901, 9728284849', M, y, { align: 'center' });
             y += 10;
             doc.fontSize(7).font('Helvetica').text('Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari', M, y, { align: 'center' });
             doc.fontSize(7).font('Helvetica-Bold').text('GSTIN : 06ARIPK9021C2Z2', PW - M - 100, M + 10);
@@ -458,7 +458,7 @@ async function generateLoadingReceiptPDF(data, outputPath) {
         y += 16;
         doc.fontSize(12).font('Helvetica-Bold').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
         y += 14;
-        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
+        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849', M, y, { align: 'center', width: CW });
         y += 12;
         doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
         y += 10;

@@ -521,7 +521,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
       <div class="content-wrap">
         <div class="hd">
           <div class="co">Vikas Goods Transport Company</div>
-          <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar</div>
+          <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</div>
         </div>
 
         <div class="lr-row">

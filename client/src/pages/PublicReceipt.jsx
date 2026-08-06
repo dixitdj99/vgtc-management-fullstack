@@ -74,6 +74,7 @@ export default function PublicReceipt({ externalTruckNo, externalDate }) {
           </div>
           <h1 style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: 'bold' }}>Payment Settled</h1>
           <div style={{ fontSize: '14px', opacity: 0.9 }}>VGTC Management Systems</div>
+          <div style={{ fontSize: '12px', opacity: 0.85, marginTop: '4px' }}>Mob: 9416319445, 9728954901, 9728284849</div>
         </div>
 
         {/* Info Cards */}

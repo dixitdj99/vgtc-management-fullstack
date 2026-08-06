@@ -357,7 +357,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             <div>
               <div class="hd">
                 <div class="co">Vikas Goods Transport</div>
-                <div class="sub">Cement Sales Receipt</div>
+                <div class="sub">Cement Sales Receipt · Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</div>
               </div>
               
               <div class="sec">

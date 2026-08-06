@@ -802,7 +802,7 @@ function AppInner() {
               gives this slot no room for it, so it falls back to the square
               icon — which is the cab, and stays legible at that size. */}
           <div className="brand-icon">
-            <img src={col ? '/vgtc-mark.png' : '/vgtc-logo.png'} alt="VGTC" height={26} />
+            <img src={col ? '/vgtc-mark.png' : (theme === 'dark' ? '/vgtc-logo-dark.png' : '/vgtc-logo.png')} alt="VGTC" height={32} />
           </div>
           {!col && <div className="brand-text">
             <div className="brand-name">Vikas Goods</div>

@@ -97,25 +97,20 @@ export const reportWatermarkCss = () => watermarkCss(0.6, 0.09);
  * measures its own height once images have loaded, so this does not need to be
  * inlined to be counted.
  */
-export const receiptLogoHtml = () =>
-  `<img class="rcpt-logo" src="${typeof window !== 'undefined' ? window.location.origin : ''}/vgtc-logo.png" alt="VGTC">`;
+export const receiptLogoHtml = (isDark = false) =>
+  `<img class="rcpt-logo" src="${typeof window !== 'undefined' ? window.location.origin : ''}${isDark ? '/vgtc-logo-dark.png' : '/vgtc-logo.png'}" alt="VGTC">`;
 
 /**
  * Sized in millimetres, not pixels — this is paper.
- *
- * 5mm matches the company name below it: that line is 13pt, which is 4.6mm, so
- * the mark reads as part of the masthead rather than as a picture stuck above
- * it. Height only — the wordmark is 3:1 and constraining both dimensions would
- * squash it. It stays legible off a 203dpi thermal head at this size; much
- * under 4mm and the cab detail starts to fill in.
+ * Slightly enlarged to 7.5mm for higher clarity and prominence on receipts.
  */
 export const receiptLogoCss = `
   .rcpt-logo {
     display: block;
-    height: 5mm;
+    height: 7.5mm;
     width: auto;
-    max-width: 50%;
-    margin: 0 auto 1mm;
+    max-width: 55%;
+    margin: 0 auto 1.5mm;
     /* A logo is a picture, and browsers drop pictures they think are
        decorative backgrounds when printing. This one is content. */
     -webkit-print-color-adjust: exact;

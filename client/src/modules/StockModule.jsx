@@ -140,7 +140,7 @@ function printChallan(c, orgName) {
     ${receiptLogoHtml()}
     <div class="h1">JK Lakshmi Depo Loading Receipt</div>
     <div class="h2">Vikas Goods Transport Company</div>
-    <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar</div>
+    <div class="addr">VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849</div>
   </div>
   <div class="ch-wrap"><div class="ch-no">Challan # ${c.challanNo}</div></div>
 
