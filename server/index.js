@@ -195,6 +195,8 @@ app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRo
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
+app.use('/api/whatsapp', require('./routes/whatsappRoutes'));
+app.use('/api/sms', require('./routes/smsRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret
 
 // Liveness/readiness probe. Reports 503 when Firestore is not connected so a

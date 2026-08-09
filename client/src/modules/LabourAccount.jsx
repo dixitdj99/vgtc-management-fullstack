@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { buildExportRows, exportToExcel } from '../utils/exportUtils';
 import TableScroll from '../components/TableScroll';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const API = '/labour-account';
 
@@ -90,10 +91,12 @@ export default function LabourAccount({ canEdit }) {
     } finally { setSaving(false); }
   };
 
-  const deletePayment = async (id) => {
-    if (!window.confirm('Remove this payment?')) return;
-    try { await ax.delete(`${API}/payments/${id}`); await load(); }
-    catch (e) { setErr(e?.response?.data?.error || 'Could not remove the payment.'); }
+  const [delPayTarget, setDelPayTarget] = useState(null);
+
+  const deletePayment = async () => {
+    if (!delPayTarget) return;
+    try { await ax.delete(`${API}/payments/${delPayTarget.id}`); await load(); setDelPayTarget(null); }
+    catch (e) { setErr(e?.response?.data?.error || 'Could not remove the payment.'); setDelPayTarget(null); }
   };
 
   const saveRates = async (rates) => {
@@ -126,6 +129,15 @@ export default function LabourAccount({ canEdit }) {
 
   return (
     <div>
+      <ConfirmDialog
+        open={!!delPayTarget}
+        title="Remove this payment?"
+        message={<>Remove payment of <strong style={{ color: 'var(--text)' }}>{fmtRs(delPayTarget?.amount)}</strong>?</>}
+        confirmText="Remove Payment"
+        danger
+        onConfirm={deletePayment}
+        onCancel={() => setDelPayTarget(null)}
+      />
       {/* ── Period and actions ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -261,7 +273,7 @@ export default function LabourAccount({ canEdit }) {
                     <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(p.amount)}</td>
                     {canEdit && (
                       <td style={{ ...TD, textAlign: 'right' }}>
-                        <button className="btn btn-g btn-sm" onClick={() => deletePayment(p.id)} style={{ padding: '3px 7px' }}>
+                        <button className="btn btn-g btn-sm" onClick={() => setDelPayTarget(p)} style={{ padding: '3px 7px' }}>
                           <Trash2 size={12} />
                         </button>
                       </td>

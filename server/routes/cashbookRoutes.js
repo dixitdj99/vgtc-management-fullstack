@@ -35,9 +35,15 @@ router.post('/deposit', async (req, res) => {
 
 // POST /api/cashbook/cash-out
 router.post('/cash-out', async (req, res) => {
-    const { amount, remark, date } = req.body;
+    const { amount, remark, date, entityType, entityId, entityName } = req.body;
     try {
-        const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, getCol(BASE_COL, req));
+        const col = getCol(BASE_COL, req);
+        const extraMeta = {
+            entityType: entityType || 'expense',
+            entityId: entityId || 'office_spend',
+            entityName: entityName || 'Office Spend',
+        };
+        const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, col, extraMeta);
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }

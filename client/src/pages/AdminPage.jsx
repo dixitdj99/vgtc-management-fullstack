@@ -16,6 +16,7 @@ import FirmManager from '../pages/admin/FirmManager';
 import PartyMaster from '../modules/PartyMaster';
 import PermissionEditor from '../components/PermissionEditor';
 import TableScroll from '../components/TableScroll';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
@@ -227,6 +228,7 @@ export default function AdminPage() {
   const [workerBusy, setWorkerBusy] = useState(false);
   const [workerError, setWorkerError] = useState('');
   const [showWorkerPass, setShowWorkerPass] = useState(false);
+  const [delWorkerTarget, setDelWorkerTarget] = useState(null);
 
   const fetchWorkers = async () => {
     try { setWorkers((await ax.get('/labour/workers')).data); }
@@ -243,10 +245,10 @@ export default function AdminPage() {
     finally { setWorkerBusy(false); }
   };
 
-  const handleDeleteWorker = async (id) => {
-    if (!confirm('Delete this labour worker?')) return;
-    try { await ax.delete(`/labour/workers/${id}`); fetchWorkers(); }
-    catch { alert('Delete failed'); }
+  const handleDeleteWorker = async () => {
+    if (!delWorkerTarget) return;
+    try { await ax.delete(`/labour/workers/${delWorkerTarget.id}`); fetchWorkers(); setDelWorkerTarget(null); }
+    catch { alert('Delete failed'); setDelWorkerTarget(null); }
   };
 
   const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi', dump: 'Dump (JK Super General)' };
@@ -313,6 +315,16 @@ export default function AdminPage() {
       <AnimatePresence>
         {delTarget && <DeleteConfirm u={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { setDelTarget(null); fetchUsers(); }} />}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={!!delWorkerTarget}
+        title="Delete this labour worker?"
+        message={<>Delete <strong style={{ color: 'var(--text)' }}>{delWorkerTarget?.name}</strong> (@{delWorkerTarget?.username})? This will permanently remove this worker.</>}
+        confirmText="Delete Worker"
+        danger
+        onConfirm={handleDeleteWorker}
+        onCancel={() => setDelWorkerTarget(null)}
+      />
 
       <div style={{ padding: '0 20px 40px', maxWidth: '1280px', margin: '0 auto' }}>
         {/* ── Page Header ── */}
@@ -621,7 +633,7 @@ export default function AdminPage() {
                           <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{w.name}</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>@{w.username} · <span style={{ color: GODOWN_COLOR[w.godown] || '#6366f1', fontWeight: 700 }}>{GODOWN_LABEL[w.godown] || w.godown}</span></div>
                         </div>
-                        <button className="btn btn-d btn-sm btn-icon" onClick={() => handleDeleteWorker(w.id)} title="Remove worker"><Trash2 size={13} /></button>
+                        <button className="btn btn-d btn-sm btn-icon" onClick={() => setDelWorkerTarget(w)} title="Remove worker"><Trash2 size={13} /></button>
                       </div>
                     ))}
                   </div>
@@ -690,7 +702,7 @@ export default function AdminPage() {
           </form>
         )}
 
-        {/* ── TAB 5: SYSTEM OVERVIEW & FLEET FINANCING ── */}
+        {/* ── TAB 6: SYSTEM OVERVIEW & FLEET FINANCING ── */}
         {activeTab === 'overview' && (
           <AdminDashboard />
         )}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ax from '../../api';
 import { Fuel, Plus, Check, X, Trash2, Edit3, Phone, MapPin, Banknote, Search, User, FileDown, FileCheck } from 'lucide-react';
 import { exportToExcel } from '../../utils/exportUtils';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // Every sheet that can carry a diesel advance. The old list stopped at the
 // Jharli three, so diesel bought against Kosli/Jhajjar/Bahadurgarh bills never
@@ -17,6 +18,7 @@ export default function FuelStationManager() {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [stmtMonth, setStmtMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [delTarget, setDelTarget] = useState(null);
   const [form, setForm] = useState({ name: '', address: '', contactPerson: '', mobileNumbers: [''], dieselRate: '', openingBalance: '' });
 
   const fetchAll = async () => {
@@ -82,10 +84,10 @@ export default function FuelStationManager() {
     finally { setBusy(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this fuel station?')) return;
-    try { await ax.delete(`/profiles/${id}`); fetchAll(); }
-    catch { alert('Delete failed'); }
+  const handleDelete = async () => {
+    if (!delTarget) return;
+    try { await ax.delete(`/profiles/${delTarget.id}`); fetchAll(); setDelTarget(null); }
+    catch { alert('Delete failed'); setDelTarget(null); }
   };
 
   const filtered = stations.filter(s => {
@@ -162,6 +164,15 @@ export default function FuelStationManager() {
 
   return (
     <div>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete this fuel station?"
+        message={<>Delete <strong style={{ color: 'var(--text)' }}>{delTarget?.name}</strong>? This will permanently remove this fuel station from the system.</>}
+        confirmText="Delete Station"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDelTarget(null)}
+      />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -262,7 +273,7 @@ export default function FuelStationManager() {
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={() => openEdit(s)} style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit"><Edit3 size={16} /></button>
-                    <button onClick={() => handleDelete(s.id)} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={16} /></button>
+                    <button onClick={() => setDelTarget(s)} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={16} /></button>
                   </div>
                 </div>
 

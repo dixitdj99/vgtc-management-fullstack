@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Building2, Shield, LayoutDashboard, Users, Settings, Cloud, LogOut, ChevronRight, Menu, Fuel, UserCircle, TrendingUp, Briefcase } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import useViewport from '../../hooks/useViewport';
 import AdminDashboard from './AdminDashboard';
 import AdminUserManagement from './AdminUserManagement';
 import AdminModule from '../../modules/AdminModule';
@@ -18,6 +19,8 @@ export default function AdminLayout() {
     if (saved) return saved;
     return 'dashboard';
   });
+  const { mode } = useViewport();
+  const isMobile = mode === 'mobile';
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [col, setCol] = useState(false);
 
@@ -57,7 +60,7 @@ export default function AdminLayout() {
         borderRight: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)',
         display: 'flex', flexDirection: 'column', transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         position: 'relative', zIndex: 50,
-        ...(window.innerWidth <= 768 && !showMobileMenu ? { transform: 'translateX(-100%)', position: 'absolute' } : {})
+        ...(isMobile && !showMobileMenu ? { transform: 'translateX(-100%)', position: 'absolute' } : {})
       }}>
         {/* Brand */}
         <div style={{ padding: '24px 20px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -111,7 +114,7 @@ export default function AdminLayout() {
           <button onClick={() => setCol(!col)} style={{
             position: 'absolute', right: '-14px', top: '50px', width: '28px', height: '28px',
             borderRadius: '50%', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)',
-            display: window.innerWidth <= 768 ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8',
+            display: isMobile ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8',
             cursor: 'pointer', zIndex: 10
           }}>
             <ChevronRight size={14} style={{ transform: col ? 'none' : 'rotate(180deg)', transition: 'transform 0.3s' }} />
@@ -129,7 +132,7 @@ export default function AdminLayout() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button onClick={() => setShowMobileMenu(true)} style={{
-              display: window.innerWidth <= 768 ? 'flex' : 'none', background: 'none', border: 'none',
+              display: isMobile ? 'flex' : 'none', background: 'none', border: 'none',
               color: 'white', cursor: 'pointer', padding: '8px'
             }}>
               <Menu size={20} />

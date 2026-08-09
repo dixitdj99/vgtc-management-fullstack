@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TableScroll from '../components/TableScroll';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // `available: false` plants still have 'TBD' GSTIN/SAP/plant codes in server plantConfig.js —
 // generating them would print "TBD" on a legal tax invoice, so they stay locked until
@@ -555,15 +556,18 @@ export default function InvoiceModule({ brand = 'dump' }) {
     fetchHistory();
   };
 
+  const [delTarget, setDelTarget] = useState(null);
+
   // ── Delete invoice from history ──
-  const handleDeleteInvoice = async (inv) => {
-    if (!window.confirm(`Delete Bill #${inv.billNo}?`)) return;
+  const handleDeleteInvoice = async () => {
+    if (!delTarget) return;
     try {
-      await ax.post('/invoices/delete', { id: inv.id });
-      setHistoryList(p => p.filter(x => x.id !== inv.id));
+      await ax.post('/invoices/delete', { id: delTarget.id });
+      setHistoryList(p => p.filter(x => x.id !== delTarget.id));
+      setDelTarget(null);
     } catch (e) {
       console.error('Delete failed:', e);
-      alert('Delete failed: ' + (e.response?.data?.error || e.message));
+      setDelTarget(null);
     }
   };
 
@@ -647,6 +651,15 @@ export default function InvoiceModule({ brand = 'dump' }) {
 
   return (
     <div>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete this invoice?"
+        message={<>Delete Bill <strong style={{ color: 'var(--text)' }}>#{delTarget?.billNo}</strong>? This action cannot be undone.</>}
+        confirmText="Delete Invoice"
+        danger
+        onConfirm={handleDeleteInvoice}
+        onCancel={() => setDelTarget(null)}
+      />
       {/* Header */}
       <div className="page-hd">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1139,7 +1152,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
                               style={{ border: 'none', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
                               Edit
                             </button>
-                            <button onClick={() => handleDeleteInvoice(inv)} title="Delete"
+                            <button onClick={() => setDelTarget(inv)} title="Delete"
                               style={{ border: 'none', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
                               Delete
                             </button>
