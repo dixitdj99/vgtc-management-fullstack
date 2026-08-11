@@ -148,6 +148,7 @@ app.use('/api/enquiry', require('./routes/enquiryRoutes'));
 app.use('/api/lr', requireAuth, gate(['lr_dump','bill_kosli','bill_jhajjar','bill_bahadurgarh']), lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
+app.use('/api/destinations', requireAuth, require('./routes/destinationRoutes'));
 app.use('/api/audit', auditRoutes);
 
 // Weather Proxy to avoid CORS

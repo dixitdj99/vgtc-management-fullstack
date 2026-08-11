@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
+  MapPin, Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
   Users, Truck, Eye, EyeOff, ExternalLink, Fuel, Settings, Globe, Mail, Save, Building2, Server,
   BarChart3, TrendingUp, Cloud, LayoutDashboard, UserCircle, Briefcase
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import AdminModule from '../modules/AdminModule';
 import StaffProfileModule from '../modules/StaffProfileModule';
 import FuelStationManager from '../pages/admin/FuelStationManager';
 import FirmManager from '../pages/admin/FirmManager';
+import DestinationManager from '../pages/admin/DestinationManager';
 import PartyMaster from '../modules/PartyMaster';
 import PermissionEditor from '../components/PermissionEditor';
 import TableScroll from '../components/TableScroll';
@@ -343,6 +344,7 @@ export default function AdminPage() {
           {[
             { id: 'users', label: 'Users & Permissions', icon: Users, color: '#6366f1' },
             { id: 'profiles', label: 'Driver & Staff Profiles', icon: UserCircle, color: '#6366f1' },
+            { id: 'destinations', label: 'Destination Rates', icon: MapPin, color: '#3b82f6' },
             { id: 'firms', label: 'Firms & Vendors', icon: Briefcase, color: '#10b981' },
             { id: 'parties', label: 'Party Master', icon: Building2, color: '#8b5cf6' },
             { id: 'workers', label: 'Labour Workers', icon: Truck, color: '#10b981' },
@@ -571,6 +573,9 @@ export default function AdminPage() {
         {/* Driver & staff records. These feed the attendance roll-call and the
             driver dropdown on vouchers, so photos matter here. */}
         {activeTab === 'profiles' && <StaffProfileModule role="admin" />}
+
+        {/* ── DESTINATION FREIGHT RATES ── */}
+        {activeTab === 'destinations' && <DestinationManager />}
 
         {activeTab === 'workers' && (
           <div className="card">

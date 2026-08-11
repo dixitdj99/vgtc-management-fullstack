@@ -11,6 +11,7 @@ import {
   PackageX, Droplets, Undo2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import StyledAutocomplete from '../components/StyledAutocomplete';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { printHtml, receiptLogoCss, receiptLogoHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
@@ -1280,13 +1281,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </div>
                 <div className="field-h">
                   <label>Party Name</label>
-                  <div style={{ position: 'relative', width: '100%' }}>
-                    <input className="fi" type="text" placeholder="Enter customer or party name" list="stock-party-list"
-                      value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
-                    <datalist id="stock-party-list">
-                      {partySuggestions.map(name => <option key={name} value={name} />)}
-                    </datalist>
-                  </div>
+                  <StyledAutocomplete
+                    value={chalForm.partyName}
+                    onChange={val => setChalForm(f => ({ ...f, partyName: resolvePartyName(val, partySuggestions) }))}
+                    options={partySuggestions.map(n => ({ label: String(n).toUpperCase(), value: String(n).toUpperCase() }))}
+                    uppercase
+                    placeholder="ENTER CUSTOMER OR PARTY NAME"
+                  />
                 </div>
                 <div className="field-h">
                   <label>Party Code</label>
