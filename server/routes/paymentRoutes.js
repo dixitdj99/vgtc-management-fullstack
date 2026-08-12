@@ -78,6 +78,8 @@ router.delete('/:id', async (req, res) => {
         console.error('delete payment error:', err);
         res.status(500).json({ error: err.message });
     }
+});
+
 // PATCH a payment
 router.patch('/:id', async (req, res) => {
     try {

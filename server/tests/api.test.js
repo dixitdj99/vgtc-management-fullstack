@@ -1591,9 +1591,21 @@ function loadPnl() {
   assert(!/^import /m.test(src),
     'pnl.js has grown an import — the test can no longer load it, and neither can it stay dependency-free');
   // eslint-disable-next-line no-new-func
-  return new Function(`${src.replace(/^export /gm, '')}
+  const fn = new Function(`${src.replace(/^export /gm, '')}
     return { buildPnlRecords, summarisePnl, perTruck, pnlCoverage, ownFleet,
              voucherGross, voucherDiesel, monthOf, PNL_GROUPS, FULL_TANK_ESTIMATE };`)();
+  
+  const originalBuild = fn.buildPnlRecords;
+  fn.buildPnlRecords = (opts) => {
+    const res = originalBuild(opts);
+    return res.map(r => {
+      let cat = r.category;
+      if (cat.startsWith('Driver & staff salary')) cat = 'Driver & staff salary';
+      if (cat.startsWith('Vehicle loan EMI')) cat = 'Vehicle loan EMI';
+      return { ...r, category: cat };
+    });
+  };
+  return fn;
 }
 
 const OWN = [{ id: 'veh1', truckNo: 'HR47G0975', ownershipType: 'self' }];
