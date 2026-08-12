@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../../api';
-import { MapPin, Plus, X, Trash2, Edit3, Search, Calendar, History, TrendingUp, Check } from 'lucide-react';
+import { MapPin, Plus, X, Trash2, Edit3, Search, Calendar, History, TrendingUp, Check, RefreshCw } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import TableScroll from '../../components/TableScroll';
 
 export default function DestinationManager() {
     const [destinations, setDestinations] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [syncing, setSyncing] = useState(false);
     const [search, setSearch] = useState('');
     
     // Modal states
@@ -39,6 +40,23 @@ export default function DestinationManager() {
             console.error('Failed to fetch destinations', e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSyncDestinations = async () => {
+        setSyncing(true);
+        try {
+            const res = await ax.post('/destinations/sync');
+            const count = res.data?.syncedCount || 0;
+            alert(count > 0 
+                ? `Successfully imported ${count} new destination(s) from vouchers & LRs!` 
+                : 'Destinations are already up to date with vouchers.'
+            );
+            fetchDestinations();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to sync destinations from vouchers');
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -141,9 +159,20 @@ export default function DestinationManager() {
                         Manage destinations, effective date range rate history, and autofill rules for vouchers
                     </p>
                 </div>
-                <button className="btn btn-p" onClick={() => setShowAddDest(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Plus size={16} /> Add New Destination
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button 
+                        className="btn btn-g" 
+                        onClick={handleSyncDestinations} 
+                        disabled={syncing}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                        title="Scan vouchers and LRs for missing destinations and import them automatically"
+                    >
+                        <RefreshCw size={15} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} /> {syncing ? 'Syncing...' : 'Sync from Vouchers'}
+                    </button>
+                    <button className="btn btn-p" onClick={() => setShowAddDest(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Plus size={16} /> Add New Destination
+                    </button>
+                </div>
             </div>
 
             {/* Search & Stats Bar */}
