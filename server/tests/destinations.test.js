@@ -59,9 +59,35 @@ async function runTests() {
     assert.ok(autoRec, 'Should auto-record new destination');
     assert.strictEqual(autoRec.currentRate, 300);
 
+    // Test 6: Sync destinations from vouchers
+    const voucherService = require('../services/voucherService');
+    const syncDestName = 'SYNC_DEST_' + Date.now();
+    await voucherService.createVoucher(orgId, {
+        type: 'test_type',
+        destination: syncDestName,
+        rate: 350,
+        date: '2026-08-12'
+    });
+
+    // Delete auto-recorded entry to simulate pre-existing unsynced voucher
+    const beforeSyncAll = await destinationService.getAllDestinations(orgId, { autoSync: false });
+    const autoCreated = beforeSyncAll.find(d => d.name === syncDestName);
+    if (autoCreated) {
+        await destinationService.deleteDestination(autoCreated.id);
+    }
+
+    const syncRes = await destinationService.syncDestinationsFromVouchers(orgId);
+    assert.ok(syncRes.syncedCount >= 1, 'Should sync at least 1 destination from voucher');
+    
+    const syncedAll = await destinationService.getAllDestinations(orgId, { autoSync: false });
+    const foundSync = syncedAll.find(d => d.name === syncDestName);
+    assert.ok(foundSync, 'Synced destination should exist in master list');
+    assert.strictEqual(foundSync.currentRate, 350);
+
     // Clean up
     if (created.id) await destinationService.deleteDestination(created.id);
     if (autoRec.id) await destinationService.deleteDestination(autoRec.id);
+    if (foundSync && foundSync.id) await destinationService.deleteDestination(foundSync.id);
 
     console.log('✅ Destination Service tests PASSED!');
 }
