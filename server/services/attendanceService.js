@@ -36,7 +36,8 @@ const STATUSES = ['present', 'absent', 'half_day', 'leave'];
 // Defined as an exclusion so a new employee type added later is included by
 // default rather than silently vanishing from the roll-call.
 // 'Firm' — custom-category firms from Admin → Firms & Vendors, companies not people.
-const NON_ATTENDING_TYPES = ['Tyre', 'Manual', 'Pump', 'Labour', 'Firm'];
+// 'Expense' — expense profiles (like Office Spend), not people.
+const NON_ATTENDING_TYPES = ['Tyre', 'Manual', 'Pump', 'Labour', 'Firm', 'Expense'];
 const NON_ATTENDING_LOOKUP = new Set(NON_ATTENDING_TYPES.map(t => t.toLowerCase()));
 const isAttendingType = (type) => !NON_ATTENDING_LOOKUP.has(String(type || '').trim().toLowerCase());
 

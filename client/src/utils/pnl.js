@@ -196,6 +196,7 @@ export function buildPnlRecords(data = {}) {
   const {
     vouchers = [], vehicles = [], payments = [], cashbook = [],
     maintenance = [], tyres = [], tolls = [],
+    profiles = [],
     today = new Date().toISOString().slice(0, 10),
   } = data;
 
@@ -206,6 +207,9 @@ export function buildPnlRecords(data = {}) {
     if (!(r.amount > 0)) return;
     out.push({ fleet: 'firm', truckNo: '', ref: '', location: 'Jharli', ...r, month: monthOf(r.date) });
   };
+
+  // Keep track of salary payments made in each month to calculate pending salaries later
+  const salaryPaidByMonth = {};
 
   // ── Trips ────────────────────────────────────────────────────────────────
   vouchers.forEach((v, i) => {
@@ -269,9 +273,6 @@ export function buildPnlRecords(data = {}) {
   });
 
   // ── Payments from the Pay module ─────────────────────────────────────────
-  // No `truckNo` filter here: payment records have never carried one, and
-  // filtering on it is what used to discard every pump, tyre and workshop
-  // settlement without a word.
   payments.forEach((p, i) => {
     const id = p.id || `p${i}`;
     const who = p.profileName || p.otherProfileName || 'a profile';
@@ -280,8 +281,12 @@ export function buildPnlRecords(data = {}) {
     const amount = num(p.amount);
 
     if (SALARY_CATEGORIES.has(p.category)) {
+      const m = monthOf(p.date);
+      if (m) {
+        salaryPaidByMonth[m] = (salaryPaidByMonth[m] || 0) + amount;
+      }
       push({ ...base, id: `pay-${id}`, kind: 'expense', group: 'people',
-        category: 'Driver & staff salary',
+        category: 'Driver & staff salary (Paid)',
         description: `${p.category} paid to ${who}`, amount });
     } else if (SETTLEMENT_CATEGORIES.has(p.category)) {
       push({ ...base, id: `settle-${id}`, kind: 'settlement', group: 'settlement',
@@ -296,8 +301,6 @@ export function buildPnlRecords(data = {}) {
   });
 
   // ── Cashbook ─────────────────────────────────────────────────────────────
-  // A returned cash-out and its refund cancel each other, so both sides are
-  // skipped rather than counted and then subtracted.
   cashbook.forEach((cb, i) => {
     if (cb.isRefundEntry || cb.isReturned) return;
     const id = cb.id || `cb${i}`;
@@ -315,12 +318,14 @@ export function buildPnlRecords(data = {}) {
     if (cb.type !== 'cash_out') return;
 
     if (cb.entityType === 'driver' || cb.entityType === 'staff') {
+      const m = monthOf(cb.date);
+      if (m) {
+        salaryPaidByMonth[m] = (salaryPaidByMonth[m] || 0) + amount;
+      }
       push({ ...base, id: `cbstaff-${id}`, kind: 'expense', group: 'people',
-        category: 'Driver & staff salary',
+        category: 'Driver & staff salary (Paid)',
         description: cb.remark || `Cash to ${cb.entityName || 'staff'}`, amount });
     } else if (cb.entityType === 'vehicle') {
-      // The mirror of a vehicle advance. Counted here, once — the app writes
-      // the pair together and there is no list-all route for the other side.
       push({ ...base, id: `cbveh-${id}`, kind: 'expense', group: 'running',
         category: 'Driver trip advances',
         description: cb.remark || `Advance against ${truck}`, amount });
@@ -345,33 +350,47 @@ export function buildPnlRecords(data = {}) {
     const bank = emi.bankName || 'the bank';
     const base = { truckNo: truck, fleet: 'own', source: 'vehicle',
       ref: emi.loanNo || 'EMI', location: plantOf({ truckNo: truck }),
-      kind: 'expense', group: 'finance', category: 'Vehicle loan EMI' };
+      kind: 'expense', group: 'finance' };
     const schedule = emi.schedule || [];
 
     if (schedule.length > 0) {
-      // An installment is a cost once its due date passes, whether or not
-      // anyone has ticked it off — which is how EmiScheduleTracker reads it.
       schedule.forEach(it => {
         const fallen = it.status === 'paid' || (it.dueDate && it.dueDate <= today);
         if (!fallen) return;
+        const isPaid = it.status === 'paid';
         push({ ...base, id: `emi-${veh.id || i}-${it.installmentNo}`,
           date: it.paymentDate || it.dueDate,
-          description: `EMI #${it.installmentNo} on ${truck} to ${bank}`,
+          category: isPaid ? 'Vehicle loan EMI (Paid)' : 'Vehicle loan EMI (Pending)',
+          description: `EMI #${it.installmentNo} on ${truck} to ${bank}${isPaid ? '' : ' — unpaid'}`,
           amount: num(it.amount) || due });
       });
       return;
     }
     if ((emi.paidEmis || []).length > 0) {
+      const paidSet = new Set(emi.paidEmis);
       emi.paidEmis.forEach(m => {
         push({ ...base, id: `emi-${veh.id || i}-${m}`, date: `${m}-05`,
+          category: 'Vehicle loan EMI (Paid)',
           description: `EMI on ${truck} to ${bank}`, amount: due });
       });
+      if (emi.startDate && due > 0) {
+        const tenure = parseInt(emi.tenure, 10) || 0;
+        let n = elapsedMonths(emi.startDate, emi.emiDay, today);
+        if (tenure > 0) n = Math.min(n, tenure);
+        for (let k = 1; k <= n; k++) {
+          const emiDate = addMonths(emi.startDate, k, emi.emiDay);
+          const emiMonth = emiDate.slice(0, 7);
+          if (!paidSet.has(emiMonth)) {
+            push({ ...base, id: `emi-${veh.id || i}-auto-pending-${k}`,
+              date: emiDate,
+              category: 'Vehicle loan EMI (Pending)',
+              description: `EMI on ${truck} to ${bank} — unpaid`,
+              amount: due });
+          }
+        }
+      }
       return;
     }
-    // No schedule was ever generated. The loan is still being repaid, so
-    // accrue one instalment a month, capped at the tenure. The first falls due
-    // a month after the start date, which is where handleGenerateSchedule puts
-    // it — off by one here and every accrued date would name the wrong month.
     if (emi.startDate && due > 0) {
       const tenure = parseInt(emi.tenure, 10) || 0;
       let n = elapsedMonths(emi.startDate, emi.emiDay, today);
@@ -379,7 +398,8 @@ export function buildPnlRecords(data = {}) {
       for (let k = 1; k <= n; k++) {
         push({ ...base, id: `emi-${veh.id || i}-auto${k}`,
           date: addMonths(emi.startDate, k, emi.emiDay),
-          description: `EMI on ${truck} to ${bank} — from the loan terms, no schedule recorded`,
+          category: 'Vehicle loan EMI (Pending)',
+          description: `EMI on ${truck} to ${bank} — unpaid`,
           amount: due });
       }
     }
@@ -397,10 +417,6 @@ export function buildPnlRecords(data = {}) {
   });
 
   tyres.forEach((t, i) => {
-    // A tyre is a cost when it is bought. Stock not yet fitted is still the
-    // firm's money, so it counts firm-wide — but one fitted to a truck the firm
-    // does not own is the owner's tyre, and charging it here buried the sheet
-    // under a fleet the firm never paid for.
     const truck = upper(t.fitment?.truckNo);
     if (truck && !own.has(truck)) return;
     push({ id: `tyre-${t.id || i}`, date: t.purchaseDate, kind: 'expense', group: 'running',
@@ -420,6 +436,79 @@ export function buildPnlRecords(data = {}) {
       description: `Toll on ${truck}${t.route ? ` — ${t.route}` : ''}`,
       amount: num(t.amount) });
   });
+
+  // ── Accrue Pending Salaries ──────────────────────────────────────────────
+  const allMonths = new Set();
+  payments.forEach(p => { const m = monthOf(p.date); if (m) allMonths.add(m); });
+  cashbook.forEach(cb => { const m = monthOf(cb.date); if (m) allMonths.add(m); });
+  vouchers.forEach(v => { const m = monthOf(v.date); if (m) allMonths.add(m); });
+  profiles.forEach(p => {
+    const m = monthOf(p.dateJoined);
+    if (m) allMonths.add(m);
+  });
+
+  allMonths.forEach(m => {
+    let earnedTotal = 0;
+    profiles.forEach(p => {
+      if (p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour') {
+        earnedTotal += calculateMonthlySalary(p, m);
+      }
+    });
+
+    const paidTotal = salaryPaidByMonth[m] || 0;
+    const pendingTotal = earnedTotal - paidTotal;
+    if (pendingTotal > 0) {
+      push({
+        id: `sal-pending-${m}`,
+        date: `${m}-28`,
+        kind: 'expense',
+        group: 'people',
+        category: 'Driver & staff salary (Pending)',
+        description: `Pending staff & driver salary accrued for ${m}`,
+        amount: pendingTotal,
+      });
+    }
+  });
+
+  function calculateMonthlySalary(profile, yyyyMm) {
+    const { dateJoined, dateExit, fixedSalary, leaves = [] } = profile;
+    if (!dateJoined || !fixedSalary) return 0;
+    
+    const [year, month] = yyyyMm.split('-').map(Number);
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+    const monthEnd = new Date(Date.UTC(year, month, 0));
+    
+    const joinDate = new Date(dateJoined);
+    const exitDate = dateExit ? new Date(dateExit) : null;
+    
+    if (joinDate > monthEnd || (exitDate && exitDate < monthStart)) return 0;
+    
+    const start = joinDate < monthStart ? monthStart : joinDate;
+    const end = (exitDate && exitDate < monthEnd) ? exitDate : monthEnd;
+    
+    const diffTime = Math.abs(end - start);
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    
+    let leaveDays = 0;
+    (leaves || []).forEach(l => {
+      if (l.start && l.end) {
+        const lStart = new Date(l.start);
+        const lEnd = new Date(l.end);
+        if (!isNaN(lStart.getTime()) && !isNaN(lEnd.getTime())) {
+          if (lStart <= end && lEnd >= start) {
+            const actualStart = lStart < start ? start : lStart;
+            const actualEnd = lEnd > end ? end : lEnd;
+            const lDiff = Math.abs(actualEnd - actualStart);
+            leaveDays += Math.ceil(lDiff / (1000 * 60 * 60 * 24)) + 1;
+          }
+        }
+      }
+    });
+    
+    const workingDays = Math.max(0, totalDays - leaveDays);
+    const perDaySalary = (parseFloat(fixedSalary) || 0) / 30;
+    return Math.round(perDaySalary * workingDays);
+  }
 
   return out.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 }

@@ -37,6 +37,7 @@ const SOURCES = [
   ['maintenance', '/maintenance', 'Maintenance'],
   ['tyres', '/tyres', 'Tyres'],
   ['tolls', '/tolls', 'Tolls'],
+  ['profiles', '/profiles', 'Profiles'],
 ];
 
 const CARD = {

@@ -818,8 +818,15 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                   {r.entityType && r.entityName && (() => {
                     const EIcon = ENTITY_ICON[r.entityType] || User;
                     return (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '3px', padding: '1px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.08)', fontSize: '10.5px', fontWeight: 700, color: 'var(--primary)' }}>
-                        <EIcon size={11} /> {r.entityName}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.08)', fontSize: '10.5px', fontWeight: 700, color: 'var(--primary)' }}>
+                          <EIcon size={11} /> {r.entityName}
+                        </div>
+                        {r.type === 'cash_out' && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', padding: '1px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 800, background: r.isCleared ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: r.isCleared ? 'var(--accent)' : 'var(--danger)' }}>
+                            {r.isCleared ? 'Deducted from last pay' : 'Pending deduction'}
+                          </span>
+                        )}
                       </div>
                     );
                   })()}
