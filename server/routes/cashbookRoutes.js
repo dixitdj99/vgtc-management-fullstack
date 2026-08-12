@@ -19,7 +19,40 @@ const sheetsService = require('../utils/sheetsService');
 router.get('/', async (req, res) => {
     try {
         const data = await svc.getAll(req.orgId, getCol(BASE_COL, req));
-        res.json(data);
+        
+        // Fetch advances and payments to determine clearance status
+        let advances = [];
+        let payments = [];
+        if (!isAvailable()) {
+            advances = localStore.getAll(ADVANCES_COL).filter(d => d.orgId === req.orgId);
+            payments = localStore.getAll(PAYMENTS_COL).filter(d => d.orgId === req.orgId);
+        } else {
+            const advSnap = await db.collection(getCol(ADVANCES_COL, req)).where('orgId', '==', req.orgId).get();
+            advances = advSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            const paySnap = await db.collection(getCol(PAYMENTS_COL, req)).where('orgId', '==', req.orgId).get();
+            payments = paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
+
+        const clearedAdvances = new Set(advances.filter(a => a.isCleared).map(a => a.id));
+        const clearedPayments = new Set(payments.filter(p => p.isCleared).map(p => p.id));
+        
+        const clearedCbEntriesFromAdv = new Set(advances.filter(a => a.isCleared && a.cashbookEntryId).map(a => a.cashbookEntryId));
+        const clearedCbEntriesFromPay = new Set(payments.filter(p => p.isCleared && p.cashbookEntryId).map(p => p.cashbookEntryId));
+
+        const enriched = data.map(entry => {
+            let isCleared = false;
+            if (entry.linkedAdvanceId && clearedAdvances.has(entry.linkedAdvanceId)) {
+                isCleared = true;
+            } else if (entry.linkedPaymentId && clearedPayments.has(entry.linkedPaymentId)) {
+                isCleared = true;
+            } else if (clearedCbEntriesFromAdv.has(entry.id) || clearedCbEntriesFromPay.has(entry.id)) {
+                isCleared = true;
+            }
+            return { ...entry, isCleared };
+        });
+
+        res.json(enriched);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

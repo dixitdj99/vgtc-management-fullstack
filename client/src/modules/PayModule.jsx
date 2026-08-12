@@ -1938,8 +1938,11 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                                 return credits;
                                             })(),
                                             ...firmPayments.filter(p => p.profileId === showLedger.id).map(p => ({
+                                                id: p.id,
                                                 date: new Date(p.date),
                                                 desc: `${p.category}: ${p.remark}`,
+                                                category: p.category,
+                                                isCleared: p.isCleared,
                                                 credit: 0,
                                                 debit: parseFloat(p.amount || 0)
                                             }))
@@ -1950,7 +1953,27 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                             return (
                                                 <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
                                                     <td style={{ padding: '12px' }}>{e.date.toLocaleDateString()}</td>
-                                                    <td style={{ padding: '12px' }}>{e.desc}</td>
+                                                    <td style={{ padding: '12px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                                            <span>{e.desc}</span>
+                                                            {e.category === 'Advance' && (
+                                                                <button
+                                                                    className={`btn btn-sm ${e.isCleared ? 'btn-g' : 'btn-p'}`}
+                                                                    style={{ fontSize: '9px', padding: '2px 6px', height: 'auto', border: 'none', cursor: 'pointer' }}
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            await ax.patch(`/payments/${e.id}`, { isCleared: !e.isCleared });
+                                                                            fetchFirmPayments();
+                                                                        } catch (err) {
+                                                                            alert('Failed to update status');
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {e.isCleared ? '✓ Deducted' : 'Deduct from Pay'}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
                                                     <td style={{ padding: '12px', textAlign: 'right', color: 'var(--primary)', fontWeight: 600 }}>{e.credit > 0 ? `₹${e.credit.toLocaleString()}` : '-'}</td>
                                                     <td style={{ padding: '12px', textAlign: 'right', color: 'var(--danger)', fontWeight: 600 }}>{e.debit > 0 ? `₹${e.debit.toLocaleString()}` : '-'}</td>
                                                     <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800 }}>₹{runningBalance.toLocaleString()}</td>

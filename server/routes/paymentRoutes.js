@@ -78,6 +78,26 @@ router.delete('/:id', async (req, res) => {
         console.error('delete payment error:', err);
         res.status(500).json({ error: err.message });
     }
+// PATCH a payment
+router.patch('/:id', async (req, res) => {
+    try {
+        if (!isAvailable()) {
+            const doc = localStore.getAll(PAYMENTS_COL).find(d => d.id === req.params.id && d.orgId === req.orgId);
+            if (!doc) return res.status(404).json({ error: 'Payment not found' });
+            localStore.update(PAYMENTS_COL, req.params.id, req.body);
+        } else {
+            const ref = db.collection(getCol(PAYMENTS_COL, req)).doc(req.params.id);
+            const doc = await ref.get();
+            if (!doc.exists || doc.data().orgId !== req.orgId) {
+                return res.status(404).json({ error: 'Payment not found' });
+            }
+            await ref.update(req.body);
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('update payment error:', err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 module.exports = router;
