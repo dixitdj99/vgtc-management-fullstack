@@ -923,33 +923,37 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             ))}
                         </select>
                     </div>
-                    <div className="field-h">
-                        <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
-                        <StyledAutocomplete
-                            value={form.destination}
-                            onChange={val => {
-                                const autoRate = lookupDestinationRate(val, form.date);
-                                setForm(f => ({
-                                    ...f,
-                                    destination: val,
-                                    ...(autoRate > 0 ? { rate: String(autoRate) } : {})
-                                }));
-                            }}
-                            options={destinationOptions}
-                            uppercase
-                            placeholder="ENTER DESTINATION"
-                        />
-                    </div>
-                    <div className="field-h">
-                        <label><Building2 size={11} style={{ marginRight: '4px' }} /> Party Name</label>
-                        <StyledAutocomplete
-                            value={form.partyName}
-                            onChange={val => setPartyName(val)}
-                            options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
-                            uppercase
-                            placeholder="ENTER PARTY NAME"
-                        />
-                    </div>
+                    {!isMultiLr && (
+                        <div className="field-h">
+                            <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
+                            <StyledAutocomplete
+                                value={form.destination}
+                                onChange={val => {
+                                    const autoRate = lookupDestinationRate(val, form.date);
+                                    setForm(f => ({
+                                        ...f,
+                                        destination: val,
+                                        ...(autoRate > 0 ? { rate: String(autoRate) } : {})
+                                    }));
+                                }}
+                                options={destinationOptions}
+                                uppercase
+                                placeholder="ENTER DESTINATION"
+                            />
+                        </div>
+                    )}
+                    {!isMultiLr && (
+                        <div className="field-h">
+                            <label><Building2 size={11} style={{ marginRight: '4px' }} /> Party Name</label>
+                            <StyledAutocomplete
+                                value={form.partyName}
+                                onChange={val => setPartyName(val)}
+                                options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                                uppercase
+                                placeholder="ENTER PARTY NAME"
+                            />
+                        </div>
+                    )}
                     {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill') && (
                         <>
                             <div className="field-h">
@@ -1835,33 +1839,37 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             </div>
 
-                                            <div className="field-h">
-                                                <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
-                                                <StyledAutocomplete
-                                                    value={form.destination}
-                                                    onChange={val => {
-                                                        const autoRate = lookupDestinationRate(val, form.date);
-                                                        setForm(f => ({
-                                                            ...f,
-                                                            destination: val,
-                                                            ...(autoRate > 0 ? { rate: String(autoRate) } : {})
-                                                        }));
-                                                    }}
-                                                    options={destinationOptions}
-                                                    uppercase
-                                                    placeholder={vType.includes('Bill') ? 'Auto-filled from LR or type' : 'ENTER CITY / DESTINATION'}
-                                                />
-                                            </div>
-                                            <div className="field-h">
-                                                <label><Building2 size={11} style={{ marginRight: '4px' }} /> Party Name</label>
-                                                <StyledAutocomplete
-                                                    value={form.partyName}
-                                                    onChange={val => handlePartyNameChange(val)}
-                                                    options={knownPartyNames.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
-                                                    uppercase
-                                                    placeholder="ENTER PARTY NAME"
-                                                />
-                                            </div>
+                                            {!isFactory && (
+                                                <div className="field-h">
+                                                    <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
+                                                    <StyledAutocomplete
+                                                        value={form.destination}
+                                                        onChange={val => {
+                                                            const autoRate = lookupDestinationRate(val, form.date);
+                                                            setForm(f => ({
+                                                                ...f,
+                                                                destination: val,
+                                                                ...(autoRate > 0 ? { rate: String(autoRate) } : {})
+                                                            }));
+                                                        }}
+                                                        options={destinationOptions}
+                                                        uppercase
+                                                        placeholder={vType.includes('Bill') ? 'Auto-filled from LR or type' : 'ENTER CITY / DESTINATION'}
+                                                    />
+                                                </div>
+                                            )}
+                                            {!isFactory && (
+                                                <div className="field-h">
+                                                    <label><Building2 size={11} style={{ marginRight: '4px' }} /> Party Name</label>
+                                                    <StyledAutocomplete
+                                                        value={form.partyName}
+                                                        onChange={val => handlePartyNameChange(val)}
+                                                        options={knownPartyNames.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                                                        uppercase
+                                                        placeholder="ENTER PARTY NAME"
+                                                    />
+                                                </div>
+                                            )}
                                             {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
                                                 <>
                                                     <div className="field-h">

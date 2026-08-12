@@ -3,9 +3,9 @@ import ReactDOM from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 
 /**
- * StyledAutocomplete — Clean white theme dropdown autocomplete component
- * matching the user's design reference with portal positioning, auto-uppercase,
- * crisp dark typography, row dividers, and zero table/container clipping.
+ * StyledAutocomplete — Theme-aware dropdown autocomplete component.
+ * Uses CSS custom properties (--bg-card, --border, --text, --primary, etc.)
+ * so it automatically adapts to light, dark, sepia and any future themes.
  */
 export default function StyledAutocomplete({
     value = '',
@@ -126,6 +126,16 @@ export default function StyledAutocomplete({
         }
     };
 
+    // Read the current theme's CSS variables for portal dropdown
+    // We read from the document element since the portal is appended to body
+    const getVar = (name) => {
+        try {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        } catch {
+            return '';
+        }
+    };
+
     return (
         <div ref={containerRef} style={{ position: 'relative', width: '100%', ...style }} className={className}>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
@@ -176,7 +186,7 @@ export default function StyledAutocomplete({
                 />
             </div>
 
-            {/* Clean White Theme Dropdown Portal */}
+            {/* Theme-aware dropdown portal */}
             {isOpen && !disabled && ReactDOM.createPortal(
                 <div
                     className="styled-autocomplete-portal"
@@ -186,18 +196,19 @@ export default function StyledAutocomplete({
                         left: coords.left,
                         width: coords.width,
                         zIndex: 999999,
-                        background: '#ffffff',
-                        border: '1px solid #e2e8f0',
+                        background: getVar('--bg-card') || '#ffffff',
+                        border: `1px solid ${getVar('--border') || '#e2e8f0'}`,
                         borderRadius: '10px',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        boxShadow: getVar('--shadow-md') || '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.08)',
                         maxHeight: '240px',
                         overflowY: 'auto',
                         padding: '4px 0',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        // Scrollbar styling via inline won't work, but container still looks clean
                     }}
                 >
                     {filteredOptions.length === 0 ? (
-                        <div style={{ padding: '10px 14px', fontSize: '12.5px', color: '#94a3b8', textAlign: 'center', fontWeight: 500 }}>
+                        <div style={{ padding: '10px 14px', fontSize: '12.5px', color: getVar('--text-muted') || '#94a3b8', textAlign: 'center', fontWeight: 500 }}>
                             No matching items
                         </div>
                     ) : (
@@ -205,6 +216,12 @@ export default function StyledAutocomplete({
                             const isSelected = String(value || '').toUpperCase() === opt.value.toUpperCase();
                             const isHighlighted = idx === highlightIndex;
                             const isLast = idx === filteredOptions.length - 1;
+                            const primary = getVar('--primary') || '#4f46e5';
+                            const bgCard = getVar('--bg-card') || '#ffffff';
+                            const bgHover = getVar('--bg-hover') || '#f1f5f9';
+                            const bgActive = getVar('--bg-active') || '#eef2ff';
+                            const borderRow = getVar('--border-row') || '#f1f5f9';
+                            const textColor = getVar('--text') || '#0f172a';
                             return (
                                 <div
                                     key={opt.value + '_' + idx}
@@ -216,14 +233,14 @@ export default function StyledAutocomplete({
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        justify: 'space-between',
+                                        justifyContent: 'space-between',
                                         padding: '9px 14px',
                                         fontSize: '13px',
                                         fontWeight: 700,
-                                        color: isSelected ? '#4f46e5' : '#0f172a',
+                                        color: isSelected ? primary : textColor,
                                         cursor: 'pointer',
-                                        background: isHighlighted ? '#f1f5f9' : isSelected ? '#eef2ff' : '#ffffff',
-                                        borderBottom: isLast ? 'none' : '1px solid #f1f5f9',
+                                        background: isHighlighted ? bgHover : isSelected ? bgActive : bgCard,
+                                        borderBottom: isLast ? 'none' : `1px solid ${borderRow}`,
                                         transition: 'background 0.1s ease',
                                         letterSpacing: uppercase ? '0.04em' : 'normal'
                                     }}
@@ -231,12 +248,12 @@ export default function StyledAutocomplete({
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span>{opt.label}</span>
                                         {opt.sublabel && (
-                                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                                            <span style={{ fontSize: '11px', color: getVar('--text-muted') || '#64748b', fontWeight: 600 }}>
                                                 ({opt.sublabel})
                                             </span>
                                         )}
                                     </div>
-                                    {isSelected && <Check size={14} color="#4f46e5" />}
+                                    {isSelected && <Check size={14} color={primary} />}
                                 </div>
                             );
                         })
