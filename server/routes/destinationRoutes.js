@@ -9,8 +9,25 @@ router.use(requireAuth, tenancyMiddleware);
 // GET /api/destinations — List all destinations
 router.get('/', async (req, res) => {
     try {
-        const destinations = await destinationService.getAllDestinations(req.orgId);
+        const shouldSync = req.query.sync === 'true';
+        let destinations = await destinationService.getAllDestinations(req.orgId, { autoSync: shouldSync });
+        if (destinations.length === 0 && !shouldSync) {
+            const synced = await destinationService.syncDestinationsFromVouchers(req.orgId);
+            if (synced.syncedCount > 0) {
+                destinations = await destinationService.getAllDestinations(req.orgId, { autoSync: false });
+            }
+        }
         res.json(destinations);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/destinations/sync — Sync destinations from existing vouchers & LRs
+router.post('/sync', async (req, res) => {
+    try {
+        const result = await destinationService.syncDestinationsFromVouchers(req.orgId);
+        res.json(result);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

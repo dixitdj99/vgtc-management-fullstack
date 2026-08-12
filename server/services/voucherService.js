@@ -5,6 +5,33 @@ const firebaseAvailable = () => isAvailable();
 
 const COLLECTION_VOUCHERS = 'vouchers';
 
+const autoRecordFromVoucher = async (orgId, voucherData) => {
+    if (!orgId) return;
+    try {
+        const destinationService = require('./destinationService');
+        const vDate = voucherData.date || new Date().toISOString().split('T')[0];
+        if (Array.isArray(voucherData.deliveries) && voucherData.deliveries.length > 0) {
+            for (const d of voucherData.deliveries) {
+                if (d.destination) {
+                    await destinationService.autoRecordDestination(orgId, {
+                        name: d.destination,
+                        rate: d.rate,
+                        date: vDate
+                    });
+                }
+            }
+        } else if (voucherData.destination) {
+            await destinationService.autoRecordDestination(orgId, {
+                name: voucherData.destination,
+                rate: voucherData.rate,
+                date: vDate
+            });
+        }
+    } catch (e) {
+        console.error('[Voucher-Hook] Auto-record destination failed:', e.message);
+    }
+};
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 const createVoucher = async (orgId, data, col = COLLECTION_VOUCHERS) => {
@@ -15,6 +42,8 @@ const createVoucher = async (orgId, data, col = COLLECTION_VOUCHERS) => {
         orgId,
         partyName: normalizePartyName(voucherData.partyName || '')
     };
+
+    await autoRecordFromVoucher(orgId, finalData).catch(() => {});
 
     if (firebaseAvailable()) {
         const ref = db.collection(col).doc();
@@ -99,6 +128,16 @@ const updateVoucher = async (id, data, col = COLLECTION_VOUCHERS) => {
             payload.onlinePaidDate = null;
             console.log(`[Voucher] Online advance on ${id} changed ${before} -> ${after}; clearing the paid mark so it returns to the pay list.`);
         }
+    }
+
+    if (payload.destination || Array.isArray(payload.deliveries)) {
+        try {
+            const existing = await getVoucherById(id, col);
+            const orgId = payload.orgId || existing?.orgId;
+            if (orgId) {
+                await autoRecordFromVoucher(orgId, { ...existing, ...payload });
+            }
+        } catch (e) {}
     }
 
     if (firebaseAvailable()) {

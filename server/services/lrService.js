@@ -252,6 +252,16 @@ const localGetAll = (orgId, lrCollection = COLLECTION_LR) => {
 // ── Public API — auto-selects Firebase or local ────────────────────────────────
 
 const createLoadingReceipt = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = COLLECTION_METADATA) => {
+    if (data && data.destination) {
+        try {
+            const destinationService = require('./destinationService');
+            destinationService.autoRecordDestination(orgId, {
+                name: data.destination,
+                rate: data.rate || 0,
+                date: data.date
+            }).catch(() => {});
+        } catch (e) {}
+    }
     if (firebaseAvailable()) return await firestoreCreate(orgId, data, lrCollection, counterCollection);
     // for local store, if the collection is jkl_loading_receipts, use jkl_lr_no for counter
     const localCounter = lrCollection === COLLECTION_LR ? 'lr_no' : lrCollection + '_counter';

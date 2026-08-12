@@ -128,13 +128,22 @@ const localDelete = (id) => {
 
 // ── Public Service API ─────────────────────────────────────────────────────────
 
-const getAllDestinations = async (orgId) => {
-    if (firebaseAvailable()) return await firestoreGetAll(orgId);
-    return localGetAll(orgId);
+const getAllDestinations = async (orgId, { autoSync = false } = {}) => {
+    let list = [];
+    if (firebaseAvailable()) list = await firestoreGetAll(orgId);
+    else list = localGetAll(orgId);
+
+    if (autoSync && list.length === 0) {
+        await syncDestinationsFromVouchers(orgId);
+        if (firebaseAvailable()) list = await firestoreGetAll(orgId);
+        else list = localGetAll(orgId);
+    }
+
+    return list;
 };
 
 const getDestinationById = async (orgId, id) => {
-    const all = await getAllDestinations(orgId);
+    const all = await getAllDestinations(orgId, { autoSync: false });
     return all.find(d => d.id === id) || null;
 };
 
@@ -142,7 +151,7 @@ const createDestination = async (orgId, data) => {
     const name = String(data.name || '').trim().toUpperCase();
     if (!name) throw new Error('Destination name is required');
 
-    const all = await getAllDestinations(orgId);
+    const all = await getAllDestinations(orgId, { autoSync: false });
     if (all.some(d => d.name === name)) {
         throw new Error(`Destination "${name}" already exists`);
     }
@@ -236,7 +245,7 @@ const deleteDestination = async (id) => {
 const getRateForDate = async (orgId, name, dateStr) => {
     if (!name) return 0;
     const cleanName = String(name).trim().toUpperCase();
-    const all = await getAllDestinations(orgId);
+    const all = await getAllDestinations(orgId, { autoSync: false });
     const dest = all.find(d => d.name === cleanName);
     if (!dest) return 0;
 
@@ -246,7 +255,7 @@ const getRateForDate = async (orgId, name, dateStr) => {
 const autoRecordDestination = async (orgId, { name, rate, date }) => {
     if (!name) return null;
     const cleanName = String(name).trim().toUpperCase();
-    const all = await getAllDestinations(orgId);
+    const all = await getAllDestinations(orgId, { autoSync: false });
     const existing = all.find(d => d.name === cleanName);
 
     if (existing) {
@@ -264,6 +273,110 @@ const autoRecordDestination = async (orgId, { name, rate, date }) => {
     });
 };
 
+/**
+ * Scans all existing vouchers and LRs for the organization, extracts unique non-empty
+ * destination names with their latest rates and dates, and populates any missing
+ * destination entries into the destinations master collection.
+ */
+const syncDestinationsFromVouchers = async (orgId) => {
+    let vouchers = [];
+    try {
+        const voucherService = require('./voucherService');
+        vouchers = await voucherService.getAllVouchers(orgId);
+    } catch (err) {
+        console.error('[destinationService] Failed to load vouchers for sync:', err.message);
+    }
+
+    let lrs = [];
+    try {
+        const lrService = require('./lrService');
+        const collections = [
+            'loading_receipts',
+            'jkl_loading_receipts',
+            'kosli_loading_receipts',
+            'jhajjar_loading_receipts',
+            'bahadurgarh_loading_receipts'
+        ];
+        for (const col of collections) {
+            try {
+                const list = await lrService.getAllLoadingReceipts(orgId, col);
+                if (Array.isArray(list)) lrs.push(...list);
+            } catch (e) {
+                // ignore missing collections
+            }
+        }
+    } catch (err) {
+        console.error('[destinationService] Failed to load LRs for sync:', err.message);
+    }
+
+    const destMap = new Map();
+
+    const processItem = (name, rate, date) => {
+        if (!name || typeof name !== 'string') return;
+        const cleanName = name.trim().toUpperCase();
+        if (!cleanName) return;
+
+        const numericRate = Number(rate) || 0;
+        const itemDate = date || new Date().toISOString().split('T')[0];
+
+        if (!destMap.has(cleanName)) {
+            destMap.set(cleanName, { name: cleanName, rate: numericRate, date: itemDate });
+        } else {
+            const existing = destMap.get(cleanName);
+            if ((!existing.rate && numericRate > 0) || (itemDate > existing.date && numericRate > 0)) {
+                destMap.set(cleanName, { name: cleanName, rate: numericRate, date: itemDate });
+            }
+        }
+    };
+
+    // Extract from vouchers
+    for (const v of vouchers) {
+        const vDate = v.date || (v.createdAt ? new Date(v.createdAt).toISOString().split('T')[0] : '');
+        if (Array.isArray(v.deliveries) && v.deliveries.length > 0) {
+            for (const d of v.deliveries) {
+                processItem(d.destination, d.rate, vDate);
+            }
+        } else if (v.destination) {
+            processItem(v.destination, v.rate, vDate);
+        }
+    }
+
+    // Extract from LRs
+    for (const lr of lrs) {
+        const lrDate = lr.date || (lr.createdAt ? new Date(lr.createdAt).toISOString().split('T')[0] : '');
+        if (lr.destination) {
+            processItem(lr.destination, lr.rate, lrDate);
+        }
+    }
+
+    const existingDests = await getAllDestinations(orgId, { autoSync: false });
+    const existingNames = new Set(existingDests.map(d => (d.name || '').trim().toUpperCase()));
+
+    const added = [];
+    for (const [cleanName, info] of destMap.entries()) {
+        if (!existingNames.has(cleanName)) {
+            try {
+                const created = await createDestination(orgId, {
+                    name: info.name,
+                    rate: info.rate,
+                    startDate: info.date || new Date().toISOString().split('T')[0],
+                    endDate: null
+                });
+                added.push(created);
+                existingNames.add(cleanName);
+            } catch (e) {
+                console.error(`[destinationService] Error syncing destination "${cleanName}":`, e.message);
+            }
+        }
+    }
+
+    return {
+        syncedCount: added.length,
+        addedDestinations: added,
+        totalFoundInVouchers: destMap.size
+    };
+};
+
 module.exports = {
     getAllDestinations,
     getDestinationById,
@@ -274,4 +387,6 @@ module.exports = {
     getRateForDate,
     autoRecordDestination,
     lookupRateForDate,
+    syncDestinationsFromVouchers,
 };
+
