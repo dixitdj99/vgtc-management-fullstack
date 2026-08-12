@@ -122,9 +122,9 @@ const triggerEventSms = async (eventKey, data, req = null) => {
     const evt = config.events?.[eventKey];
     if (!evt || !evt.enabled || !evt.template) return;
 
-    let phone = data.driverMobile || data.mobile || data.phone || '';
+    let phone = data.driverMobile || data.driverPhone || data.partyPhone || data.mobile || data.phone || '';
     if (eventKey === 'cashout' || eventKey === 'deposit') {
-        phone = data.entityMobile || data.phone || '';
+        phone = data.entityMobile || data.driverPhone || data.phone || '';
     }
 
     if (!phone) return;
