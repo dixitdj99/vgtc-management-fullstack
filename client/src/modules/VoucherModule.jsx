@@ -4,8 +4,9 @@ import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Search, MapPin, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
+import { FileText, Search, MapPin, Building2, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import StyledAutocomplete from '../components/StyledAutocomplete';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
@@ -762,25 +763,26 @@ function ExtraMoneyList({ extras = [], onChange }) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, pumpOptions = [], driverOptions = [] }) {
+function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, pumpOptions = [], driverOptions = [], lookupDestinationRate = () => 0, destinationOptions = [] }) {
     const [form, setForm] = useState({
         // Older vouchers pre-date the driver field and have only a name, so fall
         // back to matching that name against the roster to pre-select the row.
         driverId: v.driverId || driverOptions.find(d => d.name === v.driverName)?.id || '',
         driverName: v.driverName || '',
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
-        weight: v.weight, bags: v.bags, rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
+        weight: v.weight ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)) : '') ?? '',
+        bags: v.bags ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)) : '') ?? '',
+        rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
         startKm: v.startKm || '', endKm: v.endKm || '',
-        // A voucher covering several LRs prices each drop separately. Editing has
-        // to reach them, or the rate shown on the sheet cannot be corrected.
-        deliveries: (v.deliveries || []).map(d => ({ ...d })),
+        deliveries: (v.deliveries || []).map(d => ({
+            ...d,
+            bags: d.bags ?? (v.deliveries?.length === 1 && v.bags ? v.bags : '') ?? '',
+            weight: d.weight ?? (v.deliveries?.length === 1 && v.weight ? v.weight : '') ?? ''
+        })),
         tyrePuncture: v.tyrePuncture || '',
-        // Older vouchers split this across tyreGreasing and tyreAir, and getNet
-        // still adds all three. Show the sum, or the field reads empty on a
-        // voucher that is plainly deducting for greasing.
         tyreGreasingAir: (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) || '',
         extras: readExtras(v),
     });
@@ -792,7 +794,19 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
 
     const isMultiLr = form.deliveries.length > 0;
     const setDelivery = (i, key, val) =>
-        S('deliveries', form.deliveries.map((d, j) => (j === i ? { ...d, [key]: val } : d)));
+        S('deliveries', form.deliveries.map((d, j) => {
+            if (j !== i) return d;
+            const updated = { ...d, [key]: val };
+            if (key === 'bags') {
+                updated.weight = val ? (parseFloat(val) * 0.05).toFixed(2) : '';
+            } else if (key === 'weight') {
+                updated.bags = val ? String(Math.round(parseFloat(val) * 20)) : '';
+            } else if (key === 'destination' && val) {
+                const autoRate = lookupDestinationRate(val, form.date);
+                if (autoRate > 0) updated.rate = String(autoRate);
+            }
+            return updated;
+        }));
     const deliveriesGross = form.deliveries.reduce(
         (s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0);
 
@@ -822,11 +836,6 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
 
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
-        // A multi-LR voucher's weight and total come from the drops. Running
-        // getCalc on the blank top-level weight would have written total: 0 and
-        // wiped the freight — which is why editing a rate here appeared not to
-        // save: the number went in and the figure everything else reads went to
-        // nothing.
         const totalWeight = isMultiLr
             ? form.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
             : form.weight;
@@ -843,14 +852,24 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                 ...form,
                 partyName: resolvePartyName(form.partyName, partySuggestions),
                 ...calc,
-                // The greasing field above holds the sum of the legacy pair, so
-                // clear them or the old amounts get deducted a second time.
                 tyreGreasing: '', tyreAir: '',
-                // Deliberately not blanking the tyre fields for a market truck:
-                // isSelf reads a vehicle list that loads asynchronously, and a
-                // modal opened before it arrives would wipe a real charge.
                 ...extrasPayload(form.extras),
             });
+
+            // Auto-record destination if new
+            const dests = isMultiLr
+                ? form.deliveries.map(d => ({ name: d.destination, rate: d.rate }))
+                : [{ name: form.destination, rate: form.rate }];
+            for (const item of dests) {
+                if (item.name) {
+                    await ax.post('/destinations/record', {
+                        name: item.name,
+                        rate: item.rate,
+                        date: form.date
+                    }).catch(() => {});
+                }
+            }
+
             onSave();
         } catch { alert('Update failed'); } finally { setSaving(false); }
     };
@@ -905,17 +924,31 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         </select>
                     </div>
                     <div className="field-h">
-                        <label>Destination</label>
-                        <input className="fi" type="text" value={form.destination} onChange={e => S('destination', e.target.value)} />
+                        <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
+                        <StyledAutocomplete
+                            value={form.destination}
+                            onChange={val => {
+                                const autoRate = lookupDestinationRate(val, form.date);
+                                setForm(f => ({
+                                    ...f,
+                                    destination: val,
+                                    ...(autoRate > 0 ? { rate: String(autoRate) } : {})
+                                }));
+                            }}
+                            options={destinationOptions}
+                            uppercase
+                            placeholder="ENTER DESTINATION"
+                        />
                     </div>
                     <div className="field-h">
-                        <label>Party Name</label>
-                        <div style={{ position: 'relative', width: '100%' }}>
-                            <input className="fi" type="text" value={form.partyName} onChange={e => setPartyName(e.target.value)} list={`voucher-party-list-${v.id}`} />
-                            <datalist id={`voucher-party-list-${v.id}`}>
-                                {partySuggestions.map(name => <option key={name} value={name} />)}
-                            </datalist>
-                        </div>
+                        <label><Building2 size={11} style={{ marginRight: '4px' }} /> Party Name</label>
+                        <StyledAutocomplete
+                            value={form.partyName}
+                            onChange={val => setPartyName(val)}
+                            options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                            uppercase
+                            placeholder="ENTER PARTY NAME"
+                        />
                     </div>
                     {(v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill') && (
                         <>
@@ -961,8 +994,28 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                                             return (
                                                 <tr key={i}>
                                                     <td style={{ padding: '4px 8px' }}>{cell('lrNo', '70px')}</td>
-                                                    <td style={{ padding: '4px 8px' }}>{cell('destination', '120px')}</td>
-                                                    <td style={{ padding: '4px 8px' }}>{cell('partyName', '120px')}</td>
+                                                    <td style={{ padding: '4px 8px' }}>
+                                                        <input
+                                                            className="fi"
+                                                            type="text"
+                                                            placeholder="DESTINATION"
+                                                            value={d.destination || ''}
+                                                            onChange={e => setDelivery(i, 'destination', e.target.value.toUpperCase())}
+                                                            list={`voucher-dest-list-edit-${v.id}`}
+                                                            style={{ width: '120px', padding: '4px 7px', fontSize: '12px', height: '30px', textTransform: 'uppercase', fontWeight: 700 }}
+                                                        />
+                                                    </td>
+                                                    <td style={{ padding: '4px 8px' }}>
+                                                        <input
+                                                            className="fi"
+                                                            type="text"
+                                                            placeholder="PARTY"
+                                                            value={d.partyName || ''}
+                                                            onChange={e => setDelivery(i, 'partyName', e.target.value.toUpperCase())}
+                                                            list={`voucher-party-list-edit-${v.id}`}
+                                                            style={{ width: '120px', padding: '4px 7px', fontSize: '12px', height: '30px', textTransform: 'uppercase', fontWeight: 700 }}
+                                                        />
+                                                    </td>
                                                     <td style={{ padding: '4px 8px' }}>{cell('bags', '70px', 'number')}</td>
                                                     <td style={{ padding: '4px 8px' }}>{cell('weight', '80px', 'number')}</td>
                                                     <td style={{ padding: '4px 8px' }}>{cell('rate', '75px', 'number')}</td>
@@ -1197,6 +1250,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             // Auto-compute bags when weight changes and vice-versa
             if (key === 'weight' && val) updated.bags = String(Math.round(parseFloat(val) * 20));
             if (key === 'bags' && val) updated.weight = (parseFloat(val) * 0.05).toFixed(2);
+            if (key === 'destination' && val) {
+                const autoRate = lookupDestinationRate(val, form.date);
+                if (autoRate > 0) updated.rate = String(autoRate);
+            }
             return updated;
         }));
     };
@@ -1219,8 +1276,69 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [fetchingKm, setFetchingKm] = useState(false);
     const [vgtcTrucks, setVgtcTrucks] = useState(new Set()); // truck numbers owned by Vikas Goods Transport
     const [vehicleNumbers, setVehicleNumbers] = useState([]);
+    const [destinationsList, setDestinationsList] = useState([]);
 
-    // Fetch vehicle registry and profiles
+    const lookupDestinationRate = useCallback((name, date) => {
+        if (!name) return 0;
+        const cleanName = String(name).trim().toUpperCase();
+        const dest = destinationsList.find(d => (d.name || '').trim().toUpperCase() === cleanName);
+        if (!dest) return 0;
+        const targetDate = (date || new Date().toISOString().split('T')[0]).slice(0, 10);
+        const history = dest.rateHistory || [];
+        for (const period of history) {
+            const start = (period.startDate || '').slice(0, 10);
+            const end = (period.endDate || '').slice(0, 10);
+            if (start && targetDate >= start) {
+                if (!end || targetDate <= end) {
+                    return Number(period.rate) || 0;
+                }
+            }
+        }
+        const sorted = [...history].sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')));
+        let lastRate = 0;
+        for (const period of sorted) {
+            const start = (period.startDate || '').slice(0, 10);
+            if (start && targetDate >= start) {
+                lastRate = Number(period.rate) || 0;
+            }
+        }
+        if (lastRate) return lastRate;
+        return dest.currentRate || Number(sorted[0]?.rate) || 0;
+    }, [destinationsList]);
+
+    const destinationOptions = useMemo(() => {
+        const masterMap = new Map();
+        (destinationsList || []).forEach(d => {
+            const name = (d.name || '').toUpperCase().trim();
+            if (name) {
+                masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
+            }
+        });
+
+        const voucherDestinations = new Set();
+        (vouchers || []).forEach(v => {
+            if (v.destination && String(v.destination).trim()) {
+                voucherDestinations.add(String(v.destination).trim().toUpperCase());
+            }
+            if (Array.isArray(v.deliveries)) {
+                v.deliveries.forEach(d => {
+                    if (d.destination && String(d.destination).trim()) {
+                        voucherDestinations.add(String(d.destination).trim().toUpperCase());
+                    }
+                });
+            }
+        });
+
+        const allNames = new Set([...masterMap.keys(), ...voucherDestinations]);
+
+        return Array.from(allNames).sort().map(name => ({
+            label: name,
+            value: name,
+            sublabel: masterMap.get(name) || ''
+        }));
+    }, [destinationsList, vouchers]);
+
+    // Fetch vehicle registry, profiles and destinations
     const refreshData = useCallback(() => {
         ax.get('/vehicles').then(r => {
             const numbers = [...new Set((r.data || []).map(v => cleanTruckNo(v.truckNo)).filter(Boolean))].sort();
@@ -1234,6 +1352,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         }).catch(() => { });
 
         ax.get('/profiles').then(r => setProfiles(r.data || [])).catch(() => { });
+        ax.get('/destinations').then(r => setDestinationsList(r.data || [])).catch(() => { });
     }, []);
 
     useEffect(() => {
@@ -1487,6 +1606,21 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             const res = await ax.post(API_V, payload);
             rememberSticky('voucher.date', form.date);
             if (!lockedType && !isGeneric) rememberSticky('voucher.type', vType);
+
+            // Auto-record destination if new
+            const destsToRecord = hasMultiDelivery
+                ? validDeliveries.map(d => ({ name: d.destination, rate: d.rate }))
+                : [{ name: form.destination, rate: form.rate }];
+            for (const item of destsToRecord) {
+                if (item.name) {
+                    await ax.post('/destinations/record', {
+                        name: item.name,
+                        rate: item.rate,
+                        date: form.date
+                    }).catch(() => {});
+                }
+            }
+
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             const newVoucher = res.data;
             setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [] }));
@@ -1584,7 +1718,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 message={`Are you sure you want to create a new Voucher for LR #${form.lrNo}?`}
                 isSaving={saving}
             />
-            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} driverOptions={driverOptions} isVGTCTruck={isVGTCTruck} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} driverOptions={driverOptions} isVGTCTruck={isVGTCTruck} lookupDestinationRate={lookupDestinationRate} destinationOptions={destinationOptions} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
 
             {/* Duplicate LR popup */}
@@ -1667,12 +1801,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             )}
                                             <div className="field-h">
                                                 <label>Truck No. *</label>
-                                                <div style={{ position: 'relative', width: '100%' }}>
-                                                    <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'} value={form.truckNo} onChange={e => handleTruckNoChange(e.target.value)} required list="voucher-truck-list" />
-                                                    <datalist id="voucher-truck-list">
-                                                        {vehicleNumbers.map(no => <option key={no} value={no} />)}
-                                                    </datalist>
-                                                </div>
+                                                <StyledAutocomplete
+                                                    value={form.truckNo}
+                                                    onChange={val => handleTruckNoChange(cleanTruckNo(val))}
+                                                    options={vehicleNumbers}
+                                                    uppercase
+                                                    placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter truck number'}
+                                                    required
+                                                />
                                             </div>
                                             <div className="field-h">
                                                 <label>Driver</label>
@@ -1698,21 +1834,34 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                             : 'No drivers yet. Add them under Staff Profiles.'}
                                                 </div>
                                             </div>
-                                            {!isFactory && <>
-                                                <div className="field-h">
-                                                    <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
-                                                    <input className="fi" type="text" placeholder={vType.includes('Bill') ? 'Auto-filled from LR' : 'Enter city'} value={form.destination} onChange={e => set('destination', e.target.value)} />
-                                                </div>
-                                                <div className="field-h">
-                                                    <label>Party Name</label>
-                                                    <div style={{ position: 'relative', width: '100%' }}>
-                                                        <input className="fi" type="text" placeholder="Auto-filled from LR" value={form.partyName} onChange={e => handlePartyNameChange(e.target.value)} list="voucher-party-list" />
-                                                        <datalist id="voucher-party-list">
-                                                            {knownPartyNames.map(name => <option key={name} value={name} />)}
-                                                        </datalist>
-                                                    </div>
-                                                </div>
-                                            </>}
+
+                                            <div className="field-h">
+                                                <label><MapPin size={11} style={{ marginRight: '4px' }} /> Destination</label>
+                                                <StyledAutocomplete
+                                                    value={form.destination}
+                                                    onChange={val => {
+                                                        const autoRate = lookupDestinationRate(val, form.date);
+                                                        setForm(f => ({
+                                                            ...f,
+                                                            destination: val,
+                                                            ...(autoRate > 0 ? { rate: String(autoRate) } : {})
+                                                        }));
+                                                    }}
+                                                    options={destinationOptions}
+                                                    uppercase
+                                                    placeholder={vType.includes('Bill') ? 'Auto-filled from LR or type' : 'ENTER CITY / DESTINATION'}
+                                                />
+                                            </div>
+                                            <div className="field-h">
+                                                <label><Building2 size={11} style={{ marginRight: '4px' }} /> Party Name</label>
+                                                <StyledAutocomplete
+                                                    value={form.partyName}
+                                                    onChange={val => handlePartyNameChange(val)}
+                                                    options={knownPartyNames.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                                                    uppercase
+                                                    placeholder="ENTER PARTY NAME"
+                                                />
+                                            </div>
                                             {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
                                                 <>
                                                     <div className="field-h">
@@ -1798,19 +1947,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                                                     }} />
                                                                                 {isDupLR && <div style={{ fontSize: '9px', color: '#f43f5e', fontWeight: 800, marginTop: '2px' }}>⚠ Already used</div>}
                                                                             </td>
-                                                                            <td style={{ padding: '5px 8px' }}>
-                                                                                <input className="fi" type="text" placeholder="City / Party" value={d.destination}
-                                                                                    onChange={e => updateDelivery(idx, 'destination', e.target.value)}
-                                                                                    style={{ width: '130px', padding: '4px 7px', fontSize: '12px' }} />
+                                                                            <td style={{ padding: '5px 8px', minWidth: '130px' }}>
+                                                                                <StyledAutocomplete
+                                                                                    value={d.destination || ''}
+                                                                                    onChange={val => updateDelivery(idx, 'destination', val)}
+                                                                                    options={destinationOptions}
+                                                                                    uppercase
+                                                                                    placeholder="DESTINATION"
+                                                                                    inputStyle={{ height: '30px', fontSize: '12px', padding: '4px 7px' }}
+                                                                                />
                                                                             </td>
-                                                                            <td style={{ padding: '5px 8px' }}>
-                                                                                <input className="fi" type="text" placeholder="Party name" value={d.partyName}
-                                                                                    onChange={e => updateDelivery(idx, 'partyName', e.target.value)}
-                                                                                    list={`del-party-${idx}`}
-                                                                                    style={{ width: '150px', padding: '4px 7px', fontSize: '12px' }} />
-                                                                                <datalist id={`del-party-${idx}`}>
-                                                                                    {knownPartyNames.map(n => <option key={n} value={n} />)}
-                                                                                </datalist>
+                                                                            <td style={{ padding: '5px 8px', minWidth: '140px' }}>
+                                                                                <StyledAutocomplete
+                                                                                    value={d.partyName || ''}
+                                                                                    onChange={val => updateDelivery(idx, 'partyName', val)}
+                                                                                    options={knownPartyNames.map(n => ({ label: String(n).toUpperCase(), value: String(n).toUpperCase() }))}
+                                                                                    uppercase
+                                                                                    placeholder="PARTY NAME"
+                                                                                    inputStyle={{ height: '30px', fontSize: '12px', padding: '4px 7px' }}
+                                                                                />
                                                                             </td>
                                                                             <td style={{ padding: '5px 8px', textAlign: 'right' }}>
                                                                                 <input className="fi" type="number" step="0.01" placeholder="0.00" value={d.weight}
@@ -2156,12 +2311,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px' }}>{d.weight || '—'}</span>)}
-                                                    {/* The lines above are one destination each; this is the load.
-                                                        Spelled out — a sigma reads as noise to anyone who did not
-                                                        put it there. */}
-                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
-                                                        Total {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0).toFixed(2)}
-                                                    </span>
+                                                    {v.deliveries.length > 1 && (
+                                                        <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                                                            Total {v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0).toFixed(2)}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 : v.weight}
                                         </td>
@@ -2169,9 +2323,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'flex-end' }}>
                                                     {v.deliveries.map((d, di) => <span key={di} style={{ fontSize: '11px', fontWeight: 700 }}>{d.bags || '—'}</span>)}
-                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
-                                                        Total {v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0).toLocaleString('en-IN')}
-                                                    </span>
+                                                    {v.deliveries.length > 1 && (
+                                                        <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 900, borderTop: '1px solid var(--border)', paddingTop: '1px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                                                            Total {v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0).toLocaleString('en-IN')}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 : <><div style={{ fontWeight: 700 }}>{(parseFloat(v.bags) || 0).toLocaleString()}</div>
                                                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{((parseFloat(v.bags) || 0) * 0.05).toFixed(2)} MT</div></>}

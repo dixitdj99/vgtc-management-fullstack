@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CreditCard, Plus, Trash2, Search, Filter, AlertCircle, CheckCircle2, DollarSign, ArrowUpRight, ArrowDownLeft, X } from 'lucide-react';
 import ax from '../api';
 import { fmtRs } from '../utils/format';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function VehicleCreditDebitModule() {
   const [advances, setAdvances] = useState([]);
@@ -71,13 +72,16 @@ export default function VehicleCreditDebitModule() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this vehicle advance record?')) return;
+  const [delTarget, setDelTarget] = useState(null);
+
+  const handleDelete = async () => {
+    if (!delTarget) return;
     try {
-      await ax.delete(`/vehicle-advances/${id}`);
+      await ax.delete(`/vehicle-advances/${delTarget.id}`);
       fetchData();
+      setDelTarget(null);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete record');
+      setDelTarget(null);
     }
   };
 
@@ -125,6 +129,15 @@ export default function VehicleCreditDebitModule() {
 
   return (
     <div className="module-wrap" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete advance record?"
+        message={<>Delete advance record for truck <strong style={{ color: 'var(--text)' }}>{delTarget?.truckNo}</strong> ({fmtRs(delTarget?.amount)})?</>}
+        confirmText="Delete Record"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDelTarget(null)}
+      />
       {/* Page Header */}
       <div className="page-hd" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -302,7 +315,7 @@ export default function VehicleCreditDebitModule() {
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                       <button
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => setDelTarget(item)}
                         title="Delete entry"
                         style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '6px', borderRadius: '6px', cursor: 'pointer' }}
                       >

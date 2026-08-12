@@ -11,6 +11,7 @@ import {
   PackageX, Droplets, Undo2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import StyledAutocomplete from '../components/StyledAutocomplete';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { printHtml, receiptLogoCss, receiptLogoHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
@@ -18,6 +19,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
 import EwayBillPanel from '../components/EwayBillPanel';
 import TableScroll from '../components/TableScroll';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -428,12 +430,17 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       fetchAll();
     } catch (er) { alert(er.response?.data?.error || 'Failed to add material'); }
   };
-  const handleDeleteMaterial = async (id, name) => {
-    if (!window.confirm(`Delete material type "${name}"? Existing records will not be affected.`)) return;
+  const [delTransferTarget, setDelTransferTarget] = useState(null);
+
+  const handleDeleteTransfer = async () => {
+    if (!delTransferTarget) return;
     try {
-      await ax.delete(`${API}/materials/${id}`);
-      fetchAll();
-    } catch (er) { alert(er.response?.data?.error || 'Failed to delete material'); }
+      await ax.delete('/stock-transfers/' + delTransferTarget.id);
+      fetchTransfers();
+      setDelTransferTarget(null);
+    } catch {
+      setDelTransferTarget(null);
+    }
   };
 
   /* ── stock math per material ── */
@@ -868,6 +875,15 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   return (
     <div>
+      <ConfirmDialog
+        open={!!delTransferTarget}
+        title="Delete this stock transfer?"
+        message="Delete this transfer? (Note: Stock adjustments will NOT be reversed)"
+        confirmText="Delete Transfer"
+        danger
+        onConfirm={handleDeleteTransfer}
+        onCancel={() => setDelTransferTarget(null)}
+      />
       {/* Delete confirm */}
       <AnimatePresence>
         {delTarget && (
@@ -1265,13 +1281,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 </div>
                 <div className="field-h">
                   <label>Party Name</label>
-                  <div style={{ position: 'relative', width: '100%' }}>
-                    <input className="fi" type="text" placeholder="Enter customer or party name" list="stock-party-list"
-                      value={chalForm.partyName} onChange={e => setChalForm(f => ({ ...f, partyName: resolvePartyName(e.target.value, partySuggestions) }))} />
-                    <datalist id="stock-party-list">
-                      {partySuggestions.map(name => <option key={name} value={name} />)}
-                    </datalist>
-                  </div>
+                  <StyledAutocomplete
+                    value={chalForm.partyName}
+                    onChange={val => setChalForm(f => ({ ...f, partyName: resolvePartyName(val, partySuggestions) }))}
+                    options={partySuggestions.map(n => ({ label: String(n).toUpperCase(), value: String(n).toUpperCase() }))}
+                    uppercase
+                    placeholder="ENTER CUSTOMER OR PARTY NAME"
+                  />
                 </div>
                 <div className="field-h">
                   <label>Party Code</label>
@@ -1583,7 +1599,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                       <td style={TD}>{t.remark || '—'}</td>
                       {role === 'admin' && (
                         <td style={{ ...TD, textAlign: 'center' }}>
-                          <button className="btn btn-d btn-icon btn-sm" onClick={async () => { if (window.confirm('Delete this transfer? (Note: Stock adjustments will NOT be reversed)')) { try { await ax.delete('/stock-transfers/' + t.id); fetchTransfers(); } catch { alert('Delete failed'); } }}} title="Delete"><Trash2 size={12} /></button>
+                          <button className="btn btn-d btn-icon btn-sm" onClick={() => setDelTransferTarget(t)} title="Delete"><Trash2 size={12} /></button>
                         </td>
                       )}
                     </tr>

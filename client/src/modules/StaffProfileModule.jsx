@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Search, Building2, User, Phone, MapPin, Banknote, Calendar, Shield, Truck, Settings, Route, Loader2, X as XIcon } from 'lucide-react';
 import ax from '../api';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const PUMP_BRANDS = ['Jio', 'Nayara', 'Indian Oil', 'HP', 'Bharat'];
 const BRAND_LOGOS = {
@@ -111,13 +112,13 @@ function PhotoPicker({ value, name, onChange }) {
 // People only. Tyre / Manual firms moved to Admin → Firms & Vendors; fuel
 // pumps live under Admin → Fuel Stations. Same profiles collection behind all
 // three screens — this list only controls what THIS screen creates and shows.
-const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour'];
+const PROFILE_TYPES = ['Driver', 'Office Staff', 'Labour', 'Others'];
 // Vendor-type profiles: no salary formula, no leaves. Kept for rendering any
 // legacy vendor profile that still carries these types.
 const VENDOR_TYPES = ['Tyre', 'Manual'];
 // Managed on their own admin screens, never listed or created here.
 const NON_STAFF_TYPES = ['pump', 'tyre', 'manual', 'firm'];
-const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver'];
+const DEPARTMENTS = ['Office', 'Dump', 'Accountant', 'Electrician', 'Labour', 'Driver', 'Others'];
 
 const calculateMonthsAndDays = (joined, exit) => {
     if (!joined) return 'N/A';
@@ -277,14 +278,17 @@ const StaffProfileModule = ({ role }) => {
 
     const isPump = (type) => type?.toLowerCase() === 'pump';
 
-    const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this profile?')) return;
+    const [delTarget, setDelTarget] = useState(null);
+
+    const handleDelete = async () => {
+        if (!delTarget) return;
         try {
-            await ax.delete(`/profiles/${id}`);
+            await ax.delete(`/profiles/${delTarget.id}`);
             fetchProfiles();
+            setDelTarget(null);
         } catch (err) {
             console.error('Error deleting profile', err);
-            alert('Failed to delete profile');
+            setDelTarget(null);
         }
     };
 
@@ -417,7 +421,16 @@ const StaffProfileModule = ({ role }) => {
     if (loading) return <div style={{ padding: '20px' }}>Loading Profiles...</div>;
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', color: 'var(--text)' }}>
+        <div style={{ paddingBottom: '32px' }}>
+            <ConfirmDialog
+                open={!!delTarget}
+                title="Delete this profile?"
+                message={<>Delete <strong style={{ color: 'var(--text)' }}>{delTarget?.name}</strong> ({delTarget?.type})? This action cannot be undone.</>}
+                confirmText="Delete Profile"
+                danger
+                onConfirm={handleDelete}
+                onCancel={() => setDelTarget(null)}
+            />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px var(--primary-glow)' }}>
@@ -477,7 +490,7 @@ const StaffProfileModule = ({ role }) => {
                                             )}
                                             <button onClick={() => setShowLedger(p)} style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="View Ledger"><Banknote size={16} /></button>
                                             <button onClick={() => openModal(p)} style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit2 size={16} /></button>
-                                            <button onClick={() => handleDelete(p.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={16} /></button>
+                                            <button onClick={() => setDelTarget(p)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={16} /></button>
                                         </div>
                                     )}
                                 </div>

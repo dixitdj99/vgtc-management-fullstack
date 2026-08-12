@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
+  MapPin, Shield, Plus, Trash2, User, Lock, AlertTriangle, X, Check, RefreshCw, Crown,
   Users, Truck, Eye, EyeOff, ExternalLink, Fuel, Settings, Globe, Mail, Save, Building2, Server,
   BarChart3, TrendingUp, Cloud, LayoutDashboard, UserCircle, Briefcase
 } from 'lucide-react';
@@ -13,9 +13,11 @@ import AdminModule from '../modules/AdminModule';
 import StaffProfileModule from '../modules/StaffProfileModule';
 import FuelStationManager from '../pages/admin/FuelStationManager';
 import FirmManager from '../pages/admin/FirmManager';
+import DestinationManager from '../pages/admin/DestinationManager';
 import PartyMaster from '../modules/PartyMaster';
 import PermissionEditor from '../components/PermissionEditor';
 import TableScroll from '../components/TableScroll';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const API = `/users`;
 const ROLES = ['user', 'admin'];
@@ -227,6 +229,7 @@ export default function AdminPage() {
   const [workerBusy, setWorkerBusy] = useState(false);
   const [workerError, setWorkerError] = useState('');
   const [showWorkerPass, setShowWorkerPass] = useState(false);
+  const [delWorkerTarget, setDelWorkerTarget] = useState(null);
 
   const fetchWorkers = async () => {
     try { setWorkers((await ax.get('/labour/workers')).data); }
@@ -243,10 +246,10 @@ export default function AdminPage() {
     finally { setWorkerBusy(false); }
   };
 
-  const handleDeleteWorker = async (id) => {
-    if (!confirm('Delete this labour worker?')) return;
-    try { await ax.delete(`/labour/workers/${id}`); fetchWorkers(); }
-    catch { alert('Delete failed'); }
+  const handleDeleteWorker = async () => {
+    if (!delWorkerTarget) return;
+    try { await ax.delete(`/labour/workers/${delWorkerTarget.id}`); fetchWorkers(); setDelWorkerTarget(null); }
+    catch { alert('Delete failed'); setDelWorkerTarget(null); }
   };
 
   const GODOWN_LABEL = { kosli: 'Kosli Godown', jhajjar: 'Jhajjar Godown', jkl: 'JK Lakshmi', dump: 'Dump (JK Super General)' };
@@ -314,6 +317,16 @@ export default function AdminPage() {
         {delTarget && <DeleteConfirm u={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { setDelTarget(null); fetchUsers(); }} />}
       </AnimatePresence>
 
+      <ConfirmDialog
+        open={!!delWorkerTarget}
+        title="Delete this labour worker?"
+        message={<>Delete <strong style={{ color: 'var(--text)' }}>{delWorkerTarget?.name}</strong> (@{delWorkerTarget?.username})? This will permanently remove this worker.</>}
+        confirmText="Delete Worker"
+        danger
+        onConfirm={handleDeleteWorker}
+        onCancel={() => setDelWorkerTarget(null)}
+      />
+
       <div style={{ padding: '0 20px 40px', maxWidth: '1280px', margin: '0 auto' }}>
         {/* ── Page Header ── */}
         <div className="page-hd" style={{ marginBottom: '20px' }}>
@@ -331,6 +344,7 @@ export default function AdminPage() {
           {[
             { id: 'users', label: 'Users & Permissions', icon: Users, color: '#6366f1' },
             { id: 'profiles', label: 'Driver & Staff Profiles', icon: UserCircle, color: '#6366f1' },
+            { id: 'destinations', label: 'Destination Rates', icon: MapPin, color: '#3b82f6' },
             { id: 'firms', label: 'Firms & Vendors', icon: Briefcase, color: '#10b981' },
             { id: 'parties', label: 'Party Master', icon: Building2, color: '#8b5cf6' },
             { id: 'workers', label: 'Labour Workers', icon: Truck, color: '#10b981' },
@@ -560,6 +574,9 @@ export default function AdminPage() {
             driver dropdown on vouchers, so photos matter here. */}
         {activeTab === 'profiles' && <StaffProfileModule role="admin" />}
 
+        {/* ── DESTINATION FREIGHT RATES ── */}
+        {activeTab === 'destinations' && <DestinationManager />}
+
         {activeTab === 'workers' && (
           <div className="card">
             <div className="card-header" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -621,7 +638,7 @@ export default function AdminPage() {
                           <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>{w.name}</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>@{w.username} · <span style={{ color: GODOWN_COLOR[w.godown] || '#6366f1', fontWeight: 700 }}>{GODOWN_LABEL[w.godown] || w.godown}</span></div>
                         </div>
-                        <button className="btn btn-d btn-sm btn-icon" onClick={() => handleDeleteWorker(w.id)} title="Remove worker"><Trash2 size={13} /></button>
+                        <button className="btn btn-d btn-sm btn-icon" onClick={() => setDelWorkerTarget(w)} title="Remove worker"><Trash2 size={13} /></button>
                       </div>
                     ))}
                   </div>
@@ -690,7 +707,7 @@ export default function AdminPage() {
           </form>
         )}
 
-        {/* ── TAB 5: SYSTEM OVERVIEW & FLEET FINANCING ── */}
+        {/* ── TAB 6: SYSTEM OVERVIEW & FLEET FINANCING ── */}
         {activeTab === 'overview' && (
           <AdminDashboard />
         )}

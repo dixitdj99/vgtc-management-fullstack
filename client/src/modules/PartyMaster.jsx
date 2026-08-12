@@ -4,6 +4,7 @@ import ax from '../api';
 import { Building2, Plus, Search, MapPin, Phone, Mail, Edit3, Trash2, ArrowLeft, Briefcase, FileText, CheckCircle2, XCircle, BookOpen, Loader2, X as XIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PARTY_BRANDS } from '../utils/partyBrands';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -97,13 +98,16 @@ export default function PartyMaster() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this party?')) return;
+  const [delTarget, setDelTarget] = useState(null);
+
+  const handleDelete = async () => {
+    if (!delTarget) return;
     try {
-      await ax.delete(`/parties/${id}`);
+      await ax.delete(`/parties/${delTarget.id}`);
       fetchParties();
+      setDelTarget(null);
     } catch (err) {
-      alert('Failed to delete');
+      setDelTarget(null);
     }
   };
 
@@ -121,7 +125,16 @@ export default function PartyMaster() {
   const untaggedCount = parties.filter(p => brandsOf(p).length === 0).length;
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete this party?"
+        message={<>Delete party <strong style={{ color: 'var(--text)' }}>{delTarget?.name}</strong>? This action cannot be undone.</>}
+        confirmText="Delete Party"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDelTarget(null)}
+      />
       
       {/* Header with quick action */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
@@ -210,7 +223,7 @@ export default function PartyMaster() {
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button onClick={() => openLedger(party)} title="View Party Ledger" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: '4px' }}><BookOpen size={14} /></button>
                   <button onClick={() => handleOpenModal(party)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}><Edit3 size={14} /></button>
-                  <button onClick={() => handleDelete(party.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f43f5e', padding: '4px' }}><Trash2 size={14} /></button>
+                  <button onClick={() => setDelTarget(party)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f43f5e', padding: '4px' }}><Trash2 size={14} /></button>
                 </div>
               </div>
 

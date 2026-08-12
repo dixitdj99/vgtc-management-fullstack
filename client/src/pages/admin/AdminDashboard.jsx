@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Truck, Server, HardDrive, ShieldCheck, Activity, ChevronRight } from 'lucide-react';
+import { Users, Truck, Server, HardDrive, ShieldCheck, Activity, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ax from '../../api';
 
@@ -11,6 +11,7 @@ export default function AdminDashboard() {
     selfVehiclesList: [],
     loading: true
   });
+  const [error, setError] = useState(null);
 
   const parseJson = (str) => {
     try {
@@ -31,27 +32,31 @@ export default function AdminDashboard() {
     return Math.max(0, m);
   };
 
+  const fetchStats = async () => {
+    setStats(s => ({ ...s, loading: true }));
+    setError(null);
+    try {
+      const [uRes, lRes, vRes] = await Promise.all([
+        ax.get('/users').catch(() => ({ data: [] })),
+        ax.get('/labour/workers').catch(() => ({ data: [] })),
+        ax.get('/vehicles').catch(() => ({ data: [] }))
+      ]);
+      const allVehicles = vRes.data || [];
+      const selfList = allVehicles.filter(v => v.ownershipType === 'self');
+      setStats({
+        users: uRes.data.length || 0,
+        labour: lRes.data.length || 0,
+        vehicles: allVehicles.length || 0,
+        selfVehiclesList: selfList,
+        loading: false
+      });
+    } catch (err) {
+      setError('Failed to load dashboard statistics. Please try again.');
+      setStats(s => ({ ...s, loading: false }));
+    }
+  };
+
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [uRes, lRes, vRes] = await Promise.all([
-          ax.get('/users').catch(() => ({ data: [] })),
-          ax.get('/labour/workers').catch(() => ({ data: [] })),
-          ax.get('/vehicles').catch(() => ({ data: [] }))
-        ]);
-        const allVehicles = vRes.data || [];
-        const selfList = allVehicles.filter(v => v.ownershipType === 'self');
-        setStats({
-          users: uRes.data.length || 0,
-          labour: lRes.data.length || 0,
-          vehicles: allVehicles.length || 0,
-          selfVehiclesList: selfList,
-          loading: false
-        });
-      } catch (err) {
-        setStats(s => ({ ...s, loading: false }));
-      }
-    };
     fetchStats();
   }, []);
 
@@ -71,21 +76,57 @@ export default function AdminDashboard() {
       }}>
         <Icon size={26} />
       </div>
-      <div>
+      <div style={{ flex: 1 }}>
         <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{label}</div>
-        <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-          {stats.loading ? <span style={{ opacity: 0.2 }}>--</span> : value}
-        </div>
+        {stats.loading ? (
+          <div style={{ width: '70px', height: '32px', borderRadius: '8px', background: 'linear-gradient(90deg, var(--border) 25%, rgba(255,255,255,0.08) 50%, var(--border) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+        ) : (
+          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+            {value}
+          </div>
+        )}
       </div>
     </motion.div>
   );
 
   return (
     <div style={{ paddingBottom: '40px' }}>
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>System Overview</h1>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Real-time statistics and system health indicators.</p>
+      <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+      <div style={{ marginBottom: '32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>System Overview</h1>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Real-time statistics and system health indicators.</p>
+        </div>
+        <button
+          onClick={fetchStats}
+          disabled={stats.loading}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '10px',
+            border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-sub)',
+            fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit',
+            transition: 'all 0.2s'
+          }}
+        >
+          <RefreshCw size={14} className={stats.loading ? 'ani-spin' : ''} /> Refresh
+        </button>
       </div>
+
+      {error && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', borderRadius: '12px',
+          background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)',
+          color: '#fb7185', fontSize: '13px', fontWeight: 600, marginBottom: '24px'
+        }}>
+          <AlertTriangle size={18} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button
+            onClick={fetchStats}
+            style={{ background: 'none', border: 'none', color: '#fb7185', cursor: 'pointer', fontWeight: 800, fontSize: '12px', fontFamily: 'inherit', textDecoration: 'underline' }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Top Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginBottom: '32px' }}>
@@ -183,7 +224,7 @@ export default function AdminDashboard() {
                     return (
                       <tr key={v.id} style={{ borderBottom: idx === stats.selfVehiclesList.length - 1 ? 'none' : '1px solid var(--border)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
                         <td style={{ padding: '14px 16px', fontWeight: 800, color: 'var(--text)' }}>
-                          <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12.5px', fontFamily: 'monospace', border: '1px solid var(--border)' }}>
+                          <span style={{ background: 'rgba(139,92,246,0.15)', color: 'var(--primary)', padding: '4px 8px', borderRadius: '6px', fontSize: '12.5px', fontFamily: 'monospace', border: '1px solid var(--border)' }}>
                             {v.truckNo}
                           </span>
                         </td>

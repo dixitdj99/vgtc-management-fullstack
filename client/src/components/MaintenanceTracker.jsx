@@ -3,6 +3,7 @@ import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wrench, Plus, Calendar, MapPin, DollarSign, X, ChevronDown, Droplets, Disc, Lightbulb, Package, Settings, Zap, AlertTriangle, Shield, Search, Truck as TruckIcon } from 'lucide-react';
 import TruckDiagram from './TruckDiagram';
+import ConfirmDialog from './ConfirmDialog';
 
 const CATEGORY_META = {
   engine:       { icon: Settings,      color: '#f59e0b', label: 'Engine & Filters' },
@@ -95,10 +96,17 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this record?')) return;
-    await ax.delete(`/maintenance/${id}`);
-    fetchData();
+  const [delTarget, setDelTarget] = useState(null);
+
+  const handleDelete = async () => {
+    if (!delTarget) return;
+    try {
+      await ax.delete(`/maintenance/${delTarget.id}`);
+      fetchData();
+      setDelTarget(null);
+    } catch {
+      setDelTarget(null);
+    }
   };
 
   const categories = {};
@@ -142,6 +150,15 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', padding: '24px 16px' }}>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete maintenance record?"
+        message={<>Delete maintenance record for <strong style={{ color: 'var(--text)' }}>{delTarget?.partName}</strong>?</>}
+        confirmText="Delete Record"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDelTarget(null)}
+      />
       <motion.div initial={{ y: 20, scale: 0.98 }} animate={{ y: 0, scale: 1 }}
         style={{ width: '100%', maxWidth: '960px', background: 'var(--bg-card)', borderRadius: '20px', border: '1px solid var(--border)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden' }}>
         
@@ -321,7 +338,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: '#10b981', fontWeight: 700 }}>₹{(r.cost || 0).toLocaleString()}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f59e0b', fontWeight: 700 }}>₹{(r.labourCost || 0).toLocaleString()}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <button onClick={() => handleDelete(r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Delete</button>
+                          <button onClick={() => setDelTarget(r)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Delete</button>
                         </td>
                       </tr>
                     ))}

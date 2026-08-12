@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../../api';
 import { Briefcase, Plus, X, Trash2, Edit3, Phone, MapPin, Search, User, Tag } from 'lucide-react';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 /**
  * Firms & Vendors — tyre sellers, manual-entry vendors, and any other firm the
@@ -31,6 +32,7 @@ export default function FirmManager() {
     const [busy, setBusy] = useState(false);
     const [search, setSearch] = useState('');
     const [kindFilter, setKindFilter] = useState('all');
+    const [delTarget, setDelTarget] = useState(null);
 
     const emptyForm = { type: 'Tyre', category: '', name: '', contactPerson: '', address: '', description: '', mobileNumbers: [''] };
     const [form, setForm] = useState(emptyForm);
@@ -83,10 +85,10 @@ export default function FirmManager() {
         finally { setBusy(false); }
     };
 
-    const handleDelete = async (id) => {
-        if (!confirm('Delete this firm?')) return;
-        try { await ax.delete(`/profiles/${id}`); fetchAll(); }
-        catch { alert('Delete failed'); }
+    const handleDelete = async () => {
+        if (!delTarget) return;
+        try { await ax.delete(`/profiles/${delTarget.id}`); fetchAll(); setDelTarget(null); }
+        catch { alert('Delete failed'); setDelTarget(null); }
     };
 
     const filtered = firms.filter(p => {
@@ -103,6 +105,15 @@ export default function FirmManager() {
 
     return (
         <div>
+            <ConfirmDialog
+                open={!!delTarget}
+                title="Delete this firm?"
+                message={<>Delete <strong style={{ color: 'var(--text)' }}>{delTarget?.name}</strong>? This will permanently remove this firm from the system.</>}
+                confirmText="Delete Firm"
+                danger
+                onConfirm={handleDelete}
+                onCancel={() => setDelTarget(null)}
+            />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -203,7 +214,7 @@ export default function FirmManager() {
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <button onClick={() => openEdit(p)} style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit"><Edit3 size={16} /></button>
-                                    <button onClick={() => handleDelete(p.id)} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={16} /></button>
+                                    <button onClick={() => setDelTarget(p)} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete"><Trash2 size={16} /></button>
                                 </div>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>

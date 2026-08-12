@@ -148,6 +148,7 @@ app.use('/api/enquiry', require('./routes/enquiryRoutes'));
 app.use('/api/lr', requireAuth, gate(['lr_dump','bill_kosli','bill_jhajjar','bill_bahadurgarh']), lrRoutes); // Legacy JK Super route
 app.use('/api/labour', labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
+app.use('/api/destinations', requireAuth, require('./routes/destinationRoutes'));
 app.use('/api/audit', auditRoutes);
 
 // Weather Proxy to avoid CORS
@@ -195,6 +196,8 @@ app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRo
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
+app.use('/api/whatsapp', require('./routes/whatsappRoutes'));
+app.use('/api/sms', require('./routes/smsRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret
 
 // Liveness/readiness probe. Reports 503 when Firestore is not connected so a

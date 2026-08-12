@@ -7,6 +7,7 @@ import {
   RotateCw, RefreshCw, X as XIcon 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 /* ── Autocomplete / Suggestion Dropdown ── */
 function AutocompleteInput({ value, onChange, suggestions = [], placeholder, required = false, className = "fi" }) {
@@ -384,13 +385,16 @@ export default function TyreModule() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this tyre from inventory permanently?')) return;
+  const [delTarget, setDelTarget] = useState(null);
+
+  const handleDelete = async () => {
+    if (!delTarget) return;
     try {
-      await ax.delete(`/tyres/${id}`);
+      await ax.delete(`/tyres/${delTarget.id}`);
       fetchData();
+      setDelTarget(null);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete tyre.');
+      setDelTarget(null);
     }
   };
 
@@ -554,6 +558,15 @@ export default function TyreModule() {
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete this tyre?"
+        message={<>Delete tyre <strong style={{ color: 'var(--text)' }}>{delTarget?.serialNo}</strong> ({delTarget?.brand}) from inventory permanently?</>}
+        confirmText="Delete Tyre"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDelTarget(null)}
+      />
       
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -842,7 +855,7 @@ export default function TyreModule() {
                 
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button onClick={() => openHistoryModal(tyre)} title="Rotation History" className="btn btn-sm btn-g btn-icon"><RefreshCw size={13} /></button>
-                  <button onClick={() => handleDelete(tyre.id)} title="Delete Tyre" className="btn btn-sm btn-d btn-icon"><Trash2 size={13} /></button>
+                  <button onClick={() => setDelTarget(tyre)} title="Delete Tyre" className="btn btn-sm btn-d btn-icon"><Trash2 size={13} /></button>
                 </div>
               </div>
 

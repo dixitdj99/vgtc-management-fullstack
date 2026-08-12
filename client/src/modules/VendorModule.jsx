@@ -4,6 +4,7 @@ import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { Truck, Plus, Search, Phone, Edit3, Trash2, X as XIcon, CreditCard, Users, Loader2, ChevronDown, ChevronUp, FileText, Calendar, AlertTriangle, ShieldCheck, DollarSign, Compass, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const fmtRs = n => 'Rs. ' + Math.round(n || 0).toLocaleString('en-IN');
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -271,13 +272,16 @@ export default function VendorModule() {
     }
   };
 
-  const handleDelete = async (id, truckNo) => {
-    if (!window.confirm(`Are you sure you want to delete vehicle ${truckNo}?`)) return;
+  const [delTarget, setDelTarget] = useState(null);
+
+  const handleDelete = async () => {
+    if (!delTarget) return;
     try {
-      await ax.delete(`/vehicles/${id}`);
+      await ax.delete(`/vehicles/${delTarget.id}`);
       fetchData();
+      setDelTarget(null);
     } catch {
-      alert('Failed to delete vehicle.');
+      setDelTarget(null);
     }
   };
 
@@ -289,6 +293,15 @@ export default function VendorModule() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '1300px', margin: '0 auto' }}>
+      <ConfirmDialog
+        open={!!delTarget}
+        title="Delete market vehicle?"
+        message={<>Delete market vehicle <strong style={{ color: 'var(--text)' }}>{delTarget?.truckNo}</strong>? This action cannot be undone.</>}
+        confirmText="Delete Vehicle"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDelTarget(null)}
+      />
       {/* Header */}
       <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
@@ -425,7 +438,7 @@ export default function VendorModule() {
                     <button className="btn" onClick={() => openModal(v)} style={{ padding: '7px 11px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', color: '#6366f1', borderRadius: '8px' }} title="Edit Specs">
                       <Edit3 size={13} />
                     </button>
-                    <button className="btn" onClick={() => handleDelete(v.id, v.truckNo)} style={{ padding: '7px 11px', background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', color: '#f43f5e', borderRadius: '8px' }} title="Delete Vehicle">
+                    <button className="btn" onClick={() => setDelTarget(v)} style={{ padding: '7px 11px', background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', color: '#f43f5e', borderRadius: '8px' }} title="Delete Vehicle">
                       <Trash2 size={13} />
                     </button>
                     <button className="btn" onClick={() => setExpandedId(isExpanded ? null : v.id)} style={{ padding: '7px', background: 'transparent' }}>

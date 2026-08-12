@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import StyledAutocomplete from '../components/StyledAutocomplete';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
@@ -1304,6 +1305,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [allChallans, setAllChallans] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [additions, setAdditions] = useState([]);
+  const [destinationsList, setDestinationsList] = useState([]);
+  useEffect(() => {
+    ax.get('/destinations').then(r => setDestinationsList(r.data || [])).catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
@@ -1387,6 +1392,31 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     );
     return [...new Set([...validParties.map(p => p.name), ...legacyNames])].sort();
   }, [parties, receipts, allChallans, openChallans, brand]);
+
+  const destinationOptions = useMemo(() => {
+    const masterMap = new Map();
+    (destinationsList || []).forEach(d => {
+      const name = (d.name || '').toUpperCase().trim();
+      if (name) {
+        masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
+      }
+    });
+
+    const extraDest = new Set();
+    (receipts || []).forEach(r => {
+      if (r.destination && String(r.destination).trim()) {
+        extraDest.add(String(r.destination).trim().toUpperCase());
+      }
+    });
+
+    const allNames = new Set([...masterMap.keys(), ...extraDest]);
+
+    return Array.from(allNames).sort().map(name => ({
+      label: name,
+      value: name,
+      sublabel: masterMap.get(name) || ''
+    }));
+  }, [destinationsList, receipts]);
 
   const startRecording = async () => {
     try {
@@ -2053,29 +2083,31 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
                   <div className="field-h">
                     <label>Truck No. *</label>
-                    <AutocompleteInput
+                    <StyledAutocomplete
                       value={form.truckNo}
-                      onChange={e => setForm({ ...form, truckNo: cleanTruckNo(e.target.value) })}
-                      suggestions={vehicles}
-                      placeholder="Enter truck number e.g. HR47G1234"
-                      required={true}
+                      onChange={val => setForm({ ...form, truckNo: cleanTruckNo(val) })}
+                      options={vehicles}
+                      uppercase
+                      placeholder="ENTER TRUCK NUMBER E.G. HR47G1234"
+                      required
                     />
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block' }}>Invalid format</span>}
                   </div>
                   <div className="field-h">
                     <label><User size={11} /> Party Name</label>
-                    <AutocompleteInput
+                    <StyledAutocomplete
                       value={form.partyName}
-                      onChange={e => {
-                        const name = resolvePartyName(e.target.value, partySuggestions);
+                      onChange={val => {
+                        const name = resolvePartyName(val, partySuggestions);
                         setForm(f => ({
                           ...f,
                           partyName: name,
                           materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
                         }));
                       }}
-                      suggestions={partySuggestions}
-                      placeholder="Enter party name (applies to all materials)"
+                      options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                      uppercase
+                      placeholder="ENTER PARTY NAME"
                     />
                     {(() => {
                       const matParties = [...new Set(form.materials.map(m => m.partyName).filter(Boolean))];
@@ -2088,7 +2120,16 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       ) : null;
                     })()}
                   </div>
-                  <div className="field-h"><label><MapPin size={11} /> Destination</label><input className="fi" type="text" placeholder="Enter delivery city or location" value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })} /></div>
+                  <div className="field-h">
+                    <label><MapPin size={11} /> Destination</label>
+                    <StyledAutocomplete
+                      value={form.destination}
+                      onChange={val => setForm({ ...form, destination: val })}
+                      options={destinationOptions}
+                      uppercase
+                      placeholder="ENTER DELIVERY CITY OR LOCATION"
+                    />
+                  </div>
                   <div className="field-h">
                     <label><Tag size={11} /> Challan</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
