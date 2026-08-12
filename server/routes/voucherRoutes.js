@@ -21,6 +21,12 @@ router.post('/', async (req, res) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
+        // Trigger SMS and WhatsApp alerts
+        const smsService = require('../utils/smsService');
+        const whatsappService = require('../utils/whatsappService');
+        whatsappService.triggerEventWhatsApp('voucher_created', { ...req.body, ...result }, req);
+        smsService.triggerEventSms('voucher_created', { ...req.body, ...result }, req);
+
         // Real-time backup — fire and forget, never blocks response
         const savedResult = result;
         const savedBody = { ...req.body };
@@ -101,6 +107,16 @@ router.patch('/:id', async (req, res) => {
             await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
                 console.error('[Voucher-Hook] Vehicle ensure failed on update:', error.message);
             });
+        }
+
+        if (req.body.paymentClearedDate) {
+            const smsService = require('../utils/smsService');
+            const whatsappService = require('../utils/whatsappService');
+            const updated = await voucherService.getVoucherById(req.params.id, col);
+            if (updated) {
+                whatsappService.triggerEventWhatsApp('balance_paid', { ...updated, amount: updated.paidBalance }, req);
+                smsService.triggerEventSms('balance_paid', { ...updated, amount: updated.paidBalance }, req);
+            }
         }
 
         res.json({ message: 'Voucher updated' });

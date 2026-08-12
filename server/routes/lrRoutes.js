@@ -26,6 +26,12 @@ router.post('/', async (req, res) => {
             getCol(META_COL, req)
         );
 
+        // Trigger SMS and WhatsApp alerts
+        const smsService = require('../utils/smsService');
+        const whatsappService = require('../utils/whatsappService');
+        whatsappService.triggerEventWhatsApp('lr_created', { ...req.body, ...result }, req);
+        smsService.triggerEventSms('lr_created', { ...req.body, ...result }, req);
+
         // Real-time backup — runs whenever Google Drive is authorized
         if (await driveService.isAuthorized()) {
             (async () => {
