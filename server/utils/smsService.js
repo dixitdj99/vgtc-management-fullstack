@@ -117,27 +117,49 @@ const formatPhoneNumber = (phone) => {
 };
 
 const triggerEventSms = async (eventKey, data, req = null) => {
+    console.log(`[SMS Debug] triggerEventSms called for key: ${eventKey}`);
     const config = await getSmsConfig(req);
-    if (!config.enabled) return;
+    console.log('[SMS Debug] Config loaded:', JSON.stringify(config));
+    if (!config.enabled) {
+        console.log('[SMS Debug] SMS gateway is disabled in config.');
+        return;
+    }
     const evt = config.events?.[eventKey];
-    if (!evt || !evt.enabled || !evt.template) return;
+    if (!evt) {
+        console.log(`[SMS Debug] No event config found for: ${eventKey}`);
+        return;
+    }
+    if (!evt.enabled) {
+        console.log(`[SMS Debug] Event ${eventKey} is disabled.`);
+        return;
+    }
+    if (!evt.template) {
+        console.log(`[SMS Debug] No template defined for: ${eventKey}`);
+        return;
+    }
 
     let phone = data.driverMobile || data.driverPhone || data.partyPhone || data.mobile || data.phone || '';
     if (eventKey === 'cashout' || eventKey === 'deposit') {
         phone = data.entityMobile || data.driverPhone || data.phone || '';
     }
 
-    if (!phone) return;
+    console.log(`[SMS Debug] Resolved phone number: "${phone}"`);
+    if (!phone) {
+        console.log('[SMS Debug] Skipped sending: No phone number resolved.');
+        return;
+    }
 
     let template = evt.template;
     Object.entries(data).forEach(([key, val]) => {
         template = template.replace(new RegExp(`{${key}}`, 'g'), val || '');
     });
 
+    console.log(`[SMS Debug] Prepared message: "${template}"`);
     try {
         await sendSms({ phone, message: template, req });
+        console.log('[SMS Debug] Message enqueued successfully.');
     } catch (err) {
-        console.error('[SMS Event Trigger] Error:', err.message);
+        console.error('[SMS Debug] Error enqueuing message:', err.message);
     }
 };
 
