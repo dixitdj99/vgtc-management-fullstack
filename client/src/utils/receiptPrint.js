@@ -115,6 +115,7 @@ export const receiptLogoCss = `
        decorative backgrounds when printing. This one is content. */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    filter: brightness(0);
   }
 `;
 
