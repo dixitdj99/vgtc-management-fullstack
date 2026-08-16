@@ -1504,18 +1504,24 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 const combinedDestination = [...new Set(rows.map(r => r.destination).filter(Boolean))].join(', ');
 
                 const assignedDriver = defaultDriverForTruck(truck);
+                const fetchedDate = rows[0].date || form.date;
+                const autoRate = (rows[0].freightRate || rows[0].rate)
+                    ? String(rows[0].freightRate || rows[0].rate)
+                    : (combinedDestination ? String(lookupDestinationRate(combinedDestination, fetchedDate) || '') : '');
+
                 setForm(f => ({
                     ...f,
                     truckNo: truck,
                     ...(f.driverId ? {} : { driverId: assignedDriver?.id || '', driverName: assignedDriver?.name || '' }),
-                    date: rows[0].date || f.date,
+                    date: fetchedDate,
                     weight: tw.toFixed(2),
                     bags: String(tb),
                     destination: combinedDestination || f.destination,
                     partyName: combinedPartyName || f.partyName,
                     partyCode: combinedPartyCode || f.partyCode,
                     materialName: combinedMaterialName,
-                    materials: materialsData
+                    materials: materialsData,
+                    ...(autoRate && autoRate !== '0' ? { rate: autoRate } : {})
                 }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);

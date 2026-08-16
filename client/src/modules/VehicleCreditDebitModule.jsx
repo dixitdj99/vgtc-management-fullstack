@@ -1,27 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, Plus, Trash2, Search, Filter, AlertCircle, CheckCircle2, DollarSign, ArrowUpRight, ArrowDownLeft, X } from 'lucide-react';
+import { CreditCard, Plus, Trash2, Search, ArrowUpRight, ArrowDownLeft, X, RotateCcw, CheckCircle2, DollarSign } from 'lucide-react';
 import ax from '../api';
 import { fmtRs } from '../utils/format';
 import ConfirmDialog from '../components/ConfirmDialog';
 
-export default function VehicleCreditDebitModule() {
+export default function VehicleCreditDebitModule({ cashbookType = 'dump' }) {
   const [advances, setAdvances] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('uncleared'); // 'all', 'uncleared', 'cleared'
   
-  // Modal state
+  // Modal state — Add Entry
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     truckNo: '',
-    type: 'credit', // 'credit' = Received, 'debit' = Given
+    type: 'credit', // 'credit' = Received from owner, 'debit' = Given to truck
     amount: '',
     date: new Date().toISOString().slice(0, 10),
     remark: '',
-    addToCashbook: true,
+    ownerName: '',  // owner name for cashbook remark
   });
+
+  // Modal state — Return to Owner
+  const [returnModal, setReturnModal] = useState(null); // null | { advance, date, remark }
+  const [returning, setReturning] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -54,6 +58,8 @@ export default function VehicleCreditDebitModule() {
         ...formData,
         amount: parseFloat(formData.amount),
         truckNo: formData.truckNo.toUpperCase().trim(),
+        ownerName: formData.ownerName.trim(),
+        cashbookType,   // tells the server which cashbook collection to write to
       });
       setModalOpen(false);
       setFormData({
@@ -62,13 +68,32 @@ export default function VehicleCreditDebitModule() {
         amount: '',
         date: new Date().toISOString().slice(0, 10),
         remark: '',
-        addToCashbook: true,
+        ownerName: '',
       });
       fetchData();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to add vehicle advance');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Return credit to owner
+  const handleReturn = async () => {
+    if (!returnModal?.advance) return;
+    setReturning(true);
+    try {
+      await ax.post(`/vehicle-advances/${returnModal.advance.id}/return`, {
+        date: returnModal.date,
+        remark: returnModal.remark || `Credit returned to owner of ${returnModal.advance.truckNo}`,
+        cashbookType,   // tells the server which cashbook collection to write to
+      });
+      setReturnModal(null);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to return credit');
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -312,15 +337,33 @@ export default function VehicleCreditDebitModule() {
                     </td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-sub)', fontSize: '11px' }}>
                       {item.remark || '—'}
+                      {item.cashbookEntryId && (
+                        <span style={{ marginLeft: '6px', fontSize: '9px', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(99,102,241,0.1)', color: '#6366f1' }}>📒 CB Linked</span>
+                      )}
+                      {item.returnedAt && (
+                        <span style={{ marginLeft: '6px', fontSize: '9px', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>↩ Returned {new Date(item.returnedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short' })}</span>
+                      )}
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => setDelTarget(item)}
-                        title="Delete entry"
-                        style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '6px', borderRadius: '6px', cursor: 'pointer' }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                        {/* Return to Owner — only for uncleared credits */}
+                        {item.type === 'credit' && !item.isCleared && !item.returnedAt && (
+                          <button
+                            onClick={() => setReturnModal({ advance: item, date: new Date().toISOString().slice(0, 10), remark: '' })}
+                            title="Return this credit to owner"
+                            style={{ border: 'none', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '6px 8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 800 }}
+                          >
+                            <RotateCcw size={11} /> Return
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setDelTarget(item)}
+                          title="Delete entry"
+                          style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '6px', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -355,11 +398,22 @@ export default function VehicleCreditDebitModule() {
               </div>
 
               <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Owner Name (optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Ram Singh"
+                  value={formData.ownerName}
+                  onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-th)', color: 'var(--text)', outline: 'none', fontSize: '13px' }}
+                />
+              </div>
+
+              <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>Transaction Type</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, type: 'credit', addToCashbook: true })}
+                    onClick={() => setFormData({ ...formData, type: 'credit' })}
                     style={{
                       padding: '10px',
                       borderRadius: '8px',
@@ -371,12 +425,12 @@ export default function VehicleCreditDebitModule() {
                       fontSize: '12px',
                     }}
                   >
-                    ⊕ Credit (+ Received)
+                    ⊕ Credit (Owner Deposits)
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, type: 'debit', addToCashbook: true })}
+                    onClick={() => setFormData({ ...formData, type: 'debit' })}
                     style={{
                       padding: '10px',
                       borderRadius: '8px',
@@ -388,8 +442,14 @@ export default function VehicleCreditDebitModule() {
                       fontSize: '12px',
                     }}
                   >
-                    ⊖ Debit (- Given)
+                    ⊖ Debit (Given to Truck)
                   </button>
+                </div>
+                {/* Info hint based on type */}
+                <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)', padding: '6px 10px', background: 'var(--bg-th)', borderRadius: '6px' }}>
+                  {formData.type === 'credit'
+                    ? '📥 Owner deposited cash — will be added to Cashbook as Deposit automatically.'
+                    : '📤 Cash given to truck — will be added to Cashbook as Cash Out automatically.'}
                 </div>
               </div>
 
@@ -429,20 +489,6 @@ export default function VehicleCreditDebitModule() {
                 />
               </div>
 
-              {/* Cashbook choice */}
-              <div style={{ marginTop: '4px', padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-th)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="checkbox"
-                  id="chkCashbook"
-                  checked={formData.addToCashbook}
-                  onChange={(e) => setFormData({ ...formData, addToCashbook: e.target.checked })}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                />
-                <label htmlFor="chkCashbook" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer', margin: 0, textTransform: 'none' }}>
-                  Automatically add entry to Cashbook ({formData.type === 'credit' ? 'Deposit' : 'Cash Out'})
-                </label>
-              </div>
-
               <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                 <button type="button" className="btn btn-g" onClick={() => setModalOpen(false)} style={{ flex: 1 }}>
                   Cancel
@@ -452,6 +498,69 @@ export default function VehicleCreditDebitModule() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Return to Owner Confirmation Modal */}
+      {returnModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px', padding: '24px', borderRadius: '16px', background: 'var(--bg-card)', border: '2px solid rgba(16,185,129,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontWeight: 900, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={18} color="#10b981" /> Return Credit to Owner
+              </h3>
+              <button onClick={() => setReturnModal(null)} style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Summary */}
+            <div style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Returning credit for</div>
+              <div style={{ fontWeight: 900, fontSize: '16px', color: 'var(--primary)' }}>{returnModal.advance.truckNo}</div>
+              <div style={{ fontWeight: 900, fontSize: '22px', color: '#10b981', marginTop: '4px' }}>{fmtRs(returnModal.advance.amount)}</div>
+              {returnModal.advance.ownerName && (
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Owner: {returnModal.advance.ownerName}</div>
+              )}
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Original deposit: {new Date(returnModal.advance.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Return Date</label>
+                <input
+                  type="date"
+                  value={returnModal.date}
+                  onChange={e => setReturnModal({ ...returnModal, date: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-th)', color: 'var(--text)', outline: 'none', fontSize: '13px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Remark (optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Returned cash to Ram Singh in person"
+                  value={returnModal.remark}
+                  onChange={e => setReturnModal({ ...returnModal, remark: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-th)', color: 'var(--text)', outline: 'none', fontSize: '13px' }}
+                />
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '8px 10px', background: 'var(--bg-th)', borderRadius: '6px' }}>
+                ⚠️ This will create a <strong>Cashbook Cash Out</strong> of {fmtRs(returnModal.advance.amount)} and mark this credit as returned.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setReturnModal(null)} className="btn btn-g" style={{ flex: 1 }}>Cancel</button>
+              <button
+                onClick={handleReturn}
+                disabled={returning}
+                style={{ flex: 1, background: '#10b981', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '13px' }}
+              >
+                <RotateCcw size={14} /> {returning ? 'Processing...' : `Return ${fmtRs(returnModal.advance.amount)}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

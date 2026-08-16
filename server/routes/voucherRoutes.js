@@ -21,6 +21,9 @@ router.post('/', async (req, res) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
+        // Trigger WhatsApp alerts
+        const whatsappService = require('../utils/whatsappService');
+        whatsappService.triggerEventWhatsApp('voucher_created', { ...req.body, ...result }, req);
         // Real-time backup — fire and forget, never blocks response
         const savedResult = result;
         const savedBody = { ...req.body };
@@ -103,6 +106,13 @@ router.patch('/:id', async (req, res) => {
             });
         }
 
+        if (req.body.paymentClearedDate) {
+            const whatsappService = require('../utils/whatsappService');
+            const updated = await voucherService.getVoucherById(req.params.id, col);
+            if (updated) {
+                whatsappService.triggerEventWhatsApp('balance_paid', { ...updated, amount: updated.paidBalance }, req);
+            }
+        }
         res.json({ message: 'Voucher updated' });
 
         // Sync updated row + re-upload PDF — runs in background after response

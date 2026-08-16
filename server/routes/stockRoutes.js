@@ -50,6 +50,22 @@ router.post('/challans', async (req, res) => {
     try { 
         const doc = await svc.createChallan(req.orgId, req.body, getCol(CCOL, req), getCol(MCOL, req));
         sheetsService.upsertStockChallan(doc, 'jksuper').catch(err => console.error('[Backup Hook] Challan upsert failed:', err.message));
+
+        // Trigger WhatsApp alert for new Loading Receipt / Challan
+        const whatsappService = require('../utils/whatsappService');
+        const totalBags = (doc.materials || []).reduce((s, m) => s + (m.totalBags || 0), 0) || doc.quantity || 0;
+        const payload = {
+            ...req.body,
+            ...doc,
+            lrNo: doc.challanNo || doc.billNo || doc.id,
+            truckNo: doc.truckNo,
+            qty: totalBags,
+            destination: doc.destination || req.body.destination || '',
+            date: doc.date || new Date().toISOString().slice(0, 10),
+            driverMobile: req.body.driverMobile || req.body.driverContact || req.body.phone || ''
+        };
+        whatsappService.triggerEventWhatsApp('lr_created', payload, req);
+
         res.status(201).json(doc);
     }
     catch (e) { res.status(400).json({ error: e.message }); }

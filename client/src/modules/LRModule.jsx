@@ -38,7 +38,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
     if (!value) return suggestions.slice(0, 50);
     const search = value.toLowerCase();
     return suggestions.filter(item => {
-      const str = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+      const str = typeof item === 'string' ? item : (item.label || item.value || item.truckNo || item.name || '');
       return str.toLowerCase().includes(search);
     }).slice(0, 50);
   }, [value, suggestions]);
@@ -78,7 +78,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
       if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
         e.preventDefault();
         const item = filtered[highlightedIndex];
-        const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+        const displayVal = typeof item === 'string' ? item : (item.label || item.value || item.truckNo || item.name || '');
         onChange({ target: { value: displayVal } });
         setIsOpen(false);
       }
@@ -115,8 +115,8 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
           marginTop: '4px'
         }}>
           {filtered.map((item, idx) => {
-            const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
-            const keyVal = typeof item === 'string' ? item : (item.id || item.truckNo || idx);
+            const displayVal = typeof item === 'string' ? item : (item.label || item.value || item.truckNo || item.name || '');
+            const keyVal = typeof item === 'string' ? item : (item.id || item.value || item.truckNo || idx);
             return (
               <div
                 key={keyVal}
@@ -1511,7 +1511,16 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const fetchVehicles = async () => {
     try {
       const data = (await ax.get(`/vehicles`)).data;
-      setVehicles(data);
+      const list = Array.isArray(data) ? data : [];
+      const formatted = list.map(v => {
+        const num = typeof v === 'string' ? v : (v.truckNo || '');
+        return {
+          label: num,
+          value: num,
+          sublabel: typeof v === 'object' ? (v.ownerName || v.ownershipType || '') : ''
+        };
+      }).filter(item => item.value);
+      setVehicles(formatted);
     } catch { }
   };
 

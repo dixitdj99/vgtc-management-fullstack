@@ -51,36 +51,48 @@ const firestoreDelete = async (id, col) => {
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 const createAdvance = async (orgId, data, col = COLLECTION, cashbookCol = CASHBOOK_COL) => {
-    const { truckNo, type, amount, date, remark, addToCashbook, cashbookEntryId } = data;
+    const { truckNo, type, amount, date, remark, ownerName, cashbookEntryId } = data;
     if (!truckNo) throw new Error('Truck number required');
     if (!type || !['credit', 'debit'].includes(type)) throw new Error('Type must be credit or debit');
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) throw new Error('Amount must be positive');
 
+    const normalizedTruck = String(truckNo).toUpperCase().replace(/\s/g, '');
     let linkedCashbookId = cashbookEntryId || null;
 
-    // Optional Cashbook integration
-    if (addToCashbook && !linkedCashbookId) {
+    // ── Auto Cashbook integration ─────────────────────────────────────────────
+    // Credit  (owner deposits cash)   → always create a cashbook DEPOSIT
+    // Debit   (advance given to truck) → always create a cashbook CASH OUT
+    // The cashbook entry carries full details so the cash flow is auditable.
+    if (!linkedCashbookId) {
         try {
             const cbType = type === 'credit' ? 'deposit' : 'cash_out';
-            const cbRemark = `[Vehicle ${truckNo}] ${type === 'credit' ? 'Credit Advance Received' : 'Debit Advance Given'} — ${remark || ''}`;
-            const cbDoc = await cashbookService.addEntry(orgId, cbType, amt, cbRemark, date || new Date().toISOString().slice(0, 10), cashbookCol, {
-                entityType: 'vehicle',
-                entityId: truckNo,
-            });
+            const ownerTag = ownerName ? ` — ${ownerName}` : '';
+            const purposeTag = remark ? ` — ${remark}` : '';
+            const cbRemark = type === 'credit'
+                ? `[Vehicle Deposit] ${normalizedTruck}${ownerTag}${purposeTag}`
+                : `[Vehicle Advance Given] ${normalizedTruck}${ownerTag}${purposeTag}`;
+            const cbDoc = await cashbookService.addEntry(
+                orgId, cbType, amt, cbRemark,
+                date || new Date().toISOString().slice(0, 10),
+                cashbookCol,
+                { entityType: 'vehicle', entityId: normalizedTruck, ownerName: ownerName || '' }
+            );
             linkedCashbookId = cbDoc.id;
+            console.log(`[VehicleAdvance] Cashbook ${cbType} created: ${cbDoc.id} for ${normalizedTruck}`);
         } catch (cbErr) {
             console.error('[VehicleAdvance] Cashbook auto-create error:', cbErr.message);
         }
     }
 
     const payload = {
-        truckNo: String(truckNo).toUpperCase().replace(/\s/g, ''),
+        truckNo: normalizedTruck,
         type,
         orgId,
         amount: amt,
         date: date || new Date().toISOString().slice(0, 10),
         remark: remark || '',
+        ownerName: ownerName || '',
         isCleared: data.isCleared !== undefined ? data.isCleared : false,
         isGpsRent: data.isGpsRent || false,
         ...(linkedCashbookId ? { cashbookEntryId: linkedCashbookId } : {}),
@@ -150,10 +162,94 @@ const clearAdvancesForTruck = async (orgId, truckNo, paymentId, advanceIds = [],
     }
 };
 
+/**
+ * returnCreditToOwner
+ *
+ * Atomically:
+ *   1. Validates the advance is a credit type and not already cleared/returned.
+ *   2. Creates a cashbook cash_out entry (owner gets their money back).
+ *   3. Marks the advance as isCleared=true and stores the return cashbook ID.
+ *
+ * @param {string} orgId
+ * @param {string} advanceId   - The vehicle_advance document ID to return
+ * @param {string} col         - vehicle_advances collection
+ * @param {string} cashbookCol - cashbook collection
+ * @param {object} options     - { date, remark }
+ */
+const returnCreditToOwner = async (orgId, advanceId, col = COLLECTION, cashbookCol = CASHBOOK_COL, options = {}) => {
+    // 1. Fetch the advance
+    let advance = null;
+    if (firebaseAvailable()) {
+        const doc = await db.collection(col).doc(advanceId).get();
+        if (!doc.exists) throw new Error('Advance record not found.');
+        advance = { id: doc.id, ...doc.data() };
+    } else {
+        advance = localStore.getAll(col).find(a => a.id === advanceId);
+        if (!advance) throw new Error('Advance record not found.');
+    }
+
+    if (advance.type !== 'credit') throw new Error('Only credit entries can be returned to owner.');
+    if (advance.isCleared) throw new Error('This credit entry is already cleared/returned.');
+    if (advance.returnedAt) throw new Error('This credit has already been returned.');
+
+    const returnDate = options.date || new Date().toISOString().slice(0, 10);
+    const ownerTag = advance.ownerName ? ` — ${advance.ownerName}` : '';
+    const purposeTag = options.remark || advance.remark ? ` — ${options.remark || advance.remark}` : '';
+    const cbRemark = `[Vehicle Credit Return] ${advance.truckNo}${ownerTag}${purposeTag}`;
+
+    // 2. Create cashbook cash_out for the return
+    let returnCashbookId = null;
+    try {
+        const cbDoc = await cashbookService.addEntry(
+            orgId, 'cash_out', advance.amount, cbRemark,
+            returnDate, cashbookCol,
+            {
+                entityType: 'vehicle',
+                entityId: advance.truckNo,
+                ownerName: advance.ownerName || '',
+                linkedAdvanceId: advanceId,
+                isReturnEntry: true
+            }
+        );
+        returnCashbookId = cbDoc.id;
+        console.log(`[VehicleAdvance] Return cash_out created: ${cbDoc.id} for ${advance.truckNo}`);
+    } catch (cbErr) {
+        console.error('[VehicleAdvance] Return cashbook entry failed:', cbErr.message);
+        throw new Error('Failed to create cashbook return entry: ' + cbErr.message);
+    }
+
+    // 3. Mark the advance as cleared + link the return cashbook entry
+    const updatePayload = {
+        isCleared: true,
+        returnedAt: new Date().toISOString(),
+        returnCashbookEntryId: returnCashbookId,
+        returnRemark: options.remark || '',
+    };
+
+    if (firebaseAvailable()) {
+        await db.collection(col).doc(advanceId).update({
+            ...updatePayload,
+            clearedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } else {
+        localStore.update(col, advanceId, updatePayload);
+    }
+
+    return {
+        success: true,
+        advanceId,
+        truckNo: advance.truckNo,
+        amount: advance.amount,
+        returnCashbookEntryId: returnCashbookId,
+        returnedAt: updatePayload.returnedAt,
+    };
+};
+
 module.exports = {
     createAdvance,
     getAllAdvances,
     getAdvancesByTruck,
     deleteAdvance,
-    clearAdvancesForTruck
+    clearAdvancesForTruck,
+    returnCreditToOwner
 };

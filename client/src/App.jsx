@@ -715,7 +715,7 @@ function AppInner() {
       {(id === 'balance_all_dump' || id === 'balance_all_jharli') && <AllBalanceSheet role={user.role} permissions={user.permissions} />}
       {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
-      {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule />}
+      {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule cashbookType={id === 'vehicle_credit_debit_jharli' ? 'jkl' : 'dump'} />}
       {id === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="kosli" />}
       {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
       {id === 'stock_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="bahadurgarh" />}

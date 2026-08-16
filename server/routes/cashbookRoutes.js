@@ -62,6 +62,10 @@ router.post('/deposit', async (req, res) => {
     try {
         const doc = await svc.addEntry(req.orgId, 'deposit', amount, remark, date, getCol(BASE_COL, req));
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
+        // Trigger WhatsApp alerts
+        const whatsappService = require('../utils/whatsappService');
+        whatsappService.triggerEventWhatsApp('deposit', { amount, remark, date }, req);
+
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -78,6 +82,11 @@ router.post('/cash-out', async (req, res) => {
         };
         const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, col, extraMeta);
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
+
+        // Trigger WhatsApp alerts
+        const whatsappService = require('../utils/whatsappService');
+        whatsappService.triggerEventWhatsApp('cashout', { amount, remark, date, entityName, entityType }, req);
+
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -129,6 +138,14 @@ router.post('/cash-out-linked', async (req, res) => {
         }
 
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
+
+        // Trigger WhatsApp alerts
+        const whatsappService = require('../utils/whatsappService');
+        if (entityType === 'vehicle') {
+            whatsappService.triggerEventWhatsApp('cashout', { amount, remark, date, entityName, entityType, truckNo: entityId }, req);
+        } else {
+            whatsappService.triggerEventWhatsApp('cashout', { amount, remark, date, entityName, entityType }, req);
+        }
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
