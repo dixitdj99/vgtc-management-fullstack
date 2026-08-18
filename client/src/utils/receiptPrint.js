@@ -225,12 +225,12 @@ const autoHeightScript = ({ width, minHeight }) => `
     if (started) return;
     started = true;
     fit();
-    // window.print() blocks until the dialog is dismissed, so the handler has to
-    // be in place before the call — assigning it afterwards missed the event and
-    // left the window open behind the app.
     window.onafterprint = function () { window.close(); };
-    // One frame, so the rewritten rule is in the stylesheet before the dialog reads it.
-    requestAnimationFrame(function () { window.print(); });
+    setTimeout(function () {
+      try { window.opener = null; } catch(e) {}
+      window.focus();
+      window.print();
+    }, 200);
   }
 
   var settled = [new Promise(function (done) {
@@ -311,13 +311,15 @@ ${body}
     const winH = Math.min(880, availH - 60);
     const left = Math.max(0, Math.round((availW - winW) / 2));
     const top = Math.max(0, Math.round((availH - winH) / 2));
-    const w = window.open('', '_blank', `width=${winW},height=${winH},left=${left},top=${top}`);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const w = window.open(blobUrl, '_blank', `width=${winW},height=${winH},left=${left},top=${top}`);
     if (!w) {
         alert('Allow pop-ups for this site to print the receipt.');
         return null;
     }
-    w.document.write(html);
-    w.document.close();
+    w.focus();
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 15000);
 
     // File the identical HTML. After the window opens, so a slow or unreachable
     // Drive cannot delay the slip appearing.
@@ -354,13 +356,15 @@ export function fileCopy(html, archive) {
  * @param {object} [o.archive] see archiveDoc(); omit to print without filing
  */
 export function printHtml(html, { width = 1000, height = 700, archive = null } = {}) {
-    const w = window.open('', '_blank', `width=${width},height=${height}`);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const w = window.open(blobUrl, '_blank', `width=${width},height=${height}`);
     if (!w) {
         alert('Allow pop-ups for this site to print.');
         return null;
     }
-    w.document.write(html);
-    w.document.close();
+    w.focus();
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 15000);
     if (archive) fileCopy(html, archive);
     return w;
 }

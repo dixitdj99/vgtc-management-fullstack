@@ -1128,7 +1128,10 @@ select.fi option {
 
 .tbl-wrap {
   width: 100%;
+  max-height: calc(100vh - 270px);
+  min-height: 250px;
   overflow-x: auto;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 

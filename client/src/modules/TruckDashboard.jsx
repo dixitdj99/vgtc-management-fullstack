@@ -88,7 +88,7 @@ function doPrintDashboard(rows, orgName) {
     <td style="text-align:right;font-weight:800;color:${totalOut > 0 ? '#b45309' : '#16a34a'}">${totalOut > 0 ? 'Rs.' + Math.round(totalOut).toLocaleString() : '✓ All Cleared'}</td>
     <td></td>
   </tr></tfoot></table>
-  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   printHtml(html, {
     width: 1100, height: 700,

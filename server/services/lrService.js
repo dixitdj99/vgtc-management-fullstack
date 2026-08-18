@@ -4,6 +4,7 @@ const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
 const { brandOfLr } = require('../utils/partyBrands');
+const { getNextEntryId, ensureEntryIds } = require('../utils/entryIdService');
 
 const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
@@ -154,6 +155,7 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     const batch = db.batch();
     const createdIds = [];
     
+    const entryId = await getNextEntryId(orgId, lrCollection);
     // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
@@ -161,6 +163,7 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
 
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
+            entryId,
             lrNo, date: date || new Date().toISOString(), truckNo,
             destination: destination || '',
             material: mat.type, 
@@ -219,11 +222,13 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
     const lrNo = localGetNextLrNo(orgId, counterCollection, requestedNo);
     const createdIds = [];
 
+    const entryId = await getNextEntryId(orgId, lrCollection);
     for (const mat of materials) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
         const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
 
         const doc = localStore.insert(lrCollection, {
+            entryId,
             lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
             destination: destination || '',
             material: mat.type,
@@ -269,6 +274,7 @@ const createLoadingReceipt = async (orgId, data, lrCollection = COLLECTION_LR, c
 };
 
 const getAllLoadingReceipts = async (orgId, lrCollection = COLLECTION_LR) => {
+    await ensureEntryIds(orgId, lrCollection).catch(() => {});
     if (firebaseAvailable()) return await firestoreGetAll(orgId, lrCollection);
     return localGetAll(orgId, lrCollection);
 };

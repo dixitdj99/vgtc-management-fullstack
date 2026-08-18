@@ -13,6 +13,7 @@ import { extrasPayload, readExtras } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
+import { fmtDate } from '../utils/format';
 
 const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
@@ -119,7 +120,6 @@ function monthLabel(ym) {
   return new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 }
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
-const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 /**
  * The pump recorded on the voucher, or blank. 'None' is the sentinel the
@@ -285,7 +285,7 @@ function doPrintMonthlyPL(ym, rows, tabName, orgName, vehicle) {
     <td style="text-align:right;font-weight:800;color:#16a34a">Rs.${Math.round(totalNet).toLocaleString()}</td>
     <td style="text-align:center">${avgMargin.toFixed(1)}%</td>
   </tr></tfoot></table>
-  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   printHtml(html, {
     width: 1000, height: 700,
@@ -358,7 +358,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
     <td style="text-align:center;font-weight:800;color:${out <= 0 ? '#16a34a' : '#b45309'}">${out <= 0 ? '✓ Cleared' : 'Rs.' + Math.round(out).toLocaleString() + ' due'}</td>
   </tr></tfoot></table>
   <div class="sig"><div class="sl">Driver</div><div class="sl">Authorised Sign</div></div>
-  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   printHtml(html, {
     width: 1000, height: 640,
@@ -695,15 +695,16 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
         <input type="checkbox" checked={checked} onChange={() => onCheck(v.id)}
           style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
       </td>
+
       <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
       {/* Plant and truck on the combined sheet. Declared and documented but
           never rendered, so those two headers stood over the wrong cells and
           every column after them read one place to the left — a date under
           "Plant", a rate under "Destination", a gross under "Weight". */}
       {leadCells}
-      <td className="t-card-title" style={{ ...TD }}>{v.date}</td>
+      <td className="t-card-title" style={{ ...TD }}>{fmtDate(v.date)}</td>
       <td data-label="ID" style={{ ...TD }}>
-        <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1' }}>#{v.entryId || '—'}</span>
+        <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1' }}>#{v.entryId || v.lrEntryId || '—'}</span>
       </td>
       <td data-label="LR No." style={{ ...TD }}>
         {v.deliveries?.length > 0
@@ -852,7 +853,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       })()}
       {role === 'admin' && <td data-label="Created By" style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
       {role === 'admin' && <td data-label="Updated By" style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
-      <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
+      <td className="t-card-actions" style={{ ...TD, position: 'sticky', right: 0, zIndex: 5, background: editing ? 'var(--bg-input)' : bg, boxShadow: '-3px 0 6px rgba(0,0,0,0.18)', textAlign: 'center' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
             <button className="btn btn-p btn-icon btn-sm" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Edit">{saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}</button>
@@ -1029,14 +1030,50 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             </button>
           )}
           <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
-          {/* Print buttons */}
+          {/* Edit / Delete / Print toolbar operating on checked entries */}
           <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName, orgName, vehicle)}>
             <Printer size={12} /> Print Month
           </button>
           {monthChecked.length > 0 && (
-            <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName, orgName, vehicle)}>
-              <Printer size={12} /> Print {monthChecked.length} Selected
-            </button>
+            <>
+              <button
+                className="btn btn-g btn-sm"
+                disabled={monthChecked.length !== 1}
+                onClick={() => {
+                  const target = monthChecked[0];
+                  if (target) doPrint([target], selTruck, monthLabel(ym) + ' (selected)', tabName, orgName, vehicle);
+                }}
+                title={monthChecked.length > 1 ? "Select exactly 1 entry to print" : "Print Checked Entry"}
+              >
+                <Printer size={12} /> Print
+              </button>
+              {(role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') && (
+                <button
+                  className="btn btn-g btn-sm"
+                  disabled={monthChecked.length !== 1}
+                  onClick={() => {
+                    const target = monthChecked[0];
+                    if (target && onEdit) onEdit(target._original || target);
+                  }}
+                  title={monthChecked.length > 1 ? "Select exactly 1 entry to edit" : "Edit Checked Entry"}
+                >
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
+              {role === 'admin' && (
+                <button
+                  className="btn btn-d btn-sm"
+                  disabled={monthChecked.length === 0}
+                  onClick={() => {
+                    const target = monthChecked[0];
+                    if (target && onDelete) onDelete(target._original || target);
+                  }}
+                  title="Delete Checked Entry (Admin Only)"
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              )}
+            </>
           )}
           <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
           {/* Export buttons — every field on the record, plus the figures the
@@ -1052,37 +1089,37 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
         <TableScroll className="tbl-cards">
           <table style={{ minWidth: showPnL ? '1620px' : '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
-              <tr>
-                <th style={{ ...TH, textAlign: 'center', padding: '7px 8px' }}>
+              <tr style={{ background: 'var(--bg-th)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ ...TH, textAlign: 'center', padding: '7px 8px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
                   <input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected; }}
                     onChange={() => onCheckAll(rows, !allSelected)}
                     style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
                 </th>
-                <th style={TH}>#</th>
-                <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="ID" colKey="entryId" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                {isBillType && <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
-                {isBillType && <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
-                <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}>Gross (Rs.)</th>
-                <th style={TH}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Remarks" colKey="remark" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}>Expenses</th>
-                <th style={TH}>Net Bal</th>
-                <th style={TH}>Paid</th>
-                <th style={TH}>Status</th>
-                {showPnL && <th style={{ ...TH, color: '#f43f5e' }}>Deductions</th>}
-                {showPnL && <th style={{ ...TH, color: '#6366f1' }}>Margin %</th>}
-                {role === 'admin' && <th style={TH}>Created By</th>}
-                {role === 'admin' && <th style={TH}>Updated By</th>}
-                <th style={TH}>Actions</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>#</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="ID" colKey="entryId" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                {isBillType && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
+                {isBillType && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Gross (Rs.)</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Remarks" colKey="remark" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Expenses</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Net Bal</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Paid</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Status</th>
+                {showPnL && <th style={{ ...TH, color: '#f43f5e', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Deductions</th>}
+                {showPnL && <th style={{ ...TH, color: '#6366f1', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Margin %</th>}
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Created By</th>}
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Updated By</th>}
+                <th style={{ ...TH, position: 'sticky', top: 0, right: 0, zIndex: 20, background: 'var(--bg-th)', boxShadow: '-3px 0 6px rgba(0,0,0,0.18)', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1099,7 +1136,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <td style={{ ...TDF, textAlign: 'right' }}>{totals.weight}</td>
                 <td style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.gross)}</td>
-                <td colSpan={6} style={TDF}></td>
+                <td colSpan={7} style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right', color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totals.net)}</td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.paid)}</td>
                 <td style={{ ...TDF, textAlign: 'center', fontSize: '13px' }}>

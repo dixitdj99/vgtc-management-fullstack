@@ -63,4 +63,56 @@ const ensureEntryIds = async (orgId, collectionName) => {
     }
 };
 
-module.exports = { getNextEntryId, ensureEntryIds };
+/**
+ * Scans ALL existing records in a collection (regardless of orgId) and backfills missing entryIds.
+ */
+const ensureEntryIdsAll = async (collectionName) => {
+    let docs = [];
+    if (isAvailable()) {
+        const snap = await db.collection(collectionName).get();
+        docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } else {
+        docs = localStore.getAll(collectionName);
+    }
+
+    const grouped = {};
+    docs.forEach(d => {
+        const key = d.orgId || 'default';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(d);
+    });
+
+    let updatedCount = 0;
+    for (const orgKey of Object.keys(grouped)) {
+        const list = grouped[orgKey];
+        const missing = list.filter(d => !d.entryId);
+        if (missing.length === 0) continue;
+
+        let maxId = 100000;
+        list.forEach(d => {
+            const num = parseInt(d.entryId);
+            if (!isNaN(num) && num > maxId) maxId = num;
+        });
+
+        missing.sort((a, b) => {
+            const da = a.date || a.createdAt || '';
+            const dbTime = b.date || b.createdAt || '';
+            return String(da).localeCompare(String(dbTime));
+        });
+
+        for (const item of missing) {
+            maxId++;
+            const nextId = maxId;
+            if (isAvailable()) {
+                await db.collection(collectionName).doc(item.id).update({ entryId: nextId });
+            } else {
+                localStore.update(collectionName, item.id, { entryId: nextId });
+            }
+            item.entryId = nextId;
+            updatedCount++;
+        }
+    }
+    return updatedCount;
+};
+
+module.exports = { getNextEntryId, ensureEntryIds, ensureEntryIdsAll };

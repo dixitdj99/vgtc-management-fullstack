@@ -165,7 +165,7 @@ function printChallan(c, orgName) {
     <div class="sig-box">Receiver Sign</div>
     <div class="sig-box">Authorised Sign</div>
   </div>
-  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   printHtml(html, {
     width: 800, height: 600,

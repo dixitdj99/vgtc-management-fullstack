@@ -45,7 +45,16 @@ export default function Pagination({ currentPage, totalItems, pageSize, onPageCh
       </div>
 
       {/* centre — page buttons */}
-      <div className="ap-pagination-controls">
+      <div className="ap-pagination-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button
+          className="ap-page-btn"
+          disabled={currentPage === 1}
+          onClick={() => onPageChange(1)}
+          title="First Page"
+          style={{ fontSize: '11px', padding: '0 8px', fontWeight: 700 }}
+        >
+          « First
+        </button>
         <button
           className="ap-page-btn"
           disabled={currentPage === 1}
@@ -72,6 +81,15 @@ export default function Pagination({ currentPage, totalItems, pageSize, onPageCh
           title="Next page"
         >
           <ChevronRight size={14} />
+        </button>
+        <button
+          className="ap-page-btn"
+          disabled={currentPage === totalPages}
+          onClick={() => onPageChange(totalPages)}
+          title={`Last Page (${totalPages})`}
+          style={{ fontSize: '11px', padding: '0 8px', fontWeight: 700 }}
+        >
+          Last ({totalPages}) »
         </button>
       </div>
 

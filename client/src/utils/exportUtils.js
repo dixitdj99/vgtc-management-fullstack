@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { reportWatermarkCss } from './receiptPrint';
+import { fmtDate } from './format';
 
 /**
  * exportUtils — getting a list out of the app without losing any of it.
@@ -73,9 +74,18 @@ export function buildExportRows(records, { computed = {}, omit = [], order = [] 
         ...[...keys].filter(k => !order.includes(k)).sort(),
     ];
 
+
+
     return list.map(r => {
         const row = {};
-        ordered.forEach(k => { row[titleCase(k)] = flatten(r?.[k]); });
+        ordered.forEach(k => {
+            const raw = r?.[k];
+            if (k.toLowerCase().includes('date') && raw) {
+                row[titleCase(k)] = fmtDate(raw);
+            } else {
+                row[titleCase(k)] = flatten(raw);
+            }
+        });
         Object.entries(computed).forEach(([label, fn]) => {
             try { row[label] = fn(r); } catch { row[label] = ''; }
         });
@@ -188,7 +198,7 @@ export const exportToPDF = (rows, title = 'Document Export', columns = null, opt
         <script>
           (function () {
             var done = false;
-            function go() { if (done) return; done = true; window.print(); }
+            function go() { if (done) return; done = true; setTimeout(function() { try { window.opener = null; } catch(e){} window.focus(); window.print(); }, 200); }
             if (document.readyState === 'complete') go();
             else window.addEventListener('load', go);
             setTimeout(go, 2000);

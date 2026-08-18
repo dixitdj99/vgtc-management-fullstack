@@ -578,44 +578,46 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
         <TableScroll>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                <th style={{ ...TH, textAlign: 'center' }}>
+              <tr style={{ background: 'var(--bg-th)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ ...TH, textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
                   <input type="checkbox" checked={allSendableTicked} onChange={toggleAllFiltered}
                     style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
                 </th>
-                <th style={TH}>#</th>
-                <th style={TH}><ColumnFilter label="Plant" colKey="plant" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={{ ...TH, textAlign: 'right' }}>Weight</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Rate</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Gross</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Diesel</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Cash</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Online</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Munshi</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Shortage</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Veh. Exp</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Net Bal</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Paid</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Status</th>
-                {role === 'admin' && <th style={TH}>Created By</th>}
-                {role === 'admin' && <th style={TH}>Updated By</th>}
-                <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>#</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Plant" colKey="plant" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Truck" colKey="truckNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="ID" colKey="entryId" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Weight</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Rate</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Gross</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'left', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Remarks" colKey="remark" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Veh. Exp</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Net Bal</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Paid</th>
+                <th style={{ ...TH, textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Status</th>
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Created By</th>}
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Updated By</th>}
+                <th style={{ ...TH, position: 'sticky', top: 0, right: 0, zIndex: 20, background: 'var(--bg-th)', boxShadow: '-3px 0 6px rgba(0,0,0,0.18)', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <tr><td colSpan={role === 'admin' ? 26 : 24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <Loader2 size={18} className="spin" /> Loading every plant…
                 </td></tr>
               )}
               {!loading && !pageRows.length && (
-                <tr><td colSpan={24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                <tr><td colSpan={role === 'admin' ? 26 : 24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                   No trips match these filters.
                 </td></tr>
               )}
