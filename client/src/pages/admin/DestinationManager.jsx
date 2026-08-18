@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../../api';
-import { MapPin, Plus, X, Trash2, Edit3, Search, Calendar, History, TrendingUp, Check, RefreshCw } from 'lucide-react';
+import { MapPin, Plus, X, Trash2, Search, Calendar, TrendingUp, RefreshCw, Layers } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import TableScroll from '../../components/TableScroll';
+
+const MODULE_OPTIONS = [
+    { id: 'all', label: 'All Modules', color: '#64748b' },
+    { id: 'Dump', label: 'Dump', color: '#f43f5e' },
+    { id: 'JK_Lakshmi', label: 'JK Lakshmi', color: '#10b981' },
+    { id: 'JK_Super', label: 'JK Super', color: '#3b82f6' },
+    { id: 'Kosli_Bill', label: 'Kosli Dump', color: '#6366f1' },
+    { id: 'Jajjhar_Bill', label: 'Jhajjar Dump', color: '#f59e0b' },
+    { id: 'Bahadurgarh_Bill', label: 'Bahadurgarh Dump', color: '#8b5cf6' },
+];
 
 export default function DestinationManager() {
     const [destinations, setDestinations] = useState([]);
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [search, setSearch] = useState('');
+    const [selectedModule, setSelectedModule] = useState('all');
     
     // Modal states
     const [showAddDest, setShowAddDest] = useState(false);
@@ -20,6 +31,7 @@ export default function DestinationManager() {
     // Form states
     const [destForm, setDestForm] = useState({
         name: '',
+        module: 'all',
         rate: '',
         startDate: new Date().toISOString().split('T')[0],
         endDate: ''
@@ -64,6 +76,17 @@ export default function DestinationManager() {
         fetchDestinations();
     }, []);
 
+    const handleOpenAddModal = () => {
+        setDestForm({
+            name: '',
+            module: selectedModule !== 'all' ? selectedModule : 'all',
+            rate: '',
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: ''
+        });
+        setShowAddDest(true);
+    };
+
     const handleCreateDestination = async (e) => {
         e.preventDefault();
         if (!destForm.name.trim()) return;
@@ -71,12 +94,13 @@ export default function DestinationManager() {
         try {
             await ax.post('/destinations', {
                 name: destForm.name.trim(),
+                module: destForm.module || 'all',
                 rate: Number(destForm.rate) || 0,
                 startDate: destForm.startDate,
                 endDate: destForm.endDate || null
             });
             setShowAddDest(false);
-            setDestForm({ name: '', rate: '', startDate: new Date().toISOString().split('T')[0], endDate: '' });
+            setDestForm({ name: '', module: 'all', rate: '', startDate: new Date().toISOString().split('T')[0], endDate: '' });
             fetchDestinations();
         } catch (err) {
             alert(err.response?.data?.error || 'Failed to create destination');
@@ -120,9 +144,12 @@ export default function DestinationManager() {
         }
     };
 
-    const filtered = destinations.filter(d => 
-        (d.name || '').toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = destinations.filter(d => {
+        const matchSearch = (d.name || '').toLowerCase().includes(search.toLowerCase());
+        const destMod = d.module || 'all';
+        const matchModule = selectedModule === 'all' ? true : (destMod === selectedModule || destMod === 'all');
+        return matchSearch && matchModule;
+    });
 
     const formatDateDisplay = (dateStr) => {
         if (!dateStr) return 'Onward';
@@ -135,6 +162,10 @@ export default function DestinationManager() {
         } catch {
             return dateStr;
         }
+    };
+
+    const getModuleMeta = (modId) => {
+        return MODULE_OPTIONS.find(m => m.id === modId) || { id: 'all', label: 'All Modules', color: '#64748b' };
     };
 
     return (
@@ -156,7 +187,7 @@ export default function DestinationManager() {
                         <MapPin size={20} color="#3b82f6" /> Destination Freight Rates
                     </h3>
                     <p style={{ fontSize: '13px', color: 'var(--text-sub)', margin: '2px 0 0 0' }}>
-                        Manage destinations, effective date range rate history, and autofill rules for vouchers
+                        Manage separate destination lists and effective date range rates per module (Dump, JK Lakshmi, JK Super, Kosli, Jhajjar, Bahadurgarh)
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -169,10 +200,41 @@ export default function DestinationManager() {
                     >
                         <RefreshCw size={15} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} /> {syncing ? 'Syncing...' : 'Sync from Vouchers'}
                     </button>
-                    <button className="btn btn-p" onClick={() => setShowAddDest(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button className="btn btn-p" onClick={handleOpenAddModal} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Plus size={16} /> Add New Destination
                     </button>
                 </div>
+            </div>
+
+            {/* Module Filter Tabs */}
+            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                {MODULE_OPTIONS.map(mod => {
+                    const isActive = selectedModule === mod.id;
+                    return (
+                        <button
+                            key={mod.id}
+                            onClick={() => setSelectedModule(mod.id)}
+                            style={{
+                                padding: '6px 14px',
+                                borderRadius: '20px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                border: `1px solid ${isActive ? mod.color : 'var(--border)'}`,
+                                background: isActive ? mod.color : 'var(--bg-card)',
+                                color: isActive ? '#ffffff' : 'var(--text-sub)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease',
+                                whiteSpace: 'nowrap'
+                            }}
+                        >
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isActive ? '#fff' : mod.color, display: 'inline-block' }} />
+                            {mod.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Search & Stats Bar */}
@@ -189,7 +251,7 @@ export default function DestinationManager() {
                     />
                 </div>
                 <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', fontWeight: 600 }}>
-                    Total Destinations: <span style={{ color: 'var(--text)', fontWeight: 800 }}>{destinations.length}</span>
+                    Showing <span style={{ color: 'var(--text)', fontWeight: 800 }}>{filtered.length}</span> of <span style={{ color: 'var(--text)', fontWeight: 800 }}>{destinations.length}</span> Destinations
                 </div>
             </div>
 
@@ -200,6 +262,7 @@ export default function DestinationManager() {
                         <thead>
                             <tr style={{ background: 'var(--bg-th)', borderBottom: '1px solid var(--border)' }}>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Destination Name</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Module / Plant</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Current Rate (₹/MT)</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Time Period Rate History</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Actions</th>
@@ -208,17 +271,18 @@ export default function DestinationManager() {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading destinations...</td>
+                                    <td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading destinations...</td>
                                 </tr>
                             ) : filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                        {search ? 'No destinations found matching search.' : 'No destinations added yet.'}
+                                    <td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        {search ? 'No destinations found matching search.' : 'No destinations added for this module yet.'}
                                     </td>
                                 </tr>
                             ) : (
                                 filtered.map((d, idx) => {
                                     const history = d.rateHistory || [];
+                                    const modMeta = getModuleMeta(d.module || 'all');
                                     return (
                                         <tr key={d.id} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                                             <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--text)' }}>
@@ -226,6 +290,23 @@ export default function DestinationManager() {
                                                     <MapPin size={15} color="#3b82f6" />
                                                     <span>{d.name}</span>
                                                 </div>
+                                            </td>
+                                            <td style={{ padding: '12px 16px' }}>
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    fontWeight: 800,
+                                                    padding: '3px 8px',
+                                                    borderRadius: '6px',
+                                                    background: `${modMeta.color}15`,
+                                                    color: modMeta.color,
+                                                    border: `1px solid ${modMeta.color}40`,
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}>
+                                                    <Layers size={11} />
+                                                    {modMeta.label}
+                                                </span>
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#10b981', fontSize: '14px' }}>
                                                 ₹{d.currentRate || 0}
@@ -317,6 +398,18 @@ export default function DestinationManager() {
                                 />
                             </div>
                             <div className="field">
+                                <label>Module / Plant *</label>
+                                <select 
+                                    className="fi"
+                                    value={destForm.module}
+                                    onChange={e => setDestForm(f => ({ ...f, module: e.target.value }))}
+                                >
+                                    {MODULE_OPTIONS.map(m => (
+                                        <option key={m.id} value={m.id}>{m.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="field">
                                 <label>Rate (Rs/MT) *</label>
                                 <input 
                                     className="fi" 
@@ -367,7 +460,7 @@ export default function DestinationManager() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
                             <div>
                                 <h4 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <TrendingUp size={18} color="#3b82f6" /> Rate Change for {selectedDest.name}
+                                    <TrendingUp size={18} color="#3b82f6" /> Rate Change for {selectedDest.name} ({getModuleMeta(selectedDest.module || 'all').label})
                                 </h4>
                                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
                                     Record a rate change starting from a specific effective date

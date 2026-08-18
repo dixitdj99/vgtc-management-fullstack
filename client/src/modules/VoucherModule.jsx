@@ -142,7 +142,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         { lbl: 'Tyre Puncture', val: n.tyrePuncture },
         { lbl: 'Tyre Greasing & Air', val: n.tyreGreasingAir },
     ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'))
-        .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', note: e.remark, val: e.amount })));
+        .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', val: e.amount })));
 
     // One archive descriptor for all three voucher layouts — same document,
     // whichever way it is drawn.
@@ -735,16 +735,16 @@ function ExtraMoneyList({ extras = [], onChange }) {
     return (
         <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>💰 Extra Money</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>💰 Extra Money & Remark</span>
                 {total > 0 && <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b', marginLeft: 'auto' }}>₹{total.toLocaleString('en-IN')}</span>}
             </div>
 
             {extras.map((e, i) => (
                 <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input className="fi" type="number" placeholder="₹0" value={e.amount ?? ''}
+                    <input className="fi" type="number" placeholder="₹ Amount" value={e.amount ?? ''}
                         onChange={ev => update(i, 'amount', ev.target.value)}
-                        style={{ width: '110px', flexShrink: 0 }} />
-                    <input className="fi" type="text" placeholder="Reason — e.g. grease ke paise" value={e.remark || ''}
+                        style={{ width: '120px', flexShrink: 0 }} />
+                    <input className="fi" type="text" placeholder="Extra Remark (Internal only — NOT printed on receipt)" value={e.remark || ''}
                         onChange={ev => update(i, 'remark', ev.target.value)}
                         style={{ flex: 1, minWidth: 0 }} />
                     <button type="button" onClick={() => remove(i)} title="Remove this line"
@@ -770,6 +770,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         driverId: v.driverId || driverOptions.find(d => d.name === v.driverName)?.id || '',
         driverName: v.driverName || '',
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
+        remark: v.remark || '',
         weight: v.weight ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)) : '') ?? '',
         bags: v.bags ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)) : '') ?? '',
         rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
@@ -802,7 +803,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
             } else if (key === 'weight') {
                 updated.bags = val ? String(Math.round(parseFloat(val) * 20)) : '';
             } else if (key === 'destination' && val) {
-                const autoRate = lookupDestinationRate(val, form.date);
+                const autoRate = lookupDestinationRate(val, form.date, v.type);
                 if (autoRate > 0) updated.rate = String(autoRate);
             }
             return updated;
@@ -865,7 +866,8 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                     await ax.post('/destinations/record', {
                         name: item.name,
                         rate: item.rate,
-                        date: form.date
+                        date: form.date,
+                        module: v.type
                     }).catch(() => {});
                 }
             }
@@ -892,7 +894,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                 <div className="fg fg-2" style={{ padding: '20px 22px', gap: '12px' }}>
                     <div className="field-h">
                         <label>LR No. *</label>
-                        <input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} required />
+                        <input className="fi" type="text" placeholder="e.g. 101, 102" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} required />
                     </div>
                     <div className="field-h">
                         <label>Date *</label>
@@ -929,7 +931,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             <StyledAutocomplete
                                 value={form.destination}
                                 onChange={val => {
-                                    const autoRate = lookupDestinationRate(val, form.date);
+                                    const autoRate = lookupDestinationRate(val, form.date, v.type);
                                     setForm(f => ({
                                         ...f,
                                         destination: val,
@@ -1118,6 +1120,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         </>
                     )}
                     <ExtraMoneyList extras={form.extras} onChange={list => S('extras', list)} />
+                    <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                        <label>Remarks</label>
+                        <input className="fi" type="text" placeholder="Enter remarks (NOT printed on receipt)" value={form.remark || ''} onChange={e => S('remark', e.target.value)} />
+                    </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
@@ -1238,6 +1244,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
         materials: [],
         tyrePuncture: '', tyreGreasingAir: '', extras: [],
+        remark: '',
     });
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
 
@@ -1255,7 +1262,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             if (key === 'weight' && val) updated.bags = String(Math.round(parseFloat(val) * 20));
             if (key === 'bags' && val) updated.weight = (parseFloat(val) * 0.05).toFixed(2);
             if (key === 'destination' && val) {
-                const autoRate = lookupDestinationRate(val, form.date);
+                const autoRate = lookupDestinationRate(val, form.date, vType);
                 if (autoRate > 0) updated.rate = String(autoRate);
             }
             return updated;
@@ -1282,11 +1289,19 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [vehicleNumbers, setVehicleNumbers] = useState([]);
     const [destinationsList, setDestinationsList] = useState([]);
 
-    const lookupDestinationRate = useCallback((name, date) => {
+    const lookupDestinationRate = useCallback((name, date, moduleType) => {
         if (!name) return 0;
         const cleanName = String(name).trim().toUpperCase();
-        const dest = destinationsList.find(d => (d.name || '').trim().toUpperCase() === cleanName);
+        const targetModule = moduleType || vType;
+        let dest = (destinationsList || []).find(d => (d.name || '').trim().toUpperCase() === cleanName && d.module === targetModule);
+        if (!dest) {
+            dest = (destinationsList || []).find(d => (d.name || '').trim().toUpperCase() === cleanName && (!d.module || d.module === 'all'));
+        }
+        if (!dest) {
+            dest = (destinationsList || []).find(d => (d.name || '').trim().toUpperCase() === cleanName);
+        }
         if (!dest) return 0;
+
         const targetDate = (date || new Date().toISOString().split('T')[0]).slice(0, 10);
         const history = dest.rateHistory || [];
         for (const period of history) {
@@ -1308,14 +1323,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         }
         if (lastRate) return lastRate;
         return dest.currentRate || Number(sorted[0]?.rate) || 0;
-    }, [destinationsList]);
+    }, [destinationsList, vType]);
 
     const destinationOptions = useMemo(() => {
         const masterMap = new Map();
         (destinationsList || []).forEach(d => {
             const name = (d.name || '').toUpperCase().trim();
             if (name) {
-                masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
+                if (!d.module || d.module === 'all' || d.module === vType || !masterMap.has(name)) {
+                    masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
+                }
             }
         });
 
@@ -1397,10 +1414,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const usedLRSet = useMemo(() => {
         const s = new Set();
         vouchers.forEach(v => {
-            // top-level lrNo (could be comma-separated for old multi-lr vouchers)
+            // top-level lrNo (could be comma-separated for multi-lr orders)
             if (v.lrNo) String(v.lrNo).split(',').map(x => x.trim()).filter(Boolean).forEach(lr => s.add(lr));
             // delivery-level lrNos
-            (v.deliveries || []).forEach(d => { if (d.lrNo) s.add(String(d.lrNo).trim()); });
+            (v.deliveries || []).forEach(d => {
+                if (d.lrNo) String(d.lrNo).split(',').map(x => x.trim()).filter(Boolean).forEach(lr => s.add(lr));
+            });
         });
         return s;
     }, [vouchers]);
@@ -1452,9 +1471,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
         // Factory vouchers — only check for duplicates, no LR fetch
         if (vType === 'JK_Super' || vType === 'JK_Lakshmi') {
+            const inputLrs = val.split(',').map(s => s.trim()).filter(Boolean);
             const alreadyUsed = vouchers.some(v => {
-                if (!v.lrNo) return false;
-                return String(v.lrNo).split(',').map(s => s.trim()).includes(val.trim());
+                const existingLrs = [];
+                if (v.lrNo) String(v.lrNo).split(',').map(s => s.trim()).forEach(x => existingLrs.push(x));
+                if (Array.isArray(v.deliveries)) {
+                    v.deliveries.forEach(d => {
+                        if (d.lrNo) String(d.lrNo).split(',').map(s => s.trim()).forEach(x => existingLrs.push(x));
+                    });
+                }
+                return inputLrs.some(lr => existingLrs.includes(lr));
             });
             if (alreadyUsed) setLrAlreadyUsed(true);
             return;
@@ -1570,9 +1596,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
         // Check delivery LR duplicates for factory types
         if (isFactory) {
-            const duplicates = deliveries
-                .map(d => d.lrNo?.trim())
-                .filter(lr => lr && usedLRSet.has(lr));
+            const duplicates = [];
+            deliveries.forEach(d => {
+                if (d.lrNo) {
+                    const lrs = String(d.lrNo).split(',').map(x => x.trim()).filter(Boolean);
+                    lrs.forEach(lr => {
+                        if (usedLRSet.has(lr)) duplicates.push(lr);
+                    });
+                }
+            });
             if (duplicates.length > 0) {
                 setDupLRModal({ lrNos: [...new Set(duplicates)] });
                 return;
@@ -1626,14 +1658,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     await ax.post('/destinations/record', {
                         name: item.name,
                         rate: item.rate,
-                        date: form.date
+                        date: form.date,
+                        module: vType
                     }).catch(() => {});
                 }
             }
 
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             const newVoucher = res.data;
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [] }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [], remark: '' }));
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
 
@@ -1851,7 +1884,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     <StyledAutocomplete
                                                         value={form.destination}
                                                         onChange={val => {
-                                                            const autoRate = lookupDestinationRate(val, form.date);
+                                                            const autoRate = lookupDestinationRate(val, form.date, vType);
                                                             setForm(f => ({
                                                                 ...f,
                                                                 destination: val,
@@ -2146,6 +2179,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             )}
 
+                                            <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                                                <label>Remarks</label>
+                                                <input className="fi" type="text" placeholder="Enter remarks (NOT printed on receipt)" value={form.remark || ''} onChange={e => set('remark', e.target.value)} />
+                                            </div>
+
                                             {/* ── Odometer KM fields — VGTC trucks only, all voucher types ── */}
                                             {isVGTCTruck(form.truckNo) && (
                                                 <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'inherit', gap: 'inherit' }}>
@@ -2247,6 +2285,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         { key: 'advanceOnline', label: 'Online Adv.' },
                                         { key: 'munshi', label: 'Munshi' },
                                         { key: 'total', label: 'Total (Rs)' },
+                                        { key: 'remark', label: 'Remarks' },
                                         ...(role === 'admin' ? [
                                             { key: 'createdBy', label: 'Created By' },
                                             { key: 'updatedBy', label: 'Updated By' }
@@ -2320,6 +2359,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     ))}
                                                 </div>
                                                 : v.destination || '—'}
+                                            {v.remark && <div style={{ fontSize: '10.5px', color: '#8b5cf6', fontWeight: 600, marginTop: '3px' }}>📝 {v.remark}</div>}
                                         </td>
                                         <td data-label="Weight" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
                                             {v.deliveries?.length > 0

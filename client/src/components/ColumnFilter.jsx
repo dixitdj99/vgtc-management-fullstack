@@ -56,12 +56,19 @@ import { motion, AnimatePresence } from 'framer-motion';
  * @returns {string[]} zero or more values, always strings
  */
 export function columnValues(row, colKey) {
-    if (colKey === 'lrNo' && Array.isArray(row?.deliveries) && row.deliveries.length) {
-        const fromDrops = row.deliveries
-            .map(d => d?.lrNo)
-            .filter(v => v !== undefined && v !== null && v !== '')
-            .map(String);
-        if (fromDrops.length) return fromDrops;
+    if (colKey === 'lrNo') {
+        const set = new Set();
+        if (row?.lrNo) {
+            String(row.lrNo).split(',').map(s => s.trim()).filter(Boolean).forEach(x => set.add(x));
+        }
+        if (Array.isArray(row?.deliveries)) {
+            row.deliveries.forEach(d => {
+                if (d?.lrNo) {
+                    String(d.lrNo).split(',').map(s => s.trim()).filter(Boolean).forEach(x => set.add(x));
+                }
+            });
+        }
+        if (set.size > 0) return Array.from(set);
     }
     const v = row?.[colKey];
     if (v === undefined || v === null || v === '') return [];

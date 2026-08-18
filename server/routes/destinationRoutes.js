@@ -33,12 +33,12 @@ router.post('/sync', async (req, res) => {
     }
 });
 
-// GET /api/destinations/rate-lookup?name=Rewari&date=2026-08-11 — Lookup rate for destination on date
+// GET /api/destinations/rate-lookup?name=Rewari&date=2026-08-11&module=Dump — Lookup rate for destination on date
 router.get('/rate-lookup', async (req, res) => {
     try {
-        const { name, date } = req.query;
+        const { name, date, module, type } = req.query;
         if (!name) return res.json({ rate: 0 });
-        const rate = await destinationService.getRateForDate(req.orgId, name, date);
+        const rate = await destinationService.getRateForDate(req.orgId, name, date, module || type);
         res.json({ name, date, rate });
     } catch (e) {
         res.status(500).json({ error: e.message });

@@ -2428,8 +2428,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td className="c" data-label="Voucher Status">
                           {(() => {
                             const usedInVouchers = allVouchers.filter(v => {
-                              if (!v.lrNo) return false;
-                              const vLrs = String(v.lrNo).split(',').map(s => s.trim());
+                              const vLrs = [];
+                              if (v.lrNo) String(v.lrNo).split(',').map(s => s.trim()).forEach(x => vLrs.push(x));
+                              if (Array.isArray(v.deliveries)) {
+                                v.deliveries.forEach(d => {
+                                  if (d.lrNo) String(d.lrNo).split(',').map(s => s.trim()).forEach(x => vLrs.push(x));
+                                });
+                              }
                               return vLrs.includes(String(lr.lrNo));
                             });
 

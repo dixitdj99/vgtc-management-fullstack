@@ -624,6 +624,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       commission: v.commission || '', tyrePuncture: v.tyrePuncture || '',
       tyreGreasingAir: v.tyreGreasingAir || '', extraCash: v.extraCash || '',
       extraCashRemark: v.extraCashRemark || '',
+      remark: v.remark || '',
     });
     setEditing(true);
   };
@@ -732,6 +733,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
               ))}
             </div>
           : (v.destination || v.partyName || '—')}
+        {v.remark && <div style={{ fontSize: '10.5px', color: '#8b5cf6', fontWeight: 600, marginTop: '2px' }}>📝 {v.remark}</div>}
       </td>
       <td data-label="Weight" style={{ ...TD, textAlign: 'right' }}>
         {editing ? FI('weight', '60px') : (v.deliveries?.length > 0
@@ -790,6 +792,9 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       </td>
       <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('munshi') : (v.munshi || '—')}</td>
       <td data-label="Shortage" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('shortage') : (v.shortage || '—')}</td>
+      <td data-label="Remarks" style={{ ...TD, color: 'var(--text-sub)', fontSize: '11.5px', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.remark || ''}>
+        {editing ? FI('remark', '70px', true) : (v.remark ? <span style={{ color: '#8b5cf6', fontWeight: 600 }}>📝 {v.remark}</span> : '—')}
+      </td>
       <td data-label="Expenses" style={{ ...TD, textAlign: 'right', fontSize: '11px', padding: '4px 6px' }}>
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '80px' }}>
@@ -797,6 +802,8 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Puncture</span>{FI('tyrePuncture', '55px')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Grease</span>{FI('tyreGreasingAir', '55px')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Extra</span>{FI('extraCash', '55px')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Remark</span>{FI('extraCashRemark', '55px', true)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>V.Remark</span>{FI('remark', '55px', true)}</div>
           </div>
         ) : hasVehicleExp ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1062,6 +1069,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <th style={TH}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="Remarks" colKey="remark" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}>Expenses</th>
                 <th style={TH}>Net Bal</th>
                 <th style={TH}>Paid</th>

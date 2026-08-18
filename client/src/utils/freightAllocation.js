@@ -36,7 +36,9 @@ export function allocateFreightPayment(vouchers, { amount, paymentDate, paymentM
     const ordered = [...vouchers].sort((a, b) => {
         const da = a.date || '', db = b.date || '';
         if (da !== db) return da < db ? -1 : 1;
-        return (Number(a.lrNo) || 0) - (Number(b.lrNo) || 0);
+        const numA = Number(String(a.lrNo || 0).split(',')[0].trim()) || 0;
+        const numB = Number(String(b.lrNo || 0).split(',')[0].trim()) || 0;
+        return numA - numB;
     });
 
     for (const v of ordered) {
