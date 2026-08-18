@@ -336,7 +336,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         </div>
 
         <div class="lr-row">
-          <span>Voucher for LR: ${lrLabel}</span>
+          <span>ID: #${v.entryId || '—'} · LR: ${lrLabel}</span>
           <span>Date: ${v.date}</span>
         </div>
 
@@ -487,7 +487,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
                 <div>Truck No. <span style="margin-left: 5px; font-weight: normal;">${v.truckNo || ''}</span>${v.truckNo ? '' : '<div class="dotted-fill"></div>'}</div>
                 <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh')}</div>
                 <div>To <span style="margin-left: 5px; font-weight: normal;">${v.destination || ''}</span>${v.destination ? '' : '<div class="line-fill"></div>'}</div>
-                <div><span>LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal;">Date: ${v.date}</span></div>
+                <div><span>ID: <span style="margin-left: 5px; font-weight: bold; font-size: 13px; color: #6366f1;">#${v.entryId || '—'}</span></span><span style="margin-left: 15px;">LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal; margin-left: 15px;">Date: ${v.date}</span></div>
             </div>
         </div>
         <table class="main-table">
@@ -2272,6 +2272,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 <tr style={{ background: 'var(--bg-th)' }}>
                                     <th style={{ ...TH, width: '40px', textAlign: 'center' }}>#</th>
                                     {[
+                                        { key: 'entryId', label: 'ID' },
                                         { key: 'lrNo', label: 'LR No.' },
                                         { key: 'date', label: 'Date' },
                                         { key: 'truckNo', label: 'Truck' },
@@ -2327,6 +2328,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
                                         <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * PAGE_SIZE + i + 1}</td>
+                                        <td data-label="ID" style={{ ...TD }}>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
+                                                #{v.entryId || '—'}
+                                            </span>
+                                        </td>
                                         <td className="t-card-title" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>

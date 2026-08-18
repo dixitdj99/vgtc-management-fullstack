@@ -787,6 +787,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
           <th style={TH}>Date</th>
+          <th style={TH}>ID</th>
           <th style={TH}>Description</th>
           {showBadge && <th style={TH}>Type</th>}
           <th style={{ ...TH, textAlign: 'right', color: 'var(--accent)' }}>Credit (In)</th>
@@ -798,7 +799,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         </tr></thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No entries yet</td></tr>
+            <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No entries yet</td></tr>
           )}
           {rows.map((r, i) => {
             const bs = BADGE_STYLE[r.badge] || BADGE_STYLE['deposit'];
@@ -806,6 +807,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               <tr key={r.id}
                 style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                 <td className="t-card-title" style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                <td data-label="ID" style={{ ...TD }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
+                    #{r.entryId || '—'}
+                  </span>
+                </td>
                 <td data-label="Description" style={{ ...TD, maxWidth: '320px' }}>
                   <div style={{ fontWeight: 600, color: r.isReturned ? 'var(--text-muted)' : 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.isReturned ? 'line-through' : 'none' }}>
                     {r.label}

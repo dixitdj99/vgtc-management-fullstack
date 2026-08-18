@@ -702,6 +702,9 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
           "Plant", a rate under "Destination", a gross under "Weight". */}
       {leadCells}
       <td className="t-card-title" style={{ ...TD }}>{v.date}</td>
+      <td data-label="ID" style={{ ...TD }}>
+        <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1' }}>#{v.entryId || '—'}</span>
+      </td>
       <td data-label="LR No." style={{ ...TD }}>
         {v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
@@ -1057,6 +1060,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 </th>
                 <th style={TH}>#</th>
                 <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={TH}><ColumnFilter label="ID" colKey="entryId" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
                 {isBillType && <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
                 {isBillType && <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
