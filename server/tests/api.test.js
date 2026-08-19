@@ -3647,5 +3647,67 @@ test('cashbook: every ledger row belongs to a tab', async () => {
   assert(counted === 72, 'the reported ledger no longer reconciles');
 });
 
+/* ── calcNet edge cases ───────────────────────────────────────────────────────
+ *
+ * voucherCalc.js is shared between the balance sheet, the freight batch
+ * allocation, the pay screen, and the P&L page. A one-character change there
+ * propagates everywhere, so we test the four rules most likely to be wrong
+ * silently:
+ *
+ *   1. advanceDiesel = 'FULL' must become 4000, not 0
+ *   2. Multi-delivery gross overrides single weight × rate
+ *   3. Market truck + no GPS + JK_Lakshmi subtracts an extra ₹50
+ *   4. calcOutstanding must never return a negative number
+ */
+
+test('calcNet: FULL tank uses the 4000 estimate, not 0', async () => {
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'utils', 'voucherCalc.js');
+  const { calcNet } = await import(pathToFileURL(p).href);
+
+  const net = calcNet({ weight: '10', rate: '500', advanceDiesel: 'FULL', munshi: '50' });
+  assert(net === 5000 - 50 - 4000,
+    `FULL tank should be 4000, got ${5000 - 50 - net + 4000} (net=${net})`);
+});
+
+test('calcNet: multi-delivery gross ignores the top-level weight × rate', async () => {
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'utils', 'voucherCalc.js');
+  const { calcNet } = await import(pathToFileURL(p).href);
+
+  const net = calcNet({
+    weight: '99', rate: '9999',            // must be ignored
+    munshi: '100',
+    deliveries: [
+      { weight: '6', rate: '420' },        // 2520
+      { weight: '4', rate: '500' },        // 2000
+    ],
+  });
+  assert(net === 6 * 420 + 4 * 500 - 100,
+    `multi-delivery gross wrong, got net=${net} expected ${6 * 420 + 4 * 500 - 100}`);
+});
+
+test('calcNet: market + no GPS + JK_Lakshmi subtracts ₹50', async () => {
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'utils', 'voucherCalc.js');
+  const { calcNet } = await import(pathToFileURL(p).href);
+
+  const voucher = { weight: '10', rate: '500', munshi: '50', type: 'JK_Lakshmi' };
+  const withDeduction    = calcNet(voucher, { ownershipType: 'market', gpsType: 'none' });
+  const withoutDeduction = calcNet(voucher, { ownershipType: 'own',    gpsType: 'none' });
+  assert(withDeduction === withoutDeduction - 50,
+    `market/no-GPS deduction should be ₹50, difference was ${withoutDeduction - withDeduction}`);
+});
+
+test('calcOutstanding: never returns a negative value when paidBalance > net', async () => {
+  const { pathToFileURL } = require('url');
+  const p = require('path').join(__dirname, '..', '..', 'client', 'src', 'utils', 'voucherCalc.js');
+  const { calcOutstanding } = await import(pathToFileURL(p).href);
+
+  const owed = calcOutstanding({ weight: '10', rate: '500', munshi: '50', paidBalance: '9999' });
+  assert(owed === 0,
+    `calcOutstanding should floor at 0, got ${owed}`);
+});
+
 // Run
 runAll();
