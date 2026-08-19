@@ -1203,6 +1203,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     // Opens on the list. The form was taking the whole first screen on a module
     // people mostly come to in order to look something up.
     const [formOpen, setFormOpen] = useState(false);
+    const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
