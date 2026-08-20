@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build -w vgtc-client",
     "start": "node server/index.js",
-    "test:client": "node client/src/utils/voucherCalc.test.js && node client/src/utils/freightAllocation.test.js && node client/src/utils/partyBrands.test.js",
+    "test:client": "node client/src/utils/voucherCalc.test.js && node client/src/utils/freightAllocation.test.js && node client/src/utils/partyBrands.test.js && node client/src/permissions/catalogue.test.js",
     "test:server": "npm run test -w vgtc-server",
     "test": "npm run test:client && npm run test:server"
   },

@@ -473,14 +473,14 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Error */}
+          {/* Error / Info Notification */}
           {error && (
             <div style={{
-              background: (error.includes('sent') || error.includes('successful')) ? 'rgba(0,150,136,0.05)' : 'rgba(255,0,0,0.05)',
-              border: `1px solid ${(error.includes('sent') || error.includes('successful')) ? 'rgba(0,150,136,0.2)' : 'rgba(255,0,0,0.2)'}`,
-              borderRadius: '4px', padding: '8px 10px', fontSize: '11.5px',
-              color: (error.includes('sent') || error.includes('successful')) ? '#009688' : '#ff0000',
-              fontWeight: '600', marginBottom: '12px',
+              background: (error.includes('sent') || error.includes('successful') || error.includes('OTP')) ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)',
+              border: `1px solid ${(error.includes('sent') || error.includes('successful') || error.includes('OTP')) ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.2)'}`,
+              borderRadius: '8px', padding: '10px 12px', fontSize: '12px',
+              color: (error.includes('sent') || error.includes('successful') || error.includes('OTP')) ? '#10b981' : '#f43f5e',
+              fontWeight: '600', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px'
             }}>
               {error}
             </div>

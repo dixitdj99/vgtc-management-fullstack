@@ -1,0 +1,1057 @@
+/**
+ * admin.css — one design system for both admin surfaces.
+ *
+ * The admin screens live in two shells: `/admin/*` (AdminLayout, always dark)
+ * and the in-app Settings tab (AdminPage, whatever theme the user picked).
+ * Everything below is built out of the theme variables in index.css so a single
+ * rule renders correctly in both, and every class is namespaced `.adm-` so it
+ * cannot collide with the operational modules.
+ *
+ * AdminLayout used to bolt `!important` overrides onto bare `input`/`select` to
+ * force them dark. That fought any component wanting its own surface, so it now
+ * sets the variables instead and these rules read them.
+ */
+
+.adm,
+.adm *,
+.adm *::before,
+.adm *::after { box-sizing: border-box; }
+
+.adm {
+  --adm-r: 16px;
+  --adm-r-sm: 10px;
+  --adm-r-xs: 8px;
+  --adm-gap: 20px;
+  --adm-ring: 0 0 0 3px var(--primary-glow);
+  color: var(--text);
+  font-family: inherit;
+}
+
+/* ─────────────────────────── Page scaffolding ─────────────────────────── */
+
+.adm-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--adm-gap);
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.adm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.adm-head h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.adm-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.adm-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ─────────────────────────── Surfaces ─────────────────────────── */
+
+.adm-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--adm-r);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.adm-panel-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.adm-panel-hd h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.adm-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.adm-panel-bd { padding: 20px; }
+.adm-panel-bd--flush { padding: 0; }
+
+.adm-icon-tile {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--adm-r-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+/* ─────────────────────────── Tabs / segmented ─────────────────────────── */
+
+.adm-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Extra bottom padding is the track's room. Without it the bar sits on top of
+     the tab labels. */
+  padding: 4px 4px 7px;
+  background: var(--bg-th);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Two classes deep so it outranks the generic `.adm ::-webkit-scrollbar` the
+   admin shell injects for its page scrollers. */
+.adm .adm-tabs::-webkit-scrollbar {
+  height: 7px;
+  display: block;
+}
+
+.adm .adm-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.adm .adm-tabs::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: none;
+}
+
+.adm .adm-tabs::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* The role filter inside a panel header: same scroll behaviour, no chrome. */
+.adm-tabs--plain {
+  background: transparent;
+  border: none;
+  padding: 0 0 6px;
+}
+
+.adm-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.adm-tab:hover { color: var(--text); background: var(--bg-hover); }
+
+.adm-tab[aria-selected="true"] {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow);
+}
+
+.adm-tab:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+
+.adm-tab-count {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.adm-tab[aria-selected="true"] .adm-tab-count {
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+/* ─────────────────────────── Buttons ─────────────────────────── */
+
+.adm-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-sub);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+.adm-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.adm-btn:active:not(:disabled) { transform: translateY(1px); }
+.adm-btn:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+.adm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.adm-btn--primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.adm-btn--primary:hover:not(:disabled) {
+  background: var(--primary);
+  filter: brightness(1.08);
+  color: #fff;
+}
+
+.adm-btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.adm-btn--danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+
+.adm-btn--ghost { background: transparent; border-color: transparent; }
+.adm-btn--ghost:hover:not(:disabled) { background: var(--bg-hover); }
+
+.adm-btn--sm { height: 32px; padding: 0 11px; font-size: 12px; }
+.adm-btn--icon { width: 38px; padding: 0; }
+.adm-btn--icon.adm-btn--sm { width: 32px; }
+.adm-btn--block { width: 100%; }
+
+/* A quiet inline action — "view all", "clear", "resend code". */
+.adm-link {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 2px 5px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.adm-link:hover:not(:disabled) { color: var(--primary); background: var(--primary-glow); }
+.adm-link:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+.adm-link--accent { color: var(--primary); }
+.adm-link:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─────────────────────────── Form controls ─────────────────────────── */
+
+.adm-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.adm-field > label,
+.adm-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adm-req { color: var(--danger); }
+
+.adm-input,
+.adm-select,
+.adm-textarea {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--adm-r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.adm-textarea {
+  height: auto;
+  min-height: 84px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.adm-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.adm-select option { background: var(--bg-card); color: var(--text); }
+
+.adm-input::placeholder,
+.adm-textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.adm-input:focus,
+.adm-select:focus,
+.adm-textarea:focus {
+  border-color: var(--primary);
+  box-shadow: var(--adm-ring);
+}
+
+.adm-input:disabled,
+.adm-select:disabled,
+.adm-textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.adm-input--invalid,
+.adm-input--invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-glow);
+}
+
+.adm-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+
+.adm-error {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.adm-input-wrap { position: relative; display: flex; align-items: center; }
+.adm-input-wrap .adm-input { padding-right: 72px; }
+
+.adm-input-actions {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.adm-input-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.adm-input-btn:hover { background: var(--bg-hover); color: var(--text); }
+.adm-input-btn:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+
+/* Search box with a leading icon. */
+.adm-search { position: relative; flex: 1; min-width: 180px; }
+
+.adm-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.adm-search .adm-input { padding-left: 36px; }
+
+.adm-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+/* ─────────────────────────── Flat sections ───────────────────────────
+ *
+ * Inside the drawer a form does not need a card. A card in a card in a drawer
+ * is three borders around four inputs, and the header that named the fields
+ * scrolled away with them. A ruled label costs one line and stays legible.
+ */
+
+.adm-sec { display: flex; flex-direction: column; gap: 14px; }
+
+.adm-sec-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.adm-sec-hd h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.adm-sec-hd .adm-sec-note {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+/* Two fields per row, one per row once the drawer is narrow. */
+.adm-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px 16px;
+}
+
+.adm-fields > .adm-span-2 { grid-column: 1 / -1; }
+
+/* A labelled control with its switch on the right — two-factor, and anything
+   else that is a single yes/no rather than a field. */
+.adm-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--adm-r-sm);
+  background: var(--bg-inset);
+}
+
+.adm-toggle-row .adm-toggle-text { flex: 1; min-width: 0; }
+.adm-toggle-row .adm-toggle-name { font-size: 13px; font-weight: 700; color: var(--text); }
+
+.adm-toggle-row .adm-toggle-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+/* ─────────────────────────── Switch ─────────────────────────── */
+/* A button, not a checkbox: the admin shell force-styles bare inputs. */
+
+.adm-switch {
+  appearance: none;
+  padding: 0;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.adm-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateY(-50%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: left 0.18s ease;
+}
+
+.adm-switch[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.adm-switch[aria-checked="true"]::after { left: 21px; }
+.adm-switch:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+.adm-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─────────────────────────── Level chips ─────────────────────────── */
+
+.adm-levels {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+.adm-level {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s;
+}
+
+.adm-level:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+.adm-level:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+.adm-level:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.adm-level[aria-pressed="true"] { color: #fff; font-weight: 800; }
+.adm-level[aria-pressed="true"][data-level="view"] { background: #6366f1; }
+.adm-level[aria-pressed="true"][data-level="edit"] { background: #10b981; }
+.adm-level[aria-pressed="true"][data-level="delete"] { background: #ef4444; }
+
+/* ─────────────────────────── Permission rows ─────────────────────────── */
+
+.adm-perm-list { display: flex; flex-direction: column; }
+
+.adm-perm {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-row);
+  transition: background 0.15s;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.adm-perm:first-child { border-top: none; }
+.adm-perm:hover { background: var(--bg-hover); }
+.adm-perm[data-off="true"] { opacity: 0.55; }
+
+.adm-perm-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--adm-r-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.adm-perm-text { flex: 1 1 190px; min-width: 0; }
+
+.adm-perm-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.adm-perm-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.adm-perm-ctl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.adm-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────── Group / location blocks ─────────────────────────── */
+
+.adm-loc {
+  border: 1px solid var(--border);
+  border-radius: var(--adm-r);
+  overflow: hidden;
+  background: var(--bg-card);
+  border-left-width: 4px;
+  border-left-style: solid;
+}
+
+.adm-loc-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-th);
+  flex-wrap: wrap;
+}
+
+.adm-loc-name {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adm-loc-bd { display: flex; flex-direction: column; }
+
+.adm-group-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--bg-inset);
+  border-top: 1px solid var(--border-row);
+}
+
+.adm-group-name {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.adm-bulk { display: flex; align-items: center; gap: 2px; }
+
+/* ─────────────────────────── Chips & badges ─────────────────────────── */
+
+.adm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+
+.adm-chip--success { background: rgba(16, 185, 129, 0.14); color: #10b981; }
+.adm-chip--warn { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
+.adm-chip--danger { background: rgba(239, 68, 68, 0.14); color: #ef4444; }
+.adm-chip--info { background: rgba(99, 102, 241, 0.14); color: #6366f1; }
+.adm-chip--muted { background: var(--bg-inset); color: var(--text-muted); }
+
+.adm-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  flex-shrink: 0;
+  letter-spacing: -0.01em;
+  user-select: none;
+}
+
+.adm-avatar--lg { width: 52px; height: 52px; font-size: 19px; }
+
+/* ─────────────────────────── Callouts ─────────────────────────── */
+
+.adm-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: var(--adm-r-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.adm-note > svg { flex-shrink: 0; margin-top: 1px; }
+.adm-note--info { background: rgba(99, 102, 241, 0.09); border-color: rgba(99, 102, 241, 0.24); color: var(--primary); }
+.adm-note--success { background: rgba(16, 185, 129, 0.09); border-color: rgba(16, 185, 129, 0.24); color: #10b981; }
+.adm-note--warn { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.26); color: #d97706; }
+.adm-note--danger { background: rgba(239, 68, 68, 0.09); border-color: rgba(239, 68, 68, 0.26); color: var(--danger); }
+
+/* ─────────────────────────── Data list ─────────────────────────── */
+
+.adm-rows { display: flex; flex-direction: column; }
+
+.adm-row,
+.adm-row-hd {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.adm-row {
+  padding: 11px 20px;
+  border-top: 1px solid var(--border-row);
+  cursor: pointer;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border-left: 3px solid transparent;
+  transition: background 0.14s, border-color 0.14s;
+  width: 100%;
+}
+
+.adm-row:hover { background: var(--bg-hover); }
+.adm-row[data-active="true"] { background: var(--bg-active); border-left-color: var(--primary); }
+.adm-row:focus-visible { outline: none; box-shadow: inset var(--adm-ring); }
+
+.adm-row-hd {
+  padding: 9px 20px 9px 23px;
+  background: var(--bg-th);
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+}
+
+.adm-row-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.adm-row-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.adm-row-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.adm-row-actions { display: flex; align-items: center; gap: 4px; }
+
+@media (max-width: 880px) {
+  .adm-row,
+  .adm-row-hd { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .adm-col-hide { display: none; }
+}
+
+.adm-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-input);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  color: transparent;
+  transition: background 0.14s, border-color 0.14s;
+}
+
+.adm-check[aria-checked="true"],
+.adm-check[data-mixed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.adm-check:focus-visible { outline: none; box-shadow: var(--adm-ring); }
+
+/* ─────────────────────────── Empty / loading ─────────────────────────── */
+
+.adm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 52px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.adm-empty-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.adm-empty h3 { margin: 0; font-size: 14px; font-weight: 800; color: var(--text); }
+.adm-empty p { margin: 0; font-size: 12.5px; max-width: 340px; line-height: 1.55; }
+
+.adm-skel {
+  border-radius: var(--adm-r-xs);
+  background: linear-gradient(90deg, var(--bg-inset) 25%, var(--skeleton-hi) 50%, var(--bg-inset) 75%);
+  background-size: 200% 100%;
+  animation: adm-shimmer 1.4s infinite linear;
+}
+
+@keyframes adm-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─────────────────────────── Drawer ─────────────────────────── */
+
+.adm-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 900;
+}
+
+.adm-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(640px, 100vw);
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  z-index: 901;
+}
+
+.adm-drawer-hd {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.adm-drawer-title { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.adm-drawer-title h2 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.015em; }
+
+.adm-drawer-title p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adm-drawer-bd {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 22px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.adm-drawer-ft {
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-th);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .adm-drawer { width: 100vw; border-left: none; }
+  .adm-drawer-bd { padding: 16px; }
+  .adm-drawer-hd,
+  .adm-drawer-ft { padding: 14px 16px; }
+}
+
+/* ─────────────────────────── OTP entry ─────────────────────────── */
+
+.adm-otp { display: flex; gap: 8px; justify-content: center; }
+
+.adm-otp input {
+  width: 46px;
+  height: 54px;
+  min-width: 0;
+  text-align: center;
+  font-size: 21px;
+  font-weight: 800;
+  border-radius: var(--adm-r-sm);
+  border: 1.5px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+
+.adm-otp input:focus { border-color: var(--primary); box-shadow: var(--adm-ring); }
+
+@media (max-width: 420px) {
+  .adm-otp { gap: 6px; }
+  .adm-otp input { width: 100%; height: 48px; font-size: 18px; }
+}
+
+/* ─────────────────────────── Sticky bulk bar ─────────────────────────── */
+
+.adm-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--bg-active);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.adm-bulkbar-text { font-size: 12.5px; font-weight: 700; color: var(--primary); }
+
+/* ─────────────────────────── Stat strip ─────────────────────────── */
+
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.adm-stat {
+  border: 1px solid var(--border);
+  border-radius: var(--adm-r-sm);
+  padding: 13px 15px;
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.adm-stat-value {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.adm-stat-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.adm-spin { animation: adm-rotate 0.9s linear infinite; }
+
+@keyframes adm-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-skel { animation: none; }
+  .adm-spin { animation-duration: 2s; }
+  .adm *,
+  .adm *::after,
+  .adm *::before { transition-duration: 0.01ms !important; }
+}
+
+/* ───────────── Compatibility with the shared module classes ─────────────
+ *
+ * PartyMaster, FirmManager, FuelStationManager and friends render inside these
+ * admin shells with the index.css `.card` / `.fi` styling. Those read the theme
+ * variables, so they land correctly on their own — except for the one hover
+ * colour that was written as a literal light grey.
+ */
+
+.adm .card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
+}

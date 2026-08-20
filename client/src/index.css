@@ -82,20 +82,11 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --sidebar-bg: #0F172A;
 }
 
-/* ── Badges & Notification Styles ── */
-.nav-badge-new {
-  font-size: 8.5px;
-  font-weight: 900;
-  color: #FFFFFF;
-  background: linear-gradient(135deg, #10B981, #059669);
-  padding: 2px 6px;
-  border-radius: 99px;
-  letter-spacing: 0.05em;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
-  animation: pulseGlow 2s infinite ease-in-out;
-  margin-left: auto;
-}
-
+/* ── Badges & Notification Styles ──
+   The pulsing green NEW badge is gone. Every module that carried it had been
+   in daily use for months, so it had stopped meaning "new" and was just a
+   glowing dot competing with the active-item indicator. SOON stays: it marks a
+   nav entry that is genuinely disabled. */
 .nav-badge-soon {
   font-size: 8.5px;
   font-weight: 900;
@@ -105,12 +96,6 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   border-radius: 99px;
   letter-spacing: 0.05em;
   margin-left: auto;
-}
-
-@keyframes pulseGlow {
-  0% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.05); opacity: 1; }
-  100% { transform: scale(1); opacity: 0.9; }
 }
 
 [data-theme="sepia"] {

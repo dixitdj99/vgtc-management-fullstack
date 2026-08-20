@@ -1,49 +1,100 @@
-import React, { useMemo, useState } from 'react';
-import { Search, Check, Copy, Layers, ChevronDown, ChevronRight, AlertTriangle, RotateCcw } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LOCATIONS, LEVELS, MODULE_BY_KEY, MODULES, LEGACY_MODULES,
-  moduleLabel, summarise, assertCatalogueMatchesNav,
+  Search, Check, Layers, ChevronDown, ChevronRight, TriangleAlert, RotateCcw,
+  FileText, Truck, Banknote, BarChart3, Users, Gauge, Boxes, Radio, Shield, Receipt,
+  FileSpreadsheet, Fuel, ShoppingCart, Wallet, MapPin, Globe, SearchX,
+} from 'lucide-react';
+import {
+  LOCATIONS, LOCATION_SECTIONS, SHARED_GROUPS, SHARED_KEYS, LEVELS,
+  MODULE_BY_KEY, MODULES, LEGACY_MODULES, CURRENT_MODULES,
+  moduleLabel, summarise, locationOwnKeys, locationsForKey, assertCatalogueMatchesNav,
 } from '../permissions/catalogue';
 
+/** Levels that appear as chips once a module is switched on. */
+const GRANT_LEVELS = LEVELS.filter(l => l.value);
+const DEFAULT_LEVEL = 'view';
+
+const ICONS = [
+  [/^lr_/, FileText],
+  [/^bill_/, Receipt],
+  [/^voucher_/, FileText],
+  [/^balance_/, BarChart3],
+  [/^stock_/, Boxes],
+  [/^cashbook$/, Wallet],
+  [/^pay$/, Banknote],
+  [/^invoice$/, FileSpreadsheet],
+  [/^vehicle$/, Truck],
+  [/^diesel$/, Fuel],
+  [/^mileage$/, Gauge],
+  [/^sell$/, ShoppingCart],
+  [/^attendance$/, Users],
+  [/^loading_status$/, Radio],
+];
+
+const iconFor = (key) => (ICONS.find(([re]) => re.test(key)) || [null, Shield])[1];
+
 /**
- * PermissionEditor — one editor, used by every screen that grants access.
+ * PermissionEditor — grants module access for one account.
  *
- * There were three near-identical copies of this UI, already disagreeing about
- * which modules exist. This is the single one; the catalogue it reads from is
- * the single list. See permissions/catalogue.js.
+ * Two things it deliberately does differently from the screen it replaced:
  *
- * Two ideas shape the layout:
+ *  1. Each key renders once. Permission keys are global — `pay` is a single
+ *     value on the user record — but the old editor walked the location groups
+ *     verbatim, so eight company-wide keys appeared under all four locations at
+ *     once, every copy bound to the same value. Toggling one appeared to toggle
+ *     three others, and a location's "All view" quietly rewrote what the rest
+ *     showed. The catalogue now separates owned keys from shared ones.
  *
- *  - A location is a gate, not a folder. Turning off "Kosli" does not erase the
- *    module levels stored underneath, so the previous UI's habit of hiding them
- *    made it look like access had been revoked when it had only been masked.
- *    Here they stay visible and greyed, and the summary line says so.
- *  - An admin wants to know the outcome, not audit thirty toggles, so every
- *    location states its result in words.
- *
- * @param {object}   permissions   the permissions object being edited
- * @param {Function} onChange      (nextPermissions) => void
- * @param {object[]} [users]       other users, enables "copy from"
- * @param {object}   [roleTemplates] org role presets, keyed by role name
- * @param {string[]} [navPermKeys] nav keys, for the development drift warning
+ *  2. The baseline resets. The change markers compared against whatever
+ *     permissions were passed on first mount, so after switching to a second
+ *     user they were still diffing against the first one's grants. The baseline
+ *     re-bases whenever `resetKey` changes, and `showChanges` keeps the markers
+ *     off entirely while creating an account, where every grant is new by
+ *     definition and a dot on each one says nothing.
  */
-export default function PermissionEditor({ permissions = {}, onChange, users = [], roleTemplates = {}, navPermKeys = [] }) {
+export default function PermissionEditor({
+  permissions = {},
+  onChange,
+  users = [],
+  roleTemplates = {},
+  navPermKeys = [],
+  resetKey = '',
+  disabled = false,
+  showChanges = false,
+}) {
   const [query, setQuery] = useState('');
-  const [changedOnly, setChangedOnly] = useState(false);
   const [collapsed, setCollapsed] = useState({});
-  const [showLegacy, setShowLegacy] = useState(false);
-  const [baseline] = useState(() => ({ ...permissions }));
+  const [baseline, setBaseline] = useState(() => ({ ...permissions }));
+
+  const perms = permissions || {};
+  const seenReset = useRef(resetKey);
+
+  useEffect(() => {
+    if (seenReset.current === resetKey) return;
+    seenReset.current = resetKey;
+    setBaseline({ ...perms });
+    setQuery('');
+    setCollapsed({});
+  }, [resetKey, perms]);
 
   useMemo(() => assertCatalogueMatchesNav(navPermKeys), [navPermKeys]);
 
-  const perms = permissions || {};
   const allowedPlants = perms.allowedPlants;
   const allowedGodowns = perms.allowedGodowns;
 
-  const patch = (next) => onChange({ ...perms, ...next });
+  const patch = (next) => { if (!disabled) onChange({ ...perms, ...next }); };
   const setLevel = (key, value) => patch({ [key]: value || undefined });
 
-  /** A location is on unless an explicit allow-list excludes it. */
+  const setMany = (keys, value) => {
+    const next = {};
+    keys.forEach(k => { next[k] = value || undefined; });
+    patch(next);
+  };
+
+  // ── Locations ────────────────────────────────────────────────
+  // An absent allowedPlants / allowedGodowns means "everywhere", which is why
+  // the toggle seeds its working set from every location before removing one.
+
   const isLocationOn = (loc) => {
     if (Array.isArray(allowedPlants) && !allowedPlants.includes(loc.plantKey)) return false;
     if (loc.godownKey && Array.isArray(allowedGodowns) && !allowedGodowns.includes(loc.godownKey)) return false;
@@ -58,18 +109,20 @@ export default function PermissionEditor({ permissions = {}, onChange, users = [
       if (loc.godownKey) godowns.add(loc.godownKey);
     } else {
       if (loc.godownKey) godowns.delete(loc.godownKey);
-      // Only drop the plant when no sibling location still needs it.
       const siblingsOn = LOCATIONS.some(l => l.id !== loc.id && l.plantKey === loc.plantKey && (!l.godownKey || godowns.has(l.godownKey)));
       if (!siblingsOn) plants.delete(loc.plantKey);
     }
     patch({ allowedPlants: [...plants], allowedGodowns: [...godowns] });
   };
 
-  const setMany = (keys, value) => {
-    const next = {};
-    keys.forEach(k => { next[k] = value || undefined; });
-    patch(next);
+  const setAllLocations = (on) => {
+    if (on) patch({ allowedPlants: LOCATIONS.map(l => l.plantKey), allowedGodowns: LOCATIONS.filter(l => l.godownKey).map(l => l.godownKey) });
+    else patch({ allowedPlants: [], allowedGodowns: [] });
   };
+
+  const locationsOn = LOCATIONS.filter(isLocationOn);
+
+  // ── Presets ──────────────────────────────────────────────────
 
   const applyTemplate = (role) => {
     const tpl = roleTemplates?.[role];
@@ -81,199 +134,370 @@ export default function PermissionEditor({ permissions = {}, onChange, users = [
 
   const copyFrom = (userId) => {
     const u = users.find(x => String(x.id) === String(userId));
-    if (!u) return;
+    if (!u || disabled) return;
     const cleared = {};
     MODULES.forEach(m => { cleared[m.key] = undefined; });
     onChange({ ...cleared, ...(u.permissions || {}) });
   };
 
-  const changedKeys = useMemo(
-    () => MODULES.map(m => m.key).filter(k => (baseline[k] || '') !== (perms[k] || '')),
-    [baseline, perms]
-  );
+  // ── Diff & filtering ─────────────────────────────────────────
+
+  // Only meaningful when editing an existing account. On create, every grant is
+  // a change from nothing, so a dot on every row you touch says nothing.
+  const changedKeys = useMemo(() => (
+    showChanges ? MODULES.map(m => m.key).filter(k => (baseline[k] || '') !== (perms[k] || '')) : []
+  ), [showChanges, baseline, perms]);
+
+  const locationsChanged = useMemo(() => {
+    if (!showChanges) return false;
+    const norm = (v) => (Array.isArray(v) ? [...v].sort().join(',') : '*');
+    return norm(baseline.allowedPlants) !== norm(perms.allowedPlants)
+      || norm(baseline.allowedGodowns) !== norm(perms.allowedGodowns);
+  }, [showChanges, baseline, perms]);
 
   const matches = (key) => {
-    if (changedOnly && !changedKeys.includes(key)) return false;
-    if (!query.trim()) return true;
     const q = query.trim().toLowerCase();
-    const m = MODULE_BY_KEY[key];
-    return key.toLowerCase().includes(q) || (m?.label || '').toLowerCase().includes(q) || (m?.hint || '').toLowerCase().includes(q);
+    if (!q) return true;
+    const m = MODULE_BY_KEY[key] || {};
+    return key.toLowerCase().includes(q)
+      || (m.label || '').toLowerCase().includes(q)
+      || (m.hint || '').toLowerCase().includes(q);
   };
 
+  const filterGroups = (groups) => groups
+    .map(g => ({ ...g, modules: g.modules.filter(matches) }))
+    .filter(g => g.modules.length > 0);
+
+  const sharedGroups = filterGroups(SHARED_GROUPS);
+  const locationSections = LOCATION_SECTIONS
+    .map(loc => ({ ...loc, visibleGroups: filterGroups(loc.groups) }))
+    .filter(loc => loc.visibleGroups.length > 0);
+
   const totals = summarise(perms);
+  const searching = !!query.trim();
+  const nothingMatches = searching && sharedGroups.length === 0 && locationSections.length === 0;
+
+  const rowProps = (key) => ({
+    moduleKey: key,
+    value: perms[key] || '',
+    changed: changedKeys.includes(key),
+    disabled,
+    onChange: setLevel,
+  });
+
+  const renderSection = ({ id, title, subtitle, color, groups, headerRight, dim }) => {
+    const isCollapsed = collapsed[id];
+    const keys = groups.flatMap(g => g.modules);
+    return (
+      <section key={id} className="adm-loc" style={{ borderLeftColor: color, opacity: dim ? 0.72 : 1 }}>
+        <header className="adm-loc-hd">
+          <button
+            type="button"
+            className="adm-btn adm-btn--ghost adm-btn--icon adm-btn--sm"
+            onClick={() => setCollapsed(c => ({ ...c, [id]: !c[id] }))}
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="adm-loc-name" style={{ color }}>{title}</div>
+            {subtitle && <div className="adm-sub">{subtitle}</div>}
+          </div>
+
+          {headerRight}
+
+          <div className="adm-bulk">
+            <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(keys, 'view')}>All view</button>
+            <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(keys, 'edit')}>All edit</button>
+            <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(keys, '')}>Clear</button>
+          </div>
+        </header>
+
+        {!isCollapsed && (
+          <div className="adm-loc-bd">
+            {groups.map(g => (
+              <div key={g.id}>
+                <div className="adm-group-hd">
+                  <span className="adm-group-name">{g.label}</span>
+                  {/* A single-group section is already covered by the bulk
+                      actions in its own header — the same three links twice,
+                      eight pixels apart, is just noise. */}
+                  {groups.length > 1 && (
+                    <div className="adm-bulk">
+                      <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(g.modules, 'view')}>view</button>
+                      <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(g.modules, 'edit')}>edit</button>
+                      <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(g.modules, '')}>none</button>
+                    </div>
+                  )}
+                </div>
+                <div className="adm-perm-list">
+                  {g.modules.map(key => <ModuleRow key={key} {...rowProps(key)} />)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div className="adm-sec">
 
-      {/* Toolbar */}
+      <div className="adm-sec-hd">
+        <h3>Module access</h3>
+        <span className="adm-sec-note">View reads · Edit changes · Delete removes</span>
+      </div>
+
+      {/* ── Toolbar ── */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
-          <Search size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input className="fi" value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Search modules…" style={{ paddingLeft: '30px', fontSize: '12px' }} />
+        <div className="adm-search">
+          <Search size={14} />
+          <input
+            className="adm-input"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search modules…"
+            aria-label="Search modules"
+          />
         </div>
 
         {Object.keys(roleTemplates || {}).length > 0 && (
-          <select className="fi" style={{ width: 'auto', fontSize: '12px' }} value=""
-            onChange={e => { if (e.target.value) applyTemplate(e.target.value); e.target.value = ''; }}>
+          <select
+            className="adm-select"
+            style={{ width: 'auto' }}
+            value=""
+            disabled={disabled}
+            aria-label="Apply a role preset"
+            onChange={e => { if (e.target.value) applyTemplate(e.target.value); e.target.value = ''; }}
+          >
             <option value="">Apply role preset…</option>
             {Object.keys(roleTemplates).map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         )}
 
         {users.length > 0 && (
-          <select className="fi" style={{ width: 'auto', fontSize: '12px' }} value=""
-            onChange={e => { if (e.target.value) copyFrom(e.target.value); e.target.value = ''; }}>
+          <select
+            className="adm-select"
+            style={{ width: 'auto' }}
+            value=""
+            disabled={disabled}
+            aria-label="Copy permissions from another user"
+            onChange={e => { if (e.target.value) copyFrom(e.target.value); e.target.value = ''; }}
+          >
             <option value="">Copy from user…</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}
           </select>
         )}
 
-        <button type="button" onClick={() => setChangedOnly(v => !v)}
-          className={`btn btn-sm ${changedOnly ? 'btn-p' : 'btn-g'}`} style={{ fontSize: '11px' }}>
-          Changed {changedKeys.length > 0 ? `(${changedKeys.length})` : ''}
-        </button>
-        <button type="button" onClick={() => setMany(MODULES.map(m => m.key), '')}
-          className="btn btn-g btn-sm" style={{ fontSize: '11px' }} title="Clear every module">
-          <RotateCcw size={12} /> Clear all
+        <button
+          type="button"
+          onClick={() => setMany(CURRENT_MODULES.map(m => m.key), '')}
+          className="adm-btn adm-btn--sm"
+          disabled={disabled || totals.granted === 0}
+          title="Revoke every module"
+        >
+          <RotateCcw size={13} /> Clear all
         </button>
       </div>
 
-      {/* Outcome, in words */}
-      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 700 }}>
-        <Layers size={12} style={{ verticalAlign: '-2px', marginRight: '4px' }} />
+      {/* ── Outcome ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+        <Layers size={13} />
         {totals.granted === 0
-          ? 'No access granted yet — this user will see an empty dashboard.'
-          : `${totals.granted} of ${totals.total} modules granted · ${totals.writable} can be edited`}
+          ? <span>No access granted yet — this account will open to an empty dashboard.</span>
+          : (
+            <>
+              <span>{totals.granted} of {totals.total} modules granted</span>
+              <span className="adm-chip adm-chip--info">{totals.writable} can write</span>
+              <span className="adm-chip adm-chip--muted">{locationsOn.length} of {LOCATIONS.length} locations</span>
+            </>
+          )}
       </div>
 
-      {LOCATIONS.map(loc => {
-        const on = isLocationOn(loc);
-        const locKeys = loc.groups.flatMap(g => g.modules);
-        const s = summarise(perms, locKeys);
-        const isCollapsed = collapsed[loc.id];
-        const visibleGroups = loc.groups
-          .map(g => ({ ...g, modules: g.modules.filter(matches) }))
-          .filter(g => g.modules.length > 0);
-        if (visibleGroups.length === 0 && (query || changedOnly)) return null;
-
-        return (
-          <div key={loc.id} style={{
-            border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden',
-            borderLeft: `3px solid ${on ? loc.color : 'var(--border)'}`, opacity: on ? 1 : 0.75,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--bg-th)' }}>
-              <button type="button" onClick={() => setCollapsed(c => ({ ...c, [loc.id]: !c[loc.id] }))}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
-                {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-              </button>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', flex: 1 }}>
-                <input type="checkbox" checked={on} onChange={e => toggleLocation(loc, e.target.checked)} />
-                <span style={{ fontSize: '13px', fontWeight: 800, color: on ? loc.color : 'var(--text-muted)' }}>{loc.label}</span>
-              </label>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                {on
-                  ? (s.granted ? `${s.granted} modules · ${s.writable} editable` : 'no modules granted')
-                  : 'location turned off — modules below are kept but hidden from the user'}
-              </span>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {['view', 'edit', ''].map(v => (
-                  <button key={v || 'none'} type="button" onClick={() => setMany(locKeys, v)}
-                    className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 7px' }}
-                    title={`Set every module in ${loc.label} to ${v || 'none'}`}>
-                    {v ? `All ${v}` : 'None'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {!isCollapsed && (
-              <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {visibleGroups.map(g => (
-                  <div key={g.id}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '9.5px', fontWeight: 800, color: loc.color, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{g.label}</span>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {['view', 'edit', ''].map(v => (
-                          <button key={v || 'none'} type="button" onClick={() => setMany(g.modules, v)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                            {v || 'none'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {g.modules.map(key => (
-                      <ModuleRow key={`${g.id}-${key}`} moduleKey={key} value={perms[key] || ''}
-                        dimmed={!on} changed={changedKeys.includes(key)} onChange={setLevel} />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
+      {/* ── Location access ──
+          A row of chips, not a card. It is one question with four answers. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)' }}>
+            <MapPin size={13} /> Locations this account may open
+            {locationsChanged && <span className="adm-dot" title="Changed" />}
+          </span>
+          <div className="adm-bulk">
+            <button type="button" className="adm-link" disabled={disabled} onClick={() => setAllLocations(true)}>Select all</button>
+            <button type="button" className="adm-link" disabled={disabled} onClick={() => setAllLocations(false)}>Clear</button>
           </div>
-        );
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {LOCATIONS.map(loc => {
+              const on = isLocationOn(loc);
+              return (
+                <button
+                  key={loc.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  disabled={disabled}
+                  onClick={() => toggleLocation(loc, !on)}
+                  className="adm-btn adm-btn--sm"
+                  style={{
+                    borderColor: on ? loc.color : 'var(--border)',
+                    background: on ? `${loc.color}1f` : 'transparent',
+                    color: on ? loc.color : 'var(--text-muted)',
+                  }}
+                >
+                  <span
+                    className="adm-check"
+                    aria-hidden="true"
+                    data-mixed={on ? 'true' : 'false'}
+                    style={{ width: 15, height: 15, borderRadius: 4, background: on ? loc.color : 'transparent', borderColor: on ? loc.color : 'var(--border)', color: on ? '#fff' : 'transparent' }}
+                  >
+                    <Check size={11} strokeWidth={3.5} />
+                  </span>
+                  {loc.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {locationsOn.length === 0 && (
+            <div className="adm-note adm-note--warn">
+              <TriangleAlert size={15} />
+              <span>No location selected. Module grants below stay saved, but every screen will be hidden until a location is turned back on.</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {nothingMatches && (
+        <div className="adm-panel">
+          <div className="adm-empty">
+            <span className="adm-empty-icon"><SearchX size={22} /></span>
+            <h3>No modules match</h3>
+            <p>Nothing matches “{query.trim()}”.</p>
+            <button type="button" className="adm-btn adm-btn--sm" onClick={() => setQuery('')}>Clear search</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Company-wide modules ── */}
+      {sharedGroups.length > 0 && renderSection({
+        id: 'shared',
+        title: 'Applies everywhere',
+        subtitle: `${SHARED_KEYS.length} modules that are not tied to a plant — one grant covers every location.`,
+        color: 'var(--primary)',
+        groups: sharedGroups,
+        headerRight: <span className="adm-chip adm-chip--info"><Globe size={11} /> Company-wide</span>,
       })}
 
-      {/* Legacy keys, out of the way but not hidden */}
-      {LEGACY_MODULES.some(m => perms[m.key]) || showLegacy ? (
-        <div style={{ border: '1px dashed var(--border)', borderRadius: '12px', padding: '10px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-            <AlertTriangle size={13} color="#f59e0b" />
-            <span style={{ fontSize: '11px', fontWeight: 800 }}>Legacy keys</span>
-            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-              kept only for accounts created before the JK Super LR screens merged — grant <strong>{moduleLabel('lr_dump')}</strong> instead
+      {/* ── Per-location modules ── */}
+      {locationSections.map(loc => {
+        const on = isLocationOn(loc);
+        const s = summarise(perms, locationOwnKeys(loc));
+        return renderSection({
+          id: loc.id,
+          title: loc.label,
+          subtitle: on
+            ? (s.granted ? `${s.granted} of ${s.total} granted · ${s.writable} can write` : 'No modules granted here yet')
+            : 'Location turned off — these grants are saved but hidden',
+          color: on ? loc.color : 'var(--text-muted)',
+          groups: loc.visibleGroups,
+          dim: !on,
+          headerRight: on ? null : <span className="adm-chip adm-chip--warn">Location off</span>,
+        });
+      })}
+
+      {/* ── Legacy keys ──
+          Shown only for the accounts that still hold one. There is nothing to
+          grant here on purpose, so a "show legacy keys" link on every new user
+          was an invitation to set a key the app has superseded. */}
+      {LEGACY_MODULES.some(m => perms[m.key]) && (
+        <section className="adm-loc" style={{ borderLeftColor: '#f59e0b' }}>
+          <header className="adm-loc-hd">
+            <span className="adm-icon-tile" style={{ background: 'rgba(245,158,11,0.14)', color: '#f59e0b', width: 30, height: 30 }}>
+              <TriangleAlert size={15} />
             </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="adm-loc-name" style={{ color: '#f59e0b' }}>Legacy keys</div>
+              <div className="adm-sub">
+                Kept for older accounts. Grant <strong>{moduleLabel('lr_dump')}</strong> under “Applies everywhere” instead.
+              </div>
+            </div>
+            <button type="button" className="adm-link" disabled={disabled} onClick={() => setMany(LEGACY_MODULES.map(m => m.key), '')}>Clear</button>
+          </header>
+          <div className="adm-perm-list">
+            {LEGACY_MODULES.filter(m => perms[m.key]).map(m => <ModuleRow key={m.key} legacy {...rowProps(m.key)} />)}
           </div>
-          {LEGACY_MODULES.map(m => (
-            <ModuleRow key={m.key} moduleKey={m.key} value={perms[m.key] || ''} legacy
-              changed={changedKeys.includes(m.key)} onChange={setLevel} />
-          ))}
-        </div>
-      ) : (
-        <button type="button" onClick={() => setShowLegacy(true)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--text-muted)', textAlign: 'left' }}>
-          Show legacy keys
-        </button>
+        </section>
       )}
     </div>
   );
 }
 
-function ModuleRow({ moduleKey, value, onChange, dimmed = false, changed = false, legacy = false }) {
+/**
+ * One module. The switch answers "can they reach it at all", the chips answer
+ * "and what may they do" — so the common case is one click and the four-way
+ * decision only appears once it is relevant.
+ */
+function ModuleRow({ moduleKey, value, onChange, changed = false, legacy = false, disabled = false }) {
   const meta = MODULE_BY_KEY[moduleKey] || {};
+  const Icon = iconFor(moduleKey);
+  const on = !!value;
+  const shared = SHARED_KEYS.includes(moduleKey);
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0',
-      opacity: dimmed ? 0.5 : 1,
-    }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+    <div className="adm-perm" data-off={on ? 'false' : 'true'}>
+      <span className="adm-perm-icon" style={on ? undefined : { background: 'var(--bg-inset)', color: 'var(--text-muted)' }}>
+        <Icon size={17} />
+      </span>
+
+      <div className="adm-perm-text">
+        <div className="adm-perm-name">
           {meta.label || moduleKey}
-          {changed && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)' }} title="Changed" />}
-          {legacy && <span style={{ fontSize: '9px', fontWeight: 800, color: '#f59e0b' }}>LEGACY</span>}
+          {changed && <span className="adm-dot" title="Changed since this panel opened" />}
+          {legacy && <span className="adm-chip adm-chip--warn">Legacy</span>}
         </div>
-        {meta.hint && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{meta.hint}</div>}
+        {meta.hint && <div className="adm-perm-hint">{meta.hint}</div>}
+        {shared && (
+          <div className="adm-perm-hint" style={{ opacity: 0.8 }}>
+            Applies at {locationsForKey(moduleKey).length} locations.
+          </div>
+        )}
       </div>
-      <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
-        {LEVELS.map(l => {
-          const active = (value || '') === l.value;
-          return (
-            <button key={l.value || 'none'} type="button" title={l.hint}
-              onClick={() => onChange(moduleKey, l.value)}
-              style={{
-                // Spelled out rather than V/E/D — an abbreviation on a control
-                // that decides who can delete records is a bad place to save space.
-                minWidth: '62px', padding: '4px 9px', borderRadius: '6px', cursor: 'pointer',
-                border: `1px solid ${active ? l.color : 'var(--border)'}`,
-                background: active ? l.color : 'transparent',
-                color: active ? '#fff' : 'var(--text-muted)',
-                fontSize: '10.5px', fontWeight: 800, fontFamily: 'inherit',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-              }}>
-              {active && <Check size={10} />} {l.label}
-            </button>
-          );
-        })}
+
+      <div className="adm-perm-ctl">
+        {on && (
+          <div className="adm-levels" role="group" aria-label={`${meta.label || moduleKey} access level`}>
+            {GRANT_LEVELS.map(l => (
+              <button
+                key={l.value}
+                type="button"
+                data-level={l.value}
+                aria-pressed={value === l.value}
+                disabled={disabled}
+                title={l.hint}
+                onClick={() => onChange(moduleKey, l.value)}
+                className="adm-level"
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={`${meta.label || moduleKey} access`}
+          disabled={disabled}
+          onClick={() => onChange(moduleKey, on ? '' : DEFAULT_LEVEL)}
+          className="adm-switch"
+        />
       </div>
     </div>
   );
