@@ -174,12 +174,13 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
       const net = calcNet(v, vehicleOf(v.truckNo));
       const outstanding = Math.max(0, net - (parseFloat(v.paidBalance) || 0));
       const isSent = sentIds.has(v.id);
+      const isCleared = !!v.paymentClearedDate || !!v.isPaid || (parseFloat(v.paidBalance) > 0 && outstanding <= 0);
       voucherState.set(v.id, {
         _voucherNet: net,
         _voucherOutstanding: outstanding,
         _sent: isSent,
-        // "Pending" is the clerk's work list: still owed, not yet handed over.
-        _status: outstanding <= 0 ? 'paid' : isSent ? 'sent' : 'pending',
+        // "Pending" is the clerk's work list: still owed or uncleared, not yet handed over.
+        _status: isCleared ? 'paid' : isSent ? 'sent' : 'pending',
       });
     }
 
@@ -298,7 +299,7 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
         _paid: paid,
         _outstanding: outstanding,
         _sent: isSent,
-        _status: outstanding <= 0 ? "paid" : isSent ? "sent" : "pending",
+        _status: (!!voucher.paymentClearedDate || !!voucher.isPaid || (parseFloat(voucher.paidBalance) > 0 && outstanding <= 0)) ? "paid" : isSent ? "sent" : "pending",
       };
     });
   }, [selRows, vehicleOf, sentIds]);

@@ -1529,8 +1529,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
    * clerk cannot send the same trip twice by accident.
    */
   const canSendToPay = useCallback(
-    v => !(v._leg > 0) && calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0) && !sentVoucherIds.has(v._parentId || v.id),
-    [selVehicle, sentVoucherIds],
+    v => !(v._leg > 0) && !v.paymentClearedDate && !v.isPaid && !sentVoucherIds.has(v._parentId || v.id),
+    [sentVoucherIds],
   );
 
   // payBlockers now lives at module scope — see the top of this file.

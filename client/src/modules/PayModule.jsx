@@ -13,7 +13,7 @@ import VehicleCreditDebitModule from './VehicleCreditDebitModule';
 import LabourAccount from './LabourAccount';
 // A multi-drop voucher keeps its LR numbers on the drops; its own `lrNo` is a
 // leftover form field. Printing that showed a number the yard has never issued.
-import { lrLabelOf } from './BalanceSheet';
+import { lrLabelOf, explodeAll } from './BalanceSheet';
 import TableScroll from '../components/TableScroll';
 
 const API_V = '/vouchers';
@@ -418,10 +418,13 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       const netOf = netOfFor(b.truckNo);
       const owed = outstandingOf(trips, netOf);
       const paid = trips.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
-      if (owed <= 0) continue;                     // fully settled — drop off the worklist
+      const allCleared = trips.every(v => !!v.paymentClearedDate || !!v.isPaid);
+      if (allCleared) continue;                    // fully settled — drop off the worklist
 
       const due = b.dueDate || '';
       const today = new Date().toISOString().slice(0, 10);
+      const explodedPending = explodeAll(trips).filter(v => !v.paymentClearedDate && !v.isPaid);
+
       items.push({
         batchId: b.id,
         truck: b.truckNo,
@@ -434,7 +437,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
         dueDate: due,
         overdue: !!due && due < today,
         status: paid > 0 ? 'Partially Paid' : 'Pending',
-        pendingTrips: String(trips.filter(v => calcOutstanding(v, vehicleFor(b.truckNo)) > 0).length),
+        pendingTrips: String(explodedPending.length),
         hasUnverified: trips.some(hasUnverifiedDiesel),
         types: b.type.replace(/_/g, ' '),
         ownerName: vehicleFor(b.truckNo)?.ownerName || '',
@@ -567,9 +570,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
         ? (selPayable.trips || []).map(v => v.id)
         : payables.filter(p => activeTrucks.includes(p.truck)).flatMap(p => (p.trips || []).map(v => v.id)),
     );
-    let rows = activeTrucks.flatMap(t => (truckGroups[t] || []).filter(v => sentIds.has(v.id)));
-    // Only show pending or partially paid LRs
-    rows = rows.filter(v => calcNet(v, vehicleFor(v.truckNo)) > (parseFloat(v.paidBalance) || 0));
+    let rawTrips = activeTrucks.flatMap(t => (truckGroups[t] || []));
+    let exploded = explodeAll(rawTrips).filter(v => sentIds.has(v._parentId || v.id));
+    // Show pending or partially paid LRs (not cleared)
+    let rows = exploded.filter(v => !v.paymentClearedDate && !v.isPaid);
 
     // Date filtering
     if (dateFilter !== 'all') {

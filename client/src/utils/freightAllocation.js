@@ -42,17 +42,27 @@ export function allocateFreightPayment(vouchers, { amount, paymentDate, paymentM
     });
 
     for (const v of ordered) {
-        if (remaining <= 0) break;
+        if (remaining <= 0 && Number(amount) > 0) break;
 
         const already = parseFloat(v.paidBalance) || 0;
         const due = round2(netOf(v) - already);
-        if (due <= 0) continue;              // already settled, or a credit note
+        if (due <= 0) {
+            if (!v.paymentClearedDate) {
+                patches.push({
+                    id: v._parentId || v.id,
+                    paidBalance: String(already),
+                    paymentClearedDate: paymentDate,
+                    paymentMethod,
+                });
+            }
+            continue;
+        }
 
         const take = Math.min(remaining, due);
         const settled = round2(take) >= due;
 
         patches.push({
-            id: v.id,
+            id: v._parentId || v.id,
             paidBalance: String(round2(already + take).toFixed(2)),
             ...(settled ? { paymentClearedDate: paymentDate, paymentMethod } : {}),
         });
