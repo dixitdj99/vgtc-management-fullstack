@@ -1003,62 +1003,89 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
             {/* Unpaid — grouped by date */}
             <div className="card" style={{ marginBottom: '20px' }}>
-              <div className="card-header">
+              <div className="card-header border-b">
                 <div className="card-title-block">
                   <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}><AlertCircle size={17} /></div>
-                  <div className="card-title-text"><h3>Unpaid Online Advances</h3><p>{unpaid.length} pending</p></div>
+                  <div className="card-title-text">
+                    <h3>Unpaid Online Advances</h3>
+                    <p>{unpaid.length} pending entries across {sortedDates.length} date{sortedDates.length === 1 ? '' : 's'}</p>
+                  </div>
                 </div>
               </div>
-              {sortedDates.length === 0 && (
+              {sortedDates.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>All online advances are paid!</div>
-              )}
-              {sortedDates.map(date => {
-                const rows = unpaidByDate[date];
-                const dayTotal = rows.reduce((s, v) => s + v.onlineAmt, 0);
-                const daysSince = Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
-                const isLate = daysSince > 3;
-                return (
-                  <div key={date}>
-                    <div style={{ padding: '8px 16px', background: isLate ? 'rgba(239,68,68,0.06)' : 'var(--bg-tf)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>{fmtDate(date)}</span>
-                        {isLate && <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>{daysSince} DAYS OVERDUE</span>}
-                      </div>
-                      <span style={{ fontWeight: 800, fontSize: '13px', color: '#0ea5e9' }}>Day Total: {fmtRs(dayTotal)}</span>
-                    </div>
-                    <TableScroll>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-                        <thead><tr>
-                          <th style={TH}>#</th><th style={TH}>Truck</th><th style={TH}>LR No.</th>
-                          <th style={TH}>Type</th><th style={{ ...TH, textAlign: 'right' }}>Amount</th>
-                          <th style={{ ...TH, textAlign: 'center' }}>Pay Date</th><th style={{ ...TH, textAlign: 'center' }}>Action</th>
-                        </tr></thead>
-                        <tbody>
-                          {rows.map((v, i) => (
-                            <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                              <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                              <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
-                              <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{lrLabelOf(v)}</td>
-                              <td style={TD}><span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>{v.type?.replace('_', ' ')}</span></td>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
-                              <td style={{ ...TD, textAlign: 'center' }}>
-                                <input type="date" className="fi" defaultValue={new Date().toISOString().slice(0, 10)} id={`opd-${v.id}`}
-                                  style={{ height: '28px', fontSize: '11px', padding: '2px 6px', width: '130px' }} />
-                              </td>
-                              <td style={{ ...TD, textAlign: 'center' }}>
-                                <button className="btn btn-a btn-sm" style={{ fontSize: '11px', padding: '4px 10px' }}
-                                  onClick={() => markPaidWithDate(v.id, document.getElementById(`opd-${v.id}`).value)}>
-                                  <Check size={12} /> Pay
-                                </button>
+              ) : (
+                <TableScroll>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                    <thead>
+                      <tr>
+                        <th style={TH}>#</th>
+                        <th style={TH}>Truck</th>
+                        <th style={TH}>LR No.</th>
+                        <th style={TH}>Type</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Amount</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Pay Date</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedDates.map((date, dateIdx) => {
+                        const rows = unpaidByDate[date];
+                        const dayTotal = rows.reduce((s, v) => s + v.onlineAmt, 0);
+                        const daysSince = Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
+                        const isLate = daysSince > 3;
+                        return (
+                          <React.Fragment key={date}>
+                            {/* Day Header Row */}
+                            <tr style={{ background: isLate ? 'rgba(239,68,68,0.08)' : 'var(--bg-th)', borderTop: dateIdx > 0 ? '2px solid var(--border)' : '1px solid var(--border)' }}>
+                              <td colSpan={7} style={{ padding: '8px 14px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>{fmtDate(date)}</span>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>({rows.length} {rows.length === 1 ? 'entry' : 'entries'})</span>
+                                    {isLate && (
+                                      <span style={{ fontSize: '9.5px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                                        {daysSince} DAYS OVERDUE
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span style={{ fontWeight: 800, fontSize: '12.5px', color: '#0ea5e9' }}>
+                                    Day Total: {fmtRs(dayTotal)}
+                                  </span>
+                                </div>
                               </td>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </TableScroll>
-                  </div>
-                );
-              })}
+                            {/* Entry Rows for this Date */}
+                            {rows.map((v, i) => (
+                              <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                                <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
+                                <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
+                                <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{lrLabelOf(v)}</td>
+                                <td style={TD}>
+                                  <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 700, background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>
+                                    {v.type?.replace('_', ' ')}
+                                  </span>
+                                </td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: '#0ea5e9', fontSize: '13px' }}>{fmtRs(v.onlineAmt)}</td>
+                                <td style={{ ...TD, textAlign: 'center' }}>
+                                  <input type="date" className="fi" defaultValue={new Date().toISOString().slice(0, 10)} id={`opd-${v.id}`}
+                                    style={{ height: '28px', fontSize: '11px', padding: '2px 6px', width: '130px' }} />
+                                </td>
+                                <td style={{ ...TD, textAlign: 'center' }}>
+                                  <button className="btn btn-a btn-sm" style={{ fontSize: '11px', padding: '4px 10px' }}
+                                    onClick={() => markPaidWithDate(v.id, document.getElementById(`opd-${v.id}`).value)}>
+                                    <Check size={12} /> Pay
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )}
             </div>
 
             {/* Paid Table */}
