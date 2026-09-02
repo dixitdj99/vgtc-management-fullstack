@@ -1769,28 +1769,30 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                         <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
                       </div>
 
-                      {/* Per-LR expense groups */}
-                      {Object.values(grouped).map((group, gi) => (
-                        <div key={gi} style={{ marginBottom: '8px', borderRadius: '7px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', overflow: 'hidden' }}>
-                          {/* LR badge header */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(245,158,11,0.15)' }}>
-                            <span style={{ fontSize: '10px', fontWeight: 900, color: '#f59e0b', background: 'rgba(245,158,11,0.18)', padding: '1px 7px', borderRadius: '4px' }}>
-                              LR #{group.lrLabel}
-                            </span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{group.date}</span>
-                          </div>
-                          {/* Line items */}
-                          {group.items.map((e, ei) => (
-                            <div key={ei} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 10px', borderBottom: ei < group.items.length - 1 ? '1px dotted rgba(245,158,11,0.1)' : 'none' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '10px', color: 'rgba(245,158,11,0.5)' }}>•</span>
-                                <span style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 600 }}>{e.label}</span>
-                              </div>
-                              <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
+                      {/* Per-LR expense groups — scrollable when list is long */}
+                      <div style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '2px' }}>
+                        {Object.values(grouped).map((group, gi) => (
+                          <div key={gi} style={{ marginBottom: '8px', borderRadius: '7px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', overflow: 'hidden' }}>
+                            {/* LR badge header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(245,158,11,0.15)' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 900, color: '#f59e0b', background: 'rgba(245,158,11,0.18)', padding: '1px 7px', borderRadius: '4px' }}>
+                                LR #{group.lrLabel}
+                              </span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{group.date}</span>
                             </div>
-                          ))}
-                        </div>
-                      ))}
+                            {/* Line items */}
+                            {group.items.map((e, ei) => (
+                              <div key={ei} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 10px', borderBottom: ei < group.items.length - 1 ? '1px dotted rgba(245,158,11,0.1)' : 'none' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '10px', color: 'rgba(245,158,11,0.5)' }}>•</span>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 600 }}>{e.label}</span>
+                                </div>
+                                <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
 
                       {/* Total row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 2px', borderTop: '1px solid rgba(245,158,11,0.25)', marginTop: '2px' }}>
