@@ -394,6 +394,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const [delTarget, setDelTarget] = useState(null);
   const [onlinePaidTarget, setOnlinePaidTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [profiles, setProfiles] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [returnTarget, setReturnTarget] = useState(null); // { id, label, date, remark }
@@ -733,9 +734,9 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           filteredCashOuts;
 
   const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return activeRows.slice(start, start + PAGE_SIZE);
-  }, [activeRows, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return activeRows.slice(start, start + pageSize);
+  }, [activeRows, currentPage, pageSize]);
 
   /* ── Summary stats ── */
   /**
@@ -1454,8 +1455,9 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               <Pagination
                 currentPage={currentPage}
                 totalItems={activeRows.length}
-                pageSize={PAGE_SIZE}
+                pageSize={pageSize}
                 onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
               />
             </>}
       </div>

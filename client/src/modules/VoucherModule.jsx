@@ -19,7 +19,7 @@ import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../util
 import TableScroll from '../components/TableScroll';
 import { fmtDate } from '../utils/format';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 const API_V = `/vouchers`;
 const API_LR = `/lr`;
@@ -1206,6 +1206,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
     // Filters
     const [filters, setFilters] = useState({});
@@ -1746,9 +1747,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     // Pagination Logic
     const paginatedVouchers = useMemo(() => {
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return filtered.slice(start, start + PAGE_SIZE);
-    }, [filtered, currentPage]);
+        const start = (currentPage - 1) * pageSize;
+        return filtered.slice(start, start + pageSize);
+    }, [filtered, currentPage, pageSize]);
 
     /* Totals row */
     const totals = useMemo(() => ({
@@ -2433,7 +2434,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
                                             />
                                         </td>
-                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * PAGE_SIZE + i + 1}</td>
+                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * pageSize + i + 1}</td>
                                         <td data-label="ID" style={{ ...TD }}>
                                             <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
                                                 #{v.entryId || '—'}
@@ -2565,8 +2566,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     <Pagination
                         currentPage={currentPage}
                         totalItems={filtered.length}
-                        pageSize={PAGE_SIZE}
+                        pageSize={pageSize}
                         onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
                     />
                 </div>
             </div>

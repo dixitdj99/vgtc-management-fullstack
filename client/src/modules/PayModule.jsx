@@ -15,6 +15,7 @@ import LabourAccount from './LabourAccount';
 // leftover form field. Printing that showed a number the yard has never issued.
 import { lrLabelOf, explodeAll } from './BalanceSheet';
 import TableScroll from '../components/TableScroll';
+import Pagination from '../components/Pagination';
 
 const API_V = '/vouchers';
 
@@ -136,7 +137,7 @@ function calcNet(v, vehicle) {
 
 /** Deliberately built on this module's own calcNet above, so every figure Pay
  *  shows and every rupee it moves come from the same rule. */
-const calcOutstanding = (v, vehicle) => Math.max(0, calcNet(v, vehicle) - (parseFloat(v.paidBalance) || 0));
+
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -187,6 +188,8 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   // voucher list, are what the freight worklist shows.
   const [batches, setBatches] = useState([]);
   const [payAmount, setPayAmount] = useState('');   // blank = settle in full
+  // Vehicle credit on this truck: apply on this payment, or leave it for next time.
+  const [applyCredit, setApplyCredit] = useState('now');
 
   useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
   const [profiles, setProfiles] = useState([]);
@@ -274,6 +277,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   useEffect(() => {
     if (selTruck) fetchAdvances(selTruck);
     else setAdvances([]);
+    setApplyCredit('now');
   }, [selTruck]);
 
   const fetchAdvances = async (truck) => {
@@ -419,7 +423,8 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       const owed = outstandingOf(trips, netOf);
       const paid = trips.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
       const allCleared = trips.every(v => !!v.paymentClearedDate || !!v.isPaid);
-      if (allCleared) continue;                    // fully settled — drop off the worklist
+      if (allCleared) continue;
+      if (owed <= 0) continue;                     // paid / nothing left — don't sit on the list at Rs.0
 
       const due = b.dueDate || '';
       const today = new Date().toISOString().slice(0, 10);
@@ -529,31 +534,12 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const singleTruckMode = !!selTruck && !selOwner;
 
   const [groupByOwner, setGroupByOwner] = useState(true);
+  const [freightWorkTab, setFreightWorkTab] = useState('pending');
+  const [histPage, setHistPage] = useState(1);
+  const [histPageSize, setHistPageSize] = useState(20);
   const [openOwners, setOpenOwners] = useState(() => new Set());
   const toggleOwner = (owner) =>
     setOpenOwners(s => { const n = new Set(s); n.has(owner) ? n.delete(owner) : n.add(owner); return n; });
-
-  /**
-   * Outstanding that no clerk has sent yet. Pay only lists what was sent, so
-   * without this money could sit unpaid and invisible.
-   */
-  const unsent = useMemo(() => {
-    const sent = new Set(batches.flatMap(b => b.voucherIds || []));
-    const byType = {};
-    const trucks = new Set();
-    for (const v of vouchers) {
-      if (sent.has(v.id)) continue;
-      const vehicle = vehicleFor(v.truckNo);
-      if (calcOutstanding(v, vehicle) <= 0) continue;
-      byType[v.type] = (byType[v.type] || 0) + 1;
-      trucks.add(v.truckNo);
-    }
-    return { trucks: trucks.size, byType };
-  }, [vouchers, batches, vehiclesInfo]);
-
-  // The old all-trucks summary that listed every vehicle in the business
-  // regardless of module has been replaced by `payables` above, which lists
-  // only what a clerk has actually sent from a balance sheet.
 
   // The trips on the settlement panel — one truck's, or every truck an owner
   // runs when the whole owner is being settled.
@@ -619,6 +605,24 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       return d2 - d1;
     });
   }, [selTruck, truckGroups]);
+
+  const allFreightHistory = useMemo(() => {
+    const rows = explodeAll(vouchers).filter(v =>
+      !!v.paymentClearedDate || (parseFloat(v.paidBalance) || 0) > 0
+    );
+    return rows.sort((a, b) => {
+      const da = a.paymentClearedDate || a.date || '';
+      const db = b.paymentClearedDate || b.date || '';
+      return db.localeCompare(da);
+    });
+  }, [vouchers]);
+
+  const histPageRows = useMemo(() => {
+    const start = (histPage - 1) * histPageSize;
+    return allFreightHistory.slice(start, start + histPageSize);
+  }, [allFreightHistory, histPage, histPageSize]);
+
+  useEffect(() => { setHistPage(1); }, [histPageSize, vouchers.length]);
 
   const gpsAccrual = useMemo(() => {
     if (!selTruck || !selVehicle || !selVehicle.gpsType || selVehicle.gpsType === 'none') return null;
@@ -722,8 +726,9 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     // a whole owner pays the freight and nothing else, so they are excluded
     // rather than applied to a fleet they were never decided for.
     if (!singleTruckMode) return selOutstanding;
-    return selOutstanding + advanceBalance - (gpsAccrual?.amount || 0) - miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
-  }, [singleTruckMode, selOutstanding, advanceBalance, gpsAccrual, miscDeductions]);
+    const creditNow = applyCredit === 'now' ? advanceBalance : 0;
+    return selOutstanding + creditNow - (gpsAccrual?.amount || 0) - miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  }, [singleTruckMode, selOutstanding, advanceBalance, gpsAccrual, miscDeductions, applyCredit]);
 
   // Vehicle expenses from selected entries (or all pending if none selected)
   const expenseSource = selRows.length > 0 ? selRows : vehicleLrs;
@@ -810,12 +815,14 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       }
       setMiscDeductions([]);
 
-      // Clear active vehicle advances for this truck so they are not double-counted in future payments
-      try {
-        await ax.post('/vehicle-advances/clear', { truckNo: selTruck, paymentId: `PAY-${Date.now()}` });
-        fetchAdvances(selTruck);
-      } catch (clearErr) {
-        console.error('Failed to clear vehicle advances:', clearErr);
+      // Only clear vehicle credit/debit if the clerk chose to apply it this time.
+      if (applyCredit === 'now' && advanceBalance !== 0) {
+        try {
+          await ax.post('/vehicle-advances/clear', { truckNo: selTruck, paymentId: `PAY-${Date.now()}` });
+          fetchAdvances(selTruck);
+        } catch (clearErr) {
+          console.error('Failed to clear vehicle advances:', clearErr);
+        }
       }
       }
 
@@ -1327,20 +1334,75 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       ) : (
         <React.Fragment>
           {!inDetail ? (
-        // PENDING FREIGHT PAYS — driven by what clerks sent from the sheets
         <div>
-          {unsent.trucks > 0 && (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 16px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '10px', marginBottom: '14px' }}>
-              <AlertCircle size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: '1px' }} />
-              <div style={{ fontSize: '12.5px', color: 'var(--text)', lineHeight: 1.5 }}>
-                <b style={{ color: '#f59e0b' }}>{unsent.trucks} vehicle{unsent.trucks === 1 ? '' : 's'} with outstanding freight not yet sent.</b>{' '}
-                Only balances sent from a balance sheet appear here — open the sheet and use Send to Pay.
-                <div style={{ marginTop: '4px', fontWeight: 700, color: 'var(--text-muted)', fontSize: '11.5px' }}>
-                  {Object.entries(unsent.byType).map(([t, n]) => `${t.replace(/_/g, ' ')} (${n} trip${n === 1 ? '' : 's'})`).join(' · ')}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+            <button className={`btn btn-sm ${freightWorkTab === 'pending' ? 'btn-p' : 'btn-g'}`}
+              onClick={() => setFreightWorkTab('pending')}>Pending</button>
+            <button className={`btn btn-sm ${freightWorkTab === 'history' ? 'btn-p' : 'btn-g'}`}
+              onClick={() => setFreightWorkTab('history')}>History ({allFreightHistory.length})</button>
+          </div>
+
+          {freightWorkTab === 'history' ? (
+          <div className="card">
+            <div className="card-header border-b">
+              <div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><CheckCircle2 size={17} color="#10b981" /></div>
+                <div className="card-title-text">
+                  <h3>Freight pay history</h3>
+                  <p>{allFreightHistory.length} paid trip{allFreightHistory.length === 1 ? '' : 's'} · {fmtRs(allFreightHistory.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0))} paid</p>
                 </div>
               </div>
             </div>
-          )}
+            <TableScroll>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    <th style={TH}>#</th>
+                    <th style={TH}>Paid date</th>
+                    <th style={TH}>Truck</th>
+                    <th style={TH}>Owner</th>
+                    <th style={TH}>LR</th>
+                    <th style={TH}>Type</th>
+                    <th style={TH}>Destination</th>
+                    <th style={{ ...TH, textAlign: 'right' }}>Paid</th>
+                    <th style={TH}>Method</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {histPageRows.map((v, i) => {
+                    const method = v.paymentMethod || 'Cash';
+                    const owner = vehicleFor(v.truckNo)?.ownerName || '—';
+                    return (
+                      <tr key={v.id + String(v._leg || 0)} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                        <td style={{ ...TD, color: 'var(--text-muted)' }}>{(histPage - 1) * histPageSize + i + 1}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: 'var(--accent)' }}>{fmtDate(v.paymentClearedDate || v.date)}</td>
+                        <td style={{ ...TD, fontWeight: 700 }}>{v.truckNo || '—'}</td>
+                        <td style={TD}>{owner}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: 'var(--primary)' }}>{lrLabelOf(v)}</td>
+                        <td style={TD}>{(v.type || '').replace(/_/g, ' ') || '—'}</td>
+                        <td style={TD}>{v.destination || v.partyName || '—'}</td>
+                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRs(parseFloat(v.paidBalance) || 0)}</td>
+                        <td style={TD}>{method}</td>
+                      </tr>
+                    );
+                  })}
+                  {allFreightHistory.length === 0 && (
+                    <tr><td colSpan={9} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No freight payments yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </TableScroll>
+            {allFreightHistory.length > 0 && (
+              <Pagination
+                currentPage={histPage}
+                totalItems={allFreightHistory.length}
+                pageSize={histPageSize}
+                onPageChange={setHistPage}
+                onPageSizeChange={setHistPageSize}
+              />
+            )}
+          </div>
+          ) : (
           <div className="card">
             <div className="card-header border-b">
               <div className="card-title-block">
@@ -1353,8 +1415,6 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </p>
                 </div>
               </div>
-              {/* One owner often runs several trucks and expects one payment,
-                  so their rows are gathered under a single total. */}
               <button className={`btn btn-sm ${groupByOwner ? 'btn-p' : 'btn-g'}`} onClick={() => setGroupByOwner(g => !g)}
                 title={groupByOwner ? 'Show every truck as its own row' : 'Gather each owner’s trucks together'}>
                 <Merge size={13} /> {groupByOwner ? 'Grouped by owner' : 'Group by owner'}
@@ -1476,6 +1536,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
               </table>
             </TableScroll>
           </div>
+          )}
 
         </div>
       ) : (
@@ -1869,15 +1930,37 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   </div>
                 )}
 
-                {/* ── Vehicle Advance Balance ──────────────────────────────── */}
                 {singleTruckMode && advanceBalance !== 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
-                    <span style={{ fontSize: '11px', color: advanceBalance > 0 ? '#10b981' : 'var(--danger)', fontWeight: 700 }}>
-                      {advanceBalance > 0 ? 'Vehicle Credit Balance' : 'Vehicle Debit Balance'}
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 800, color: advanceBalance > 0 ? '#10b981' : 'var(--danger)' }}>
-                      {advanceBalance > 0 ? '+' : ''}{fmtRs(advanceBalance)}
-                    </span>
+                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '11px', color: advanceBalance > 0 ? '#10b981' : 'var(--danger)', fontWeight: 700 }}>
+                        {advanceBalance > 0 ? 'Vehicle credit' : 'Vehicle debit'}
+                      </span>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: advanceBalance > 0 ? '#10b981' : 'var(--danger)' }}>
+                        {advanceBalance > 0 ? '+' : ''}{fmtRs(advanceBalance)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {[
+                        { id: 'now', label: 'This payment' },
+                        { id: 'later', label: 'Next time' },
+                      ].map(opt => (
+                        <button key={opt.id} type="button" onClick={() => setApplyCredit(opt.id)}
+                          style={{
+                            flex: 1, padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                            border: `1px solid ${applyCredit === opt.id ? 'var(--primary)' : 'var(--border)'}`,
+                            background: applyCredit === opt.id ? 'var(--bg-active)' : 'transparent',
+                            color: applyCredit === opt.id ? 'var(--text)' : 'var(--text-muted)',
+                          }}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '6px', fontWeight: 600 }}>
+                      {applyCredit === 'now'
+                        ? 'Added to this payout. Credit is cleared after pay.'
+                        : 'Left on the vehicle. This pay is freight only.'}
+                    </div>
                   </div>
                 )}
 

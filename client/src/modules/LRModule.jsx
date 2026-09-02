@@ -20,7 +20,7 @@ import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 import TableScroll from '../components/TableScroll';
 import { fmtDate } from '../utils/format';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
@@ -1320,6 +1320,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showChalPopup, setShowChalPopup] = useState(false);
   const [chalPreFill, setChalPreFill] = useState(null);
   const [linkingLrId, setLinkingLrId] = useState(null);
@@ -1835,9 +1836,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   // Pagination Logic
   const paginatedReceipts = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredReceipts.slice(start, start + PAGE_SIZE);
-  }, [filteredReceipts, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return filteredReceipts.slice(start, start + pageSize);
+  }, [filteredReceipts, currentPage, pageSize]);
 
   // Every field on the receipt — the old eight-column list left out loading
   // type, destination, driver, challan status and the material breakdown.
@@ -2598,8 +2599,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <Pagination
               currentPage={currentPage}
               totalItems={filteredReceipts.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
             />
           </div>
         </div>

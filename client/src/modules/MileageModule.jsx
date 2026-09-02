@@ -42,6 +42,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZE);
     const [showFuelModal, setShowFuelModal] = useState(false);
     const [fuelForm, setFuelForm] = useState({ date: new Date().toISOString().split('T')[0], endKm: '', amount: '', pump: '' });
     const [submitting, setSubmitting] = useState(false);
@@ -161,9 +162,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
     }, [processedTrips, vehicleType, dieselPerLitre]);
 
     const paginatedTrips = useMemo(() => {
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return processedTrips.slice(start, start + PAGE_SIZE);
-    }, [processedTrips, currentPage]);
+        const start = (currentPage - 1) * pageSize;
+        return processedTrips.slice(start, start + pageSize);
+    }, [processedTrips, currentPage, pageSize]);
 
     if (loading) return (
         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -311,8 +312,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                 <Pagination 
                     currentPage={currentPage}
                     totalItems={trips.length}
-                    pageSize={PAGE_SIZE}
+                    pageSize={pageSize}
                     onPageChange={setCurrentPage}
+                    onPageSizeChange={setPageSize}
                 />
             </div>
 

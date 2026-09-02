@@ -1,89 +1,78 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
-
 /* Hide number input spinners globally */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
 input[type="number"] { -moz-appearance: textfield !important; appearance: textfield !important; }
 
-/* ── Clean White SaaS Theme (Unified) ────────────────────── */
+/* VGTC — navy + orange from the mark. Quiet paper, no indigo SaaS kit. */
 :root,
 [data-theme="light"] {
-  --bg: #F0F2F5;
+  --bg: #F4F3F0;
   --bg-card: #FFFFFF;
   --bg-input: #FFFFFF;
-  --bg-th: #F8F9FB;
-  --bg-tf: #F0F2F5;
+  --bg-th: #F7F6F3;
+  --bg-tf: #F4F3F0;
   --bg-filter: #FFFFFF;
   --bg-row-even: #FFFFFF;
-  --bg-row-odd: #FAFBFC;
-  --bg-row-hover: #F0F4FF;
-  /* Opaque — sticky Actions cells overlay scrolling columns. An rgba tint
-     lets those columns show through the buttons. */
-  --bg-row-selected: #E3E1FB;
-  /* Hover wash and selected state for chrome — sidebar items, ghost buttons.
-     Separate from --bg-row-hover, which belongs to table rows. */
-  --bg-hover: #F3F4F6;
-  --bg-active: #EEF2FF;
-  /* A field that sits ON chrome (the topbar search) rather than on a card. It
-     cannot use --bg-input: that matches the topbar exactly and the field
-     disappears into it. */
-  --bg-inset: #F3F4F6;
-  --border: #E5E7EB;
-  --border-row: #F0F1F3;
-  --primary: #4F46E5;
-  --primary-2: #6366F1;
-  --primary-glow: rgba(79, 70, 229, 0.12);
-  --accent: #10B981;
-  --warn: #F59E0B;
-  --danger: #EF4444;
-  --danger-glow: rgba(239, 68, 68, 0.10);
+  --bg-row-odd: #FAF9F6;
+  --bg-row-hover: #F3F1EC;
+  --bg-row-selected: #EDE6D8;
+  --bg-hover: #EFEDE8;
+  --bg-active: #E8E4DC;
+  --bg-inset: #EFEDE8;
+  --border: #DDD8CE;
+  --border-row: #EBE7DF;
+  --primary: #1A2744;
+  --primary-2: #E07A20;
+  --primary-glow: rgba(26, 39, 68, 0.12);
+  --accent: #2F6B4F;
+  --warn: #E07A20;
+  --danger: #B42318;
+  --danger-glow: rgba(180, 35, 24, 0.10);
   --skeleton-hi: rgba(0, 0, 0, 0.04);
-  --text: #1F2937;
-  --text-muted: #6B7280;
-  --text-sub: #374151;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05), 0 10px 15px rgba(0, 0, 0, 0.04);
+  --text: #1A1A1A;
+  --text-muted: #6B675F;
+  --text-sub: #3D3A34;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: none;
+  --shadow-md: none;
   --topbar-bg: #FFFFFF;
-  --sidebar-bg: #FFFFFF;
+  --sidebar-bg: #FAF9F6;
 }
 
 [data-theme="dark"] {
-  --bg: #0F172A;
-  --bg-card: #1E293B;
-  --bg-input: #1E293B;
-  --bg-th: #0F172A;
-  --bg-tf: #1E293B;
-  --bg-filter: #1E293B;
-  --bg-row-even: #1E293B;
-  --bg-row-odd: #182234;
-  --bg-row-hover: #334155;
-  --bg-row-selected: #2C355F;
-  /* Translucent so one value reads correctly over both the sidebar (#0F172A)
-     and the topbar (#1E293B). */
-  --bg-hover: rgba(148, 163, 184, 0.13);
-  --bg-active: rgba(99, 102, 241, 0.20);
-  --bg-inset: #0F172A;
-  --border: #334155;
-  --border-row: #334155;
-  --primary: #6366F1;
-  --primary-2: #818CF8;
-  --primary-glow: rgba(99, 102, 241, 0.20);
-  --accent: #10B981;
-  --warn: #F59E0B;
-  --danger: #F43F5E;
-  --danger-glow: rgba(244, 63, 94, 0.20);
+  --bg: #12151C;
+  --bg-card: #1C2028;
+  --bg-input: #1C2028;
+  --bg-th: #161A22;
+  --bg-tf: #12151C;
+  --bg-filter: #1C2028;
+  --bg-row-even: #1C2028;
+  --bg-row-odd: #181C24;
+  --bg-row-hover: #252A34;
+  --bg-row-selected: #2A3140;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(224, 122, 32, 0.16);
+  --bg-inset: #12151C;
+  --border: #2C3340;
+  --border-row: #2C3340;
+  --primary: #E07A20;
+  --primary-2: #E07A20;
+  --primary-glow: rgba(224, 122, 32, 0.18);
+  --accent: #5BA17C;
+  --warn: #E07A20;
+  --danger: #E05A4F;
+  --danger-glow: rgba(224, 90, 79, 0.16);
   --skeleton-hi: rgba(255, 255, 255, 0.05);
-  --text: #F8FAFC;
-  --text-muted: #94A3B8;
-  --text-sub: #CBD5E1;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --topbar-bg: #1E293B;
-  --sidebar-bg: #0F172A;
+  --text: #F2EFE8;
+  --text-muted: #9A958A;
+  --text-sub: #D4CFC4;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: none;
+  --shadow-md: none;
+  --topbar-bg: #1C2028;
+  --sidebar-bg: #12151C;
 }
 
 /* ── Badges & Notification Styles ──
@@ -92,49 +81,50 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
    glowing dot competing with the active-item indicator. SOON stays: it marks a
    nav entry that is genuinely disabled. */
 .nav-badge-soon {
-  font-size: 8.5px;
-  font-weight: 900;
-  color: #FFFFFF;
-  background: linear-gradient(135deg, #F59E0B, #D97706);
-  padding: 2px 6px;
-  border-radius: 99px;
-  letter-spacing: 0.05em;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0;
   margin-left: auto;
 }
 
 [data-theme="sepia"] {
-  --bg: #F4EBD9;
-  --bg-card: #FDF6E3;
-  --bg-input: #FDF6E3;
-  --bg-th: #EEE8D5;
-  --bg-tf: #F4EBD9;
-  --bg-filter: #FDF6E3;
-  --bg-row-even: #FDF6E3;
-  --bg-row-odd: #F8F1DE;
-  --bg-row-hover: #EEE8D5;
-  --bg-row-selected: #F2E4BF;
-  --bg-hover: #EEE8D5;
-  --bg-active: rgba(181, 137, 0, 0.16);
-  --bg-inset: #EEE8D5;
-  --border: #E0D7C3;
-  --border-row: #E6DFCD;
-  --primary: #B58900;
-  --primary-2: #CB4B16;
-  --primary-glow: rgba(181, 137, 0, 0.15);
-  --accent: #859900;
-  --warn: #B58900;
-  --danger: #DC322F;
-  --danger-glow: rgba(220, 50, 47, 0.15);
+  --bg: #EFE6D4;
+  --bg-card: #FBF6EA;
+  --bg-input: #FBF6EA;
+  --bg-th: #EFE8D6;
+  --bg-tf: #EFE6D4;
+  --bg-filter: #FBF6EA;
+  --bg-row-even: #FBF6EA;
+  --bg-row-odd: #F6EFE0;
+  --bg-row-hover: #EDE4D0;
+  --bg-row-selected: #E8D9B8;
+  --bg-hover: #EDE4D0;
+  --bg-active: #E8D9B8;
+  --bg-inset: #EDE4D0;
+  --border: #D9CDB3;
+  --border-row: #E6DCC6;
+  --primary: #1A2744;
+  --primary-2: #C45E12;
+  --primary-glow: rgba(26, 39, 68, 0.12);
+  --accent: #4A6B3A;
+  --warn: #C45E12;
+  --danger: #9B2C2C;
+  --danger-glow: rgba(155, 44, 44, 0.12);
   --skeleton-hi: rgba(0, 0, 0, 0.05);
-  --text: #433422;
-  --text-muted: #83705B;
-  --text-sub: #5C4A36;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(67, 52, 34, 0.08);
-  --shadow-md: 0 4px 10px rgba(67, 52, 34, 0.12);
-  --topbar-bg: #FDF6E3;
-  --sidebar-bg: #F4EBD9;
+  --text: #2C2416;
+  --text-muted: #7A6E58;
+  --text-sub: #4A4030;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --shadow: none;
+  --shadow-md: none;
+  --topbar-bg: #FBF6EA;
+  --sidebar-bg: #EFE6D4;
 }
 
 *,
@@ -152,12 +142,11 @@ body,
 }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-  transition: background 0.3s, color 0.3s;
 }
 
 button {
@@ -239,19 +228,19 @@ textarea {
 }
 
 .brand-name {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
   color: var(--text);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .brand-sub {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 400;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  text-transform: none;
+  letter-spacing: 0;
   margin-top: 1px;
 }
 
@@ -268,20 +257,19 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  border-radius: 8px;
+  padding: 7px 10px;
+  border-radius: 4px;
   border: none;
   background: transparent;
   color: var(--text-sub);
   text-align: left;
   width: 100%;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   position: relative;
   overflow: hidden;
   white-space: nowrap;
-  transition: all 0.15s ease;
 }
 
 .nav-btn:hover {
@@ -291,7 +279,7 @@ textarea {
 
 .nav-btn.active {
   background: var(--bg-active);
-  color: var(--primary);
+  color: var(--text);
   font-weight: 600;
   box-shadow: none;
 }
@@ -299,7 +287,7 @@ textarea {
 /* Hovering the item you are already on should not wash out its selected tint. */
 .nav-btn.active:hover {
   background: var(--bg-active);
-  color: var(--primary);
+  color: var(--text);
 }
 
 .nav-indicator {
@@ -586,13 +574,11 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow);
-  transition: box-shadow 0.2s, border-color 0.2s;
+  box-shadow: none;
 }
 
 .card:hover {
-  box-shadow: var(--shadow-md);
-  border-color: #D1D5DB;
+  box-shadow: none;
 }
 
 .card-header {
@@ -611,9 +597,9 @@ textarea {
 }
 
 .card-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -621,7 +607,7 @@ textarea {
 }
 
 .ci-indigo {
-  background: rgba(99, 102, 241, 0.15);
+  background: var(--bg-active);
   color: var(--primary);
 }
 
@@ -637,16 +623,16 @@ textarea {
 
 .card-title-text h3 {
   font-size: 14px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .card-title-text p {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  text-transform: none;
+  letter-spacing: 0;
   margin-top: 2px;
 }
 
@@ -664,21 +650,21 @@ textarea {
 }
 
 .page-hd h1 {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.025em;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .page-hd p {
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 400;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 3px;
 }
 
 .page-hd-right {
@@ -741,11 +727,11 @@ textarea {
 }
 
 .field label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -898,15 +884,14 @@ select.fi option {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
   white-space: nowrap;
-  height: 38px;
+  height: 34px;
   box-sizing: border-box;
 }
 
@@ -919,32 +904,33 @@ select.fi option {
 .btn-p {
   background: var(--primary);
   color: #fff;
-  border-color: transparent;
-  box-shadow: 0 1px 3px rgba(79, 70, 229, 0.3);
+  border-color: var(--primary);
+  box-shadow: none;
 }
 
 .btn-p:hover {
-  background: #4338CA;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
-  transform: translateY(-1px);
+  background: #121A30;
+  box-shadow: none;
+}
+
+[data-theme="dark"] .btn-p:hover {
+  background: #c96a16;
 }
 
 .btn-p:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-g {
   background: transparent;
-  color: var(--primary);
-  border: 1px solid var(--primary);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
-/* Was a white wash, which is invisible on a light background. */
 .btn-g:hover {
-  background: var(--primary-glow);
-  border-color: var(--primary);
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
 }
 
 .btn-s {
@@ -1407,15 +1393,13 @@ input[type="checkbox"] {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px;
-  box-shadow: var(--shadow);
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  padding: 14px 16px;
+  box-shadow: none;
 }
 
 .stat-card:hover {
-  border-color: #D1D5DB;
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  box-shadow: none;
+  transform: none;
 }
 
 .stat-head {
@@ -1426,24 +1410,25 @@ input[type="checkbox"] {
 }
 
 .stat-lbl {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .stat-val {
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .calc-box {
-  background: rgba(99, 102, 241, 0.05);
-  border: 1px solid rgba(99, 102, 241, 0.14);
+  background: var(--bg-th);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 16px;
 }
 
 .calc-row {
@@ -2287,6 +2272,13 @@ input[type="checkbox"] {
   cursor: not-allowed;
 }
 
+.ap-page-btn-wide {
+  width: auto;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .ap-page-size {
   display: flex;
   align-items: center;
@@ -2311,9 +2303,8 @@ input[type="checkbox"] {
   border-color: var(--primary);
 }
 
-/* Smooth transitions */
 .card, .stat-card, .btn, .fi, .tab-btn, .badge {
-  transition: all 0.15s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 /* ── Skeleton loading ───────────────────────────────────── */

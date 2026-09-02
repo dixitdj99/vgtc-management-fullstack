@@ -35,6 +35,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   
   const getEmptyForm = () => ({
     material: MATS[0],
@@ -189,9 +190,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
 
   // Pagination Logic
   const paginatedSales = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredSales.slice(start, start + PAGE_SIZE);
-  }, [filteredSales, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return filteredSales.slice(start, start + pageSize);
+  }, [filteredSales, currentPage, pageSize]);
 
   const onFilterUpdate = (k, v) => {
     setFilters(f => ({ ...f, [k]: v }));
@@ -777,8 +778,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             <Pagination 
               currentPage={currentPage}
               totalItems={filteredSales.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
             />
           </TableScroll>
         </div>

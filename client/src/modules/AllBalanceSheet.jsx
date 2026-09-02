@@ -110,7 +110,7 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
   const [truckSearch, setTruckSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(20);
 
   const [sending, setSending] = useState(false);
   const [sendBlocked, setSendBlocked] = useState(null);
