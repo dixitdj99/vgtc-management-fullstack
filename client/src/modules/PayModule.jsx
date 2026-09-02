@@ -161,6 +161,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   const canEdit = role === 'admin' || permissions?.pay === 'edit';
   const [vouchers, setVouchers] = useState([]);
   const [selTruck, setSelTruck] = useState(null);
+  // Which individual batch the clerk opened. A truck can have several batches
+  // (two separate Send-to-Pay runs) and they each show as their own row, so
+  // we need more than just the truck number to know which one was clicked.
+  const [selBatchId, setSelBatchId] = useState(null);
   // An owner being settled across all their trucks. The same settlement panel
   // handles both — paying a whole owner used to open a separate dialog of its
   // own, which meant a second, poorer way of doing the one thing this screen
@@ -401,7 +405,11 @@ export default function PayModule({ brand, role, permissions, initialView }) {
    * point of routing payment through here rather than through each sheet.
    */
   const payables = useMemo(() => {
-    const byTruck = new Map();
+    // One row per BATCH, not per truck. A truck sent twice (two separate
+    // Send-to-Pay actions) produces two separate rows in the worklist so
+    // the clerk can see each batch independently and settle them one at a
+    // time. The old per-truck grouping merged them silently.
+    const items = [];
 
     for (const b of batches) {
       const trips = (b.voucherIds || []).map(id => voucherById.get(id)).filter(Boolean);
@@ -412,35 +420,28 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       const paid = trips.reduce((s, v) => s + (parseFloat(v.paidBalance) || 0), 0);
       if (owed <= 0) continue;                     // fully settled — drop off the worklist
 
-      if (!byTruck.has(b.truckNo)) {
-        byTruck.set(b.truckNo, { truck: b.truckNo, batches: [], trips: [], modules: [], outstanding: 0, paid: 0 });
-      }
-      const p = byTruck.get(b.truckNo);
-      p.batches.push(b);
-      p.trips.push(...trips);
-      p.modules.push({ type: b.type, amount: owed, batchId: b.id });
-      p.outstanding += owed;
-      p.paid += paid;
+      const due = b.dueDate || '';
+      const today = new Date().toISOString().slice(0, 10);
+      items.push({
+        batchId: b.id,
+        truck: b.truckNo,
+        batches: [b],
+        trips,
+        modules: [{ type: b.type, amount: owed, batchId: b.id }],
+        outstanding: owed,
+        paid,
+        merged: false,
+        dueDate: due,
+        overdue: !!due && due < today,
+        status: paid > 0 ? 'Partially Paid' : 'Pending',
+        pendingTrips: String(trips.filter(v => calcOutstanding(v, vehicleFor(b.truckNo)) > 0).length),
+        hasUnverified: trips.some(hasUnverifiedDiesel),
+        types: b.type.replace(/_/g, ' '),
+        ownerName: vehicleFor(b.truckNo)?.ownerName || '',
+      });
     }
 
-    let list = [...byTruck.values()].map(p => {
-      const dues = p.batches.map(b => b.dueDate).filter(Boolean).sort();
-      const today = new Date().toISOString().slice(0, 10);
-      return {
-        ...p,
-        // Merged when the money came from more than one balance sheet.
-        merged: new Set(p.modules.map(m => m.type)).size > 1,
-        dueDate: dues[0] || '',
-        overdue: !!dues[0] && dues[0] < today,
-        status: p.paid > 0 ? 'Partially Paid' : 'Pending',
-        pendingTrips: String(p.trips.filter(v => calcOutstanding(v, vehicleFor(p.truck)) > 0).length),
-        hasUnverified: p.trips.some(hasUnverifiedDiesel),
-        types: [...new Set(p.modules.map(m => m.type.replace(/_/g, ' ')))].join(', '),
-        // One person often runs several trucks, and they expect one payment.
-        // Carrying the owner here lets the worklist group by it.
-        ownerName: vehicleFor(p.truck)?.ownerName || '',
-      };
-    });
+    let list = items;
 
     Object.keys(filters).forEach(key => {
       const vals = filters[key];
@@ -451,7 +452,15 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     return list.sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || a.truck.localeCompare(b.truck));
   }, [batches, voucherById, vehiclesInfo, filters]);
 
-  const selPayable = useMemo(() => payables.find(p => p.truck === selTruck), [payables, selTruck]);
+  // When a specific batch row was clicked, match by batch ID.
+  // When in owner mode (selOwner set, selBatchId null), selPayable is not
+  // used for trip filtering — vehicleLrs handles that directly.
+  const selPayable = useMemo(
+    () => selBatchId
+      ? payables.find(p => p.batchId === selBatchId)
+      : payables.find(p => p.truck === selTruck),
+    [payables, selBatchId, selTruck],
+  );
 
   /**
    * The worklist grouped by whoever owns the trucks.
@@ -505,7 +514,10 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   /** The trucks the settlement panel is currently covering. */
   const activeTrucks = useMemo(() => {
-    if (selOwner) return (selGroup?.trucks || []).map(t => t.truck);
+    if (selOwner) {
+      // Deduplicate — one owner may have several batches for the same truck.
+      return [...new Set((selGroup?.trucks || []).map(t => t.truck))];
+    }
     return selTruck ? [selTruck] : [];
   }, [selOwner, selGroup, selTruck]);
 
@@ -546,8 +558,14 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     if (!activeTrucks.length) return [];
     // Only the trips actually sent for payment — anything else is still the
     // balance sheet's business and must not be settled from here by accident.
+    //
+    // Single-batch mode: show only this batch's trips so the settlement
+    // figures match exactly what was sent in that run.
+    // Owner / Pay-All mode: include every sent batch for the active trucks.
     const sentIds = new Set(
-      payables.filter(p => activeTrucks.includes(p.truck)).flatMap(p => (p.trips || []).map(v => v.id)),
+      selBatchId && selPayable
+        ? (selPayable.trips || []).map(v => v.id)
+        : payables.filter(p => activeTrucks.includes(p.truck)).flatMap(p => (p.trips || []).map(v => v.id)),
     );
     let rows = activeTrucks.flatMap(t => (truckGroups[t] || []).filter(v => sentIds.has(v.id)));
     // Only show pending or partially paid LRs
@@ -921,7 +939,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Staff Pay</button>
             <button className={`btn btn-sm ${view === 'labour' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('labour')}>Labour</button>
           </div>
-          {inDetail && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelOwner(null); setSelectedLrs(new Set()); setPayAmount('');}}><ChevronLeft size={14} /> All Trucks</button>}
+          {inDetail && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelOwner(null); setSelBatchId(null); setSelectedLrs(new Set()); setPayAmount('');}}><ChevronLeft size={14} /> All Trucks</button>}
         </div>
       </div>
 
@@ -1331,6 +1349,8 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                       one row shape, so a truck behaves the same either way. */}
                   {groupByOwner && ownerGroups.groups.map(g => {
                     const open = openOwners.has(g.owner);
+                    // Unique truck numbers in this owner's batches
+                    const uniqueTrucks = [...new Set(g.trucks.map(t => t.truck))];
                     return (
                       <React.Fragment key={'owner-' + g.owner}>
                         <tr onClick={() => toggleOwner(g.owner)}
@@ -1342,7 +1362,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 900, fontSize: '13px', color: 'var(--text)' }}>{g.owner}</span>
                               <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 800, background: 'rgba(99,102,241,0.12)', color: 'var(--primary)' }}>
-                                {g.trucks.length} truck{g.trucks.length === 1 ? '' : 's'}
+                                {uniqueTrucks.length} truck{uniqueTrucks.length === 1 ? '' : 's'} · {g.trucks.length} batch{g.trucks.length === 1 ? '' : 'es'}
                               </span>
                               {g.hasUnverified && (
                                 <span style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: 800, background: 'rgba(245,158,11,0.12)', color: 'var(--warn)' }}>
@@ -1350,7 +1370,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                 </span>
                               )}
                               <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                                {g.trucks.map(t => t.truck).join(' · ')}
+                                {uniqueTrucks.join(' · ')}
                               </span>
                             </div>
                           </td>
@@ -1361,11 +1381,11 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                           <td style={{ ...TD, textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>{g.dueDate || '—'}</td>
                           <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             {/* Opens the settlement panel on every one of this
-                                owner's trips, rather than a second dialog that
+                                owner's batches, rather than a second dialog that
                                 could only ever do less than the panel does. */}
                             <button className="btn btn-p btn-sm"
                               onClick={() => {
-                                setSelTruck(null); setSelOwner(g.owner);
+                                setSelTruck(null); setSelOwner(g.owner); setSelBatchId(null);
                                 setSelectedLrs(new Set()); setPayAmount(''); setDetailTab('pending');
                                 // A date filter left over from a truck opened
                                 // earlier would hide most of the owner's trips
@@ -1373,14 +1393,17 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                 setDateFilter('all');
                               }}
                               disabled={g.hasUnverified}
-                              title={g.hasUnverified ? 'Verify diesel on these trips first' : `Settle all ${g.trucks.length} trucks in one payment`}>
+                              title={g.hasUnverified ? 'Verify diesel on these trips first' : `Settle all ${uniqueTrucks.length} trucks (${g.trucks.length} batches) in one payment`}>
                               <HandCoins size={13} /> Pay All
                             </button>
                           </td>
                         </tr>
+                        {/* Each batch is its own row — even if two batches belong
+                            to the same truck, they appear separately so the clerk
+                            can settle them one at a time or via Pay All. */}
                         {open && g.trucks.map((p, i) => (
-                          <PayableRow key={p.truck} p={p} i={i} indented
-                            onOpen={() => { setSelTruck(p.truck); setDetailTab('pending'); setPayAmount(''); }}
+                          <PayableRow key={p.batchId} p={p} i={i} indented
+                            onOpen={() => { setSelTruck(p.truck); setSelBatchId(p.batchId); setDetailTab('pending'); setPayAmount(''); }}
                             setDueDate={setDueDate} />
                         ))}
                       </React.Fragment>
@@ -1404,13 +1427,13 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                     </tr>
                   )}
                   {groupByOwner && ownerGroups.loose.map((p, i) => (
-                    <PayableRow key={p.truck} p={p} i={i}
-                      onOpen={() => { setSelTruck(p.truck); setDetailTab('pending'); setPayAmount(''); }}
+                    <PayableRow key={p.batchId} p={p} i={i}
+                      onOpen={() => { setSelTruck(p.truck); setSelBatchId(p.batchId); setDetailTab('pending'); setPayAmount(''); }}
                       setDueDate={setDueDate} />
                   ))}
                   {!groupByOwner && payables.map((p, i) => (
-                    <PayableRow key={p.truck} p={p} i={i}
-                      onOpen={() => { setSelTruck(p.truck); setDetailTab('pending'); setPayAmount(''); }}
+                    <PayableRow key={p.batchId} p={p} i={i}
+                      onOpen={() => { setSelTruck(p.truck); setSelBatchId(p.batchId); setDetailTab('pending'); setPayAmount(''); }}
                       setDueDate={setDueDate} />
                   ))}
                   {payables.length === 0 && (
