@@ -57,16 +57,16 @@ import { motion, AnimatePresence } from 'framer-motion';
  */
 export function columnValues(row, colKey) {
     if (colKey === 'lrNo') {
+        const deliveryLrs = (Array.isArray(row?.deliveries) ? row.deliveries : [])
+            .map(d => d?.lrNo)
+            .filter(Boolean)
+            .flatMap(s => String(s).split(',').map(x => x.trim()).filter(Boolean));
+        if (deliveryLrs.length > 0) {
+            return Array.from(new Set(deliveryLrs));
+        }
         const set = new Set();
         if (row?.lrNo) {
             String(row.lrNo).split(',').map(s => s.trim()).filter(Boolean).forEach(x => set.add(x));
-        }
-        if (Array.isArray(row?.deliveries)) {
-            row.deliveries.forEach(d => {
-                if (d?.lrNo) {
-                    String(d.lrNo).split(',').map(s => s.trim()).filter(Boolean).forEach(x => set.add(x));
-                }
-            });
         }
         if (set.size > 0) return Array.from(set);
     }

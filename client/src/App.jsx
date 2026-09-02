@@ -84,6 +84,7 @@ const HIDDEN_AT_DUMP_GODOWNS = new Set([
   'mileage_dump',       // Mileage Tracker
   'tyres_dump',         // Tyre Management
   'vendors_dump',       // Market Vehicles
+  'invoice_dump',       // Invoicing
 ]);
 
 // Release notes shown in the notification panel. Lifted out of the JSX so the

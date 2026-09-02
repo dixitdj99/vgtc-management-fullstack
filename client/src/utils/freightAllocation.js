@@ -42,12 +42,16 @@ export function allocateFreightPayment(vouchers, { amount, paymentDate, paymentM
     });
 
     for (const v of ordered) {
-        if (remaining <= 0 && Number(amount) > 0) break;
-
+        const net = netOf(v);
         const already = parseFloat(v.paidBalance) || 0;
-        const due = round2(netOf(v) - already);
-        if (due <= 0) {
-            if (!v.paymentClearedDate) {
+        const due = round2(net - already);
+
+        // Already settled (net > 0 and already >= net) or credit note (net < 0)
+        if (due < 0 || (due === 0 && net > 0)) continue;
+
+        // Zero-net trip (net === 0, already === 0) that hasn't been cleared yet
+        if (due === 0 && net === 0) {
+            if (!v.paymentClearedDate && (Number(amount) > 0 || vouchers.length === 1)) {
                 patches.push({
                     id: v._parentId || v.id,
                     paidBalance: String(already),
@@ -57,6 +61,8 @@ export function allocateFreightPayment(vouchers, { amount, paymentDate, paymentM
             }
             continue;
         }
+
+        if (remaining <= 0) break;
 
         const take = Math.min(remaining, due);
         const settled = round2(take) >= due;
