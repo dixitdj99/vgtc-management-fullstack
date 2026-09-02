@@ -105,12 +105,21 @@ function PayableRow({ p, i, indented = false, onOpen, setDueDate }) {
 }
 
 function calcNet(v, vehicle) {
-  const gross = (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+  // Multi-drop vouchers store per-leg weight/rate on their `deliveries` array;
+  // the top-level weight and rate fields are left empty. Using those fields
+  // alone gives gross = 0 → net < 0 → outstanding = 0 → the batch is silently
+  // dropped from the Freight Pay worklist. This matches the canonical formula
+  // in BalanceSheet.jsx exactly so the two screens always agree.
+  const gross = v.deliveries?.length > 0
+    ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+    : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
   const diesel = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0);
   const cash = parseFloat(v.advanceCash) || 0;
   const online = parseFloat(v.advanceOnline) || 0;
   const weight = parseFloat(v.weight) || 0;
-  const munshi = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+  // _noDeductions is set on legs 2+ of a split voucher so munshi is not
+  // double-counted; respect it here the same way BalanceSheet does.
+  const munshi = v._noDeductions ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
   const shortage = parseFloat(v.shortage) || 0;
   const commission = parseFloat(v.commission) || 0;
   const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
