@@ -1738,6 +1738,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
               )}
 
               <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '16px' }}>
+                {/* ── Selected LRs + Freight ─────────────────────────────── */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Selected LRs:</span>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{selectedLrs.size}</span>
@@ -1746,60 +1747,111 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                   <span style={{ fontSize: '13px', color: 'var(--text-sub)', fontWeight: 700 }}>Freight Total:</span>
                   <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{fmtRs(selOutstanding)}</span>
                 </div>
-                {/* Vehicle Expenses from selected entries */}
-                {selVehicleExpenses.length > 0 && (
-                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Vehicle Expenses{selRows.length > 0 ? ' (selected)' : ' (all pending)'} — already deducted</div>
-                    {selVehicleExpenses.map((e, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>{e.label} <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LR {e.lrLabel} · {e.date}</span></span>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
+
+                {/* ── Vehicle Expenses already baked into calcNet ─────────── */}
+                {selVehicleExpenses.length > 0 && (() => {
+                  // Group expense rows by LR label so same-LR items are together
+                  const grouped = selVehicleExpenses.reduce((acc, e) => {
+                    const key = e.lrLabel || '—';
+                    if (!acc[key]) acc[key] = { lrLabel: key, date: e.date, items: [] };
+                    acc[key].items.push(e);
+                    return acc;
+                  }, {});
+
+                  return (
+                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', marginTop: '10px' }}>
+                      {/* Section header */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+                        <span style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>
+                          Deductions already in freight
+                        </span>
+                        <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
                       </div>
-                    ))}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dotted var(--border)', paddingTop: '4px', marginTop: '4px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>Total Expenses:</span>
-                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b' }}>{fmtRs(totalVehicleExp)}</span>
+
+                      {/* Per-LR expense groups */}
+                      {Object.values(grouped).map((group, gi) => (
+                        <div key={gi} style={{ marginBottom: '8px', borderRadius: '7px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', overflow: 'hidden' }}>
+                          {/* LR badge header */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(245,158,11,0.15)' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 900, color: '#f59e0b', background: 'rgba(245,158,11,0.18)', padding: '1px 7px', borderRadius: '4px' }}>
+                              LR #{group.lrLabel}
+                            </span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{group.date}</span>
+                          </div>
+                          {/* Line items */}
+                          {group.items.map((e, ei) => (
+                            <div key={ei} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 10px', borderBottom: ei < group.items.length - 1 ? '1px dotted rgba(245,158,11,0.1)' : 'none' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '10px', color: 'rgba(245,158,11,0.5)' }}>•</span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-sub)', fontWeight: 600 }}>{e.label}</span>
+                              </div>
+                              <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b' }}>{fmtRs(e.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+
+                      {/* Total row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 2px', borderTop: '1px solid rgba(245,158,11,0.25)', marginTop: '2px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Total Deductions</span>
+                        <span style={{ fontSize: '13px', fontWeight: 900, color: '#f59e0b' }}>− {fmtRs(totalVehicleExp)}</span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
+
+                {/* ── GPS Rent ────────────────────────────────────────────── */}
                 {gpsAccrual && (
                   <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>− GPS Rent ({gpsAccrual.gpsLabel}):</span>
-                      <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--warn)' }}>− {fmtRs(gpsAccrual.amount)}</span>
-                    </div>
-                    <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
-                      {gpsAccrual.gpsCount} GPS × ₹250 × {gpsAccrual.months} month{gpsAccrual.months > 1 ? 's' : ''}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>GPS Rent ({gpsAccrual.gpsLabel})</span>
+                        <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                          {gpsAccrual.gpsCount} GPS × ₹250 × {gpsAccrual.months} month{gpsAccrual.months > 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--warn)' }}>− {fmtRs(gpsAccrual.amount)}</span>
                     </div>
                   </div>
                 )}
-                {/* Misc Deductions */}
-                {singleTruckMode && miscDeductions.length > 0 && miscDeductions.map((d, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border)', paddingTop: '6px', marginTop: '6px' }}>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700 }}>− {d.remark || 'Misc'}</span>
-                      {d.date && <span style={{ fontSize: '9px', color: 'var(--text-muted)', marginLeft: '6px' }}>{d.date}</span>}
-                    </div>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', marginRight: '4px' }}>− {fmtRs(d.amount)}</span>
-                    <button onClick={() => setMiscDeductions(p => p.filter((_, j) => j !== i))}
-                      style={{ border: 'none', background: 'none', color: '#f43f5e', cursor: 'pointer', padding: '2px', fontSize: '12px' }}>×</button>
-                  </div>
-                ))}
 
+                {/* ── Misc Deductions ─────────────────────────────────────── */}
+                {singleTruckMode && miscDeductions.length > 0 && (
+                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+                    <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+                      Extra Deductions
+                    </div>
+                    {miscDeductions.map((d, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: i < miscDeductions.length - 1 ? '1px dotted var(--border)' : 'none' }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700 }}>{d.remark || 'Misc'}</span>
+                          {d.date && <span style={{ fontSize: '9px', color: 'var(--text-muted)', marginLeft: '6px' }}>{d.date}</span>}
+                        </div>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', marginRight: '6px' }}>− {fmtRs(d.amount)}</span>
+                        <button onClick={() => setMiscDeductions(p => p.filter((_, j) => j !== i))}
+                          style={{ border: 'none', background: 'none', color: '#f43f5e', cursor: 'pointer', padding: '2px 4px', fontSize: '13px', lineHeight: 1 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Vehicle Advance Balance ──────────────────────────────── */}
                 {singleTruckMode && advanceBalance !== 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginTop: '8px' }}>
                     <span style={{ fontSize: '11px', color: advanceBalance > 0 ? '#10b981' : 'var(--danger)', fontWeight: 700 }}>
-                      {advanceBalance > 0 ? '+ Vehicle Credit Balance:' : '− Vehicle Debit Balance:'}
+                      {advanceBalance > 0 ? 'Vehicle Credit Balance' : 'Vehicle Debit Balance'}
                     </span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: advanceBalance > 0 ? '#10b981' : 'var(--danger)' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: advanceBalance > 0 ? '#10b981' : 'var(--danger)' }}>
                       {advanceBalance > 0 ? '+' : ''}{fmtRs(advanceBalance)}
                     </span>
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid var(--border)', paddingTop: '10px', marginTop: '10px' }}>
+                {/* ── Net Payout ──────────────────────────────────────────── */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid var(--border)', paddingTop: '12px', marginTop: '12px' }}>
                   <span style={{ fontSize: '15px', color: 'var(--primary)', fontWeight: 900 }}>Net Payout:</span>
-                  <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(netPayout)}</span>
+                  <span style={{ fontSize: '22px', fontWeight: 900, color: 'var(--primary)' }}>{fmtRs(netPayout)}</span>
                 </div>
               </div>
 
