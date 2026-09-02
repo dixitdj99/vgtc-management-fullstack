@@ -434,10 +434,6 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
       <div className="page-hd">
         <div>
           <h1><BarChart3 size={20} color="#f59e0b" /> All Balance Sheet</h1>
-          <p>
-            Every plant's trips in one list — {allowedTypes.length} of {Object.keys(TYPE_META).length} sheets,
-            {' '}{rows.length.toLocaleString('en-IN')} trips
-          </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button className="btn btn-g btn-sm" onClick={fetchAll} disabled={loading} title="Reload">
@@ -467,22 +463,6 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Totals for whatever the filters currently show */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '14px' }}>
-        {[
-          { label: 'Trips', val: totals.trips.toLocaleString('en-IN'), color: 'var(--primary)' },
-          { label: 'Gross', val: fmtRs(totals.gross), color: 'var(--text)' },
-          { label: 'Net Balance', val: fmtRs(totals.net), color: '#0ea5e9' },
-          { label: 'Paid', val: fmtRs(totals.paid), color: '#10b981' },
-          { label: 'Outstanding', val: fmtRs(totals.outstanding), color: '#f59e0b' },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ borderTop: `3px solid ${s.color}` }}>
-            <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.label}</div>
-            <div style={{ fontSize: '19px', fontWeight: 900, color: s.color, marginTop: '3px' }}>{s.val}</div>
-          </div>
-        ))}
       </div>
 
       {/* One truck in view — show what the per-truck sheet would */}

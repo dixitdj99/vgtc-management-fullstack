@@ -17,6 +17,9 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --bg-row-even: #FFFFFF;
   --bg-row-odd: #FAFBFC;
   --bg-row-hover: #F0F4FF;
+  /* Opaque — sticky Actions cells overlay scrolling columns. An rgba tint
+     lets those columns show through the buttons. */
+  --bg-row-selected: #E3E1FB;
   /* Hover wash and selected state for chrome — sidebar items, ghost buttons.
      Separate from --bg-row-hover, which belongs to table rows. */
   --bg-hover: #F3F4F6;
@@ -56,6 +59,7 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --bg-row-even: #1E293B;
   --bg-row-odd: #182234;
   --bg-row-hover: #334155;
+  --bg-row-selected: #2C355F;
   /* Translucent so one value reads correctly over both the sidebar (#0F172A)
      and the topbar (#1E293B). */
   --bg-hover: rgba(148, 163, 184, 0.13);
@@ -108,6 +112,7 @@ input[type="number"] { -moz-appearance: textfield !important; appearance: textfi
   --bg-row-even: #FDF6E3;
   --bg-row-odd: #F8F1DE;
   --bg-row-hover: #EEE8D5;
+  --bg-row-selected: #F2E4BF;
   --bg-hover: #EEE8D5;
   --bg-active: rgba(181, 137, 0, 0.16);
   --bg-inset: #EEE8D5;
@@ -1221,9 +1226,11 @@ select.fi option {
   background: var(--bg-row-odd);
 }
 
-/* Selected row highlight */
+/* Selected row highlight — solid colour, not rgba. Sticky action cells
+   sit on top of scrolling columns; a transparent tint makes the buttons
+   look see-through. */
 .tbl tr.row-selected td {
-  background: rgba(99, 102, 241, 0.07) !important;
+  background: var(--bg-row-selected) !important;
 }
 
 /* Table toolbar — row above table (title + actions + search) */

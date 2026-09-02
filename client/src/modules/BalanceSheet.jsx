@@ -656,7 +656,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
   const paid = parseFloat(cv.paidBalance) || 0;
   const outstanding = Math.max(0, net - paid);
   const cleared = outstanding <= 0;
-  const bg = checked ? 'rgba(99,102,241,0.16)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
+  const bg = checked ? 'var(--bg-row-selected)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
   const days = outstanding > 0 ? daysAgo(v.date) : 0;
   const overdueColor = days > 30 ? '#f43f5e' : days > 15 ? '#f59e0b' : null;
 
