@@ -623,6 +623,14 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
               )}
               {pageRows.map((v, i) => {
                 const meta = TYPE_META[v.type];
+                // A leg row (_leg > 0) is a continuation of a multi-drop voucher.
+                // Its deductions (diesel, cash, munshi…) all live on leg 0, so
+                // paying leg 0 settles the whole voucher. Leg rows are visual
+                // only — they are not separate Pay items, they merge into the
+                // same batch as leg 0. Showing "SENT TO PAY" on every leg made
+                // clerks expect 4 Pay rows from 4 balance-sheet rows, when
+                // really 2 legs of one voucher count as 1 Pay item.
+                const isExtraLeg = (v._leg ?? 0) > 0;
                 return (
                   <VoucherRow
                     key={v.id}
@@ -642,13 +650,17 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
                     // onEdit already receives the whole voucher from the row.
                     onVerifyDiesel={t => { setDieselTarget(t); setDieselForm({ amount: '' }); }}
                     leadCells={<>
-                      <td data-label="Plant" style={{ ...TD }}>
+                      <td data-label="Plant" style={{ ...TD, borderLeft: isExtraLeg ? '3px solid rgba(99,102,241,0.35)' : undefined, paddingLeft: isExtraLeg ? '10px' : undefined }}>
                         <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '5px', fontSize: '10.5px', fontWeight: 800, background: `${meta?.color || '#64748b'}1a`, color: meta?.color || 'var(--text-muted)' }}>
                           {v.plant}
                         </span>
-                        {v._sent && <div style={{ fontSize: '9px', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>SENT TO PAY</div>}
+                        {v._sent && (
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: isExtraLeg ? '#6366f1' : '#10b981', marginTop: '2px' }}>
+                            {isExtraLeg ? 'LEG — same batch ↑' : 'SENT TO PAY'}
+                          </div>
+                        )}
                       </td>
-                      <td data-label="Truck" style={{ ...TD, fontWeight: 800, color: 'var(--text)' }}>{v.truckNo || '—'}</td>
+                      <td data-label="Truck" style={{ ...TD, fontWeight: 800, color: 'var(--text)', borderLeft: isExtraLeg ? '3px solid rgba(99,102,241,0.35)' : undefined }}>{v.truckNo || '—'}</td>
                     </>}
                   />
                 );
