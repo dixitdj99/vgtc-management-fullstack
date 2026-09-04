@@ -20,6 +20,7 @@ import { columnValues } from '../components/ColumnFilter';
 import EwayBillPanel from '../components/EwayBillPanel';
 import TableScroll from '../components/TableScroll';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -872,6 +873,14 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       </table>
     </TableScroll>
   );
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading stock & godown records..." />
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -4,6 +4,7 @@ import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { Truck, Plus, Search, Phone, Edit3, Trash2, X as XIcon, CreditCard, Users, Loader2, ChevronDown, ChevronUp, FileText, Calendar, AlertTriangle, ShieldCheck, DollarSign, Compass, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import TruckLoader from '../components/TruckLoader';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 const fmtRs = n => 'Rs. ' + Math.round(n || 0).toLocaleString('en-IN');
@@ -286,8 +287,8 @@ export default function VendorModule() {
   };
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '12px', color: 'var(--text-muted)' }}>
-      <Loader2 size={20} className="spin" /> Loading market vehicle registry...
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+      <TruckLoader size={130} text="Loading market vehicle registry..." />
     </div>
   );
 

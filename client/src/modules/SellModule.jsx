@@ -15,6 +15,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -495,6 +496,14 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     </datalist>
   );
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading sales register..." />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '0 20px 40px' }}>
       <AnimatePresence>{CashModal}</AnimatePresence>
@@ -709,9 +718,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                    <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</td></tr>
-                ) : filteredSales.length === 0 ? (
+                {filteredSales.length === 0 ? (
                     <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No sales history found</td></tr>
                 ) : (
                   paginatedSales.map((s, i) => (

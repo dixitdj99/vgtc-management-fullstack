@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Search, Building2, User, Phone, MapPin, Banknote, Calendar, Shield, Truck, Settings, Route, Loader2, X as XIcon } from 'lucide-react';
 import ax from '../api';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 const PUMP_BRANDS = ['Jio', 'Nayara', 'Indian Oil', 'HP', 'Bharat'];
 const BRAND_LOGOS = {
@@ -418,7 +419,13 @@ const StaffProfileModule = ({ role }) => {
                (p.mobileNumbers || []).join(' ').includes(s);
     });
 
-    if (loading) return <div style={{ padding: '20px' }}>Loading Profiles...</div>;
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+                <TruckLoader size={130} text="Loading staff profiles..." />
+            </div>
+        );
+    }
 
     return (
         <div style={{ paddingBottom: '32px' }}>
@@ -1115,7 +1122,7 @@ const StaffProfileModule = ({ role }) => {
                             <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setDriverTripTarget(null)}><XIcon size={20} /></button>
                         </div>
                         {driverTripsLoading ? (
-                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)', padding: '60px' }}><Loader2 size={18} className="spin" /> Loading trips...</div>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}><TruckLoader text="Loading trips..." size={160} /></div>
                         ) : driverTrips ? (
                             <>
                                 {/* Stats */}

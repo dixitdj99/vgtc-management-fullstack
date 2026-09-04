@@ -3,6 +3,7 @@ import { CreditCard, Plus, Trash2, Search, ArrowUpRight, ArrowDownLeft, X, Rotat
 import ax from '../api';
 import { fmtRs } from '../utils/format';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 export default function VehicleCreditDebitModule({ cashbookType = 'dump' }) {
   const [advances, setAdvances] = useState([]);
@@ -152,6 +153,14 @@ export default function VehicleCreditDebitModule({ cashbookType = 'dump' }) {
     runningBalance: advancesWithBalanceMap[item.id] || 0
   }));
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading vehicle advances..." />
+      </div>
+    );
+  }
+
   return (
     <div className="module-wrap" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       <ConfirmDialog
@@ -286,13 +295,7 @@ export default function VehicleCreditDebitModule({ cashbookType = 'dump' }) {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                    Loading vehicle advances...
-                  </td>
-                </tr>
-              ) : listWithBalance.length === 0 ? (
+              {listWithBalance.length === 0 ? (
                 <tr>
                   <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                     No vehicle credit/debit records found. Click "+ Add Entry" to create one.

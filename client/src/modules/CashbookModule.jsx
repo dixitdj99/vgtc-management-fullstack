@@ -13,6 +13,7 @@ import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -803,7 +804,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const TD = { padding: '9px 11px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', borderBottom: '1px solid var(--border-row)' };
 
   /* ── Render helper: ledger table ── */
-  const LedgerTable = ({ rows, showBalance = true, showBadge = true }) => (
+  const LedgerTable = ({ rows, totalRows, showBalance = true, showBadge = true }) => (
     <TableScroll className="tbl-cards">
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
@@ -923,18 +924,23 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           })}
         </tbody>
         {showBalance && rows.length > 0 && (() => {
-          const last = rows[rows.length - 1];
-          const totCr = rows.reduce((s, r) => s + r.credit, 0);
-          const totDb = rows.reduce((s, r) => s + r.debit, 0);
+          const all = totalRows?.length ? totalRows : rows;
+          const last = all[all.length - 1];
+          const totCr = all.reduce((s, r) => s + (r.credit || 0), 0);
+          const totDb = all.reduce((s, r) => s + (r.debit || 0), 0);
+          // Date + ID + Description [+ Type] sit under Totals; money cells
+          // must line up with Credit / Debit / Balance. Missing the Type
+          // column shifted every total one cell left.
+          const labelSpan = showBadge ? 4 : 3;
+          const tailSpan = role === 'admin' ? 3 : 1;
           return (
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-tf)' }}>
-                <td colSpan={showBadge ? 2 : 2} style={{ ...TD, fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Totals</td>
-                {showBadge && <td style={TD}></td>}
+                <td colSpan={labelSpan} style={{ ...TD, fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Totals</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totCr)}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)', fontSize: '13px' }}>{fmtRs(totDb)}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: last.balance >= 0 ? 'var(--accent)' : 'var(--danger)' }}>{fmtRs(last.balance)}</td>
-                <td colSpan={role === 'admin' ? 3 : 1} style={TD}></td>
+                <td colSpan={tailSpan} style={TD}></td>
               </tr>
             </tfoot>
           );
@@ -1058,6 +1064,14 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const handleExportPDF = () => exportToPDF(cashbookExportRows(), `Cashbook - ${tab}`, null, {
     archive: { module: 'Cashbook', name: `Cashbook ${tab} ${new Date().toISOString().slice(0, 10)}` },
   });
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading cashbook register & vouchers..." />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -1449,6 +1463,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           : <>
               <LedgerTable
                   rows={paginatedRows}
+                  totalRows={activeRows}
                   showBalance={tab === 'ledger'}
                   showBadge={tab === 'ledger'} />
 

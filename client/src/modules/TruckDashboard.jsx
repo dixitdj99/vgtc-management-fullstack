@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ax from '../api';
+import TruckLoader from '../components/TruckLoader';
 import { motion } from 'framer-motion';
 import {
   Truck, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, Clock,
@@ -213,11 +214,13 @@ export default function TruckDashboard({ role, permissions }) {
 
   const overdueCount = sorted.filter(r => r.maxOverdueDays > 30).length;
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px', color: 'var(--text-muted)' }}>
-      Loading truck performance data...
-    </div>
-  );
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading truck performance data..." />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -284,10 +287,9 @@ export default function TruckDashboard({ role, permissions }) {
               </tr>
             </thead>
             <tbody>
-              {sorted.length === 0 && (
+              {sorted.length === 0 ? (
                 <tr><td colSpan={11} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No data found</td></tr>
-              )}
-              {sorted.map((r, i) => {
+              ) : sorted.map((r, i) => {
                 const overdueBorder = r.maxOverdueDays > 30 ? '3px solid #f43f5e' : r.maxOverdueDays > 15 ? '3px solid #f59e0b' : '';
                 return (
                   <motion.tr key={r.truckNo} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.01 }}

@@ -36,6 +36,7 @@ import Pagination from '../components/Pagination';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { calcNet, calcGross, payBlockers, pumpNameOf, lrLabelOf, explodeAll, VoucherRow, VoucherEditModal, TH, TD } from './BalanceSheet';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const API_V = '/vouchers';
 
@@ -427,6 +428,14 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
 
   const allSendableTicked = sendable.length > 0 && sendable.every(v => selected.has(v.id));
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading balance dump register across all plants..." />
+      </div>
+    );
+  }
+
   return (
     // Nineteen columns of figures. On a wide monitor the 1440px cap left a
     // third of the screen empty while the table itself had to be scrolled.
@@ -592,12 +601,7 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={role === 'admin' ? 26 : 24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <Loader2 size={18} className="spin" /> Loading every plant…
-                </td></tr>
-              )}
-              {!loading && !pageRows.length && (
+              {!pageRows.length && (
                 <tr><td colSpan={role === 'admin' ? 26 : 24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                   No trips match these filters.
                 </td></tr>

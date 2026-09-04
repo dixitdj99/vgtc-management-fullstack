@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { Truck, RefreshCw, Edit2, Cloud, CloudRain, Sun, Thermometer, Clock, QrCode, Smartphone, X, Volume2, VolumeX, MessageSquare, Play, Pause, Shield, Users, Package } from 'lucide-react';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -173,6 +174,14 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
     }
   };
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading real-time status..." />
+      </div>
+    );
+  }
+
   return (
     <div className="module-content" style={{ padding: '24px' }}>
       
@@ -267,9 +276,7 @@ export default function AdminLoadingStatus({ globalWeather, role = 'user', userG
         ))}
       </div>
 
-      {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading real-time status...</div>
-      ) : receipts.length === 0 ? (
+      {receipts.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--bg-card)', borderRadius: '12px', border: '1px dashed var(--border)' }}>
           No loading orders found for today.
         </div>

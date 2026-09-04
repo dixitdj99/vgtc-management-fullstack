@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 /* ── Autocomplete / Suggestion Dropdown ── */
 function AutocompleteInput({ value, onChange, suggestions = [], placeholder, required = false, className = "fi" }) {
@@ -556,6 +557,14 @@ export default function TyreModule() {
   // Own-fleet trucks for the axle-map dropdown (market vehicles excluded)
   const selfTrucksList = useMemo(() => selfVehiclesList.map(v => v.truckNo).sort(), [selfVehiclesList]);
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading tyre ledger & vehicle maps..." />
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
       <ConfirmDialog
@@ -831,10 +840,7 @@ export default function TyreModule() {
       </div>
 
       {/* Grid of Tyres */}
-      {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading Tyre Ledger...</div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
           {filteredTyres.map(tyre => (
             <motion.div key={tyre.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', position: 'relative' }}
@@ -936,7 +942,6 @@ export default function TyreModule() {
             </div>
           )}
         </div>
-      )}
 
       {/* Modal 1: Register New Tyre */}
       <AnimatePresence>

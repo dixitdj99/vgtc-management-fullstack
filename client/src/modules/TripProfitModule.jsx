@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { TrendingUp, TrendingDown, Truck, MapPin, Calendar, Search, Loader2, ArrowUpRight, ArrowDownRight, Filter, ChevronDown, ChevronUp, Fuel, Banknote, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import TruckLoader from '../components/TruckLoader';
 
 const fmtRs = n => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -167,13 +168,13 @@ export default function TripProfitModule() {
     return { trips: filtered.length, totalGross, totalNet, totalDiesel, avgMargin };
   }, [filtered]);
 
+  const monthLabel = (m) => new Date(m + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '12px', color: 'var(--text-muted)' }}>
-      <Loader2 size={20} className="spin" /> Analyzing trip data...
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+      <TruckLoader size={130} text="Analyzing trip data..." />
     </div>
   );
-
-  const monthLabel = (m) => new Date(m + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>

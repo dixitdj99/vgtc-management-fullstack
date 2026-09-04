@@ -120,8 +120,14 @@ export default function StyledAutocomplete({
             if (isOpen && highlightIndex >= 0 && filteredOptions[highlightIndex]) {
                 e.preventDefault();
                 handleSelect(filteredOptions[highlightIndex]);
+            } else {
+                // Prevent implicit native <form> submit when hitting Enter inside autocomplete
+                e.preventDefault();
+                setIsOpen(false);
             }
         } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
             setIsOpen(false);
         }
     };

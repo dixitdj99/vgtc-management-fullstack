@@ -18,6 +18,7 @@ import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
 import TableScroll from '../components/TableScroll';
 import { fmtDate } from '../utils/format';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -1616,6 +1617,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             alert('Truck No. is required');
             return;
         }
+
+        // Require at least one valid delivery row for factory vouchers before saving
+        if (isFactory) {
+            const hasValidDelivery = deliveries.some(d => (parseFloat(d.weight) > 0 || parseInt(d.bags) > 0 || String(d.lrNo || '').trim() || String(d.destination || '').trim() || String(d.partyName || '').trim()));
+            if (!hasValidDelivery) {
+                alert('Please enter at least one delivery entry (LR No., Destination, Party, Weight, or Bags)');
+                return;
+            }
+        }
+
         // Diesel advance without a station would create an unbillable "None"
         // row in the pump ledger.
         const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
@@ -1777,6 +1788,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             name: archiveName('Vouchers Export', vType, new Date().toISOString().slice(0, 10)),
         },
     });
+
+    if (tableLoading) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+                <TruckLoader size={130} text="Loading vouchers ledger..." />
+            </div>
+        );
+    }
 
     return (
         <>
@@ -2410,16 +2429,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                 </tr>
                             </thead>
                             <tbody>
-                                {tableLoading && filtered.length === 0 && (
-                                    [1, 2, 3, 4, 5].map(i => (
-                                        <tr key={`sk-${i}`} className="skeleton-row">
-                                            {Array.from({ length: role === 'admin' ? 20 : 18 }).map((_, j) => (
-                                                <td key={j}><span className="skeleton skeleton-text" /></td>
-                                            ))}
-                                        </tr>
-                                    ))
-                                )}
-                                {!tableLoading && filtered.length === 0 && (
+                                {filtered.length === 0 && (
                                     <tr><td colSpan={role === 'admin' ? 20 : 18} style={{ padding: '40px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>No records found</td></tr>
                                 )}
                                 {paginatedVouchers.map((v, i) => (

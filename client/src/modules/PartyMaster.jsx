@@ -5,6 +5,7 @@ import { Building2, Plus, Search, Phone, FileText, CheckCircle2, XCircle, BookOp
 import { motion, AnimatePresence } from 'framer-motion';
 import { PARTY_BRANDS } from '../utils/partyBrands';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -142,6 +143,14 @@ export default function PartyMaster() {
 
   const untaggedCount = parties.filter(p => brandsOf(p).length === 0).length;
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading master party directory..." />
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
       <ConfirmDialog
@@ -278,10 +287,7 @@ export default function PartyMaster() {
       </div>
 
       {/* Grid */}
-      {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading Master Data...</div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
           {filteredParties.map(party => (
             <motion.div key={party.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', position: 'relative' }}
@@ -332,7 +338,6 @@ export default function PartyMaster() {
             </div>
           )}
         </div>
-      )}
 
       {/* Party Ledger Modal */}
       <AnimatePresence>
@@ -349,7 +354,7 @@ export default function PartyMaster() {
                 <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setLedgerParty(null)}><XIcon size={20} /></button>
               </div>
               {ledgerLoading ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)' }}><Loader2 size={18} className="spin" /> Loading ledger...</div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}><TruckLoader text="Loading ledger..." size={160} /></div>
               ) : ledgerData ? (
                 <>
                   {/* Summary cards */}

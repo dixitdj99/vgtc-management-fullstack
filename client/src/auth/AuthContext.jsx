@@ -5,11 +5,31 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('vgtc-user');
+      if (cached) {
+        const u = JSON.parse(cached);
+        setCurrentUser(u);
+        return u;
+      }
+    } catch {}
+    return null;
+  });
   const [token, setToken] = useState(() => localStorage.getItem('vgtc-token'));
   const [plant, setPlantState] = useState(() => localStorage.getItem('vgtc-plant') || '');
   const [godown, setGodownState] = useState(() => localStorage.getItem('vgtc-godown') || '');
   const [ready, setReady] = useState(false);
+
+  const updateUser = (u) => {
+    setUser(u);
+    setCurrentUser(u);
+    if (u) {
+      localStorage.setItem('vgtc-user', JSON.stringify(u));
+    } else {
+      localStorage.removeItem('vgtc-user');
+    }
+  };
 
   // Set axios default auth header and verify token on mount
   useEffect(() => {
@@ -17,10 +37,7 @@ export function AuthProvider({ children }) {
       setAuthToken(token);
       ax.get(`/auth/me`)
         .then(r => {
-          const userData = r.data;
-          setUser(userData);
-          setCurrentUser(userData);
-          // SW prefetch disabled — reduces Firestore reads (cache in api.js handles repeat fetches)
+          updateUser(r.data);
         })
         .catch(() => { logout(); })
         .finally(() => setReady(true));
@@ -65,8 +82,7 @@ export function AuthProvider({ children }) {
     }
     setAuthToken(t);
     setToken(t);
-    setUser(u);
-    setCurrentUser(u);
+    updateUser(u);
     return u;
   };
 
@@ -79,8 +95,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('vgtc-token', t);
     setAuthToken(t);
     setToken(t);
-    setUser(u);
-    setCurrentUser(u);
+    updateUser(u);
     return u;
   };
 
@@ -112,8 +127,7 @@ export function AuthProvider({ children }) {
     }
     setAuthToken(t);
     setToken(t);
-    setUser(u);
-    setCurrentUser(u);
+    updateUser(u);
     return u;
   };
 
@@ -126,19 +140,18 @@ export function AuthProvider({ children }) {
     setAuthToken(token);
     const res = await ax.get('/auth/me');
     const userData = res.data;
-    setUser(userData);
-    setCurrentUser(userData);
+    updateUser(userData);
     return userData;
   };
 
   const logout = () => {
     localStorage.removeItem('vgtc-token');
+    localStorage.removeItem('vgtc-user');
     localStorage.removeItem('vgtc-plant');
     localStorage.removeItem('vgtc-godown');
     setAuthToken(null);
     setToken(null);
-    setUser(null);
-    setCurrentUser(null);
+    updateUser(null);
     setPlantState('');
     setGodownState('');
   };

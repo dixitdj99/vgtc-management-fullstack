@@ -668,21 +668,12 @@ function AppInner() {
 
   if (path === '/admin/login') return <AdminLoginPage />;
 
-  if (!ready) return (
-    <div style={{
-      height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
-      color: 'var(--text-muted)'
-    }}>
-      <TruckLoader
-        size={160}
-        text={isWakingUp ? 'Waking up server...' : 'Loading VGTC...'}
-        subText={isWakingUp ? 'Server spins down after inactivity. Please wait ~50 seconds.' : 'Authenticating your session'}
-      />
-    </div>
-  );
+
 
   // Admin portal route handling
   if (path.startsWith('/admin') && path !== '/admin' && path !== '/admin/login') return <AdminLayout />;
+
+  if (!ready && !user) return null;
 
   if (!user) return <LoginPage />;
 
@@ -1457,10 +1448,30 @@ function AppInner() {
             initial={{ opacity: 0, y: 50, x: '-50%' }}
             animate={{ opacity: 1, y: 0, x: '-50%' }}
             exit={{ opacity: 0, y: 50, x: '-50%' }}
-            style={{ position: 'fixed', bottom: '24px', left: '50%', background: '#f59e0b', color: '#000', padding: '12px 24px', borderRadius: '30px', fontSize: '13px', fontWeight: 800, zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 25px rgba(245,158,11,0.4)', pointerEvents: 'none' }}
+            style={{
+              position: 'fixed',
+              bottom: '24px',
+              left: '50%',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+              padding: '10px 20px',
+              borderRadius: '30px',
+              fontSize: '13px',
+              fontWeight: 800,
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+              pointerEvents: 'none'
+            }}
           >
-            <div style={{ width: '16px', height: '16px', border: '3px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-            Waking up remote server... (up to 50s)
+            <TruckLoader size={45} />
+            <div>
+              <div>Waking up remote server...</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Please wait (~50 seconds)</div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

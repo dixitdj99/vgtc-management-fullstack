@@ -215,14 +215,15 @@ export default function LoginPage() {
             fontSize: '30px', fontWeight: '900', color: '#ff0000',
             fontStyle: 'normal', letterSpacing: '-0.03em',
             lineHeight: 1.1,
+            textTransform: 'uppercase',
           }}>
-            vikas goods
+            VIKAS GOODS
           </div>
           <div style={{
             fontSize: '14px', color: '#333333', fontWeight: '600', marginTop: '6px',
             fontStyle: 'normal',
           }}>
-            {view === 'login' ? 'Transforming Logistics' : view === 'signup' ? 'Create Your Account' : 'Reset Your Password'}
+            {view === 'login' ? 'Transport Management' : view === 'signup' ? 'Create Your Account' : 'Reset Your Password'}
           </div>
         </div>
 

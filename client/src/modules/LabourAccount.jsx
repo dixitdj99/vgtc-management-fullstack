@@ -7,6 +7,7 @@ import {
 import { buildExportRows, exportToExcel } from '../utils/exportUtils';
 import TableScroll from '../components/TableScroll';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 const API = '/labour-account';
 
@@ -117,15 +118,13 @@ export default function LabourAccount({ canEdit }) {
     `Labour account ${from || 'all'} to ${to || today()}`,
   );
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh', gap: '10px', color: 'var(--text-muted)' }}>
-        <Loader2 size={18} className="spin" /> Pricing every loading receipt…
-      </div>
-    );
-  }
-
   const noRates = summary?.groups?.every(g => g.earned === 0) && entries.length > 0;
+
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+      <TruckLoader size={130} text="Pricing every loading receipt…" />
+    </div>
+  );
 
   return (
     <div>

@@ -5,6 +5,7 @@ import {
   MessageSquare, Send, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
   Settings, Wifi, Shield, Cpu, Info, Copy, Check, ExternalLink, Loader2, Sparkles, Zap
 } from 'lucide-react';
+import TruckLoader from '../components/TruckLoader';
 
 export default function WhatsAppControlModule() {
   const [config, setConfig] = useState({
@@ -104,6 +105,14 @@ export default function WhatsAppControlModule() {
     setCopiedCmd(true);
     setTimeout(() => setCopiedCmd(false), 2000);
   };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading WhatsApp Gateway configurations..." />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '40px' }}>
