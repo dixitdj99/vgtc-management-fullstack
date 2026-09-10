@@ -22,3 +22,5 @@ server/dump_production.js
 *.log
 firebase-debug.log
 
+
+OpenWA/
