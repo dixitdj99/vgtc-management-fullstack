@@ -36,7 +36,7 @@ export default function MobileCashbookList({ plant, godown, nav }) {
     const canEdit = hasPermission('cashbook', 'edit');
 
     const openForm = (kind) => nav.openSheet({
-        title: kind === 'deposit' ? 'Add Deposit' : 'Cash Out',
+        title: kind === 'deposit' ? 'Add Deposit' : kind === 'office_spend' ? 'Office Spend' : 'Cash Out',
         render: () => <MobileCashbookForm kind={kind} cfg={cfg} onDone={() => { window.history.back(); load(); }} />,
     });
 
@@ -50,9 +50,10 @@ export default function MobileCashbookList({ plant, godown, nav }) {
                         {balance === null ? '—' : `${balance < 0 ? '-' : ''}${fmtRs(balance)}`}
                     </div>
                     {canEdit && (
-                        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                            <button className="m-btn" style={{ height: 44, background: 'rgba(255,255,255,0.18)', color: '#fff' }} onClick={() => openForm('deposit')}><ArrowDownCircle size={16} /> Deposit</button>
-                            <button className="m-btn" style={{ height: 44, background: 'rgba(255,255,255,0.18)', color: '#fff' }} onClick={() => openForm('cash_out')}><ArrowUpCircle size={16} /> Cash Out</button>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                            <button className="m-btn" style={{ height: 44, background: 'rgba(255,255,255,0.18)', color: '#fff', flex: 1 }} onClick={() => openForm('deposit')}><ArrowDownCircle size={16} /> Deposit</button>
+                            <button className="m-btn" style={{ height: 44, background: 'rgba(255,255,255,0.18)', color: '#fff', flex: 1 }} onClick={() => openForm('cash_out')}><ArrowUpCircle size={16} /> Cash Out</button>
+                            <button className="m-btn" style={{ height: 44, background: 'rgba(255,255,255,0.18)', color: '#fff', flex: 1 }} onClick={() => openForm('office_spend')}><Wallet size={16} /> Office</button>
                         </div>
                     )}
                 </div>

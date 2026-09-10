@@ -36,6 +36,7 @@ import Pagination from '../components/Pagination';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { calcNet, calcGross, payBlockers, pumpNameOf, lrLabelOf, explodeAll, VoucherRow, VoucherEditModal, TH, TD } from './BalanceSheet';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const API_V = '/vouchers';
 
@@ -110,7 +111,7 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
   const [truckSearch, setTruckSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(20);
 
   const [sending, setSending] = useState(false);
   const [sendBlocked, setSendBlocked] = useState(null);
@@ -174,12 +175,13 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
       const net = calcNet(v, vehicleOf(v.truckNo));
       const outstanding = Math.max(0, net - (parseFloat(v.paidBalance) || 0));
       const isSent = sentIds.has(v.id);
+      const isCleared = !!v.paymentClearedDate || !!v.isPaid || (parseFloat(v.paidBalance) > 0 && outstanding <= 0);
       voucherState.set(v.id, {
         _voucherNet: net,
         _voucherOutstanding: outstanding,
         _sent: isSent,
-        // "Pending" is the clerk's work list: still owed, not yet handed over.
-        _status: outstanding <= 0 ? 'paid' : isSent ? 'sent' : 'pending',
+        // "Pending" is the clerk's work list: still owed or uncleared, not yet handed over.
+        _status: isCleared ? 'paid' : isSent ? 'sent' : 'pending',
       });
     }
 
@@ -298,7 +300,7 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
         _paid: paid,
         _outstanding: outstanding,
         _sent: isSent,
-        _status: outstanding <= 0 ? "paid" : isSent ? "sent" : "pending",
+        _status: (!!voucher.paymentClearedDate || !!voucher.isPaid || (parseFloat(voucher.paidBalance) > 0 && outstanding <= 0)) ? "paid" : isSent ? "sent" : "pending",
       };
     });
   }, [selRows, vehicleOf, sentIds]);
@@ -426,6 +428,14 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
 
   const allSendableTicked = sendable.length > 0 && sendable.every(v => selected.has(v.id));
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading balance dump register across all plants..." />
+      </div>
+    );
+  }
+
   return (
     // Nineteen columns of figures. On a wide monitor the 1440px cap left a
     // third of the screen empty while the table itself had to be scrolled.
@@ -433,10 +443,6 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
       <div className="page-hd">
         <div>
           <h1><BarChart3 size={20} color="#f59e0b" /> All Balance Sheet</h1>
-          <p>
-            Every plant's trips in one list — {allowedTypes.length} of {Object.keys(TYPE_META).length} sheets,
-            {' '}{rows.length.toLocaleString('en-IN')} trips
-          </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button className="btn btn-g btn-sm" onClick={fetchAll} disabled={loading} title="Reload">
@@ -466,22 +472,6 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Totals for whatever the filters currently show */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '14px' }}>
-        {[
-          { label: 'Trips', val: totals.trips.toLocaleString('en-IN'), color: 'var(--primary)' },
-          { label: 'Gross', val: fmtRs(totals.gross), color: 'var(--text)' },
-          { label: 'Net Balance', val: fmtRs(totals.net), color: '#0ea5e9' },
-          { label: 'Paid', val: fmtRs(totals.paid), color: '#10b981' },
-          { label: 'Outstanding', val: fmtRs(totals.outstanding), color: '#f59e0b' },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ borderTop: `3px solid ${s.color}` }}>
-            <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.label}</div>
-            <div style={{ fontSize: '19px', fontWeight: 900, color: s.color, marginTop: '3px' }}>{s.val}</div>
-          </div>
-        ))}
       </div>
 
       {/* One truck in view — show what the per-truck sheet would */}
@@ -578,44 +568,41 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
         <TableScroll>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                <th style={{ ...TH, textAlign: 'center' }}>
+              <tr style={{ background: 'var(--bg-th)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ ...TH, textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
                   <input type="checkbox" checked={allSendableTicked} onChange={toggleAllFiltered}
                     style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
                 </th>
-                <th style={TH}>#</th>
-                <th style={TH}><ColumnFilter label="Plant" colKey="plant" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
-                <th style={{ ...TH, textAlign: 'right' }}>Weight</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Rate</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Gross</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Diesel</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Cash</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Online</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Munshi</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Shortage</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Veh. Exp</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Net Bal</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Paid</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Status</th>
-                {role === 'admin' && <th style={TH}>Created By</th>}
-                {role === 'admin' && <th style={TH}>Updated By</th>}
-                <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>#</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Plant" colKey="plant" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Truck" colKey="truckNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="ID" colKey="entryId" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Weight</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Rate</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Gross</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'left', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Remarks" colKey="remark" data={rows} activeFilters={filters} onFilterChange={(k, v) => setFilters(f => ({ ...f, [k]: v }))} /></th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Veh. Exp</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Net Bal</th>
+                <th style={{ ...TH, textAlign: 'right', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Paid</th>
+                <th style={{ ...TH, textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Status</th>
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Created By</th>}
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Updated By</th>}
+                <th style={{ ...TH, position: 'sticky', top: 0, right: 0, zIndex: 20, background: 'var(--bg-th)', boxShadow: '-3px 0 6px rgba(0,0,0,0.18)', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <Loader2 size={18} className="spin" /> Loading every plant…
-                </td></tr>
-              )}
-              {!loading && !pageRows.length && (
-                <tr><td colSpan={24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {!pageRows.length && (
+                <tr><td colSpan={role === 'admin' ? 26 : 24} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                   No trips match these filters.
                 </td></tr>
               )}

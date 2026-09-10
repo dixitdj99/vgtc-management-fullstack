@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, MessageCircle, TrendingDown, Clock, Banknote, ArrowRight, CornerDownRight
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, MessageCircle, TrendingDown, Clock, ArrowRight, CornerDownRight
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
@@ -13,6 +13,8 @@ import { extrasPayload, readExtras } from '../utils/voucherExtras';
 import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
+import Pagination from '../components/Pagination';
+import { fmtDate } from '../utils/format';
 
 const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
@@ -119,7 +121,6 @@ function monthLabel(ym) {
   return new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 }
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
-const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 /**
  * The pump recorded on the voucher, or blank. 'None' is the sentinel the
@@ -285,7 +286,7 @@ function doPrintMonthlyPL(ym, rows, tabName, orgName, vehicle) {
     <td style="text-align:right;font-weight:800;color:#16a34a">Rs.${Math.round(totalNet).toLocaleString()}</td>
     <td style="text-align:center">${avgMargin.toFixed(1)}%</td>
   </tr></tfoot></table>
-  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   printHtml(html, {
     width: 1000, height: 700,
@@ -358,7 +359,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
     <td style="text-align:center;font-weight:800;color:${out <= 0 ? '#16a34a' : '#b45309'}">${out <= 0 ? '✓ Cleared' : 'Rs.' + Math.round(out).toLocaleString() + ' due'}</td>
   </tr></tfoot></table>
   <div class="sig"><div class="sl">Driver</div><div class="sl">Authorised Sign</div></div>
-  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
   </body></html>`;
   printHtml(html, {
     width: 1000, height: 640,
@@ -624,6 +625,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       commission: v.commission || '', tyrePuncture: v.tyrePuncture || '',
       tyreGreasingAir: v.tyreGreasingAir || '', extraCash: v.extraCash || '',
       extraCashRemark: v.extraCashRemark || '',
+      remark: v.remark || '',
     });
     setEditing(true);
   };
@@ -655,7 +657,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
   const paid = parseFloat(cv.paidBalance) || 0;
   const outstanding = Math.max(0, net - paid);
   const cleared = outstanding <= 0;
-  const bg = checked ? 'rgba(99,102,241,0.16)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
+  const bg = checked ? 'var(--bg-row-selected)' : (idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)');
   const days = outstanding > 0 ? daysAgo(v.date) : 0;
   const overdueColor = days > 30 ? '#f43f5e' : days > 15 ? '#f59e0b' : null;
 
@@ -694,13 +696,17 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
         <input type="checkbox" checked={checked} onChange={() => onCheck(v.id)}
           style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
       </td>
+
       <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{idx + 1}</td>
       {/* Plant and truck on the combined sheet. Declared and documented but
           never rendered, so those two headers stood over the wrong cells and
           every column after them read one place to the left — a date under
           "Plant", a rate under "Destination", a gross under "Weight". */}
       {leadCells}
-      <td className="t-card-title" style={{ ...TD }}>{v.date}</td>
+      <td className="t-card-title" style={{ ...TD }}>{fmtDate(v.date)}</td>
+      <td data-label="ID" style={{ ...TD }}>
+        <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1' }}>#{v.entryId || v.lrEntryId || '—'}</span>
+      </td>
       <td data-label="LR No." style={{ ...TD }}>
         {v.deliveries?.length > 0
           ? <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
@@ -732,6 +738,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
               ))}
             </div>
           : (v.destination || v.partyName || '—')}
+        {v.remark && <div style={{ fontSize: '10.5px', color: '#8b5cf6', fontWeight: 600, marginTop: '2px' }}>📝 {v.remark}</div>}
       </td>
       <td data-label="Weight" style={{ ...TD, textAlign: 'right' }}>
         {editing ? FI('weight', '60px') : (v.deliveries?.length > 0
@@ -790,6 +797,9 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       </td>
       <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('munshi') : (v.munshi || '—')}</td>
       <td data-label="Shortage" style={{ ...TD, textAlign: 'right' }}>{editing ? FI('shortage') : (v.shortage || '—')}</td>
+      <td data-label="Remarks" style={{ ...TD, color: 'var(--text-sub)', fontSize: '11.5px', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.remark || ''}>
+        {editing ? FI('remark', '70px', true) : (v.remark ? <span style={{ color: '#8b5cf6', fontWeight: 600 }}>📝 {v.remark}</span> : '—')}
+      </td>
       <td data-label="Expenses" style={{ ...TD, textAlign: 'right', fontSize: '11px', padding: '4px 6px' }}>
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '80px' }}>
@@ -797,6 +807,8 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Puncture</span>{FI('tyrePuncture', '55px')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Grease</span>{FI('tyreGreasingAir', '55px')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Extra</span>{FI('extraCash', '55px')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>Remark</span>{FI('extraCashRemark', '55px', true)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '50px' }}>V.Remark</span>{FI('remark', '55px', true)}</div>
           </div>
         ) : hasVehicleExp ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -842,7 +854,7 @@ export function VoucherRow({ v, idx, onSave, checked, onCheck, onDelete, role, p
       })()}
       {role === 'admin' && <td data-label="Created By" style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.createdBy || '—'}</td>}
       {role === 'admin' && <td data-label="Updated By" style={{ ...TD, fontSize: '12px', color: 'var(--text-muted)' }}>{v.updatedBy || '—'}</td>}
-      <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
+      <td className="t-card-actions" style={{ ...TD, position: 'sticky', right: 0, zIndex: 5, background: editing ? 'var(--bg-input)' : bg, boxShadow: '-3px 0 6px rgba(0,0,0,0.18)', textAlign: 'center' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
             <button className="btn btn-p btn-icon btn-sm" onClick={() => setIsConfirming(true)} disabled={saving} title="Save Edit">{saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />}</button>
@@ -913,9 +925,13 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 }
 
 /* ── Month Section ── */
-function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL, onVerifyDiesel, onEdit }) {
+function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelete, tabName, selTruck, filters, onFilterChange, role, permissions, orgName, vehicle, showPnL, onVerifyDiesel, onEdit, canSendToPay, onSendToPay, sending }) {
   const isBillType = tabName === 'Kosli_Bill' || tabName === 'Jajjhar_Bill' || tabName === 'Bahadurgarh_Bill';
   const [open, setOpen] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  useEffect(() => { setPage(1); }, [ym, rows.length, pageSize]);
+  const pageRows = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [rows, page, pageSize]);
 
   const monthChecked = rows.filter(v => selected.has(v.id));
   const allSelected = rows.length > 0 && monthChecked.length === rows.length;
@@ -1008,6 +1024,20 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
           paddingTop: '8px', borderTop: '1px solid var(--border)'
         }}>
           {/* Mark paid buttons */}
+          {(role === 'admin' || permissions?.balance === 'edit') && onSendToPay && (() => {
+            const sendable = rows.filter(v => canSendToPay ? canSendToPay(v) : false);
+            const checkedSend = monthChecked.filter(v => canSendToPay ? canSendToPay(v) : false);
+            const toSend = checkedSend.length ? checkedSend : sendable;
+            return (
+              <button className="btn btn-p btn-sm"
+                disabled={sending || !toSend.length}
+                onClick={() => onSendToPay(toSend)}
+                title={checkedSend.length ? 'Send ticked entries to Pay' : 'Send this month’s pending entries to Pay'}>
+                {sending ? <Loader2 size={12} className="spin" /> : <ArrowRight size={12} />}
+                Send {toSend.length || ''} to Pay
+              </button>
+            );
+          })()}
           {(role === 'admin' || permissions?.balance === 'edit') && (
             <button className="btn btn-g btn-sm" onClick={() => triggerMarkPaid(rows)} disabled={marking} title="Mark all rows in this month as Paid">
               {marking ? <Loader2 size={12} className="spin" /> : <><CheckCircle2 size={12} /> Mark Month Paid</>}
@@ -1019,14 +1049,50 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             </button>
           )}
           <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
-          {/* Print buttons */}
+          {/* Edit / Delete / Print toolbar operating on checked entries */}
           <button className="btn btn-g btn-sm" onClick={() => doPrint(rows, selTruck, monthLabel(ym), tabName, orgName, vehicle)}>
             <Printer size={12} /> Print Month
           </button>
           {monthChecked.length > 0 && (
-            <button className="btn btn-g btn-sm" onClick={() => doPrint(monthChecked, selTruck, monthLabel(ym) + ' (selected)', tabName, orgName, vehicle)}>
-              <Printer size={12} /> Print {monthChecked.length} Selected
-            </button>
+            <>
+              <button
+                className="btn btn-g btn-sm"
+                disabled={monthChecked.length !== 1}
+                onClick={() => {
+                  const target = monthChecked[0];
+                  if (target) doPrint([target], selTruck, monthLabel(ym) + ' (selected)', tabName, orgName, vehicle);
+                }}
+                title={monthChecked.length > 1 ? "Select exactly 1 entry to print" : "Print Checked Entry"}
+              >
+                <Printer size={12} /> Print
+              </button>
+              {(role === 'admin' || permissions?.balance === 'edit' || permissions?.voucher === 'edit') && (
+                <button
+                  className="btn btn-g btn-sm"
+                  disabled={monthChecked.length !== 1}
+                  onClick={() => {
+                    const target = monthChecked[0];
+                    if (target && onEdit) onEdit(target._original || target);
+                  }}
+                  title={monthChecked.length > 1 ? "Select exactly 1 entry to edit" : "Edit Checked Entry"}
+                >
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
+              {role === 'admin' && (
+                <button
+                  className="btn btn-d btn-sm"
+                  disabled={monthChecked.length === 0}
+                  onClick={() => {
+                    const target = monthChecked[0];
+                    if (target && onDelete) onDelete(target._original || target);
+                  }}
+                  title="Delete Checked Entry (Admin Only)"
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              )}
+            </>
           )}
           <div style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
           {/* Export buttons — every field on the record, plus the figures the
@@ -1039,43 +1105,46 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
       </div>
 
       {open && (
+        <>
         <TableScroll className="tbl-cards">
           <table style={{ minWidth: showPnL ? '1620px' : '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
-              <tr>
-                <th style={{ ...TH, textAlign: 'center', padding: '7px 8px' }}>
+              <tr style={{ background: 'var(--bg-th)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ ...TH, textAlign: 'center', padding: '7px 8px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
                   <input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected; }}
                     onChange={() => onCheckAll(rows, !allSelected)}
                     style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
                 </th>
-                <th style={TH}>#</th>
-                <th style={TH}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                {isBillType && <th style={TH}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
-                {isBillType && <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
-                <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}>Gross (Rs.)</th>
-                <th style={TH}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
-                <th style={TH}>Expenses</th>
-                <th style={TH}>Net Bal</th>
-                <th style={TH}>Paid</th>
-                <th style={TH}>Status</th>
-                {showPnL && <th style={{ ...TH, color: '#f43f5e' }}>Deductions</th>}
-                {showPnL && <th style={{ ...TH, color: '#6366f1' }}>Margin %</th>}
-                {role === 'admin' && <th style={TH}>Created By</th>}
-                {role === 'admin' && <th style={TH}>Updated By</th>}
-                <th style={TH}>Actions</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>#</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Date" colKey="date" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="ID" colKey="entryId" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="LR No." colKey="lrNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                {isBillType && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Bill No." colKey="billNo" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
+                {isBillType && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Party Code" colKey="partyCode" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>}
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Destination" colKey="destination" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Weight" colKey="weight" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Rate" colKey="rate" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Gross (Rs.)</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Diesel" colKey="advanceDiesel" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Cash" colKey="advanceCash" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Online" colKey="advanceOnline" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Munshi" colKey="munshi" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Shortage" colKey="shortage" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Remarks" colKey="remark" data={rows} activeFilters={filters} onFilterChange={onFilterChange} /></th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Expenses</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Net Bal</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Paid</th>
+                <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Status</th>
+                {showPnL && <th style={{ ...TH, color: '#f43f5e', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Deductions</th>}
+                {showPnL && <th style={{ ...TH, color: '#6366f1', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Margin %</th>}
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Created By</th>}
+                {role === 'admin' && <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Updated By</th>}
+                <th style={{ ...TH, position: 'sticky', top: 0, right: 0, zIndex: 20, background: 'var(--bg-th)', boxShadow: '-3px 0 6px rgba(0,0,0,0.18)', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((v, i) => (
-                <VoucherRow key={v.id} v={v} idx={i} onSave={onSave}
+              {pageRows.map((v, i) => (
+                <VoucherRow key={v.id} v={v} idx={(page - 1) * pageSize + i} onSave={onSave}
                   checked={selected.has(v._parentId || v.id)} onCheck={onCheck} onDelete={onDelete} role={role} permissions={permissions} isBillType={isBillType} vehicle={vehicle} showPnL={showPnL} onVerifyDiesel={onVerifyDiesel} onEdit={onEdit} />
               ))}
             </tbody>
@@ -1087,7 +1156,7 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
                 <td style={{ ...TDF, textAlign: 'right' }}>{totals.weight}</td>
                 <td style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.gross)}</td>
-                <td colSpan={6} style={TDF}></td>
+                <td colSpan={7} style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right', color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totals.net)}</td>
                 <td style={{ ...TDF, textAlign: 'right' }}>{fmtRs(totals.paid)}</td>
                 <td style={{ ...TDF, textAlign: 'center', fontSize: '13px' }}>
@@ -1109,6 +1178,16 @@ function MonthSection({ ym, rows, onSave, selected, onCheck, onCheckAll, onDelet
             </tfoot>
           </table>
         </TableScroll>
+        {rows.length > 0 && (
+          <Pagination
+            currentPage={page}
+            totalItems={rows.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
+        </>
       )}
       <AnimatePresence>
         {confirmMarkRows && (
@@ -1155,12 +1234,9 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   const [paymentClearedDate, setPaymentClearedDate] = useState(new Date().toISOString().slice(0, 10));
   const [truckAllVouchers, setTruckAllVouchers] = useState([]);
 
-  // Vehicle Advance states
+  // Vehicle credit/debit is edited in Vehicle Credit & Debit. This screen only
+  // reads the balance so NET PAYABLE stays correct.
   const [advances, setAdvances] = useState([]);
-  const [showAdvanceForm, setShowAdvanceForm] = useState(false);
-  const [advForm, setAdvForm] = useState({ type: 'credit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
-  const [advSaving, setAdvSaving] = useState(false);
-  const [showAdvances, setShowAdvances] = useState(false);
 
   // Excel-style filters
   const [filters, setFilters] = useState({});
@@ -1257,25 +1333,6 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
 
   const fetchAdvances = async (truck) => {
     try { setAdvances((await ax.get('/vehicle-advances/' + encodeURIComponent(truck))).data); } catch { setAdvances([]); }
-  };
-
-  const handleAdvSubmit = async (e) => {
-    e.preventDefault();
-    if (!advForm.amount || parseFloat(advForm.amount) <= 0) return;
-    setAdvSaving(true);
-    try {
-      await ax.post('/vehicle-advances', { ...advForm, truckNo: selTruck });
-      setAdvForm({ type: 'credit', amount: '', date: new Date().toISOString().slice(0, 10), remark: '' });
-      setShowAdvanceForm(false);
-      fetchAdvances(selTruck);
-    } catch (er) { alert(er.response?.data?.error || 'Failed'); }
-    finally { setAdvSaving(false); }
-  };
-
-  const handleAdvDelete = async (id) => {
-    if (!window.confirm('Delete this advance entry?')) return;
-    try { await ax.delete('/vehicle-advances/' + id); fetchAdvances(selTruck); }
-    catch { alert('Delete failed'); }
   };
 
   // Manual advances only (exclude auto GPS rent, payment deductions)
@@ -1480,8 +1537,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
    * clerk cannot send the same trip twice by accident.
    */
   const canSendToPay = useCallback(
-    v => !(v._leg > 0) && calcNet(v, selVehicle) > (parseFloat(v.paidBalance) || 0) && !sentVoucherIds.has(v._parentId || v.id),
-    [selVehicle, sentVoucherIds],
+    v => !(v._leg > 0) && !v.paymentClearedDate && !v.isPaid && !sentVoucherIds.has(v._parentId || v.id),
+    [sentVoucherIds],
   );
 
   // payBlockers now lives at module scope — see the top of this file.
@@ -1509,8 +1566,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
     if (!rows.length) alert('Nothing matches that — those entries are either paid or already sent to Pay.');
   };
 
-  const sendSelectedToPay = async () => {
-    const trips = selVouchers.filter(canSendToPay);
+  const sendSelectedToPay = async (rows) => {
+    const trips = (Array.isArray(rows) ? rows : selVouchers).filter(canSendToPay);
     if (!trips.length || sending) return;
 
     // Everything ticked has to be complete. Stop on the whole selection rather
@@ -1613,129 +1670,6 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             ))}
           </div>
 
-          {/* ── Vehicle Advance Ledger ── */}
-          <div className="card" style={{ marginBottom: '14px' }}>
-            <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setShowAdvances(s => !s)}>
-              <div className="card-title-block">
-                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}><Wallet size={17} /></div>
-                <div className="card-title-text">
-                  <h3>Vehicle Advance Ledger</h3>
-                  <p>{manualAdvances.length} entries · Balance: {fmtRs(advanceBalance)}</p>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {(role === 'admin' || permissions?.balance === 'edit') && (
-                  <button className="btn btn-p btn-sm" onClick={(e) => { e.stopPropagation(); setShowAdvanceForm(f => !f); setShowAdvances(true); }}>
-                    <Plus size={12} /> Add Entry
-                  </button>
-                )}
-                {showAdvances ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
-              </div>
-            </div>
-
-            <AnimatePresence>
-              {showAdvances && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-
-                  {/* Add Advance Form */}
-                  {showAdvanceForm && (
-                    <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-input)' }}>
-                      <form onSubmit={handleAdvSubmit}>
-                        <div className="fg fg-2" style={{ gap: '12px' }}>
-                          <div className="field-h">
-                            <label>Type</label>
-                            <select className="fi" value={advForm.type} onChange={e => setAdvForm(f => ({ ...f, type: e.target.value }))}>
-                              <option value="credit">Vehicle Owner Submits (Credit +)</option>
-                              <option value="debit">We Give to Owner (Debit −)</option>
-                            </select>
-                          </div>
-                          <div className="field-h">
-                            <label>Amount (Rs.)</label>
-                            <input className="fi" type="number" step="any" min="1" placeholder="Amount" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} required />
-                          </div>
-                          <div className="field-h">
-                            <label>Date</label>
-                            <input className="fi" type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
-                          </div>
-                          <div className="field-h" style={{ gridColumn: '1 / -1' }}>
-                            <label>Remark</label>
-                            <input className="fi" type="text" placeholder="e.g. Cash received" value={advForm.remark} onChange={e => setAdvForm(f => ({ ...f, remark: e.target.value }))} />
-                          </div>
-                          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
-                            <button type="button" className="btn btn-g" onClick={() => setShowAdvanceForm(false)}>
-                              Cancel
-                            </button>
-                            <button type="submit" className="btn btn-p" disabled={advSaving}>
-                              {advSaving ? 'Saving...' : <><Check size={13} /> Save Entry</>}
-                            </button>
-                          </div>
-                        </div>
-                      </form>
-                    </div>
-                  )}
-
-                  {/* Advance Transactions Table */}
-                  <TableScroll>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-                      <thead>
-                        <tr>
-                          <th style={TH}>#</th>
-                          <th style={TH}>Date</th>
-                          <th style={TH}>Type</th>
-                          <th style={TH}>Credit (+)</th>
-                          <th style={TH}>Debit (−)</th>
-                          <th style={TH}>Running Balance</th>
-                          <th style={TH}>Remark</th>
-                          {role === 'admin' && <th style={TH}>Action</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {manualAdvances.length === 0 && (
-                          <tr><td colSpan={role === 'admin' ? 8 : 7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No manual advance entries</td></tr>
-                        )}
-                        {[...manualAdvances].reverse().map((a, i, arr) => {
-                          const runBal = arr.slice(0, i + 1).reduce((s, x) => s + (x.type === 'credit' ? x.amount : -x.amount), 0);
-                          return (
-                            <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                              <td style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{i + 1}</td>
-                              <td style={TD}>{fmtDate(a.date)}</td>
-                              <td style={TD}>
-                                {a.type === 'credit'
-                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '5px', background: 'rgba(16,185,129,0.1)', color: '#10b981', fontSize: '10px', fontWeight: 800 }}><ArrowDownCircle size={11} /> Received</span>
-                                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '5px', background: 'rgba(244,63,94,0.1)', color: '#f43f5e', fontSize: '10px', fontWeight: 800 }}><ArrowUpCircle size={11} /> Given</span>
-                                }
-                              </td>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#10b981' }}>{a.type === 'credit' ? fmtRs(a.amount) : '—'}</td>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f43f5e' }}>{a.type === 'debit' ? fmtRs(a.amount) : '—'}</td>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: 900, color: runBal >= 0 ? '#10b981' : '#f43f5e', fontSize: '13px' }}>{fmtRs(runBal)}</td>
-                              <td style={{ ...TD, color: 'var(--text-sub)' }}>{a.remark || '—'}</td>
-                              {role === 'admin' && (
-                                <td style={{ ...TD, textAlign: 'center' }}>
-                                  <button className="btn btn-d btn-icon btn-sm" onClick={() => handleAdvDelete(a.id)} title="Delete"><Trash2 size={12} /></button>
-                                </td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      {manualAdvances.length > 0 && (
-                        <tfoot>
-                          <tr>
-                            <td colSpan={3} style={{ ...TDF, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Total ({manualAdvances.length} entries)</td>
-                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#10b981' }}>{fmtRs(manualAdvances.filter(a => a.type === 'credit').reduce((s, a) => s + a.amount, 0))}</td>
-                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 800, color: '#f43f5e' }}>{fmtRs(manualAdvances.filter(a => a.type === 'debit').reduce((s, a) => s + a.amount, 0))}</td>
-                            <td style={{ ...TDF, textAlign: 'right', fontWeight: 900, color: advanceBalance >= 0 ? '#10b981' : '#f43f5e', fontSize: '14px' }}>{fmtRs(advanceBalance)}</td>
-                            <td colSpan={role === 'admin' ? 2 : 1} style={TDF}></td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </TableScroll>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
           {/* Active Filters Summary */}
           {Object.keys(filters).some(k => filters[k].length > 0) && (
             <div className="card" style={{ marginBottom: '14px' }}>
@@ -1753,95 +1687,6 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
             </div>
           )}
 
-          {/* Send to Pay — pick the entries for this truck, then hand them over. */}
-          {allVisibleRows.length > 0 && (role === 'admin' || permissions?.balance === 'edit') && (
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
-              padding: '12px 18px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Banknote size={16} color="#10b981" />
-                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>Send to Pay</span>
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>Select:</span>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <input type="month" className="fi" style={{ width: '135px', height: '30px', fontSize: '11.5px' }}
-                  value={payMonth} onChange={e => setPayMonth(e.target.value)} />
-                <button className="btn btn-g btn-sm" onClick={() => applyPayPreset('month')}>Monthly</button>
-              </div>
-
-              <button className="btn btn-g btn-sm" onClick={() => applyPayPreset('pending')}
-                title="Every entry still owing that has not been sent yet">
-                All Pending
-              </button>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <input type="date" className="fi" style={{ width: '140px', height: '30px', fontSize: '11.5px' }}
-                  value={payTillDate} onChange={e => setPayTillDate(e.target.value)} />
-                <button className="btn btn-g btn-sm" onClick={() => applyPayPreset('till')}>Till Date</button>
-              </div>
-
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  {sendableRows.length} sendable
-                  {alreadySentCount > 0 && <> · <span style={{ color: 'var(--primary)' }}>{alreadySentCount} already sent</span></>}
-                  {notReadyCount > 0 && <> · <span style={{ color: '#f43f5e' }}>{notReadyCount} not ready</span></>}
-                </span>
-                <button className="btn btn-p btn-sm"
-                  disabled={sending || selVouchers.filter(canSendToPay).length === 0}
-                  onClick={sendSelectedToPay}>
-                  {sending ? <Loader2 size={13} className="spin" /> : <ArrowRight size={13} />}
-                  {sending ? 'Sending…' : `Send ${selVouchers.filter(canSendToPay).length} to Pay`}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Select-all action bar */}
-          {allVisibleRows.length > 0 && (
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px',
-              padding: '12px 18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap'
-            }}>
-              <input type="checkbox" checked={allVis} ref={el => { if (el) el.indeterminate = someSelected; }}
-                onChange={() => onCheckAll(allVisibleRows, !allVis)}
-                style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                {selected.size === 0 ? 'Select entries to mark/print' : 'Selected: ' + selected.size + ' of ' + allVisibleRows.length}
-              </span>
-              {selected.size > 0 && (<>
-                <div style={{ height: '20px', width: '1px', background: 'var(--border)' }} />
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Net: {fmtRs(selNet)}</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)' }}>Paid: {fmtRs(selPaid)}</span>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: selOut > 0 ? 'var(--warn)' : 'var(--accent)' }}>
-                  Due: {selOut > 0 ? fmtRs(selOut) : 'Cleared ✓'}
-                </span>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: '7px' }}>
-                  {/* Edit acts on one entry, so it only appears when one is ticked —
-                      offering it for twelve would mean guessing which. */}
-                  {selected.size === 1 && (role === 'admin' || permissions?.balance === 'edit') && (
-                    <button className="btn btn-g btn-sm" onClick={() => setEditRow(selRows[0])} title="Edit this entry">
-                      <Pencil size={13} /> Edit Entry
-                    </button>
-                  )}
-                  {/* Print is the action for whatever is ticked, so it leads. */}
-                  <button className="btn btn-p btn-sm" onClick={() => doPrint(selRows, selTruck, `${selected.size} selected`, tab, orgName, selVehicle)}>
-                    <Printer size={13} /> Print {selected.size} Selected
-                  </button>
-                  {(role === 'admin' || permissions?.balance === 'edit') && (
-                    <button className="btn btn-g btn-sm" onClick={triggerMarkSelectedPaid} disabled={marking} title="Mark selected entries as Paid">
-                      {marking ? <Loader2 size={13} className="spin" /> : <><CheckCircle2 size={13} /> Mark {selected.size} as Paid</>}
-                    </button>
-                  )}
-                  <button className="btn btn-g btn-sm" onClick={() => setSelected(new Set())}>
-                    <X size={13} /> Clear
-                  </button>
-                </div>
-              </>)}
-            </div>
-          )}
-
           {sortedMonths.length === 0 && <div style={{ color: 'var(--text-muted)', padding: '40px', textAlign: 'center', fontSize: '13px' }}>No vouchers in this period</div>}
           {sortedMonths.map(ym => (
             <MonthSection key={ym} ym={ym} rows={monthMap[ym]} onSave={fetchVouchers}
@@ -1852,7 +1697,8 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
                 setDieselVerifyTarget(v);
                 setDieselVerifyForm({ amount: '' });
               }}
-              onEdit={setEditRow} />
+              onEdit={setEditRow}
+              canSendToPay={canSendToPay} onSendToPay={sendSelectedToPay} sending={sending} />
           ))}
 
           <AnimatePresence>

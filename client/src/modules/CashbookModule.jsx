@@ -13,6 +13,7 @@ import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -120,7 +121,7 @@ const QuickProfileModal = ({ isOpen, onClose, onCreated }) => {
   );
 };
 
-const ProfileSearchSelect = ({ value, onChange, profiles = [], drivers = [], vehicles = [], staffList = [], onOpenQuickModal }) => {
+const ProfileSearchSelect = ({ value, onChange, profiles = [], drivers = [], vehicles = [], staffList = [], onOpenQuickModal, mode = 'all' }) => {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = React.useRef(null);
@@ -153,13 +154,18 @@ const ProfileSearchSelect = ({ value, onChange, profiles = [], drivers = [], veh
 
   const allOptions = useMemo(() => {
     const list = [];
-    expenseProfiles.forEach(s => list.push({ key: `staff::${s.id}`, label: s.name, sub: 'Office Spend', category: '🏢 Office Spend / Expenses' }));
+    // Person cash-out must pick a real driver/staff — Office Spend is its own kind.
+    if (mode !== 'person') {
+      expenseProfiles.forEach(s => list.push({ key: `staff::${s.id}`, label: s.name, sub: 'Office Spend', category: '🏢 Office Spend / Expenses' }));
+    }
     driverProfiles.forEach(d => list.push({ key: `driver::${d.id}`, label: d.name, sub: d.vehicleNo ? `Truck: ${d.vehicleNo}` : 'Driver', category: '👨‍✈️ Drivers' }));
-    vehicles.forEach(v => list.push({ key: `vehicle::${v.truckNo}`, label: v.truckNo, sub: v.ownerName || v.driverName || 'Vehicle', category: '🚛 Vehicles' }));
+    if (mode !== 'person') {
+      vehicles.forEach(v => list.push({ key: `vehicle::${v.truckNo}`, label: v.truckNo, sub: v.ownerName || v.driverName || 'Vehicle', category: '🚛 Vehicles' }));
+    }
     staffProfiles.forEach(s => list.push({ key: `staff::${s.id}`, label: s.name, sub: s.department || 'Staff', category: '👨‍💼 Staff Members & Labour' }));
     otherProfiles.forEach(s => list.push({ key: `staff::${s.id}`, label: s.name, sub: s.type || s.department || 'Others', category: '👤 Others / Other Profiles' }));
     return list;
-  }, [expenseProfiles, driverProfiles, vehicles, staffProfiles, otherProfiles]);
+  }, [expenseProfiles, driverProfiles, vehicles, staffProfiles, otherProfiles, mode]);
 
   const filteredOptions = useMemo(() => {
     if (!search.trim()) return allOptions;
@@ -172,7 +178,7 @@ const ProfileSearchSelect = ({ value, onChange, profiles = [], drivers = [], veh
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <label style={{ marginBottom: 0 }}>Give Cash To (Select Profile) *</label>
+        <label style={{ marginBottom: 0 }}>{mode === 'person' ? 'Choose profile *' : 'Give Cash To (Select Profile) *'}</label>
         <button type="button" className="btn btn-g btn-sm" onClick={onOpenQuickModal} style={{ fontSize: '11px', padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
           <Plus size={12} /> Quick Profile
         </button>
@@ -182,7 +188,7 @@ const ProfileSearchSelect = ({ value, onChange, profiles = [], drivers = [], veh
         <input
           type="text"
           className="fi"
-          placeholder={selectedOpt ? `${selectedOpt.label} (${selectedOpt.sub})` : "🔍 Type to search profile, driver, staff, vehicle..."}
+          placeholder={selectedOpt ? `${selectedOpt.label} (${selectedOpt.sub})` : (mode === 'person' ? '🔍 Type driver or staff name…' : '🔍 Type to search profile, driver, staff, vehicle...')}
           value={isOpen ? search : (selectedOpt ? `${selectedOpt.label} (${selectedOpt.sub})` : '')}
           onChange={e => { setSearch(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
@@ -242,20 +248,15 @@ const ProfileSearchSelect = ({ value, onChange, profiles = [], drivers = [], veh
 
 const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles, profiles = [], onQuickProfileCreated }) => {
   const officeProf = useMemo(() => profiles.find(p => p.name?.toLowerCase().includes('office spend') || p.name?.toLowerCase().includes('office expense')) || profiles.find(p => p.type === 'Expense'), [profiles]);
-  const defaultKey = officeProf ? `staff::${officeProf.id}` : '';
 
-  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: defaultKey });
+  const [form, setForm] = useState({ amount: '', date: getSticky('cashbook.date', new Date().toISOString().slice(0, 10)), remark: '', entityKey: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
   const [showQuickModal, setShowQuickModal] = useState(false);
   const isDeposit = type === 'deposit';
-
-  useEffect(() => {
-    if (!isDeposit && !form.entityKey && officeProf) {
-      setForm(f => ({ ...f, entityKey: `staff::${officeProf.id}` }));
-    }
-  }, [officeProf, isDeposit]);
+  const isOffice = type === 'office_spend';
+  const isPersonCash = type === 'cash_out';
 
   const parseEntityKey = (key) => {
     if (!key) return {};
@@ -271,7 +272,14 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
     setErr('');
     if (markInvalidFields(formRef.current)) return;
     if (!form.amount || parseFloat(form.amount) <= 0) { setErr('Enter a valid amount'); return; }
-    if (!isDeposit && !form.entityKey) { setErr('Mandatory: Please choose a profile for cashout'); return; }
+    if (isPersonCash && !form.entityKey) { setErr('Select the driver or staff profile'); return; }
+    if (isPersonCash) {
+      const e = parseEntityKey(form.entityKey);
+      if (e.entityType !== 'driver' && e.entityType !== 'staff') {
+        setErr('Cash out must be on a driver or staff profile'); return;
+      }
+    }
+    if (isOffice && !officeProf) { setErr('Office Spend profile missing'); return; }
     setIsConfirming(true);
   };
   const handleFormRequest = e => { e.preventDefault(); requestSave(); };
@@ -285,23 +293,32 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
   const executeSave = async () => {
     setSaving(true); setIsConfirming(false);
     try {
-      const entity = parseEntityKey(form.entityKey);
-      if (!isDeposit && entity.entityType) {
-        await ax.post(apiCb + '/cash-out-linked', { amount: form.amount, date: form.date, remark: form.remark, ...entity });
+      if (isDeposit) {
+        await ax.post(apiCb + '/deposit', { amount: form.amount, date: form.date, remark: form.remark });
+      } else if (isOffice) {
+        await ax.post(apiCb + '/cash-out-linked', {
+          amount: form.amount, date: form.date, remark: form.remark,
+          entityType: 'expense',
+          entityId: officeProf.id,
+          entityName: officeProf.name || 'Office Spend',
+        });
       } else {
-        await ax.post(apiCb + (isDeposit ? '/deposit' : '/cash-out'), form);
+        const entity = parseEntityKey(form.entityKey);
+        await ax.post(apiCb + '/cash-out-linked', { amount: form.amount, date: form.date, remark: form.remark, ...entity });
       }
       rememberSticky('cashbook.date', form.date);
-      setForm({ amount: '', date: form.date, remark: '', entityKey: defaultKey }); onSave();
+      setForm({ amount: '', date: form.date, remark: '', entityKey: '' }); onSave();
     }
-    catch (e) { setErr(e.response?.data?.error || 'Error'); }
+    catch (e) { setErr(e.response?.data?.error || e.message || 'Error'); }
     finally { setSaving(false); }
   };
 
   const selectedEntity = parseEntityKey(form.entityKey);
   const confirmMsg = isDeposit
     ? `Are you sure you want to save this Deposit of Rs.${form.amount}?`
-    : `Are you sure you want to save this Cash Out of Rs.${form.amount}?${selectedEntity.entityName ? `\n\nLinked to: ${selectedEntity.entityName} (${selectedEntity.entityType})` : ''}`;
+    : isOffice
+      ? `Office Spend of Rs.${form.amount} (company expense).`
+      : `Cash Out of Rs.${form.amount} to ${selectedEntity.entityName}.\n\nThis is added as an Advance on their Pay balance.`;
 
   const handleQuickCreated = (newEntity) => {
     if (onQuickProfileCreated) onQuickProfileCreated(newEntity);
@@ -310,20 +327,21 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
   };
 
   return (
-    <motion.div ref={formRef} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ background: 'var(--bg-card)', border: `1px solid ${isDeposit ? 'rgba(16,185,129,0.25)' : 'rgba(244,63,94,0.25)'}`, borderRadius: '14px', padding: '18px 20px', marginBottom: '14px' }}>
+    <motion.div ref={formRef} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ background: 'var(--bg-card)', border: `1px solid ${isDeposit ? 'rgba(16,185,129,0.25)' : isOffice ? 'rgba(245,158,11,0.35)' : 'rgba(244,63,94,0.25)'}`, borderRadius: '14px', padding: '18px 20px', marginBottom: '14px' }}>
       <QuickProfileModal isOpen={showQuickModal} onClose={() => setShowQuickModal(false)} onCreated={handleQuickCreated} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '14px' }}>
-        <div style={{ width: '32px', height: '32px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDeposit ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.1)' }}>
-          {isDeposit ? <ArrowDownCircle size={16} color="var(--accent)" /> : <ArrowUpCircle size={16} color="var(--danger)" />}
+        <div style={{ width: '32px', height: '32px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDeposit ? 'rgba(16,185,129,0.12)' : isOffice ? 'rgba(245,158,11,0.12)' : 'rgba(244,63,94,0.1)' }}>
+          {isDeposit ? <ArrowDownCircle size={16} color="var(--accent)" /> : isOffice ? <Wallet size={16} color="#f59e0b" /> : <ArrowUpCircle size={16} color="var(--danger)" />}
         </div>
-        <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{isDeposit ? 'Add Deposit' : 'Cash Out'}</span>
+        <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>{isDeposit ? 'Add Deposit' : isOffice ? 'Office Spend' : 'Cash Out'}</span>
         <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Enter = next · Ctrl+S = save · Esc = close</span>
       </div>
       <form onSubmit={handleFormRequest}>
         <div className="fg fg-2" style={{ gap: '14px' }}>
-          {!isDeposit && (
+          {isPersonCash && (
             <div style={{ gridColumn: '1 / -1' }}>
               <ProfileSearchSelect
+                mode="person"
                 value={form.entityKey}
                 onChange={key => setForm(f => ({ ...f, entityKey: key }))}
                 profiles={profiles}
@@ -332,6 +350,9 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
                 staffList={staffList}
                 onOpenQuickModal={() => setShowQuickModal(true)}
               />
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#0ea5e9', marginTop: '6px' }}>
+                Amount is posted as an Advance on this profile in Pay.
+              </div>
             </div>
           )}
           <div className="field-h">
@@ -344,7 +365,7 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
           </div>
           <div className="field-h" style={{ gridColumn: '1 / -1' }}>
             <label>Remark</label>
-            <input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : 'e.g. Office tea, electricity bill, supplies'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} />
+            <input className="fi" type="text" placeholder={isDeposit ? 'e.g. Opening balance' : isOffice ? 'e.g. Electricity, stationery, tea' : 'e.g. Cash given to driver'} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} />
           </div>
           {err && <div className="field-error" style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{err}</div>}
           <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
@@ -355,7 +376,7 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
           </div>
         </div>
       </form>
-      <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : 'Confirm Cash Out'} message={confirmMsg} isSaving={saving} />
+      <ConfirmSaveModal isOpen={isConfirming} onClose={() => setIsConfirming(false)} onConfirm={executeSave} title={isDeposit ? 'Confirm Deposit' : isOffice ? 'Confirm Office Spend' : 'Confirm Cash Out'} message={confirmMsg} isSaving={saving} />
     </motion.div>
   );
 };
@@ -370,10 +391,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const [allVouchers, setAllVouchers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('ledger');
-  const [showForm, setShowForm] = useState(null); // 'deposit' | 'cash_out' | null
+  const [showForm, setShowForm] = useState(null); // 'deposit' | 'cash_out' | 'office_spend' | null
   const [delTarget, setDelTarget] = useState(null);
   const [onlinePaidTarget, setOnlinePaidTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [profiles, setProfiles] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [returnTarget, setReturnTarget] = useState(null); // { id, label, date, remark }
@@ -559,7 +581,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     return cashOuts.filter(e => {
       const nameMatch = (e.entityName || '').toLowerCase().includes('office') || (e.entityName || '').toLowerCase().includes('spend') || (e.entityName || '').toLowerCase().includes('expense');
       const remarkMatch = (e.remark || '').toLowerCase().includes('office') || (e.remark || '').toLowerCase().includes('bill');
-      const isExpenseType = e.entityType === 'expense' || e.entityId === 'office_spend' || e.entityType === 'staff';
+      const isExpenseType = e.entityType === 'expense' || e.entityId === 'office_spend';
       return isExpenseType || nameMatch || (!e.entityType && remarkMatch);
     });
   }, [cashOuts]);
@@ -713,9 +735,9 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           filteredCashOuts;
 
   const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return activeRows.slice(start, start + PAGE_SIZE);
-  }, [activeRows, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return activeRows.slice(start, start + pageSize);
+  }, [activeRows, currentPage, pageSize]);
 
   /* ── Summary stats ── */
   /**
@@ -782,11 +804,12 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
   const TD = { padding: '9px 11px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', borderBottom: '1px solid var(--border-row)' };
 
   /* ── Render helper: ledger table ── */
-  const LedgerTable = ({ rows, showBalance = true, showBadge = true }) => (
+  const LedgerTable = ({ rows, totalRows, showBalance = true, showBadge = true }) => (
     <TableScroll className="tbl-cards">
       <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
         <thead><tr>
           <th style={TH}>Date</th>
+          <th style={TH}>ID</th>
           <th style={TH}>Description</th>
           {showBadge && <th style={TH}>Type</th>}
           <th style={{ ...TH, textAlign: 'right', color: 'var(--accent)' }}>Credit (In)</th>
@@ -798,7 +821,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
         </tr></thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No entries yet</td></tr>
+            <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No entries yet</td></tr>
           )}
           {rows.map((r, i) => {
             const bs = BADGE_STYLE[r.badge] || BADGE_STYLE['deposit'];
@@ -806,6 +829,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               <tr key={r.id}
                 style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                 <td className="t-card-title" style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                <td data-label="ID" style={{ ...TD }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
+                    #{r.entryId || '—'}
+                  </span>
+                </td>
                 <td data-label="Description" style={{ ...TD, maxWidth: '320px' }}>
                   <div style={{ fontWeight: 600, color: r.isReturned ? 'var(--text-muted)' : 'var(--text)', fontSize: '12.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.isReturned ? 'line-through' : 'none' }}>
                     {r.label}
@@ -822,11 +850,14 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 7px', borderRadius: '5px', background: 'rgba(99,102,241,0.08)', fontSize: '10.5px', fontWeight: 700, color: 'var(--primary)' }}>
                           <EIcon size={11} /> {r.entityName}
                         </div>
+<<<<<<< HEAD
                         {r.type === 'cash_out' && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', padding: '1px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 800, background: r.isCleared ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: r.isCleared ? 'var(--accent)' : 'var(--danger)' }}>
                             {r.isCleared ? 'Deducted from last pay' : 'Pending deduction'}
                           </span>
                         )}
+=======
+>>>>>>> initial-branch
                       </div>
                     );
                   })()}
@@ -896,18 +927,23 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           })}
         </tbody>
         {showBalance && rows.length > 0 && (() => {
-          const last = rows[rows.length - 1];
-          const totCr = rows.reduce((s, r) => s + r.credit, 0);
-          const totDb = rows.reduce((s, r) => s + r.debit, 0);
+          const all = totalRows?.length ? totalRows : rows;
+          const last = all[all.length - 1];
+          const totCr = all.reduce((s, r) => s + (r.credit || 0), 0);
+          const totDb = all.reduce((s, r) => s + (r.debit || 0), 0);
+          // Date + ID + Description [+ Type] sit under Totals; money cells
+          // must line up with Credit / Debit / Balance. Missing the Type
+          // column shifted every total one cell left.
+          const labelSpan = showBadge ? 4 : 3;
+          const tailSpan = role === 'admin' ? 3 : 1;
           return (
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-tf)' }}>
-                <td colSpan={showBadge ? 2 : 2} style={{ ...TD, fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Totals</td>
-                {showBadge && <td style={TD}></td>}
+                <td colSpan={labelSpan} style={{ ...TD, fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>Totals</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--accent)', fontSize: '13px' }}>{fmtRs(totCr)}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)', fontSize: '13px' }}>{fmtRs(totDb)}</td>
                 <td style={{ ...TD, textAlign: 'right', fontWeight: 900, fontSize: '14px', color: last.balance >= 0 ? 'var(--accent)' : 'var(--danger)' }}>{fmtRs(last.balance)}</td>
-                <td colSpan={role === 'admin' ? 3 : 1} style={TD}></td>
+                <td colSpan={tailSpan} style={TD}></td>
               </tr>
             </tfoot>
           );
@@ -1032,6 +1068,14 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     archive: { module: 'Cashbook', name: `Cashbook ${tab} ${new Date().toISOString().slice(0, 10)}` },
   });
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading cashbook register & vouchers..." />
+      </div>
+    );
+  }
+
   return (
     <div>
       <AnimatePresence>
@@ -1114,8 +1158,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
               <button className="btn btn-a btn-sm" onClick={() => setShowForm(f => f === 'deposit' ? null : 'deposit')} title="Add Deposit Entry">
                 <ArrowDownCircle size={14} /> Deposit
               </button>
-              <button className="btn btn-d btn-sm" onClick={() => setShowForm(f => f === 'cash_out' ? null : 'cash_out')} title="Add Cash Out Entry">
+              <button className="btn btn-d btn-sm" onClick={() => setShowForm(f => f === 'cash_out' ? null : 'cash_out')} title="Cash to a driver or staff">
                 <ArrowUpCircle size={14} /> Cash Out
+              </button>
+              <button className="btn btn-g btn-sm" onClick={() => setShowForm(f => f === 'office_spend' ? null : 'office_spend')} title="Company office expense">
+                <Wallet size={14} /> Office Spend
               </button>
             </>
           )}
@@ -1125,7 +1172,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       {/* Entry forms */}
       <AnimatePresence>
         {showForm && (
-          <EntryForm type={showForm} apiCb={API_CB} onSave={() => { fetchAll(); setShowForm(null); }} onCancel={() => setShowForm(null)} drivers={drivers} staffList={staffList} vehicles={vehicles} profiles={profiles} onQuickProfileCreated={(newEnt) => { if (newEnt.entityType === 'vehicle') setVehicles(v => [newEnt.raw, ...v]); else setProfiles(p => [newEnt.raw, ...p]); }} />
+          <EntryForm key={showForm} type={showForm} apiCb={API_CB} onSave={() => { fetchAll(); setShowForm(null); }} onCancel={() => setShowForm(null)} drivers={drivers} staffList={staffList} vehicles={vehicles} profiles={profiles} onQuickProfileCreated={(newEnt) => { if (newEnt.entityType === 'vehicle') setVehicles(v => [newEnt.raw, ...v]); else setProfiles(p => [newEnt.raw, ...p]); }} />
         )}
       </AnimatePresence>
 
@@ -1419,14 +1466,16 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           : <>
               <LedgerTable
                   rows={paginatedRows}
+                  totalRows={activeRows}
                   showBalance={tab === 'ledger'}
                   showBadge={tab === 'ledger'} />
 
               <Pagination
                 currentPage={currentPage}
                 totalItems={activeRows.length}
-                pageSize={PAGE_SIZE}
+                pageSize={pageSize}
                 onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
               />
             </>}
       </div>

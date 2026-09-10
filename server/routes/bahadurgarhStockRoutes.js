@@ -50,6 +50,9 @@ router.post('/challans', async (req, res) => {
     try { 
         const doc = await svc.createChallan(req.orgId, req.body, getCol(CCOL, req), getCol(MCOL, req));
         sheetsService.upsertStockChallan(doc, 'jksuper').catch(err => console.error('[Backup Hook] Challan upsert failed:', err.message));
+
+
+
         res.status(201).json(doc);
     }
     catch (e) { res.status(400).json({ error: e.message }); }

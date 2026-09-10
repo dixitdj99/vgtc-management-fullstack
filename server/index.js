@@ -168,7 +168,7 @@ app.get('/api/weather', async (req, res) => {
 app.use('/api/jkl/lr', requireAuth, gate('lr_jkl'), jklLrRoutes);
 app.use('/api/jkl/stock', requireAuth, gate('stock_jkl'), jklStockRoutes);
 app.use('/api/jkl/cashbook', requireAuth, gate('cashbook'), jklCashbookRoutes);
-app.use('/api/vehicles', requireAuth, gate('vehicle'), vehicleRoutes);
+app.use('/api/vehicles', requireAuth, gate(['vehicle', 'voucher_jkl', 'voucher_jkl_dump', 'voucher_jksuper', 'voucher_kosli', 'voucher_jhajjar', 'voucher_bahadurgarh', 'lr_jkl', 'lr_dump', 'lr_kosli', 'lr_jhajjar', 'lr_bahadurgarh', 'cashbook', 'pay', 'balance_all']), vehicleRoutes);
 app.use('/api/vehicle-advances', requireAuth, gate(['pay','vehicle']), vehicleAdvanceRoutes);
 app.use('/api/freight-batches', requireAuth, gate('pay'), freightBatchRoutes);
 // Reads the loading receipts and MIGO entries of all five plants to price the
@@ -196,8 +196,6 @@ app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRo
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
-app.use('/api/whatsapp', require('./routes/whatsappRoutes'));
-app.use('/api/sms', require('./routes/smsRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret
 
 // Liveness/readiness probe. Reports 503 when Firestore is not connected so a

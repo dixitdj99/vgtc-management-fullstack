@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import api from '../api';
 import { Truck, LogIn, LogOut, Volume2, CheckCircle, Clock, RefreshCw, Bell, BellOff, Mic, MicOff, Play, Pause, MessageSquare, User, Lock, Eye, EyeOff, AlertCircle, Download, X, Share, MoreVertical } from 'lucide-react';
+import TruckLoader from '../components/TruckLoader';
 
 // Add global styles for animations
 const style = document.createElement('style');
@@ -447,6 +448,14 @@ export default function LabourLoadingStatus() {
 
   if (!worker) return <LoginScreen onLogin={setWorker} orgName={orgName} />;
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading vehicle status..." />
+      </div>
+    );
+  }
+
   return (
     <div style={{ backgroundColor: '#f1f5f9', height: '100dvh', overflowY: 'auto', fontFamily: 'system-ui, sans-serif', WebkitOverflowScrolling: 'touch' }}>
 
@@ -532,12 +541,7 @@ export default function LabourLoadingStatus() {
 
       {/* Content */}
       <div style={{ padding: '16px', paddingBottom: '40px' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
-            <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-            <div>{t('loading_vehicles')}</div>
-          </div>
-        ) : receipts.filter(r => selectedDate !== todayStr || r.status !== 'Loaded').length === 0 ? (
+        {receipts.filter(r => selectedDate !== todayStr || r.status !== 'Loaded').length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', background: 'white', borderRadius: '16px', border: '1px dashed #cbd5e1', color: '#94a3b8' }}>
             <Truck size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
             <div style={{ fontWeight: 700 }}>

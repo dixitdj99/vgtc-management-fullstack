@@ -15,6 +15,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -35,6 +36,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   
   const getEmptyForm = () => ({
     material: MATS[0],
@@ -189,9 +191,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
 
   // Pagination Logic
   const paginatedSales = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredSales.slice(start, start + PAGE_SIZE);
-  }, [filteredSales, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return filteredSales.slice(start, start + pageSize);
+  }, [filteredSales, currentPage, pageSize]);
 
   const onFilterUpdate = (k, v) => {
     setFilters(f => ({ ...f, [k]: v }));
@@ -494,6 +496,14 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
     </datalist>
   );
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading sales register..." />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '0 20px 40px' }}>
       <AnimatePresence>{CashModal}</AnimatePresence>
@@ -708,9 +718,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                    <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</td></tr>
-                ) : filteredSales.length === 0 ? (
+                {filteredSales.length === 0 ? (
                     <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No sales history found</td></tr>
                 ) : (
                   paginatedSales.map((s, i) => (
@@ -777,8 +785,9 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
             <Pagination 
               currentPage={currentPage}
               totalItems={filteredSales.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
             />
           </TableScroll>
         </div>

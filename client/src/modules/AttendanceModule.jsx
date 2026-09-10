@@ -7,6 +7,7 @@ import {
   Search, CheckCircle2, AlertTriangle, Sparkles, Download, RotateCcw,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import TruckLoader from '../components/TruckLoader';
 
 /**
  * Attendance roll-call.
@@ -418,6 +419,14 @@ export default function AttendanceModule() {
   // Unmounting them mid-load made the screen feel dead and dropped keystrokes in
   // the date input the moment a partial value fired a fetch.
   const firstLoad = loading && (view === 'daily' ? !roster : !summary);
+
+  if (firstLoad) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading staff attendance register..." />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', paddingBottom: '96px' }}>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { Truck, Package, CheckCircle, Clock, RefreshCw, Smartphone, X, Share, MoreVertical, Download } from 'lucide-react';
+import TruckLoader from '../components/TruckLoader';
 
 const ProgressBar = ({ status, startedAt, loadedAt, now }) => {
   const isLoaded = status === 'Loaded';
@@ -82,6 +83,14 @@ export default function PublicLoadingStatus() {
     }
   };
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading live status updates..." />
+      </div>
+    );
+  }
+
   return (
     <div style={{ backgroundColor: '#f8fafc', height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', fontFamily: 'system-ui, sans-serif' }}>
       
@@ -162,9 +171,7 @@ export default function PublicLoadingStatus() {
           </button>
         </div>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading Data...</div>
-        ) : receipts.length === 0 ? (
+        {receipts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', background: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
             No vehicle loadings found for today.
           </div>

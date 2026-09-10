@@ -32,12 +32,16 @@ const autoRecordFromVoucher = async (orgId, voucherData) => {
     }
 };
 
+const { getNextEntryId, ensureEntryIds } = require('../utils/entryIdService');
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 const createVoucher = async (orgId, data, col = COLLECTION_VOUCHERS) => {
     const { type, ...voucherData } = data;
+    const entryId = voucherData.entryId || await getNextEntryId(orgId, col);
     const finalData = {
         ...voucherData,
+        entryId,
         type,
         orgId,
         partyName: normalizePartyName(voucherData.partyName || '')
@@ -54,6 +58,7 @@ const createVoucher = async (orgId, data, col = COLLECTION_VOUCHERS) => {
 };
 
 const getVouchersByType = async (orgId, type, col = COLLECTION_VOUCHERS) => {
+    await ensureEntryIds(orgId, col).catch(() => {});
     if (firebaseAvailable()) {
         const snapshot = await db.collection(col)
             .where('orgId', '==', orgId)
@@ -73,6 +78,7 @@ const getVouchersByType = async (orgId, type, col = COLLECTION_VOUCHERS) => {
 };
 
 const getAllVouchers = async (orgId, col = COLLECTION_VOUCHERS) => {
+    await ensureEntryIds(orgId, col).catch(() => {});
     if (firebaseAvailable()) {
         const snapshot = await db.collection(col).where('orgId', '==', orgId).get();
         const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

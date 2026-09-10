@@ -13,6 +13,7 @@ const AdminModule = () => {
     const [logs, setLogs] = useState([]);
     const [logsLoading, setLogsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZE);
     const [showCodeInput, setShowCodeInput] = useState(false);
     const [code, setCode] = useState('');
     const popupRef = useRef(null);
@@ -119,7 +120,7 @@ const AdminModule = () => {
         </div>
     );
 
-    const paginatedLogs = (logs || []).slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    const paginatedLogs = (logs || []).slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
         <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
@@ -338,8 +339,9 @@ const AdminModule = () => {
                         <Pagination 
                             currentPage={currentPage}
                             totalItems={logs.length}
-                            pageSize={PAGE_SIZE}
+                            pageSize={pageSize}
                             onPageChange={setCurrentPage}
+                            onPageSizeChange={setPageSize}
                         />
                     </div>
                 </div>

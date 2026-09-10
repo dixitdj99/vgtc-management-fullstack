@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import TableScroll from '../components/TableScroll';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -42,6 +43,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZE);
     const [showFuelModal, setShowFuelModal] = useState(false);
     const [fuelForm, setFuelForm] = useState({ date: new Date().toISOString().split('T')[0], endKm: '', amount: '', pump: '' });
     const [submitting, setSubmitting] = useState(false);
@@ -161,14 +163,13 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
     }, [processedTrips, vehicleType, dieselPerLitre]);
 
     const paginatedTrips = useMemo(() => {
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return processedTrips.slice(start, start + PAGE_SIZE);
-    }, [processedTrips, currentPage]);
+        const start = (currentPage - 1) * pageSize;
+        return processedTrips.slice(start, start + pageSize);
+    }, [processedTrips, currentPage, pageSize]);
 
     if (loading) return (
-        <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            <Loader2 size={24} className="spin" style={{ opacity: 0.5 }} />
-            <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: 700 }}>Loading trip data...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+            <TruckLoader size={130} text="Loading trip data..." />
         </div>
     );
 
@@ -311,8 +312,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                 <Pagination 
                     currentPage={currentPage}
                     totalItems={trips.length}
-                    pageSize={PAGE_SIZE}
+                    pageSize={pageSize}
                     onPageChange={setCurrentPage}
+                    onPageSizeChange={setPageSize}
                 />
             </div>
 
@@ -502,10 +504,7 @@ export default function MileageModule() {
                 </div>
 
                 {loading ? (
-                    <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <Loader2 size={24} className="spin" style={{ opacity: 0.4 }} />
-                        <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: 700 }}>Loading vehicles...</div>
-                    </div>
+                    <TruckLoader text="Loading vehicles..." size={180} />
                 ) : filtered.length === 0 ? (
                     <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700 }}>No vehicles found</div>
                 ) : (

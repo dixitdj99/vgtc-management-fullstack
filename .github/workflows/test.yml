@@ -1,0 +1,57 @@
+name: Unit Tests
+
+# Run on every push and pull request.
+# Only the pure-JS client tests run here — they need no server, no Firebase,
+# no secrets. The full api.test.js (which writes to Firestore dev_ collections)
+# stays a manual step run from your dev machine before every deploy.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  unit-tests:
+    name: Client unit tests (pure JS, no server)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The client tests import from ./voucherCalc.js etc. — no npm install needed
+      # because there are no npm dependencies in these files.
+      - name: voucherCalc tests  (calcNet / calcOutstanding / checkExpiry)
+        run: node client/src/utils/voucherCalc.test.js
+
+      - name: freightAllocation tests  (payment allocation + outstanding)
+        run: node client/src/utils/freightAllocation.test.js
+
+      - name: partyBrands tests  (brand routing + visibility)
+        run: node client/src/utils/partyBrands.test.js
+
+  # Uncomment this job once your repo has a test Firebase project and a
+  # service-account secret named FIREBASE_SERVICE_ACCOUNT.
+  #
+  # api-tests:
+  #   name: Full API tests (Firestore dev_ collections)
+  #   runs-on: ubuntu-latest
+  #   needs: unit-tests
+  #   env:
+  #     APP_ENV: local
+  #     JWT_SECRET: vgtc-secret-2026
+  #     VGTC_DISABLE_DRIVE: "1"
+  #     FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "22"
+  #     - run: npm ci --prefix server
+  #     - run: node server/tests/api.test.js

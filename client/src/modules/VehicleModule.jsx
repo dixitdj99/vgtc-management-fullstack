@@ -8,6 +8,7 @@ import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, Chev
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
+import TruckLoader from '../components/TruckLoader';
 import VehicleRegistryCard from '../components/VehicleRegistryCard';
 import EmiScheduleTracker from '../components/EmiScheduleTracker';
 import TableScroll from '../components/TableScroll';
@@ -1028,7 +1029,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                             </div>
                             <div style={{ flex: 1, overflow: 'auto', padding: '0' }}>
                                 {tyreLoading ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: 'var(--text-muted)' }}><Loader2 size={20} className="spin" style={{ marginRight: '8px' }} /> Loading...</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}><TruckLoader text="Loading vehicle history..." size={160} /></div>
                                 ) : tyreHistory.length === 0 ? (
                                     <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)', fontSize: '13px' }}>No tyre or vehicle expenses found for this truck.</div>
                                 ) : (
@@ -1074,6 +1075,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
             <ConfirmSaveModal isOpen={isConfirmingSave} onClose={() => setIsConfirmingSave(false)} onConfirm={executeSave} title={editId ? "Update Vehicle" : "Add Vehicle"} message={`Save changes for ${form.truckNo}?`} isSaving={saving} />
 
+            {loading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+                    <TruckLoader size={130} text="Loading fleet & market vehicles..." />
+                </div>
+            ) : (
+                <>
             <div className="page-hd">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '12px', boxShadow: '0 8px 16px var(--primary-glow)' }}><Truck size={24} /></div>
@@ -1360,9 +1367,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
                     {/* Flat table */}
                     <div className="card" style={{ overflow: 'hidden' }}>
-                        {loading ? (
-                            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}><Loader2 size={20} className="spin" /></div>
-                        ) : owners.flatMap(o => o.vehicles).length === 0 ? (
+                        {owners.flatMap(o => o.vehicles).length === 0 ? (
                             <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
                                 <Truck size={40} style={{ opacity: 0.15, marginBottom: '10px' }} />
                                 <div style={{ fontWeight: 700 }}>No vehicles found</div>
@@ -1456,6 +1461,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                     </div>
                 </div>
             )}
-        </div>
-    );
+        </>
+      )}
+    </div>
+  );
 }

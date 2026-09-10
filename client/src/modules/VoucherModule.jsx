@@ -17,6 +17,8 @@ import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
 import TableScroll from '../components/TableScroll';
+import { fmtDate } from '../utils/format';
+import TruckLoader from '../components/TruckLoader';
 
 const PAGE_SIZE = 20;
 
@@ -142,7 +144,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         { lbl: 'Tyre Puncture', val: n.tyrePuncture },
         { lbl: 'Tyre Greasing & Air', val: n.tyreGreasingAir },
     ].filter(d => d.val > 0 || (d.lbl === 'Diesel Advance' && v.advanceDiesel && v.advanceDiesel !== '0'))
-        .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', note: e.remark, val: e.amount })));
+        .concat(printableExtras(v).map(e => ({ lbl: 'Extra Cash', val: e.amount })));
 
     // One archive descriptor for all three voucher layouts — same document,
     // whichever way it is drawn.
@@ -335,9 +337,12 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
           <div class="sub">Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849</div>
         </div>
 
-        <div class="lr-row">
-          <span>Voucher for LR: ${lrLabel}</span>
-          <span>Date: ${v.date}</span>
+        <div class="lr-row" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2mm;">
+          <div style="display: flex; flex-direction: column; gap: 1mm; align-items: flex-start;">
+            <span style="font-size: 9.5pt; font-weight: 900; display: block;">ID: #${v.entryId || v.lrEntryId || '—'}</span>
+            <span style="font-size: 10pt; font-weight: 900; display: block;">LR: #${lrLabel}</span>
+          </div>
+          <span style="font-size: 9.5pt; font-weight: 900;">Date: ${fmtDate(v.date)}</span>
         </div>
 
         <div class="sec">
@@ -487,7 +492,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
                 <div>Truck No. <span style="margin-left: 5px; font-weight: normal;">${v.truckNo || ''}</span>${v.truckNo ? '' : '<div class="dotted-fill"></div>'}</div>
                 <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh')}</div>
                 <div>To <span style="margin-left: 5px; font-weight: normal;">${v.destination || ''}</span>${v.destination ? '' : '<div class="line-fill"></div>'}</div>
-                <div><span>LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal;">Date: ${v.date}</span></div>
+                <div><span>ID: <span style="margin-left: 5px; font-weight: bold; font-size: 13px; color: #6366f1;">#${v.entryId || '—'}</span></span><span style="margin-left: 15px;">LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal; margin-left: 15px;">Date: ${v.date}</span></div>
             </div>
         </div>
         <table class="main-table">
@@ -554,7 +559,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
             </div>
         </div>
     </div>
-    <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+    <script>window.onload=()=>{setTimeout(()=>{try{window.opener=null;}catch(e){}window.focus();window.print();},200);window.onafterprint=()=>window.close();}</script>
 </body>
 </html>`;
     } else {
@@ -667,7 +672,8 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
     </div>
 
     <div class="ref-row">
-      <div>
+      <div style="display: flex; flex-direction: column; gap: 3px; align-items: flex-start;">
+        ${v.entryId || v.lrEntryId ? `<div style="font-size: 12px; font-weight: 900; border: 1.5px solid #000; padding: 2px 8px; background: #fff;">ID #${v.entryId || v.lrEntryId}</div>` : ''}
         ${hasDeliveries
                     ? `<div class="ref-lr">LR ${lrLabel}</div>
            ${v.lrNo ? `<div style="font-size:9px;font-weight:800;margin-top:2px">Ref: #${v.lrNo}</div>` : ''}`
@@ -675,7 +681,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
       </div>
       <div class="ref-meta">
         <div class="ref-type">${v.type ? v.type.replace(/_/g, ' ') : ''}</div>
-        <div style="margin-top:1px"><b>Date:</b> ${v.date}</div>
+        <div style="margin-top:1px"><b>Date:</b> ${fmtDate(v.date)}</div>
         <div><b>Truck:</b> ${v.truckNo}</div>
       </div>
     </div>
@@ -735,16 +741,16 @@ function ExtraMoneyList({ extras = [], onChange }) {
     return (
         <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>💰 Extra Money</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>💰 Extra Money & Remark</span>
                 {total > 0 && <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#f59e0b', marginLeft: 'auto' }}>₹{total.toLocaleString('en-IN')}</span>}
             </div>
 
             {extras.map((e, i) => (
                 <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input className="fi" type="number" placeholder="₹0" value={e.amount ?? ''}
+                    <input className="fi" type="number" placeholder="₹ Amount" value={e.amount ?? ''}
                         onChange={ev => update(i, 'amount', ev.target.value)}
-                        style={{ width: '110px', flexShrink: 0 }} />
-                    <input className="fi" type="text" placeholder="Reason — e.g. grease ke paise" value={e.remark || ''}
+                        style={{ width: '120px', flexShrink: 0 }} />
+                    <input className="fi" type="text" placeholder="Extra Remark (Internal only — NOT printed on receipt)" value={e.remark || ''}
                         onChange={ev => update(i, 'remark', ev.target.value)}
                         style={{ flex: 1, minWidth: 0 }} />
                     <button type="button" onClick={() => remove(i)} title="Remove this line"
@@ -770,6 +776,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         driverId: v.driverId || driverOptions.find(d => d.name === v.driverName)?.id || '',
         driverName: v.driverName || '',
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
+        remark: v.remark || '',
         weight: v.weight ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)) : '') ?? '',
         bags: v.bags ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)) : '') ?? '',
         rate: v.rate, pump: getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
@@ -802,7 +809,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
             } else if (key === 'weight') {
                 updated.bags = val ? String(Math.round(parseFloat(val) * 20)) : '';
             } else if (key === 'destination' && val) {
-                const autoRate = lookupDestinationRate(val, form.date);
+                const autoRate = lookupDestinationRate(val, form.date, v.type);
                 if (autoRate > 0) updated.rate = String(autoRate);
             }
             return updated;
@@ -865,7 +872,8 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                     await ax.post('/destinations/record', {
                         name: item.name,
                         rate: item.rate,
-                        date: form.date
+                        date: form.date,
+                        module: v.type
                     }).catch(() => {});
                 }
             }
@@ -892,7 +900,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                 <div className="fg fg-2" style={{ padding: '20px 22px', gap: '12px' }}>
                     <div className="field-h">
                         <label>LR No. *</label>
-                        <input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} required />
+                        <input className="fi" type="text" placeholder="e.g. 101, 102" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} required />
                     </div>
                     <div className="field-h">
                         <label>Date *</label>
@@ -929,7 +937,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             <StyledAutocomplete
                                 value={form.destination}
                                 onChange={val => {
-                                    const autoRate = lookupDestinationRate(val, form.date);
+                                    const autoRate = lookupDestinationRate(val, form.date, v.type);
                                     setForm(f => ({
                                         ...f,
                                         destination: val,
@@ -1118,6 +1126,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         </>
                     )}
                     <ExtraMoneyList extras={form.extras} onChange={list => S('extras', list)} />
+                    <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                        <label>Remarks</label>
+                        <input className="fi" type="text" placeholder="Enter remarks (NOT printed on receipt)" value={form.remark || ''} onChange={e => S('remark', e.target.value)} />
+                    </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
                     <button className="btn btn-g" onClick={onClose} disabled={saving}>Cancel</button>
@@ -1192,8 +1204,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     // Opens on the list. The form was taking the whole first screen on a module
     // people mostly come to in order to look something up.
     const [formOpen, setFormOpen] = useState(false);
+    const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
     // Filters
     const [filters, setFilters] = useState({});
@@ -1238,8 +1252,28 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
         materials: [],
         tyrePuncture: '', tyreGreasingAir: '', extras: [],
+        remark: '',
     });
-    const [showVehicleExpenses, setShowVehicleExpenses] = useState(false);
+    const [selectedVouchers, setSelectedVouchers] = useState(new Set());
+
+    const toggleSelectAllVouchers = () => {
+        if (paginatedVouchers.length > 0 && paginatedVouchers.every(v => selectedVouchers.has(v.id))) {
+            setSelectedVouchers(new Set());
+        } else {
+            const next = new Set(selectedVouchers);
+            paginatedVouchers.forEach(v => next.add(v.id));
+            setSelectedVouchers(next);
+        }
+    };
+
+    const toggleSelectVoucher = (id) => {
+        setSelectedVouchers(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
 
     // Must be declared before deliveries state (used in useEffect dependency)
     const isFactory = vType === 'JK_Super' || vType === 'JK_Lakshmi';
@@ -1255,7 +1289,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             if (key === 'weight' && val) updated.bags = String(Math.round(parseFloat(val) * 20));
             if (key === 'bags' && val) updated.weight = (parseFloat(val) * 0.05).toFixed(2);
             if (key === 'destination' && val) {
-                const autoRate = lookupDestinationRate(val, form.date);
+                const autoRate = lookupDestinationRate(val, form.date, vType);
                 if (autoRate > 0) updated.rate = String(autoRate);
             }
             return updated;
@@ -1282,11 +1316,19 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [vehicleNumbers, setVehicleNumbers] = useState([]);
     const [destinationsList, setDestinationsList] = useState([]);
 
-    const lookupDestinationRate = useCallback((name, date) => {
+    const lookupDestinationRate = useCallback((name, date, moduleType) => {
         if (!name) return 0;
         const cleanName = String(name).trim().toUpperCase();
-        const dest = destinationsList.find(d => (d.name || '').trim().toUpperCase() === cleanName);
+        const targetModule = moduleType || vType;
+        let dest = (destinationsList || []).find(d => (d.name || '').trim().toUpperCase() === cleanName && d.module === targetModule);
+        if (!dest) {
+            dest = (destinationsList || []).find(d => (d.name || '').trim().toUpperCase() === cleanName && (!d.module || d.module === 'all'));
+        }
+        if (!dest) {
+            dest = (destinationsList || []).find(d => (d.name || '').trim().toUpperCase() === cleanName);
+        }
         if (!dest) return 0;
+
         const targetDate = (date || new Date().toISOString().split('T')[0]).slice(0, 10);
         const history = dest.rateHistory || [];
         for (const period of history) {
@@ -1308,14 +1350,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         }
         if (lastRate) return lastRate;
         return dest.currentRate || Number(sorted[0]?.rate) || 0;
-    }, [destinationsList]);
+    }, [destinationsList, vType]);
 
     const destinationOptions = useMemo(() => {
         const masterMap = new Map();
         (destinationsList || []).forEach(d => {
             const name = (d.name || '').toUpperCase().trim();
             if (name) {
-                masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
+                if (!d.module || d.module === 'all' || d.module === vType || !masterMap.has(name)) {
+                    masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
+                }
             }
         });
 
@@ -1397,10 +1441,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const usedLRSet = useMemo(() => {
         const s = new Set();
         vouchers.forEach(v => {
-            // top-level lrNo (could be comma-separated for old multi-lr vouchers)
+            // top-level lrNo (could be comma-separated for multi-lr orders)
             if (v.lrNo) String(v.lrNo).split(',').map(x => x.trim()).filter(Boolean).forEach(lr => s.add(lr));
             // delivery-level lrNos
-            (v.deliveries || []).forEach(d => { if (d.lrNo) s.add(String(d.lrNo).trim()); });
+            (v.deliveries || []).forEach(d => {
+                if (d.lrNo) String(d.lrNo).split(',').map(x => x.trim()).filter(Boolean).forEach(lr => s.add(lr));
+            });
         });
         return s;
     }, [vouchers]);
@@ -1452,9 +1498,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
         // Factory vouchers — only check for duplicates, no LR fetch
         if (vType === 'JK_Super' || vType === 'JK_Lakshmi') {
+            const inputLrs = val.split(',').map(s => s.trim()).filter(Boolean);
             const alreadyUsed = vouchers.some(v => {
-                if (!v.lrNo) return false;
-                return String(v.lrNo).split(',').map(s => s.trim()).includes(val.trim());
+                const existingLrs = [];
+                if (v.lrNo) String(v.lrNo).split(',').map(s => s.trim()).forEach(x => existingLrs.push(x));
+                if (Array.isArray(v.deliveries)) {
+                    v.deliveries.forEach(d => {
+                        if (d.lrNo) String(d.lrNo).split(',').map(s => s.trim()).forEach(x => existingLrs.push(x));
+                    });
+                }
+                return inputLrs.some(lr => existingLrs.includes(lr));
             });
             if (alreadyUsed) setLrAlreadyUsed(true);
             return;
@@ -1504,18 +1557,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 const combinedDestination = [...new Set(rows.map(r => r.destination).filter(Boolean))].join(', ');
 
                 const assignedDriver = defaultDriverForTruck(truck);
+                const fetchedDate = rows[0].date || form.date;
+                const autoRate = (rows[0].freightRate || rows[0].rate)
+                    ? String(rows[0].freightRate || rows[0].rate)
+                    : (combinedDestination ? String(lookupDestinationRate(combinedDestination, fetchedDate) || '') : '');
+
                 setForm(f => ({
                     ...f,
+                    lrEntryId: rows[0].entryId || '',
                     truckNo: truck,
                     ...(f.driverId ? {} : { driverId: assignedDriver?.id || '', driverName: assignedDriver?.name || '' }),
-                    date: rows[0].date || f.date,
+                    date: fetchedDate,
                     weight: tw.toFixed(2),
                     bags: String(tb),
                     destination: combinedDestination || f.destination,
                     partyName: combinedPartyName || f.partyName,
                     partyCode: combinedPartyCode || f.partyCode,
                     materialName: combinedMaterialName,
-                    materials: materialsData
+                    materials: materialsData,
+                    ...(autoRate && autoRate !== '0' ? { rate: autoRate } : {})
                 }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
@@ -1557,6 +1617,16 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             alert('Truck No. is required');
             return;
         }
+
+        // Require at least one valid delivery row for factory vouchers before saving
+        if (isFactory) {
+            const hasValidDelivery = deliveries.some(d => (parseFloat(d.weight) > 0 || parseInt(d.bags) > 0 || String(d.lrNo || '').trim() || String(d.destination || '').trim() || String(d.partyName || '').trim()));
+            if (!hasValidDelivery) {
+                alert('Please enter at least one delivery entry (LR No., Destination, Party, Weight, or Bags)');
+                return;
+            }
+        }
+
         // Diesel advance without a station would create an unbillable "None"
         // row in the pump ledger.
         const pumpProblem = dieselPumpProblem(form.advanceDiesel, form.isFullTank, form.pump, pumpOptions);
@@ -1564,9 +1634,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
         // Check delivery LR duplicates for factory types
         if (isFactory) {
-            const duplicates = deliveries
-                .map(d => d.lrNo?.trim())
-                .filter(lr => lr && usedLRSet.has(lr));
+            const duplicates = [];
+            deliveries.forEach(d => {
+                if (d.lrNo) {
+                    const lrs = String(d.lrNo).split(',').map(x => x.trim()).filter(Boolean);
+                    lrs.forEach(lr => {
+                        if (usedLRSet.has(lr)) duplicates.push(lr);
+                    });
+                }
+            });
             if (duplicates.length > 0) {
                 setDupLRModal({ lrNos: [...new Set(duplicates)] });
                 return;
@@ -1620,14 +1696,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     await ax.post('/destinations/record', {
                         name: item.name,
                         rate: item.rate,
-                        date: form.date
+                        date: form.date,
+                        module: vType
                     }).catch(() => {});
                 }
             }
 
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             const newVoucher = res.data;
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [] }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [], remark: '' }));
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
 
@@ -1681,9 +1758,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     // Pagination Logic
     const paginatedVouchers = useMemo(() => {
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return filtered.slice(start, start + PAGE_SIZE);
-    }, [filtered, currentPage]);
+        const start = (currentPage - 1) * pageSize;
+        return filtered.slice(start, start + pageSize);
+    }, [filtered, currentPage, pageSize]);
 
     /* Totals row */
     const totals = useMemo(() => ({
@@ -1711,6 +1788,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             name: archiveName('Vouchers Export', vType, new Date().toISOString().slice(0, 10)),
         },
     });
+
+    if (tableLoading) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+                <TruckLoader size={130} text="Loading vouchers ledger..." />
+            </div>
+        );
+    }
 
     return (
         <>
@@ -1845,7 +1930,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     <StyledAutocomplete
                                                         value={form.destination}
                                                         onChange={val => {
-                                                            const autoRate = lookupDestinationRate(val, form.date);
+                                                            const autoRate = lookupDestinationRate(val, form.date, vType);
                                                             setForm(f => ({
                                                                 ...f,
                                                                 destination: val,
@@ -2140,6 +2225,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                             )}
 
+                                            <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                                                <label>Remarks</label>
+                                                <input className="fi" type="text" placeholder="Enter remarks (NOT printed on receipt)" value={form.remark || ''} onChange={e => set('remark', e.target.value)} />
+                                            </div>
+
                                             {/* ── Odometer KM fields — VGTC trucks only, all voucher types ── */}
                                             {isVGTCTruck(form.truckNo) && (
                                                 <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'inherit', gap: 'inherit' }}>
@@ -2221,13 +2311,86 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                         </div>
                     )}
 
+                    {/* Top Action Toolbar (Operates on checked rows) */}
+                    <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: selectedVouchers.size > 0 ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={paginatedVouchers.length > 0 && paginatedVouchers.every(v => selectedVouchers.has(v.id))}
+                                onChange={toggleSelectAllVouchers}
+                                title="Select All / Deselect All"
+                                style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                            />
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)' }}>
+                                Selected: <strong style={{ color: selectedVouchers.size > 0 ? '#6366f1' : 'var(--text)' }}>{selectedVouchers.size}</strong> of {filtered.length}
+                            </span>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            {canEdit && (
+                                <button
+                                    className="btn btn-g btn-sm"
+                                    disabled={selectedVouchers.size !== 1}
+                                    onClick={() => {
+                                        const firstId = Array.from(selectedVouchers)[0];
+                                        const target = vouchers.find(v => v.id === firstId);
+                                        if (target) setEditVoucher(target);
+                                    }}
+                                    title={selectedVouchers.size > 1 ? "Select exactly 1 entry to edit" : "Edit Checked Entry"}
+                                >
+                                    <Pencil size={13} /> Edit
+                                </button>
+                            )}
+                            <button
+                                className="btn btn-g btn-sm"
+                                disabled={selectedVouchers.size !== 1}
+                                onClick={() => {
+                                    const firstId = Array.from(selectedVouchers)[0];
+                                    const target = vouchers.find(v => v.id === firstId);
+                                    if (target) printVoucher(target, org, brand, signedBy);
+                                }}
+                                title={selectedVouchers.size > 1 ? "Select exactly 1 entry to print" : "Print Checked Entry"}
+                            >
+                                <Printer size={13} /> Print
+                            </button>
+                            {role === 'admin' && (
+                                <button
+                                    className="btn btn-d btn-sm"
+                                    disabled={selectedVouchers.size === 0}
+                                    onClick={() => {
+                                        const firstId = Array.from(selectedVouchers)[0];
+                                        const target = vouchers.find(v => v.id === firstId);
+                                        if (target) setDelVoucher(target);
+                                    }}
+                                    title="Delete Checked Entry (Admin Only)"
+                                >
+                                    <Trash2 size={13} /> Delete
+                                </button>
+                            )}
+                            {selectedVouchers.size > 0 && (
+                                <button className="btn btn-g btn-sm" onClick={() => setSelectedVouchers(new Set())} style={{ fontSize: '10px', marginLeft: '6px' }}>
+                                    Clear Selection
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Sheet table */}
                     <TableScroll className="tbl-cards">
                         <table className="tbl" style={{ minWidth: '1400px', width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                             <thead>
                                 <tr style={{ background: 'var(--bg-th)' }}>
-                                    <th style={{ ...TH, width: '40px', textAlign: 'center' }}>#</th>
+                                    <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', width: '38px', textAlign: 'center', padding: '6px 8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={paginatedVouchers.length > 0 && paginatedVouchers.every(v => selectedVouchers.has(v.id))}
+                                            onChange={toggleSelectAllVouchers}
+                                            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                                        />
+                                    </th>
+                                    <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', width: '40px', textAlign: 'center' }}>#</th>
                                     {[
+                                        { key: 'entryId', label: 'ID' },
                                         { key: 'lrNo', label: 'LR No.' },
                                         { key: 'date', label: 'Date' },
                                         { key: 'truckNo', label: 'Truck' },
@@ -2240,13 +2403,15 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         { key: 'advanceCash', label: 'Cash Adv.' },
                                         { key: 'advanceOnline', label: 'Online Adv.' },
                                         { key: 'munshi', label: 'Munshi' },
+                                        { key: 'extraCash', label: 'Extra Cash' },
                                         { key: 'total', label: 'Total (Rs)' },
+                                        { key: 'remark', label: 'Remarks' },
                                         ...(role === 'admin' ? [
                                             { key: 'createdBy', label: 'Created By' },
                                             { key: 'updatedBy', label: 'Updated By' }
                                         ] : []),
                                     ].map(col => (
-                                        <th key={col.key} style={{ ...TH, userSelect: 'none' }}>
+                                        <th key={col.key} style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', userSelect: 'none' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <div onClick={() => toggleSort(col.key)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     {col.label} <SortIcon col={col.key} />
@@ -2261,27 +2426,30 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             </div>
                                         </th>
                                     ))}
-                                    <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {tableLoading && filtered.length === 0 && (
-                                    [1, 2, 3, 4, 5].map(i => (
-                                        <tr key={`sk-${i}`} className="skeleton-row">
-                                            {Array.from({ length: 15 }).map((_, j) => (
-                                                <td key={j}><span className="skeleton skeleton-text" /></td>
-                                            ))}
-                                        </tr>
-                                    ))
-                                )}
-                                {!tableLoading && filtered.length === 0 && (
-                                    <tr><td colSpan={15} style={{ padding: '40px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>No records found</td></tr>
+                                {filtered.length === 0 && (
+                                    <tr><td colSpan={role === 'admin' ? 20 : 18} style={{ padding: '40px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>No records found</td></tr>
                                 )}
                                 {paginatedVouchers.map((v, i) => (
                                     <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', transition: 'background 0.12s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-row-hover)'}
                                         onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'}>
-                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * PAGE_SIZE + i + 1}</td>
+                                        <td style={{ ...TD, textAlign: 'center', padding: '6px 8px' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedVouchers.has(v.id)}
+                                                onChange={() => toggleSelectVoucher(v.id)}
+                                                style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                                            />
+                                        </td>
+                                        <td className="t-card-hide" style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>{(currentPage - 1) * pageSize + i + 1}</td>
+                                        <td data-label="ID" style={{ ...TD }}>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
+                                                #{v.entryId || '—'}
+                                            </span>
+                                        </td>
                                         <td className="t-card-title" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -2291,7 +2459,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 </div>
                                                 : <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</span>}
                                         </td>
-                                        <td data-label="Date" style={{ ...TD, whiteSpace: 'nowrap' }}>{v.date}</td>
+                                        <td data-label="Date" style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(v.date)}</td>
                                         <td data-label="Truck" style={{ ...TD, fontWeight: 700 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 {v.truckNo}
@@ -2314,6 +2482,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     ))}
                                                 </div>
                                                 : v.destination || '—'}
+                                            {v.remark && <div style={{ fontSize: '10.5px', color: '#8b5cf6', fontWeight: 600, marginTop: '3px' }}>📝 {v.remark}</div>}
                                         </td>
                                         <td data-label="Weight" style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>
                                             {v.deliveries?.length > 0
@@ -2352,6 +2521,18 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                         <td data-label="Cash Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
                                         <td data-label="Online Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
                                         <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
+                                        <td data-label="Extra Cash" style={{ ...TD, textAlign: 'right' }}>
+                                            {(() => {
+                                                const extraVal = parseFloat(v.extraCash) || 0;
+                                                const extrasListVal = Array.isArray(v.extras) ? v.extras.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0) : 0;
+                                                const totalExtra = extraVal || extrasListVal;
+                                                return totalExtra > 0 ? (
+                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '5px' }}>
+                                                        ₹{totalExtra.toLocaleString('en-IN')}
+                                                    </span>
+                                                ) : '—';
+                                            })()}
+                                        </td>
                                         <td data-label="Total" style={{ ...TD, textAlign: 'right' }}>
                                             {(() => {
                                                 const n = getNet(v);
@@ -2380,19 +2561,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 );
                                             })()}
                                         </td>
+                                        <td data-label="Remarks" style={{ ...TD }}>
+                                            {v.remark ? <span style={{ color: '#8b5cf6', fontWeight: 600 }}>📝 {v.remark}</span> : '—'}
+                                        </td>
                                         {role === 'admin' && <td data-label="Created By" style={{ ...TD }}>{v.createdBy || '—'}</td>}
                                         {role === 'admin' && <td data-label="Updated By" style={{ ...TD }}>{v.updatedBy || '—'}</td>}
-                                        <td className="t-card-actions" style={{ ...TD, textAlign: 'center' }}>
-                                            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                                                <button className="btn btn-g btn-icon btn-sm" title="Print" onClick={() => printVoucher(v, org, brand, signedBy)}><Printer size={13} /></button>
-                                                {canEdit && (
-                                                    <button className="btn btn-g btn-icon btn-sm" title="Edit" onClick={() => setEditVoucher(v)}><Pencil size={13} /></button>
-                                                )}
-                                                {role === 'admin' && (
-                                                    <button className="btn btn-d btn-icon btn-sm" title="Delete" onClick={() => setDelVoucher(v)}><Trash2 size={13} /></button>
-                                                )}
-                                            </div>
-                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -2403,8 +2576,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     <Pagination
                         currentPage={currentPage}
                         totalItems={filtered.length}
-                        pageSize={PAGE_SIZE}
+                        pageSize={pageSize}
                         onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
                     />
                 </div>
             </div>

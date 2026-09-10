@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const partyService = require('../services/partyService');
 
-// Require authentication middleware (assuming it exists and is used globally or here)
 const { requireAuth } = require('../middleware/auth');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 router.use(requireAuth, tenancyMiddleware);
@@ -24,6 +23,77 @@ router.post('/', async (req, res) => {
         res.status(201).json(party);
     } catch (e) {
         res.status(400).json({ error: e.message });
+    }
+});
+
+// POST /api/parties/sync — scan vouchers + ALL LR collections for unique
+// partyName values and create a party record for each name not yet in the master.
+router.post('/sync', async (req, res) => {
+    try {
+        const { db, isAvailable } = require('../firebase');
+        const { getCol } = require('../utils/collectionUtils');
+
+        if (!isAvailable()) return res.status(503).json({ error: 'Database not available' });
+
+        const orgId = req.orgId;
+
+        // All LR collection base names — one per plant / brand
+        const lrBases = [
+            'loading_receipts',
+            'kosli_loading_receipts',
+            'jhajjar_loading_receipts',
+            'bahadurgarh_loading_receipts',
+            'jkl_loading_receipts',
+        ];
+
+        const voucherCol = getCol('vouchers', req);
+        const lrCols = lrBases.map(b => getCol(b, req));
+
+        // Fetch all collections in parallel
+        const [vSnap, ...lrSnaps] = await Promise.all([
+            db.collection(voucherCol).where('orgId', '==', orgId).get(),
+            ...lrCols.map(col => db.collection(col).where('orgId', '==', orgId).get()),
+        ]);
+
+        // Collect unique normalised (UPPERCASE) party names
+        const uniqueNames = new Set();
+        const addName = (raw) => {
+            const n = (raw || '').trim().toUpperCase();
+            if (n) uniqueNames.add(n);
+        };
+        vSnap.docs.forEach(d => addName(d.data().partyName));
+        lrSnaps.forEach(snap => snap.docs.forEach(d => addName(d.data().partyName)));
+
+        // Skip names that already have a party record
+        const existingParties = await partyService.getAllParties(orgId);
+        const existingNames = new Set(existingParties.map(p => (p.name || '').toUpperCase().trim()));
+
+        const toCreate = [...uniqueNames].filter(n => !existingNames.has(n));
+
+        let created = 0;
+        const createdNames = [];
+        for (const name of toCreate) {
+            try {
+                await partyService.createParty(orgId, {
+                    name,
+                    type: 'customer',
+                    brands: [],         // untagged — visible in every module
+                    isActive: true,
+                    openingBalance: 0,
+                    balanceType: 'credit',
+                });
+                created++;
+                createdNames.push(name);
+            } catch (err) {
+                // Gracefully skip race-condition duplicates
+                if (!err.message?.includes('already exists')) throw err;
+            }
+        }
+
+        const skipped = uniqueNames.size - created;
+        res.json({ created, skipped, total: uniqueNames.size, names: createdNames });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -80,6 +150,21 @@ router.get('/:id/ledger', async (req, res) => {
         res.json({ vouchers, lrs, summary: { trips: vouchers.length, lrCount: lrs.length, totalNet, totalPaid, outstanding, lastActivity: vouchers[0]?.date || lrs[0]?.date || null } });
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE /api/parties/bulk — delete multiple parties at once (body: { ids: [...] })
+// NOTE: must be declared before /:id so Express doesn't treat 'bulk' as an id param.
+router.delete('/bulk', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'ids array is required' });
+        }
+        await Promise.all(ids.map(id => partyService.deleteParty(id)));
+        res.json({ message: `${ids.length} parties deleted` });
+    } catch (e) {
+        res.status(400).json({ error: e.message });
     }
 });
 

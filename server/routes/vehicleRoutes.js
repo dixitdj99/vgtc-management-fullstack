@@ -5,14 +5,14 @@ const advanceService = require('../services/vehicleAdvanceService');
 const alertService = require('../services/alertService');
 const { getCol } = require('../utils/collectionUtils');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requirePermission } = require('../middleware/auth');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
 const BASE_COL = 'vehicles';
 
 // Create
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('vehicle', 'edit'), async (req, res) => {
     try {
         const result = await vehicleService.createVehicle(req.orgId, req.body, getCol(BASE_COL, req));
         res.status(201).json(result);
@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
 });
 
 // Deduct GPS Fees Monthly
-router.post('/deduct-gps', async (req, res) => {
+router.post('/deduct-gps', requirePermission('vehicle', 'edit'), async (req, res) => {
     try {
         const vehicles = await vehicleService.getAllVehicles(req.orgId, getCol(BASE_COL, req));
         const gpsVehicles = vehicles.filter(v => v.gpsType && v.gpsType !== 'none');
@@ -80,7 +80,7 @@ router.get('/alerts/vehicle/:id', async (req, res) => {
 });
 
 // Delete full owner with all their vehicles
-router.delete('/owners', async (req, res) => {
+router.delete('/owners', requirePermission('vehicle', 'delete'), async (req, res) => {
     try {
         const result = await vehicleService.deleteOwnerWithVehicles(req.orgId, req.body, getCol(BASE_COL, req));
         res.json({
@@ -93,7 +93,7 @@ router.delete('/owners', async (req, res) => {
 });
 
 // Update
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requirePermission('vehicle', 'edit'), async (req, res) => {
     try {
         await vehicleService.updateVehicle(req.orgId, req.params.id, req.body, getCol(BASE_COL, req));
         res.json({ message: 'Vehicle updated' });
@@ -103,7 +103,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // Delete
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission('vehicle', 'delete'), async (req, res) => {
     try {
         await vehicleService.deleteVehicle(req.params.id, getCol(BASE_COL, req));
         res.json({ message: 'Vehicle deleted' });

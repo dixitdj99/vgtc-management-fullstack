@@ -11,6 +11,7 @@ const COLLECTION_DESTINATIONS = 'destinations';
  */
 const normalizeDestination = (data = {}) => {
     const name = String(data.name || '').trim().toUpperCase();
+    const module = String(data.module || 'all').trim();
     const rateHistory = Array.isArray(data.rateHistory) ? data.rateHistory : [];
     
     // Sort rate history by startDate asc
@@ -28,6 +29,7 @@ const normalizeDestination = (data = {}) => {
     return {
         ...data,
         name,
+        module,
         currentRate,
         rateHistory,
     };
@@ -150,10 +152,11 @@ const getDestinationById = async (orgId, id) => {
 const createDestination = async (orgId, data) => {
     const name = String(data.name || '').trim().toUpperCase();
     if (!name) throw new Error('Destination name is required');
+    const module = String(data.module || 'all').trim();
 
     const all = await getAllDestinations(orgId, { autoSync: false });
-    if (all.some(d => d.name === name)) {
-        throw new Error(`Destination "${name}" already exists`);
+    if (all.some(d => d.name === name && (d.module || 'all') === module)) {
+        throw new Error(`Destination "${name}" already exists for module "${module}"`);
     }
 
     const rate = Number(data.rate) || 0;
@@ -166,6 +169,7 @@ const createDestination = async (orgId, data) => {
 
     const payload = normalizeDestination({
         name,
+        module,
         currentRate: rate,
         rateHistory,
     });
@@ -179,12 +183,14 @@ const updateDestination = async (orgId, id, data) => {
     if (!existing) throw new Error('Destination not found');
 
     const name = data.name ? String(data.name).trim().toUpperCase() : existing.name;
+    const module = data.module ? String(data.module).trim() : (existing.module || 'all');
     let rateHistory = Array.isArray(data.rateHistory) ? data.rateHistory : existing.rateHistory;
 
     const payload = normalizeDestination({
         ...existing,
         ...data,
         name,
+        module,
         rateHistory,
     });
 
@@ -242,21 +248,33 @@ const deleteDestination = async (id) => {
     return { success: true };
 };
 
-const getRateForDate = async (orgId, name, dateStr) => {
+const getRateForDate = async (orgId, name, dateStr, moduleType) => {
     if (!name) return 0;
     const cleanName = String(name).trim().toUpperCase();
+    const targetModule = moduleType ? String(moduleType).trim() : '';
     const all = await getAllDestinations(orgId, { autoSync: false });
-    const dest = all.find(d => d.name === cleanName);
+
+    let dest = null;
+    if (targetModule) {
+        dest = all.find(d => d.name === cleanName && d.module === targetModule);
+    }
+    if (!dest) {
+        dest = all.find(d => d.name === cleanName && (!d.module || d.module === 'all'));
+    }
+    if (!dest) {
+        dest = all.find(d => d.name === cleanName);
+    }
     if (!dest) return 0;
 
     return lookupRateForDate(dest.rateHistory, dest.currentRate, dateStr);
 };
 
-const autoRecordDestination = async (orgId, { name, rate, date }) => {
+const autoRecordDestination = async (orgId, { name, rate, date, module }) => {
     if (!name) return null;
     const cleanName = String(name).trim().toUpperCase();
+    const targetModule = module ? String(module).trim() : 'all';
     const all = await getAllDestinations(orgId, { autoSync: false });
-    const existing = all.find(d => d.name === cleanName);
+    const existing = all.find(d => d.name === cleanName && (d.module || 'all') === targetModule);
 
     if (existing) {
         return existing; // Already exists, do not overwrite list rate
@@ -267,6 +285,7 @@ const autoRecordDestination = async (orgId, { name, rate, date }) => {
     const startDate = date || new Date().toISOString().split('T')[0];
     return await createDestination(orgId, {
         name: cleanName,
+        module: targetModule,
         rate: numericRate,
         startDate,
         endDate: null

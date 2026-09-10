@@ -613,3 +613,206 @@ Three things were measured before touching anything:
       write, no-permission is refused, admin bypasses, a multi-key route accepts
       any one key, and the catalogue covers every nav key. That last one is the
       guard that would have caught the attendance/lr_dump gap.
+
+---
+
+## Admin panel — professional UI/UX pass (2026-08-20)
+
+Reference: a SaaS permissions screen (user list on the left, a slide-over on the
+right with a profile header, a role selector, one switch per permission, and a
+sticky Save). Goal was to bring the admin surfaces up to that standard *and*
+make every control on them actually work.
+
+### What was wrong
+
+- **Two admin surfaces, two copies of user management.** `/admin/*` →
+  `AdminLayout` → `AdminUserManagement`, and the in-app Settings tab →
+  `AdminPage`, which carried its own create form, OTP handshake, user table and
+  labour-worker CRUD. They had already drifted:
+  - AdminPage filtered copy-from-user with `u.id !== editTarget` where
+    `editTarget` is the user *object*, so the comparison was always true and it
+    offered the account being edited as a source for its own permissions.
+  - `isOtpEnabled` lived in both forms' state with **no control to set it**, so
+    two-factor at login could never be turned on for anybody.
+  - AdminPage's role guard returned before half its `useState` calls, making
+    hook order depend on `me.role`.
+- **The permission editor rendered eight keys four times each.** Permission keys
+  are global — `pay` is one value on the user record — but the editor walked the
+  location groups verbatim. `pay`, `vehicle`, `mileage`, `attendance`,
+  `sell`, `balance_all`, `loading_status` and `lr_dump` appeared under every
+  location, all bound to the same value. Flipping one appeared to flip the
+  others, and a location's "All view" silently rewrote what the rest displayed.
+- **"Changed (n)" diffed against the wrong user.** The baseline was captured
+  once with `useState(() => ({ ...permissions }))` and never reset, so after
+  clicking a second user it was still comparing against the first one's grants.
+- **Nothing said what a module does.** Rows read "Balance — JK Super" with no
+  hint of what the grantee would see.
+- **Admins were shown a permission editor they bypass.** `App.jsx` returns true
+  for every nav key when `role === 'admin'`; the editor gave no sign of that.
+- Alerts instead of toasts on the worker CRUD, no validation before the OTP was
+  sent, no resend cooldown, no loading skeletons, no empty states, no unsaved
+  guard, self-deletion offered, last-admin deletion offered.
+
+### What changed
+
+- [x] `pages/admin/admin.css` — one namespaced (`.adm-`) design system built
+      entirely on the index.css theme variables, so the same rules render in the
+      always-dark `/admin` shell and in whatever theme the in-app tab is under.
+      Panels, tabs, buttons, inputs, switches, level chips, permission rows,
+      chips, callouts, data rows, drawer, OTP boxes, skeletons, empty states.
+- [x] `permissions/catalogue.js` — a `hint` on every current module;
+      `isSharedKey` / `SHARED_GROUPS` / `LOCATION_SECTIONS` split the eight
+      company-wide keys out of the per-location duplication; the dev assert now
+      also catches the hand-written and derived lists drifting apart.
+- [x] `components/PermissionEditor.jsx` — rewritten. Each key renders exactly
+      once. Switch turns a module on (defaults to View); View/Edit/Delete chips
+      appear inline once it is on. Location access is its own section with a
+      warning when nothing is selected. Baseline re-bases on `resetKey`.
+      Search, changed-only, copy-from-user, per-group and per-location bulk set,
+      legacy keys behind a disclosure, empty state when a filter matches nothing.
+- [x] `pages/admin/AdminUserManagement.jsx` — rewritten as list + slide-over.
+      Stat strip, role filter tabs, search, multi-select with a bulk bar,
+      skeletons, empty states, retry on load failure. The drawer carries account
+      details, a password generator with reveal/copy, the **two-factor switch
+      that never existed**, a role picker with the admin-bypass explained, and
+      the permission editor. Six-box OTP entry with auto-advance, paste and a
+      30-second resend cooldown; step one's input survives a failed code.
+      Unsaved-changes guard on ESC, backdrop and close. Self-deletion and
+      last-admin deletion are blocked, self-demotion from admin is blocked.
+      Labour workers moved to their own tab with edit, search and toasts.
+- [x] `pages/AdminPage.jsx` — its duplicate user management deleted; it renders
+      the same `AdminUserManagement`. Tabs grouped (People / Master data /
+      System) and persisted. Role guard moved below the hooks. The organisation
+      fields the settings endpoint already round-tripped now have inputs.
+- [x] `pages/admin/AdminLayout.jsx` — grouped sidebar with collapse persisted,
+      breadcrumb topbar, proper mobile drawer, Destination Rates added for
+      parity. The redirect moved out of render into an effect. The `!important`
+      block that forced every bare `input`/`select`/`.btn-*` dark is gone — it
+      sets the theme variables instead, which is what let the new switches,
+      chips and coloured buttons style themselves.
+
+### Verified
+
+- `npm run test:client` — 105 assertions pass across 4 files, including the new
+  `permissions/catalogue.test.js` (24 assertions) that pins the invariant the
+  rewrite depends on: every current key renders exactly once, `SHARED_GROUPS`
+  matches what `isSharedKey` derives, locations keep only their own modules, and
+  `summarise` counts unique keys rather than rendered rows.
+- `npx vite build` — clean, 2155 modules.
+- Grepped the removed identifiers (`SPerm`, `handleCreateWorker`, `sysSettings`,
+  `getModuleIcon`, …) with word boundaries per `lessons.md`; nothing dangles.
+
+### Not done
+
+- No browser automation is available in this environment, so the screens were
+  not clicked through. Build and unit tests pass; the visual result is unverified
+  against a running app.
+- `navPermKeys` still is not passed to the editor, so the nav-vs-catalogue half
+  of the dev assert stays dormant. Wiring it needs the NAV list exported from
+  `App.jsx`.
+- The server still substitutes org default permissions when a created user is
+  sent an empty `permissions` object. The editor warns "No access granted yet",
+  but the two disagree about what that means.
+
+### Follow-up — trimming the drawer (2026-08-20)
+
+Feedback on the create-user drawer: the **Changed** filter had been switched on
+and left the whole permission panel showing "No modules match / Nothing has been
+changed in this panel yet" — a dead end reached in one click, on a screen where
+nothing *can* have changed yet because the account does not exist.
+
+- [x] Removed the Changed filter entirely — the button, the `changedOnly` state
+      and its branch in the empty state.
+- [x] The per-row change dots are now gated behind a `showChanges` prop, passed
+      only when editing an existing account. Creating one marks every grant as
+      new, so a dot on each said nothing.
+- [x] Dropped the three-line info banner about View/Edit/Delete; the legend is
+      one muted phrase on the summary line instead.
+- [x] Dropped the "Show legacy keys" link. The section still appears for the
+      accounts that hold a legacy key, but offering to reveal superseded keys on
+      every new user was an invitation to set one.
+- [x] Single-group sections (Kosli, Jhajjar, Bahadurgarh) no longer repeat the
+      bulk view/edit/none links — the section header already covers exactly the
+      same modules.
+- [x] Drawer footer no longer restates the unsaved state; the header chip and
+      the disabled Save button already say it.
+- [x] Role cards given `minHeight` and explicit wrapping so the two-line
+      description cannot clip in a narrow drawer.
+
+### Follow-up — flattening the drawer form (2026-08-20)
+
+"Where is the user name and email form" was the right question to ask of it. The
+four inputs sat inside a card, inside a drawer, behind a 60px panel header with
+an icon tile and a subtitle — and that header is what scrolled off the top,
+leaving an unlabelled text box as the first thing on screen.
+
+- [x] `.adm-sec` / `.adm-sec-hd` / `.adm-fields` / `.adm-toggle-row` in admin.css
+      — a ruled uppercase label instead of a card header. One line of chrome,
+      eight pixels from the fields it names, rather than sixty.
+- [x] Account details, Role and the admin-bypass notice are flat sections now,
+      not nested panels.
+- [x] Fields laid out two per row that collapse to one under 210px each:
+      **Name | Username** then **Email | Password**. Two rows instead of three,
+      so the whole form is visible without scrolling in a 640px drawer.
+- [x] Two-factor moved out of the permission-row styling into its own
+      `.adm-toggle-row`, which is what it always was.
+- [x] Location access is a chip row under a small label, not a card.
+- [x] The permission editor opens with a "Module access" section label carrying
+      the View/Edit/Delete legend, so all three sections of the drawer read the
+      same way.
+- [x] Field hints shortened — "Usernames cannot be changed once created" →
+      "Cannot be changed", and similar. They sit under the input, where the
+      shortest true sentence wins.
+
+### Follow-up — the tab strip had no scrollbar (2026-08-20)
+
+Ten tabs do not fit an admin-hub header at most widths, and the strip was set to
+`scrollbar-width: none` with `::-webkit-scrollbar { display: none }`. It scrolled
+fine but gave no sign it could, so "Email & Organisation" and "Google Drive
+Backup" were simply invisible.
+
+- [x] `.adm-tabs` now shows a 7px themed scrollbar — `scrollbar-width: thin` for
+      Firefox, a styled thumb for WebKit. Written as `.adm .adm-tabs::-webkit-…`
+      so it outranks the generic `.adm ::-webkit-scrollbar` that AdminLayout
+      injects for its page scrollers, which would otherwise win on source order.
+- [x] Bottom padding raised to 7px so the bar sits under the labels, not on them.
+- [x] `.adm-tabs--plain` for the role filter inside the users panel header —
+      same scroll behaviour without the pill chrome, replacing an inline style
+      whose `padding: 0` would have put the bar through the text.
+- [x] The active tab scrolls itself into view. The tab is restored from
+      localStorage, so landing on "Google Drive Backup" used to show a strip
+      with nothing apparently selected.
+
+### Follow-up — shelve Generate Invoice, drop the NEW badges (2026-08-20)
+
+- [x] **NEW badges gone.** All 12 `badge: 'NEW'` entries removed from the NAV
+      list in App.jsx, plus the render branch and the `.nav-badge-new` rule and
+      its `pulseGlow` keyframes in index.css. Every module carrying one had been
+      in daily use for months, so the badge had stopped meaning "new" and was a
+      pulsing green dot competing with the active-item indicator. `SOON` stays —
+      it marks a nav entry that is actually disabled.
+
+- [x] **Generate Invoice shelved**, not deleted:
+      - Both nav entries (`invoice_dump`, `invoice_jharli`) and all three render
+        branches removed, along with the `InvoiceModule` import and the
+        `invoice_dump` line in `HIDDEN_AT_DUMP_GODOWNS`.
+      - `invoice_jkl` and `invoice_main` render branches went with them — no nav
+        entry had referenced either for some time.
+      - The `invoice` key is out of `MODULES` and the `jharli_shared` group, so
+        it can no longer be granted from the admin panel. Granting access to a
+        screen with no way to reach it is worse than not offering it.
+      - `UPDATE_ITEMS` lost the "Tax Invoice Generator" release note.
+      - A saved `vgtc-active` of `invoice_*` now falls back to the dashboard,
+        alongside the existing `lr_kosli`/`lr_jhajjar` migration. Without it,
+        anyone whose last-used module was Generate Invoice would open to a blank
+        page with no nav entry to leave by.
+
+      Deliberately left alone so this is one commit to revert:
+      `modules/InvoiceModule.jsx`, `server/routes/invoiceRoutes.js`, the
+      `app.use('/api/invoices', …, gate('invoice'), …)` mount, and every existing
+      `invoice` grant on a user record. ProfitLossSheet still reads `/invoices`
+      for its GST figures and is unaffected.
+
+- [x] `catalogue.test.js` updated: Jharli's own keys no longer include
+      `invoice`, plus a new assertion that the key is offered nowhere.
+      25 assertions, 106 across the suite.

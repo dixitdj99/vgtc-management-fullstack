@@ -18,14 +18,14 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
-import InvoiceModule from './modules/InvoiceModule';
-import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard, HardHat } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import StaffProfileModule from './modules/StaffProfileModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
+import LabourAccount from './modules/LabourAccount';
 import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
 import {
@@ -79,13 +79,14 @@ const DUMP_GODOWNS = new Set(['kosli', 'jhajjar', 'bahadurgarh']);
 const HIDDEN_AT_DUMP_GODOWNS = new Set([
   'cashbook_dump',      // Cashbook
   'pay_dump',           // Pay
+  'labour_dump',        // Labour Account
   'trip_profit_dump',   // Trip Profit Analysis
   'vehicles_dump',      // Fleet Management
   'diesel_dump',        // Diesel Control
   'mileage_dump',       // Mileage Tracker
   'tyres_dump',         // Tyre Management
   'vendors_dump',       // Market Vehicles
-  'invoice_dump',       // Generate Invoice
+  'invoice_dump',       // Invoicing
 ]);
 
 // Release notes shown in the notification panel. Lifted out of the JSX so the
@@ -115,14 +116,6 @@ const UPDATE_ITEMS = [
     icon: ClipboardList,
     color: '#ec4899',
   },
-  {
-    id: 'n5',
-    title: 'Tax Invoice Generator',
-    desc: 'Generate Invoice is live — upload the plant Excel and create JK Super freight bills. More invoice formats coming.',
-    time: 'New',
-    icon: FileText,
-    color: '#10b981',
-  }
 ];
 
 function AppInner() {
@@ -132,6 +125,9 @@ function AppInner() {
     if (window.location.pathname.startsWith('/admin') && window.location.pathname !== '/admin/login') return 'admin_settings';
     let saved = localStorage.getItem('vgtc-active');
     if (saved === 'lr_kosli' || saved === 'lr_jhajjar') { saved = 'lr_dump'; localStorage.setItem('vgtc-active', 'lr_dump'); }
+    // Generate Invoice is shelved. Anyone whose last-used module was one of its
+    // screens would otherwise open to a blank page with no nav entry to leave by.
+    if (saved && saved.startsWith('invoice_')) { saved = 'dashboard'; localStorage.setItem('vgtc-active', 'dashboard'); }
     // One-time landing on the new Dashboard; afterwards last-used module is respected
     if (!localStorage.getItem('vgtc-nav-v2')) {
       localStorage.setItem('vgtc-nav-v2', '1');
@@ -487,25 +483,25 @@ function AppInner() {
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
-    { id: 'vehicle_credit_debit_dump', label: 'Vehicle Credit & Debit', Icon: CreditCard, color: '#10b981', section: 'jksuper', permKey: 'pay', badge: 'NEW' },
+    { id: 'vehicle_credit_debit_dump', label: 'Vehicle Credit & Debit', Icon: CreditCard, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'vehicles_dump', label: 'Fleet Management', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'truck_dashboard', label: 'Fleet Dashboard', Icon: BarChart3, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
-    { id: 'tyres_dump', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle', badge: 'NEW' },
+    { id: 'tyres_dump', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
     { id: 'pay_dump', label: 'Pay', Icon: Banknote, color: '#10b981', section: 'jksuper', permKey: 'pay', sub: [
         { id: 'freight', label: 'Freight Pay' },
         { id: 'online', label: 'Online Advances' },
         { id: 'vehicle_advances', label: 'Vehicle Credit & Debit' },
-        { id: 'firm', label: 'Firm Pay' },
-        { id: 'staff', label: 'Staff Pay' },
+        { id: 'labour', label: 'Labour Account' },
+        { id: 'staff', label: 'Profile Pay' },
       ]
     },
+    { id: 'labour_dump', label: 'Labour Account', Icon: HardHat, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'invoice_dump', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jksuper', permKey: 'invoice', badge: 'NEW' },
-    { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle', badge: 'NEW' },
-    { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance', badge: 'NEW' },
+    { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
+    { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
+    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -544,24 +540,24 @@ function AppInner() {
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
-    { id: 'vehicle_credit_debit_jharli', label: 'Vehicle Credit & Debit', Icon: CreditCard, color: '#10b981', section: 'jharli', permKey: 'pay', badge: 'NEW' },
+    { id: 'vehicle_credit_debit_jharli', label: 'Vehicle Credit & Debit', Icon: CreditCard, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'vehicles_jharli', label: 'Fleet Management', Icon: Truck, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
     { id: 'diesel_jharli', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jharli', permKey: 'diesel' },
     { id: 'mileage_jharli', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jharli', permKey: 'mileage' },
-    { id: 'tyres_jharli', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jharli', permKey: 'vehicle', badge: 'NEW' },
+    { id: 'tyres_jharli', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
     { id: 'pay_jharli', label: 'Pay', Icon: Banknote, color: '#10b981', section: 'jharli', permKey: 'pay', sub: [
         { id: 'freight', label: 'Freight Pay' },
         { id: 'online', label: 'Online Advances' },
         { id: 'vehicle_advances', label: 'Vehicle Credit & Debit' },
-        { id: 'firm', label: 'Firm Pay' },
-        { id: 'staff', label: 'Staff Pay' },
+        { id: 'labour', label: 'Labour Account' },
+        { id: 'staff', label: 'Profile Pay' },
       ]
     },
+    { id: 'labour_jharli', label: 'Labour Account', Icon: HardHat, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
-    { id: 'invoice_jharli', label: 'Generate Invoice', Icon: FileText, color: '#10b981', section: 'jharli', permKey: 'invoice', badge: 'NEW' },
-    { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle', badge: 'NEW' },
-    { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay', badge: 'NEW' },
-    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance', badge: 'NEW' },
+    { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
+    { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay' },
+    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -676,21 +672,12 @@ function AppInner() {
 
   if (path === '/admin/login') return <AdminLoginPage />;
 
-  if (!ready) return (
-    <div style={{
-      height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
-      color: 'var(--text-muted)'
-    }}>
-      <TruckLoader
-        size={160}
-        text={isWakingUp ? 'Waking up server...' : 'Loading VGTC...'}
-        subText={isWakingUp ? 'Server spins down after inactivity. Please wait ~50 seconds.' : 'Authenticating your session'}
-      />
-    </div>
-  );
+
 
   // Admin portal route handling
   if (path.startsWith('/admin') && path !== '/admin' && path !== '/admin/login') return <AdminLayout />;
+
+  if (!ready && !user) return null;
 
   if (!user) return <LoginPage />;
 
@@ -715,7 +702,7 @@ function AppInner() {
       {(id === 'balance_all_dump' || id === 'balance_all_jharli') && <AllBalanceSheet role={user.role} permissions={user.permissions} />}
       {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
-      {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule />}
+      {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule cashbookType={id === 'vehicle_credit_debit_jharli' ? 'jkl' : 'dump'} />}
       {id === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="kosli" />}
       {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
       {id === 'stock_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="bahadurgarh" />}
@@ -752,13 +739,12 @@ function AppInner() {
       {(id === 'tyres_dump' || id === 'tyres_jkl' || id === 'tyres_jharli') && <TyreModule />}
       {(id === 'pay_dump' || id === 'pay_jkl' || id === 'pay_jharli') && <PayModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} initialView={sub || 'freight'} />}
       {(id === 'sell_dump' || id === 'sell_jkl' || id === 'sell_jharli') && <SellModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-      {(id === 'invoice_dump' || id === 'invoice_jharli') && <InvoiceModule brand={id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
-      {(id === 'invoice_jkl') && <InvoiceModule brand="jkl" role={user.role} permissions={user.permissions} />}
       {(id === 'admin_loading_status_dump' || id === 'admin_loading_status_jkl' || id === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
       {(id === 'party_master_dump' || id === 'party_master_jharli') && <PartyMaster />}
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
       {(id === 'attendance_dump' || id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
+      {(id === 'labour_dump' || id === 'labour_jharli' || id === 'labour_main') && <LabourAccount canEdit={user.role === 'admin' || user.permissions?.pay === 'edit'} />}
       {/* ── Generic (non-VGTC orgs) ── */}
       {id === 'lr_main' && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
       {id === 'voucher_main' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Bill'} brand="main" />}
@@ -774,7 +760,6 @@ function AppInner() {
       {id === 'tyres_main' && <TyreModule />}
       {id === 'pay_main' && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
       {id === 'sell_main' && <SellModule brand="main" role={user.role} permissions={user.permissions} />}
-      {id === 'invoice_main' && <InvoiceModule brand="main" role={user.role} permissions={user.permissions} />}
       {id === 'realtime_main' && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
     </>
   );
@@ -866,7 +851,6 @@ function AppInner() {
                         with the accent-coloured label in dark. */}
                     <Icon size={20} color={active === id ? color : 'currentColor'} />
                     {!col && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
-                    {!col && badge === 'NEW' && <span className="nav-badge-new">NEW</span>}
                     {!col && badge === 'SOON' && <span className="nav-badge-soon">SOON</span>}
                     {!col && sub && (
                       <ChevronRight size={14} style={{ transition: 'transform 0.2s', transform: expanded[id] ? 'rotate(90deg)' : 'none', opacity: 0.5 }} />
@@ -904,7 +888,7 @@ function AppInner() {
 
             // Sidebar groups — module ids map by prefix; unknown ids fall through ungrouped
             const groupOf = (id) => {
-              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|invoice_|realtime_|attendance_)/.test(id)) return 'Operations';
+              if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|realtime_|attendance_)/.test(id)) return 'Operations';
               if (/^(balance_|cashbook_|pay_|trip_profit_|vehicle_credit_debit_)/.test(id)) return 'Money';
               if (/^(vehicles_|truck_dashboard|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
               return null;
@@ -1469,10 +1453,30 @@ function AppInner() {
             initial={{ opacity: 0, y: 50, x: '-50%' }}
             animate={{ opacity: 1, y: 0, x: '-50%' }}
             exit={{ opacity: 0, y: 50, x: '-50%' }}
-            style={{ position: 'fixed', bottom: '24px', left: '50%', background: '#f59e0b', color: '#000', padding: '12px 24px', borderRadius: '30px', fontSize: '13px', fontWeight: 800, zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 25px rgba(245,158,11,0.4)', pointerEvents: 'none' }}
+            style={{
+              position: 'fixed',
+              bottom: '24px',
+              left: '50%',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+              padding: '10px 20px',
+              borderRadius: '30px',
+              fontSize: '13px',
+              fontWeight: 800,
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+              pointerEvents: 'none'
+            }}
           >
-            <div style={{ width: '16px', height: '16px', border: '3px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-            Waking up remote server... (up to 50s)
+            <TruckLoader size={45} />
+            <div>
+              <div>Waking up remote server...</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Please wait (~50 seconds)</div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

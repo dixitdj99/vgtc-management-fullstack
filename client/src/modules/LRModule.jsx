@@ -18,6 +18,7 @@ import { openReceiptWindow, RECEIPT_WIDTH_MM } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 import TableScroll from '../components/TableScroll';
+import { fmtDate } from '../utils/format';
 
 const PAGE_SIZE = 20;
 
@@ -38,7 +39,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
     if (!value) return suggestions.slice(0, 50);
     const search = value.toLowerCase();
     return suggestions.filter(item => {
-      const str = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+      const str = typeof item === 'string' ? item : (item.label || item.value || item.truckNo || item.name || '');
       return str.toLowerCase().includes(search);
     }).slice(0, 50);
   }, [value, suggestions]);
@@ -78,7 +79,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
       if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
         e.preventDefault();
         const item = filtered[highlightedIndex];
-        const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
+        const displayVal = typeof item === 'string' ? item : (item.label || item.value || item.truckNo || item.name || '');
         onChange({ target: { value: displayVal } });
         setIsOpen(false);
       }
@@ -115,8 +116,8 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
           marginTop: '4px'
         }}>
           {filtered.map((item, idx) => {
-            const displayVal = typeof item === 'string' ? item : (item.truckNo || item.name || '');
-            const keyVal = typeof item === 'string' ? item : (item.id || item.truckNo || idx);
+            const displayVal = typeof item === 'string' ? item : (item.label || item.value || item.truckNo || item.name || '');
+            const keyVal = typeof item === 'string' ? item : (item.id || item.value || item.truckNo || idx);
             return (
               <div
                 key={keyVal}
@@ -227,7 +228,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
   const totalBags = rows.reduce((s, r) => s + (parseFloat(r.totalBags) || 0), 0);
   const totalWeight = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0).toFixed(2);
   const parties = [...new Set(rows.map(r => r.partyName).filter(Boolean))].join(' / ') || base.partyName;
-  const fmtDate = new Date(base.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const formattedDate = fmtDate(base.date);
   // The LR itself stores no driver — the truck does. An unassigned truck simply
   // prints an empty signature line, the same as before.
   const driverName = driverForTruck(base.truckNo, vehicles);
@@ -408,9 +409,12 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
           <div class="slip">LOADING SLIP · लोडिंग स्लिप</div>
         </div>
 
-        <div class="lr-row">
-          <span>नं0 / No. ${lrNo}</span>
-          <span>दिनांक / Date: ${fmtDate}</span>
+        <div class="lr-row" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2mm;">
+          <div style="display: flex; flex-direction: column; gap: 1mm; align-items: flex-start;">
+            ${base.entryId ? `<span style="font-size: 9.5pt; font-weight: 900; display: block;">ID / आईडी: #${base.entryId}</span>` : ''}
+            <span style="font-size: 10pt; font-weight: 900; display: block;">नं0 / No. ${lrNo}</span>
+          </div>
+          <span style="font-size: 9.5pt; font-weight: 900;">दिनांक / Date: ${fmtDate(base.date)}</span>
         </div>
 
         <div class="sec">
@@ -525,9 +529,12 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
           <div class="sub">VGTC, Jhamri Mod, Jharli, Jhajjar | 9416319445, 9728954901, 9728284849</div>
         </div>
 
-        <div class="lr-row">
-          <div class="lr-badge">LR # ${lrNo}</div>
-          <div class="lr-date"><strong>Date:</strong> ${fmtDate}</div>
+        <div class="lr-row" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+          <div style="display: flex; flex-direction: column; gap: 3px; align-items: flex-start;">
+            ${base.entryId ? `<div style="font-size: 13px; font-weight: 900; border: 1.5px solid #000; padding: 2px 8px; background: #fff;">ID #${base.entryId}</div>` : ''}
+            <div class="lr-badge">LR # ${lrNo}</div>
+          </div>
+          <div class="lr-date" style="font-size: 11px; font-weight: 800; text-align: right; margin-top: 2px;"><strong>Date:</strong> ${fmtDate(base.date)}</div>
         </div>
 
         <div class="sec">
@@ -1313,12 +1320,33 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [editRow, setEditRow] = useState(null);
   const [deleteRow, setDeleteRow] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showChalPopup, setShowChalPopup] = useState(false);
   const [chalPreFill, setChalPreFill] = useState(null);
   const [linkingLrId, setLinkingLrId] = useState(null);
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
   const [statusTarget, setStatusTarget] = useState(null); // { lr, nextStatus }
   const [statusSaving, setStatusSaving] = useState(false);
+  const [selectedLrs, setSelectedLrs] = useState(new Set());
+
+  const toggleSelectAllLrs = () => {
+    if (paginatedReceipts.length > 0 && paginatedReceipts.every(r => selectedLrs.has(r.id))) {
+      setSelectedLrs(new Set());
+    } else {
+      const next = new Set(selectedLrs);
+      paginatedReceipts.forEach(r => next.add(r.id));
+      setSelectedLrs(next);
+    }
+  };
+
+  const toggleSelectLr = (id) => {
+    setSelectedLrs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const LR_STATUS_FLOW = ['Created', 'Loaded', 'In Transit', 'Delivered', 'Billed'];
   const LR_STATUS_COLOR = { 'Created': '#6366f1', 'Loaded': '#f59e0b', 'In Transit': '#3b82f6', 'Delivered': '#10b981', 'Billed': '#059669' };
@@ -1511,7 +1539,16 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const fetchVehicles = async () => {
     try {
       const data = (await ax.get(`/vehicles`)).data;
-      setVehicles(data);
+      const list = Array.isArray(data) ? data : [];
+      const formatted = list.map(v => {
+        const num = typeof v === 'string' ? v : (v.truckNo || '');
+        return {
+          label: num,
+          value: num,
+          sublabel: typeof v === 'object' ? (v.ownerName || v.ownershipType || '') : ''
+        };
+      }).filter(item => item.value);
+      setVehicles(formatted);
     } catch { }
   };
 
@@ -1799,9 +1836,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   // Pagination Logic
   const paginatedReceipts = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredReceipts.slice(start, start + PAGE_SIZE);
-  }, [filteredReceipts, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return filteredReceipts.slice(start, start + pageSize);
+  }, [filteredReceipts, currentPage, pageSize]);
 
   // Every field on the receipt — the old eight-column list left out loading
   // type, destination, driver, challan status and the material breakdown.
@@ -2289,31 +2326,105 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               </div>
             )}
 
+            {/* Top Action Toolbar (Operates on checked rows) */}
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: selectedLrs.size > 0 ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={paginatedReceipts.length > 0 && paginatedReceipts.every(r => selectedLrs.has(r.id))}
+                  onChange={toggleSelectAllLrs}
+                  title="Select All / Deselect All"
+                  style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                />
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)' }}>
+                  Selected: <strong style={{ color: selectedLrs.size > 0 ? '#6366f1' : 'var(--text)' }}>{selectedLrs.size}</strong> of {filteredReceipts.length}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {canEdit && (
+                  <button
+                    className="btn btn-g btn-sm"
+                    disabled={selectedLrs.size !== 1}
+                    onClick={() => {
+                      const firstId = Array.from(selectedLrs)[0];
+                      const target = receipts.find(r => r.id === firstId);
+                      if (target) setEditRow(target);
+                    }}
+                    title={selectedLrs.size > 1 ? "Select exactly 1 entry to edit" : "Edit Checked Entry"}
+                  >
+                    <Pencil size={13} /> Edit
+                  </button>
+                )}
+                <button
+                  className="btn btn-g btn-sm"
+                  disabled={selectedLrs.size !== 1}
+                  onClick={() => {
+                    const firstId = Array.from(selectedLrs)[0];
+                    const target = receipts.find(r => r.id === firstId);
+                    if (target) printReceipt(receipts, target.lrNo, brand, signedBy, vehicles);
+                  }}
+                  title={selectedLrs.size > 1 ? "Select exactly 1 entry to print" : "Print Checked Entry"}
+                >
+                  <Printer size={13} /> Print
+                </button>
+                {role === 'admin' && (
+                  <button
+                    className="btn btn-d btn-sm"
+                    disabled={selectedLrs.size === 0}
+                    onClick={() => {
+                      const firstId = Array.from(selectedLrs)[0];
+                      const target = receipts.find(r => r.id === firstId);
+                      if (target) setDeleteRow(target);
+                    }}
+                    title="Delete Checked Entry (Admin Only)"
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
+                )}
+                {selectedLrs.size > 0 && (
+                  <button className="btn btn-g btn-sm" onClick={() => setSelectedLrs(new Set())} style={{ fontSize: '10px', marginLeft: '6px' }}>
+                    Clear Selection
+                  </button>
+                )}
+              </div>
+            </div>
+
             <TableScroll className="tbl-cards">
               <table className="tbl" style={{ minWidth: '1200px' }}>
-                <thead><tr>
-                  <th style={{ padding: '8px 12px' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                  <th style={{ padding: '8px 12px' }}>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                      <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                      <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                      <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                    </div>
-                  </th>
-                  <th style={{ padding: '8px 12px' }}>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                      <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                    </div>
-                  </th>
-                  <th className="c" style={{ padding: '8px 12px' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                  <th className="c" style={{ padding: '8px 12px' }}>Voucher Status</th>
-                  <th className="c" style={{ padding: '8px 12px' }}>Trip Status</th>
-                  {role === 'admin' && <th style={{ padding: '8px 12px' }}>Created By</th>}
-                  {role === 'admin' && <th style={{ padding: '8px 12px' }}>Updated By</th>}
-                  <th className="c" style={{ padding: '8px 12px' }}>Actions</th>
-                </tr></thead>
+                <thead>
+                  <tr style={{ background: 'var(--bg-th)', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <th style={{ padding: '6px 8px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', width: '38px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={paginatedReceipts.length > 0 && paginatedReceipts.every(r => selectedLrs.has(r.id))}
+                        onChange={toggleSelectAllLrs}
+                        style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                      />
+                    </th>
+                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="ID" colKey="entryId" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      </div>
+                    </th>
+                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                        <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
+                      </div>
+                    </th>
+                    <th className="c" style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th className="c" style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Voucher Status</th>
+                    <th className="c" style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Trip Status</th>
+                    {role === 'admin' && <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Created By</th>}
+                    {role === 'admin' && <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Updated By</th>}
+                  </tr>
+                </thead>
                 <tbody>
                   {tableLoading && filteredReceipts.length === 0 ? (
                     [1, 2, 3, 4, 5].map(i => (
@@ -2326,6 +2437,19 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
+                        <td style={{ textAlign: 'center', padding: '6px 8px' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedLrs.has(lr.id)}
+                            onChange={() => toggleSelectLr(lr.id)}
+                            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                          />
+                        </td>
+                        <td data-label="ID">
+                          <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
+                            #{lr.entryId || '—'}
+                          </span>
+                        </td>
                         <td className="t-card-title"><span className="t-lr">#{lr.lrNo}</span></td>
                         <td data-label="Vehicle / Party">
                           <div>
@@ -2376,7 +2500,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                                           <span className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800 }}>{cNo.trim()}</span>
                                           {ch && ch.date && (
                                             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                              {new Date(ch.date).toLocaleDateString('en-GB').replace(/\//g, '-')}
+                                              {fmtDate(ch.date)}
                                             </span>
                                           )}
                                         </div>
@@ -2419,8 +2543,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <td className="c" data-label="Voucher Status">
                           {(() => {
                             const usedInVouchers = allVouchers.filter(v => {
-                              if (!v.lrNo) return false;
-                              const vLrs = String(v.lrNo).split(',').map(s => s.trim());
+                              const vLrs = [];
+                              if (v.lrNo) String(v.lrNo).split(',').map(s => s.trim()).forEach(x => vLrs.push(x));
+                              if (Array.isArray(v.deliveries)) {
+                                v.deliveries.forEach(d => {
+                                  if (d.lrNo) String(d.lrNo).split(',').map(s => s.trim()).forEach(x => vLrs.push(x));
+                                });
+                              }
                               return vLrs.includes(String(lr.lrNo));
                             });
 
@@ -2461,23 +2590,6 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         </td>
                         {role === 'admin' && <td data-label="Created By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
                         {role === 'admin' && <td data-label="Updated By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
-                        <td className="c t-card-actions">
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-icon" title={`Print LR #${lr.lrNo} `} onClick={() => printReceipt(receipts, lr.lrNo, brand, signedBy, vehicles)}>
-                              <Printer size={14} />
-                            </button>
-                            {canEdit && (
-                              <button className="btn btn-g btn-icon" title="Edit" onClick={() => setEditRow(lr)}>
-                                <Pencil size={14} />
-                              </button>
-                            )}
-                            {role === 'admin' && (
-                              <button className="btn btn-d btn-icon" title="Delete" onClick={() => setDeleteRow(lr)}>
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
                       </tr>
                     ))}
                 </tbody>
@@ -2487,8 +2599,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             <Pagination
               currentPage={currentPage}
               totalItems={filteredReceipts.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
             />
           </div>
         </div>

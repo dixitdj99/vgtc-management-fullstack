@@ -3,9 +3,12 @@ const localStore = require('../utils/localStore');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 
+const { getNextEntryId, ensureEntryIds } = require('./entryIdService');
+
 const DEFAULT_COLLECTION = 'cashbook';
 
 const getAll = async (orgId, collection = DEFAULT_COLLECTION) => {
+    await ensureEntryIds(orgId, collection).catch(() => {});
     if (firebaseAvailable()) {
         const snapshot = await db.collection(collection)
             .where('orgId', '==', orgId)
@@ -22,12 +25,14 @@ const addEntry = async (orgId, type, amount, remark = '', date = '', collection 
     if (!amount || isNaN(amount) || parseFloat(amount) <= 0)
         throw new Error('Amount must be a positive number');
 
+    const entryId = extraFields.entryId || await getNextEntryId(orgId, collection);
     const entryData = {
         type,                                    // 'deposit' | 'cash_out'
         amount: parseFloat(amount),
         remark: remark || '',
         orgId,
         date: date || new Date().toISOString().slice(0, 10),
+        entryId,
         ...extraFields,
     };
 

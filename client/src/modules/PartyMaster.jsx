@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
-import { Building2, Plus, Search, MapPin, Phone, Mail, Edit3, Trash2, ArrowLeft, Briefcase, FileText, CheckCircle2, XCircle, BookOpen, Loader2, X as XIcon } from 'lucide-react';
+import { Building2, Plus, Search, Phone, FileText, CheckCircle2, XCircle, BookOpen, Loader2, X as XIcon, RefreshCw, Edit3, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PARTY_BRANDS } from '../utils/partyBrands';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TruckLoader from '../components/TruckLoader';
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -25,6 +26,10 @@ export default function PartyMaster() {
   const [ledgerData, setLedgerData] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerTab, setLedgerTab] = useState('vouchers');
+
+  // Sync from records
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null); // { created, skipped, names[] }
 
   const openLedger = async (party) => {
     setLedgerParty(party);
@@ -111,6 +116,20 @@ export default function PartyMaster() {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await ax.post('/parties/sync');
+      setSyncResult(res.data);
+      fetchParties();
+    } catch (err) {
+      setSyncResult({ error: err.response?.data?.error || 'Sync failed' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const brandsOf = p => (Array.isArray(p.brands) ? p.brands : []);
 
   const filteredParties = parties.filter(p => {
@@ -123,6 +142,14 @@ export default function PartyMaster() {
   });
 
   const untaggedCount = parties.filter(p => brandsOf(p).length === 0).length;
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
+        <TruckLoader size={130} text="Loading master party directory..." />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
@@ -137,19 +164,84 @@ export default function PartyMaster() {
       />
       
       {/* Header with quick action */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: syncResult ? '16px' : '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>Master Data</h1>
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Manage your global directory of customers, suppliers, and brokers.</p>
         </div>
-        <button onClick={() => handleOpenModal()} style={{ 
-          background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
-          borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
-          fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
-        }}>
-          <Plus size={18} /> Add New Party
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {/* Sync from Vouchers / LRs */}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            title="Discover party names from real vouchers and loading receipts"
+            style={{
+              background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)',
+              padding: '12px 20px', borderRadius: '14px', display: 'flex', alignItems: 'center',
+              gap: '8px', fontSize: '14px', fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer',
+              opacity: syncing ? 0.7 : 1, transition: 'all 0.2s',
+            }}
+          >
+            <RefreshCw size={16} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
+            {syncing ? 'Syncing…' : 'Sync from Records'}
+          </button>
+          <button onClick={() => handleOpenModal()} style={{
+            background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px',
+            borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px',
+            fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)'
+          }}>
+            <Plus size={18} /> Add New Party
+          </button>
+        </div>
       </div>
+
+      {/* Sync result banner */}
+      <AnimatePresence>
+        {syncResult && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -10, height: 0 }}
+            style={{
+              marginBottom: '24px', borderRadius: '14px', padding: '14px 20px',
+              border: `1px solid ${syncResult.error ? 'rgba(244,63,94,0.3)' : 'rgba(16,185,129,0.3)'}`,
+              background: syncResult.error ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)',
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px',
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              {syncResult.error ? (
+                <div style={{ color: 'var(--danger)', fontWeight: 700, fontSize: '13px' }}>⚠ {syncResult.error}</div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: '14px', color: syncResult.created > 0 ? '#10b981' : 'var(--text-muted)', marginBottom: '4px' }}>
+                    {syncResult.created > 0
+                      ? `✓ ${syncResult.created} new ${syncResult.created === 1 ? 'party' : 'parties'} created from records`
+                      : '✓ All parties already up to date — nothing new to create'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {syncResult.total} unique names found across vouchers &amp; loading receipts
+                    {syncResult.skipped > 0 && ` · ${syncResult.skipped} already existed`}
+                  </div>
+                  {syncResult.names?.length > 0 && (
+                    <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {syncResult.names.map(n => (
+                        <span key={n} style={{
+                          fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px',
+                          background: 'rgba(16,185,129,0.15)', color: '#10b981',
+                        }}>{n}</span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px', flexShrink: 0 }}>
+              <XIcon size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -195,10 +287,7 @@ export default function PartyMaster() {
       </div>
 
       {/* Grid */}
-      {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading Master Data...</div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
           {filteredParties.map(party => (
             <motion.div key={party.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', position: 'relative' }}
@@ -249,7 +338,6 @@ export default function PartyMaster() {
             </div>
           )}
         </div>
-      )}
 
       {/* Party Ledger Modal */}
       <AnimatePresence>
@@ -266,7 +354,7 @@ export default function PartyMaster() {
                 <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setLedgerParty(null)}><XIcon size={20} /></button>
               </div>
               {ledgerLoading ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)' }}><Loader2 size={18} className="spin" /> Loading ledger...</div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}><TruckLoader text="Loading ledger..." size={160} /></div>
               ) : ledgerData ? (
                 <>
                   {/* Summary cards */}
