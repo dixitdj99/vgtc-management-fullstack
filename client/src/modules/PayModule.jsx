@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Banknote, Truck, Calendar, CheckCircle2, AlertCircle, ChevronLeft, Search, Check, HandCoins, AlertTriangle, X, Merge, Loader2
+  Banknote, Truck, Calendar, CheckCircle2, AlertCircle, ChevronLeft, Search, Check, HandCoins, AlertTriangle, X, Merge, Loader2, History, User, BookOpen
 } from 'lucide-react';
 import { allocateFreightPayment, allocateAcrossTrucks, outstandingOf } from '../utils/freightAllocation';
 import Confetti from 'react-confetti';
@@ -38,6 +38,120 @@ export function ownerSelection(rows = [], unticked = new Set()) {
 
 const TH_ = { padding: '10px 14px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
 const TD_ = { padding: '9px 12px', fontSize: '12.5px', color: 'var(--text-sub)', verticalAlign: 'middle', whiteSpace: 'nowrap' };
+
+function RealCashoutHistoryModal({ profile, cashouts = [], onClose }) {
+  const [modalSearch, setModalSearch] = useState('');
+  if (!profile) return null;
+
+  const filteredHistory = cashouts.filter(c => {
+    if (!modalSearch) return true;
+    const q = modalSearch.toLowerCase();
+    return (c.remark || '').toLowerCase().includes(q) ||
+           (c.source || '').toLowerCase().includes(q) ||
+           (c.refId || '').toLowerCase().includes(q) ||
+           String(c.amount).includes(q) ||
+           (c.date || '').includes(q);
+  });
+
+  const totalSum = cashouts.reduce((s, c) => s + c.amount, 0);
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '780px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+        
+        {/* Header */}
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-th)' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>
+                Cashout & Advance History
+              </h3>
+              <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', background: 'rgba(99,102,241,0.12)', color: 'var(--primary)' }}>
+                {profile.name} ({profile.type || 'Profile'})
+              </span>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px' }}>
+              {profile.department ? `${profile.department} · ` : ''}Real cashouts recorded in Cashbook & Firm Pay
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.2)', padding: '6px 12px', borderRadius: '8px', textAlign: 'right' }}>
+              <div style={{ fontSize: '9px', fontWeight: 800, color: '#0ea5e9', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Cashouts</div>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#0ea5e9' }}>₹{totalSum.toLocaleString('en-IN')}</div>
+            </div>
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}>
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Search & Stats Subheader */}
+        <div style={{ padding: '12px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'var(--bg-card)' }}>
+          <div style={{ position: 'relative', width: '260px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input className="fi" style={{ paddingLeft: '32px', height: '32px', fontSize: '12px' }} placeholder="Search remark, date, ref..." value={modalSearch} onChange={e => setModalSearch(e.target.value)} />
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+            Showing {filteredHistory.length} of {cashouts.length} cashout entries
+          </div>
+        </div>
+
+        {/* History List Table */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
+          {filteredHistory.length === 0 ? (
+            <div style={{ padding: '50px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              No cashout history entries found for {profile.name}
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-th)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Ref ID</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Source</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Remark / Description</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: '10.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((item, idx) => (
+                  <tr key={item.id || idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                    <td style={{ padding: '11px 14px', whiteSpace: 'nowrap', fontWeight: 600 }}>{item.date ? new Date(item.date).toLocaleDateString('en-IN') : '—'}</td>
+                    <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                        {item.refId}
+                      </span>
+                    </td>
+                    <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                      <span style={{ padding: '2px 7px', borderRadius: '5px', fontSize: '10.5px', fontWeight: 700, background: item.source.includes('Cashbook') ? 'rgba(244,63,94,0.1)' : 'rgba(14,165,233,0.1)', color: item.source.includes('Cashbook') ? 'var(--danger)' : '#0ea5e9' }}>
+                        {item.source}
+                      </span>
+                    </td>
+                    <td style={{ padding: '11px 14px', fontSize: '12px', maxWidth: '280px', color: 'var(--text)' }}>
+                      {item.remark}
+                    </td>
+                    <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 900, color: 'var(--danger)', fontSize: '13px' }}>
+                      ₹{item.amount.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', background: 'var(--bg-th)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+            Total {filteredHistory.length} record{filteredHistory.length === 1 ? '' : 's'}
+          </div>
+          <button className="btn btn-g" onClick={onClose} style={{ padding: '6px 16px', fontSize: '12px' }}>Close</button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 /**
  * One truck owed money. Rendered identically whether the worklist is flat or
@@ -261,11 +375,77 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     catch { setBatches([]); }
   };
 
+  const [cashbookEntries, setCashbookEntries] = useState([]);
+  const [cashoutModalProfile, setCashoutModalProfile] = useState(null);
+  const [profileSearch, setProfileSearch] = useState('');
+  const [profileTypeFilter, setProfileTypeFilter] = useState('All');
+  const [salaryStatusFilter, setSalaryStatusFilter] = useState('All');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+
+  const fetchCashbookEntries = async () => {
+    try {
+      const cbPath = brand === 'jklakshmi' ? '/jkl/cashbook' : '/cashbook';
+      const res = await ax.get(cbPath);
+      setCashbookEntries(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      try {
+        const res = await ax.get('/cashbook');
+        setCashbookEntries(Array.isArray(res.data) ? res.data : []);
+      } catch {
+        setCashbookEntries([]);
+      }
+    }
+  };
+
+  const getProfileCashouts = useCallback((profile) => {
+    if (!profile) return [];
+    const pId = profile.id;
+    const pName = (profile.name || '').toLowerCase().trim();
+
+    const matchedPayments = firmPayments.filter(f => f.profileId === pId && (f.category === 'Advance' || f.cashbookEntryId));
+    const linkedCbIds = new Set(matchedPayments.map(f => f.cashbookEntryId).filter(Boolean));
+
+    const matchedCb = cashbookEntries.filter(e => {
+      if (e.type !== 'cash_out') return false;
+      const idMatch = e.entityId && e.entityId === pId;
+      const nameMatch = e.entityName && e.entityName.toLowerCase().trim() === pName;
+      return idMatch || nameMatch;
+    }).filter(e => !linkedCbIds.has(e.id));
+
+    const list = [
+      ...matchedPayments.map(p => ({
+        id: p.id,
+        date: p.date || (p.createdAt ? p.createdAt.slice(0, 10) : ''),
+        amount: parseFloat(p.amount) || 0,
+        remark: p.remark || 'Advance payment',
+        category: p.category || 'Advance',
+        source: p.cashbookEntryId ? 'Cashbook Cash Out' : 'Firm Pay Advance',
+        refId: p.cashbookEntryId ? `#CB-${String(p.cashbookEntryId).slice(-6)}` : `#PAY-${String(p.id).slice(-6)}`,
+        paymentMethod: p.paymentMethod || 'Cash',
+        createdBy: p.createdBy || 'System',
+      })),
+      ...matchedCb.map(e => ({
+        id: e.id,
+        date: e.date || (e.createdAt ? e.createdAt.slice(0, 10) : ''),
+        amount: parseFloat(e.amount) || 0,
+        remark: e.remark || 'Cash Out',
+        category: 'Cash Out',
+        source: 'Cashbook Cash Out',
+        refId: `#CB-${String(e.entryId || e.id).slice(-6)}`,
+        paymentMethod: 'Cash',
+        createdBy: e.createdBy || 'System',
+      }))
+    ];
+
+    return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [firmPayments, cashbookEntries]);
+
   useEffect(() => {
     fetchVouchers();
     fetchVehicles();
     fetchProfiles();
     fetchFirmPayments();
+    fetchCashbookEntries();
     fetchBatches();
     setSelTruck(null);
     setSelectedLrs(new Set());
@@ -946,8 +1126,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             <button className={`btn btn-sm ${view === 'freight' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('freight')}>Freight Pay</button>
             <button className={`btn btn-sm ${view === 'online' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('online')}>Online Advances</button>
             <button className={`btn btn-sm ${view === 'vehicle_advances' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('vehicle_advances')}>Vehicle Credit & Debit</button>
-            <button className={`btn btn-sm ${view === 'firm' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('firm')}>Firm Pay</button>
-            <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Staff Pay</button>
+            <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Profile Pay</button>
             <button className={`btn btn-sm ${view === 'labour' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('labour')}>Labour</button>
           </div>
           {inDetail && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelOwner(null); setSelBatchId(null); setSelectedLrs(new Set()); setPayAmount('');}}><ChevronLeft size={14} /> All Trucks</button>}
@@ -1132,204 +1311,272 @@ export default function PayModule({ brand, role, permissions, initialView }) {
             )}
           </div>
         );
-      })() : view === 'firm' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '20px' }}>
-          {/* Firm Payment Form */}
-          <div className="card" style={{ padding: '24px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <HandCoins size={20} color="var(--primary)" /> Record Firm Payment
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div className="field-h">
-                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <label style={{ margin: 0 }}>Select Profile</label>
-                    {firmForm.profileId && firmForm.profileId !== '__other__' && (
-                      <button onClick={() => setShowLedger(profiles.find(p => p.id === firmForm.profileId))} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>View Ledger</button>
-                    )}
-                  </div>
-                  <select className="fi" value={firmForm.profileId} onChange={e => setFirmForm({...firmForm, profileId: e.target.value, otherProfileName: ''})}>
-                    <option value="">-- Select Profile --</option>
-                    {profiles.map(p => {
-                      const bal = getProfileBalance(p);
-                      return (
-                        <option key={p.id} value={p.id}>{p.name} ({p.type}) | Bal: ₹{bal.toLocaleString()}</option>
-                      );
-                    })}
-                    <option value="__other__">+ Other (Type Manually)</option>
-                  </select>
-                  {firmForm.profileId === '__other__' && (
-                    <input className="fi" style={{ marginTop: '8px' }} type="text" placeholder="Enter name (e.g. vendor, supplier, expense...)" value={firmForm.otherProfileName}
-                      onChange={e => setFirmForm({...firmForm, otherProfileName: e.target.value})} autoFocus />
-                  )}
+      })() : view === 'staff' ? (
+        <div>
+          {/* Real Cashout History Modal */}
+          {cashoutModalProfile && (
+            <RealCashoutHistoryModal
+              profile={cashoutModalProfile}
+              cashouts={getProfileCashouts(cashoutModalProfile)}
+              onClose={() => setCashoutModalProfile(null)}
+            />
+          )}
+
+          {/* Profile Pay Header Controls */}
+          <div className="card" style={{ padding: '16px 20px', marginBottom: '18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <User size={20} color="var(--primary)" /> Profile Pay & Monthly Salary
+                </h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  View monthly salary, advance cashouts, and net payable balance monthwise
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Month:</label>
+                  <input
+                    type="month"
+                    className="fi"
+                    style={{ height: '34px', fontSize: '12px', width: '150px', padding: '0 10px', fontWeight: 700 }}
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(e.target.value)}
+                  />
+                </div>
+                <div style={{ position: 'relative', width: '220px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input className="fi" style={{ paddingLeft: '32px', height: '34px', fontSize: '12px' }} placeholder="Search profile..." value={profileSearch} onChange={e => setProfileSearch(e.target.value)} />
                 </div>
               </div>
-              <div className="field-h">
-                <label>Category</label>
-                <select className="fi" value={firmForm.category} onChange={e => setFirmForm({...firmForm, category: e.target.value})}>
-                  <option value="Salary">Staff Salary</option>
-                  <option value="Advance">Advance Payment</option>
-                  <option value="Pump">Pump Payment</option>
-                  <option value="Tyre">Tyre Expense</option>
-                  <option value="Maintenance">Vehicle Maintenance</option>
-                  <option value="Other">Other Expenses</option>
-                </select>
+            </div>
+
+            {/* Type & Status Filter Pills */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-row)' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '4px' }}>Type:</span>
+                {['All', 'Driver', 'Office Staff', 'Labour', 'Vendor', 'Owner', 'Other'].map(type => (
+                  <button
+                    key={type}
+                    className={`btn btn-sm ${profileTypeFilter === type ? 'btn-p' : 'btn-g'}`}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: 'none' }}
+                    onClick={() => setProfileTypeFilter(type)}
+                  >
+                    {type === 'All' ? 'All Types' : type}
+                  </button>
+                ))}
               </div>
-              <div className="field-h">
-                <label>Amount (₹)</label>
-                <input type="number" className="fi" value={firmForm.amount} onChange={e => setFirmForm({...firmForm, amount: e.target.value})} placeholder="0.00" />
+
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '4px' }}>Status:</span>
+                {['All', 'Paid', 'Partial', 'Unpaid'].map(st => (
+                  <button
+                    key={st}
+                    className={`btn btn-sm ${salaryStatusFilter === st ? 'btn-p' : 'btn-g'}`}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: 'none' }}
+                    onClick={() => setSalaryStatusFilter(st)}
+                  >
+                    {st === 'All' ? 'All Status' : st}
+                  </button>
+                ))}
               </div>
-              <div className="field-h">
-                <label>Date</label>
-                <input type="date" className="fi" value={firmForm.date} onChange={e => setFirmForm({...firmForm, date: e.target.value})} />
-              </div>
-              <div className="field-h">
-                <label>Remark / Note</label>
-                <textarea className="fi" value={firmForm.remark} onChange={e => setFirmForm({...firmForm, remark: e.target.value})} placeholder="Payment details..." style={{ minHeight: '60px' }} />
-              </div>
-              <button className="btn btn-p" style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 700 }}
-                onClick={async () => {
-                  if (!firmForm.profileId || !firmForm.amount) { alert('Please select a profile and enter an amount'); return; }
-                  if (firmForm.profileId === '__other__' && !firmForm.otherProfileName.trim()) { alert('Please enter a name for Other'); return; }
-                  try {
-                    const payload = {
-                      ...firmForm,
-                      profileId: firmForm.profileId === '__other__' ? null : firmForm.profileId,
-                      profileName: firmForm.profileId === '__other__' ? firmForm.otherProfileName.trim() : (profiles.find(p => p.id === firmForm.profileId)?.name || ''),
-                    };
-                    await ax.post('/payments', payload);
-                    setFirmForm({...firmForm, amount: '', remark: '', otherProfileName: ''});
-                    fetchFirmPayments();
-                    alert('Payment recorded successfully');
-                  } catch (e) { alert('Failed to record payment'); }
-                }}>
-                Confirm Payment
-              </button>
             </div>
           </div>
 
-          {/* Recent Firm Payments */}
-          <div className="card">
-            <div className="card-header border-b">
-              <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Recent Firm Payments</h3>
-            </div>
-            <TableScroll>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Date</th>
-                    <th style={TH}>Profile</th>
-                    <th style={TH}>Category</th>
-                    <th style={TH}>Amount</th>
-                    <th style={TH}>Remark</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {firmPayments.slice(0, 30).map((p, i) => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                      <td style={TD}>{fmtDate(p.date)}</td>
-                      <td style={TD}>
-                        <div style={{ fontWeight: 700 }}>{p.profileName || profiles.find(pr => pr.id === p.profileId)?.name || 'Unknown'}</div>
-                        <div style={{ fontSize: '10px', opacity: 0.6 }}>{p.profileId ? (profiles.find(pr => pr.id === p.profileId)?.type || 'Profile') : 'Other'}</div>
-                      </td>
-                      <td style={TD}>
-                        <span style={{ padding: '2px 6px', background: p.category === 'Pump' ? 'rgba(59,130,246,0.1)' : 'var(--bg-input)', color: p.category === 'Pump' ? '#3b82f6' : 'inherit', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{p.category}</span>
-                      </td>
-                      <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: 'var(--danger)' }}>₹{parseFloat(p.amount).toLocaleString()}</td>
-                      <td style={{ ...TD, whiteSpace: 'normal', fontSize: '11px' }}>{p.remark}</td>
-                    </tr>
-                  ))}
-                  {firmPayments.length === 0 && (
-                    <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', padding: '40px' }}>No firm payments recorded yet.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </TableScroll>
-          </div>
-        </div>
-      ) : view === 'staff' ? (
-        <div>
-          {/* Staff Summary Cards */}
+          {/* Profile Summary Cards */}
           {(() => {
-            const staffProfiles = profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour');
-            const totalEarned = staffProfiles.reduce((s, p) => s + calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves), 0);
-            const totalPaid = staffProfiles.reduce((s, p) => s + firmPayments.filter(f => f.profileId === p.id).reduce((ss, f) => ss + (parseFloat(f.amount) || 0), 0), 0);
-            const totalAdvance = staffProfiles.reduce((s, p) => s + firmPayments.filter(f => f.profileId === p.id && f.category === 'Advance').reduce((ss, f) => ss + (parseFloat(f.amount) || 0), 0), 0);
+            const filteredProfiles = profiles.filter(p => {
+              const pType = (p.type || '').toLowerCase();
+              const pDept = (p.department || '').toLowerCase();
+              const pName = (p.name || '').toLowerCase();
+
+              // Strictly exclude fuel pumps from the list
+              if (pType.includes('pump') || pDept.includes('pump') || pName.includes('pump')) {
+                return false;
+              }
+
+              if (profileTypeFilter !== 'All') {
+                if (profileTypeFilter === 'Vendor') {
+                  if (p.type !== 'Vendor') return false;
+                } else if (profileTypeFilter === 'Other') {
+                  if (['Driver', 'Office Staff', 'Labour', 'Vendor', 'Owner', 'Expense'].includes(p.type)) return false;
+                } else {
+                  if (p.type !== profileTypeFilter) return false;
+                }
+              }
+
+              const pCashouts = getProfileCashouts(p);
+              const monthCashouts = pCashouts.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
+              const monthAdvAmt = monthCashouts.reduce((s, item) => s + item.amount, 0);
+              const fixedSal = parseFloat(p.fixedSalary) || 0;
+              const netSal = fixedSal > 0 ? (fixedSal - monthAdvAmt) : 0;
+
+              let salStatus = 'N/A';
+              if (fixedSal > 0) {
+                if (netSal <= 0) salStatus = 'Paid';
+                else if (monthAdvAmt > 0) salStatus = 'Partial';
+                else salStatus = 'Unpaid';
+              }
+
+              if (salaryStatusFilter !== 'All') {
+                if (salStatus !== salaryStatusFilter) return false;
+              }
+
+              if (profileSearch) {
+                const q = profileSearch.toLowerCase();
+                const match = (p.name || '').toLowerCase().includes(q) || (p.department || '').toLowerCase().includes(q) || (p.type || '').toLowerCase().includes(q) || (p.phone || '').includes(q);
+                if (!match) return false;
+              }
+              return true;
+            });
+
+            const totalMonthlySalary = filteredProfiles.reduce((s, p) => s + (parseFloat(p.fixedSalary) || 0), 0);
+            
+            const totalMonthAdvance = filteredProfiles.reduce((s, p) => {
+              const list = getProfileCashouts(p);
+              const mList = list.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
+              return s + mList.reduce((sum, item) => sum + item.amount, 0);
+            }, 0);
+
+            const totalNetPayable = filteredProfiles.reduce((s, p) => {
+              const list = getProfileCashouts(p);
+              const mList = list.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
+              const mAdv = mList.reduce((sum, item) => sum + item.amount, 0);
+              const fixed = parseFloat(p.fixedSalary) || 0;
+              return s + Math.max(0, fixed - mAdv);
+            }, 0);
+
+            const monthLabel = selectedMonth ? new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '';
+
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '18px' }}>
-                {[
-                  { label: 'Total Staff', val: staffProfiles.length, fmt: v => v, color: '#6366f1' },
-                  { label: 'Total Earned', val: totalEarned, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#10b981' },
-                  { label: 'Total Paid', val: totalPaid, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#f59e0b' },
-                  { label: 'Balance Due', val: totalEarned - totalPaid, fmt: v => `₹${Math.abs(v).toLocaleString('en-IN')}`, color: totalEarned - totalPaid > 0 ? '#ef4444' : '#10b981' },
-                  { label: 'Advances Given', val: totalAdvance, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#0ea5e9' },
-                ].map(c => (
-                  <div key={c.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{c.label}</div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: c.color }}>{c.fmt(c.val)}</div>
-                  </div>
-                ))}
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                  {[
+                    { label: 'Profiles Count', val: filteredProfiles.length, fmt: v => v, color: '#6366f1' },
+                    { label: `Monthly Salary`, val: totalMonthlySalary, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#10b981' },
+                    { label: `Advance Cashouts (${monthLabel})`, val: totalMonthAdvance, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#0ea5e9' },
+                    { label: `Net Payable Salary (${monthLabel})`, val: totalNetPayable, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#f59e0b' },
+                  ].map(c => (
+                    <div key={c.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{c.label}</div>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: c.color }}>{c.fmt(c.val)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Profiles Table */}
+                <div className="card">
+                  <TableScroll>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr>
+                          <th style={TH}>Profile Name</th>
+                          <th style={TH}>Type</th>
+                          <th style={{ ...TH, textAlign: 'right' }}>Monthly Salary</th>
+                          <th style={{ ...TH, textAlign: 'center' }}>Advance Taken ({monthLabel})</th>
+                          <th style={{ ...TH, textAlign: 'right' }}>Net Salary ({monthLabel})</th>
+                          <th style={{ ...TH, textAlign: 'center' }}>Salary Status</th>
+                          <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredProfiles.map((p, i) => {
+                          const pCashouts = getProfileCashouts(p);
+                          const monthCashouts = pCashouts.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
+                          const monthAdvAmt = monthCashouts.reduce((s, item) => s + item.amount, 0);
+                          const fixedSal = parseFloat(p.fixedSalary) || 0;
+                          const netSalary = fixedSal > 0 ? (fixedSal - monthAdvAmt) : 0;
+
+                          let salStatus = 'N/A';
+                          if (fixedSal > 0) {
+                            if (netSalary <= 0) salStatus = 'Paid';
+                            else if (monthAdvAmt > 0) salStatus = 'Partial';
+                            else salStatus = 'Unpaid';
+                          }
+
+                          const typeColors = {
+                            Driver: { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b' },
+                            'Office Staff': { bg: 'rgba(99,102,241,0.1)', color: '#6366f1' },
+                            Labour: { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9' },
+                            Vendor: { bg: 'rgba(168,85,247,0.1)', color: '#a855f7' },
+                            Owner: { bg: 'rgba(16,185,129,0.1)', color: '#10b981' },
+                            Expense: { bg: 'rgba(244,63,94,0.1)', color: '#f43f5e' }
+                          };
+                          const tc = typeColors[p.type] || { bg: 'var(--bg-input)', color: 'var(--text)' };
+
+                          return (
+                            <tr key={p.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                              <td style={TD}>
+                                <div style={{ fontWeight: 700, color: 'var(--text)' }}>{p.name}</div>
+                                {p.department && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{p.department}</div>}
+                              </td>
+                              <td style={TD}>
+                                <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: tc.bg, color: tc.color }}>
+                                  {p.type || 'Profile'}
+                                </span>
+                              </td>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{fixedSal ? `₹${fixedSal.toLocaleString('en-IN')}` : '—'}</td>
+                              <td style={{ ...TD, textAlign: 'center' }}>
+                                {monthAdvAmt > 0 ? (
+                                  <button
+                                    onClick={() => setCashoutModalProfile(p)}
+                                    title="Click to view cashout history"
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                      padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
+                                      background: 'rgba(14,165,233,0.1)', color: '#0ea5e9',
+                                      border: '1px solid rgba(14,165,233,0.25)', cursor: 'pointer'
+                                    }}
+                                  >
+                                    <History size={12} /> ₹{monthAdvAmt.toLocaleString('en-IN')} ({monthCashouts.length})
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: netSalary < fixedSal && fixedSal > 0 ? '#f59e0b' : 'var(--accent)' }}>
+                                {fixedSal > 0 ? `₹${netSalary.toLocaleString('en-IN')}` : '—'}
+                              </td>
+                              <td style={{ ...TD, textAlign: 'center' }}>
+                                {salStatus === 'Paid' ? (
+                                  <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <CheckCircle2 size={12} /> Paid
+                                  </span>
+                                ) : salStatus === 'Partial' ? (
+                                  <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <AlertCircle size={12} /> Partial
+                                  </span>
+                                ) : salStatus === 'Unpaid' ? (
+                                  <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <X size={12} /> Unpaid
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ ...TD, textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                  <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '4px 10px' }}
+                                    onClick={() => setShowLedger(p)}>Ledger</button>
+                                  <button className="btn btn-sm" style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)', cursor: 'pointer' }}
+                                    onClick={() => setCashoutModalProfile(p)}>
+                                    Cashout History
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredProfiles.length === 0 && (
+                          <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No profiles found matching search/filter</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </TableScroll>
+                </div>
               </div>
             );
           })()}
-
-          {/* Staff & Drivers Table */}
-          <div className="card">
-            <div className="card-header border-b">
-              <h3 style={{ fontSize: '16px', fontWeight: 800 }}>Staff & Drivers</h3>
-            </div>
-            <TableScroll>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Name</th>
-                    <th style={TH}>Type</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Monthly Salary</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Earned</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Paid</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Balance</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Advances</th>
-                    <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour').map((p, i) => {
-                    const earned = calculateSalary(p.dateJoined, p.dateExit, p.fixedSalary, p.leaves);
-                    const paid = firmPayments.filter(f => f.profileId === p.id).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
-                    const balance = earned - paid;
-                    const advAmt = firmPayments.filter(f => f.profileId === p.id && f.category === 'Advance').reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
-                    return (
-                      <tr key={p.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                        <td style={TD}>
-                          <div style={{ fontWeight: 700, color: 'var(--text)' }}>{p.name}</div>
-                          {p.department && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{p.department}</div>}
-                        </td>
-                        <td style={TD}>
-                          <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: p.type === 'Driver' ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)', color: p.type === 'Driver' ? '#f59e0b' : '#6366f1' }}>{p.type}</span>
-                        </td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>₹{(p.fixedSalary || 0).toLocaleString('en-IN')}</td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>₹{earned.toLocaleString('en-IN')}</td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>₹{paid.toLocaleString('en-IN')}</td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: balance > 0 ? 'var(--danger)' : 'var(--accent)' }}>₹{Math.abs(balance).toLocaleString('en-IN')}</td>
-                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600, color: '#0ea5e9' }}>{advAmt > 0 ? `₹${advAmt.toLocaleString('en-IN')}` : '—'}</td>
-                        <td style={{ ...TD, textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }}
-                              onClick={() => setShowLedger(p)}>Ledger</button>
-                            <button className="btn btn-p btn-sm" style={{ fontSize: '10px', padding: '3px 8px' }}
-                              onClick={() => { setView('firm'); setFirmForm(f => ({ ...f, profileId: p.id, otherProfileName: '', category: 'Salary' })); }}>Pay</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {profiles.filter(p => p.type === 'Driver' || p.type === 'Office Staff' || p.type === 'Labour').length === 0 && (
-                    <tr><td colSpan={8} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No staff/driver profiles found</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </TableScroll>
-          </div>
         </div>
       ) : (
         <React.Fragment>
@@ -2143,6 +2390,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                                 desc: `${p.category}: ${p.remark}`,
                                                 category: p.category,
                                                 isCleared: p.isCleared,
+                                                cashbookEntryId: p.cashbookEntryId,
                                                 credit: 0,
                                                 debit: parseFloat(p.amount || 0)
                                             }))
@@ -2156,7 +2404,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                                     <td style={{ padding: '12px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                                                             <span>{e.desc}</span>
-                                                            {e.category === 'Advance' && (
+                                                            {e.category === 'Advance' && !e.cashbookEntryId && (
                                                                 <button
                                                                     className={`btn btn-sm ${e.isCleared ? 'btn-g' : 'btn-p'}`}
                                                                     style={{ fontSize: '9px', padding: '2px 6px', height: 'auto', border: 'none', cursor: 'pointer' }}

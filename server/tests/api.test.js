@@ -56,7 +56,7 @@ async function ensureServer() {
     stdio: 'ignore',
   });
 
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 100; i++) {
     await new Promise(r => setTimeout(r, 250));
     if (await portOpen(url.hostname, port)) return;
   }

@@ -162,7 +162,7 @@ export default function VehicleCreditDebitModule({ cashbookType = 'dump' }) {
   }
 
   return (
-    <div className="module-wrap" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div>
       <ConfirmDialog
         open={!!delTarget}
         title="Delete advance record?"
@@ -268,7 +268,7 @@ export default function VehicleCreditDebitModule({ cashbookType = 'dump' }) {
       </div>
 
       {/* Vehicle Advance Ledger Table */}
-      <div className="card" style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+      <div className="card tbl-wrap" style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-th)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>
             Vehicle Advance Ledger ({listWithBalance.length} entries)

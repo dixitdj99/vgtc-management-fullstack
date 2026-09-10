@@ -176,54 +176,62 @@ export default function LabourAccount({ canEdit }) {
       )}
 
       {/* ── One card per crew ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '20px' }}>
         {(summary?.groups || []).map(g => (
-          <div key={g.key} className="card" style={{ padding: '16px 18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+          <div key={g.key} className="card" style={{ padding: '18px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-card)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                  <HardHat size={15} color="#10b981" />
-                  <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text)' }}>{g.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <HardHat size={16} color="var(--primary)" />
+                  <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text)' }}>{g.label}</span>
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px' }}>{g.hint}</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '3px' }}>{g.hint}</div>
               </div>
               {canEdit && (
-                <button className="btn btn-p btn-sm" onClick={() => setPayFor(g)} style={{ fontSize: '11px' }}>
-                  <IndianRupee size={12} /> Pay
+                <button className="btn btn-p btn-sm" onClick={() => setPayFor(g)} style={{ fontSize: '11.5px' }}>
+                  <IndianRupee size={13} /> Pay
                 </button>
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
-              {[
-                ['Earned', g.earned, '#10b981'],
-                ['Paid', g.paid, '#64748b'],
-                ['Balance', g.balance, g.balance > 0 ? '#f59e0b' : '#10b981'],
-              ].map(([label, val, tint]) => (
-                <div key={label} style={{ background: 'var(--bg-input)', borderRadius: '9px', padding: '9px 10px' }}>
-                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-                  <div style={{ fontSize: '15px', fontWeight: 900, color: tint, marginTop: '2px' }}>{fmtRs(val)}</div>
-                </div>
-              ))}
+            {/* Metrics Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ background: 'var(--bg-input)', borderRadius: '8px', padding: '10px 11px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Earned</div>
+                <div style={{ fontSize: '15px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>{fmtRs(g.earned)}</div>
+              </div>
+              <div style={{ background: 'var(--bg-input)', borderRadius: '8px', padding: '10px 11px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Paid</div>
+                <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text-sub)', marginTop: '2px' }}>{fmtRs(g.paid)}</div>
+              </div>
+              <div style={{ background: 'var(--bg-input)', borderRadius: '8px', padding: '10px 11px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Balance</div>
+                <div style={{ fontSize: '15px', fontWeight: 900, color: g.balance > 0 ? '#f59e0b' : '#10b981', marginTop: '2px' }}>{fmtRs(g.balance)}</div>
+              </div>
             </div>
 
-            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-              {g.bags.toLocaleString('en-IN')} bags charged
+            {/* Bag count & alerts */}
+            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+              <span>{g.bags.toLocaleString('en-IN')} bags charged</span>
               {g.unpricedBags > 0 && (
-                <span style={{ color: '#f59e0b', fontWeight: 700 }}> · {g.unpricedBags.toLocaleString('en-IN')} of them at no rate</span>
+                <span style={{ color: '#f59e0b', fontWeight: 700 }}>{g.unpricedBags.toLocaleString('en-IN')} bags at no rate</span>
               )}
             </div>
 
+            {/* Breakdown Button */}
             <button
+              className="btn btn-g btn-sm"
               onClick={() => setOpenGroup(openGroup === g.key ? null : g.key)}
-              style={{ marginTop: '10px', background: 'transparent', border: 'none', color: 'var(--primary)', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', padding: 0 }}
+              style={{ marginTop: '12px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 700 }}
             >
               {openGroup === g.key ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-              Breakdown
+              {openGroup === g.key ? 'Hide Breakdown' : 'View Breakdown'}
             </button>
 
+            {/* Expanded Breakdown */}
             {openGroup === g.key && (
-              <div style={{ marginTop: '10px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+              <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
                 {[['By work', g.byActivity, k => meta?.activityLabels?.[k] || k],
                   ['By plant', g.byPlant, k => k],
                   ['By material', g.byMaterial, k => k]].map(([title, bucket, label]) => {
@@ -233,8 +241,10 @@ export default function LabourAccount({ canEdit }) {
                     <div key={title} style={{ marginBottom: '10px' }}>
                       <div style={{ fontSize: '9.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{title}</div>
                       {rows.map(([k, v]) => (
-                        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '2px 0' }}>
-                          <span>{label(k)} <span style={{ color: 'var(--text-muted)' }}>· {v.bags.toLocaleString('en-IN')} bags</span></span>
+                        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '3px 0' }}>
+                          <span style={{ color: 'var(--text-sub)' }}>
+                            {label(k)} <span style={{ color: 'var(--text-muted)' }}>· {v.bags.toLocaleString('en-IN')} bags</span>
+                          </span>
                           <strong style={{ color: 'var(--text)' }}>{fmtRs(v.amount)}</strong>
                         </div>
                       ))}

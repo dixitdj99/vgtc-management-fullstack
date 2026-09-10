@@ -29,7 +29,7 @@ export default function WhatsAppControlModule() {
   const [testResult, setTestResult] = useState(null);
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [guideTab, setGuideTab] = useState('ultramsg');
-
+0
   const [notify, setNotify] = useState(null); // { type: 'success' | 'error', message: '' }
 
   const showToast = (type, message) => {
@@ -45,7 +45,7 @@ export default function WhatsAppControlModule() {
   const fetchConfig = async () => {
     setLoading(true);
     try {
-      const res = await ax.get('/whatsapp/config').catch(() => ax.get('/sms/config'));
+      const res = await ax.get('/whatsapp/config');
       if (res.data) setConfig(prev => ({ ...prev, ...res.data }));
     } catch (e) {
       console.error('Failed to fetch WhatsApp config', e);
@@ -57,7 +57,7 @@ export default function WhatsAppControlModule() {
   const checkConnection = async () => {
     setStatus({ checking: true, connected: false, message: 'Pinging WhatsApp Gateway...' });
     try {
-      const res = await ax.get('/whatsapp/status').catch(() => ax.get('/sms/status'));
+      const res = await ax.get('/whatsapp/status');
       setStatus({
         checking: false,
         connected: res.data?.connected || false,
@@ -72,7 +72,7 @@ export default function WhatsAppControlModule() {
     e?.preventDefault();
     setSaving(true);
     try {
-      await ax.post('/whatsapp/config', config).catch(() => ax.post('/sms/config', config));
+      await ax.post('/whatsapp/config', config);
       showToast('success', 'WhatsApp Gateway Configuration Saved Successfully!');
       checkConnection();
     } catch (err) {
@@ -88,9 +88,12 @@ export default function WhatsAppControlModule() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await ax.post('/whatsapp/test', testForm).catch(() => ax.post('/sms/test', testForm));
+      // Auto-save configuration first so the latest gateway credentials/URL are active on server
+      await ax.post('/whatsapp/config', config);
+      const res = await ax.post('/whatsapp/test', testForm);
       setTestResult({ success: true, data: res.data });
       showToast('success', '✅ Test WhatsApp message dispatched successfully!');
+      checkConnection();
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'WhatsApp message dispatch failed';
       setTestResult({ success: false, error: msg });
@@ -252,9 +255,10 @@ export default function WhatsAppControlModule() {
               </label>
               <select
                 className="form-control"
-                value={config.payloadFormat || 'standard'}
+                value={config.payloadFormat || 'aisensy'}
                 onChange={e => setConfig({ ...config, payloadFormat: e.target.value })}
               >
+                <option value="aisensy">AiSensy WhatsApp API (Meta Official BSP Partner)</option>
                 <option value="standard">Standard JSON API (to, phone, message)</option>
                 <option value="ultramsg">UltraMsg WhatsApp API (to, body, token)</option>
                 <option value="wppconnect">WPPConnect Gateway Server (/api/send-message)</option>

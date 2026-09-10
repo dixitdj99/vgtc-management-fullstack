@@ -62,9 +62,7 @@ router.post('/', async (req, res) => {
             console.log('[Backup-Hook] Skipping JKL LR backup — Drive not authorized');
         }
 
-        // Trigger WhatsApp alerts for LR Creation
-        const whatsappService = require('../utils/whatsappService');
-        whatsappService.triggerEventWhatsApp('lr_created', { ...req.body, ...result }, req);
+
 
         res.status(201).json(result);
     } catch (error) {

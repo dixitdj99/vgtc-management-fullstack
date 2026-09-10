@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { 
-  Wrench, Plus, Search, Calendar, DollarSign, Edit3, Trash2, ArrowLeft, 
-  FileText, CheckCircle2, XCircle, Loader2, Disc, User, HelpCircle, 
-  RotateCw, RefreshCw, X as XIcon 
+  Wrench, Plus, Search, Calendar, DollarSign, Trash2, 
+  AlertTriangle, Sparkles, CheckCircle2, Truck, Filter, X,
+  RefreshCw, FileText, Layers, Tag, ArrowUpRight, ArrowDownLeft,
+  CircleDollarSign, Info, Eye
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TruckLoader from '../components/TruckLoader';
 
@@ -91,7 +91,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
           background: 'var(--bg-card)',
           border: '1px solid var(--border)',
           borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           zIndex: 1000,
           maxHeight: '200px',
           overflowY: 'auto'
@@ -108,7 +108,7 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
                 style={{
                   padding: '8px 12px',
                   cursor: 'pointer',
-                  background: idx === highlightedIndex ? 'var(--bg-row-even)' : 'transparent',
+                  background: idx === highlightedIndex ? 'var(--bg-th)' : 'transparent',
                   color: 'var(--text)',
                   fontSize: '13px'
                 }}
@@ -123,1128 +123,1170 @@ function AutocompleteInput({ value, onChange, suggestions = [], placeholder, req
   );
 }
 
-const BRANDS = ['MRF', 'Apollo', 'JK Tyre', 'CEAT', 'Michelin', 'Bridgestone', 'Goodyear', 'Double Coin', 'Aeolus', 'Triangle', 'Other'];
-const SIZES = ['10.00R20', '295/80R22.5', '11R22.5', '12R22.5', '10.00-20', '7.50-16', 'Other'];
+const BRANDS = ['MRF', 'Apollo', 'JK Tyre', 'CEAT', 'Michelin', 'Bridgestone', 'Goodyear', 'Double Coin', 'Triangle', 'Other'];
 
-// Fleet has only two vehicle types: 18-wheel trailers and 6-wheel canters.
-// Position ids (FL, RLO1, TLI2, SP...) are stored on tyre fitments — keep them
-// stable so existing fitment records keep rendering.
-const AXLE_LAYOUTS = {
-  '18': {
-    name: 'Trailer — 18 Wheels',
-    short: 'Trailer 18W',
-    sections: [
-      {
-        name: 'Tractor (Front Unit)', icon: '🚚',
-        axles: [
-          { name: 'Steering Axle', left: ['FL'], right: ['FR'] },
-          { name: 'Drive Axle 1', left: ['RLO1', 'RLI1'], right: ['RRI1', 'RRO1'] },
-          { name: 'Drive Axle 2', left: ['RLO2', 'RLI2'], right: ['RRI2', 'RRO2'] },
-        ]
-      },
-      {
-        name: 'Trailer (Rear Unit)', icon: '🚛',
-        axles: [
-          { name: 'Trailer Axle 1', left: ['TLO1', 'TLI1'], right: ['TRI1', 'TRO1'] },
-          { name: 'Trailer Axle 2', left: ['TLO2', 'TLI2'], right: ['TRI2', 'TRO2'] },
-        ]
-      }
+// Vehicle Tyre & Spare Configuration
+const VEHICLE_CONFIGS = {
+  '6': {
+    name: 'Canter (6-Wheel)',
+    short: 'Canter 6W',
+    mounted: 6,
+    spares: 1,
+    total: 7,
+    positions: [
+      'Front Left (Steering)',
+      'Front Right (Steering)',
+      'Rear Left Outer',
+      'Rear Left Inner',
+      'Rear Right Outer',
+      'Rear Right Inner',
+      'Spare Tyre 1'
     ]
   },
-  '6': {
-    name: 'Canter — 6 Wheels',
-    short: 'Canter 6W',
-    sections: [
-      {
-        name: 'Canter', icon: '🚚',
-        axles: [
-          { name: 'Steering Axle', left: ['FL'], right: ['FR'] },
-          { name: 'Rear Axle', left: ['RLO1', 'RLI1'], right: ['RRI1', 'RRO1'] },
-        ]
-      }
+  '18': {
+    name: 'Trailer (18-Wheel)',
+    short: 'Trailer 18W',
+    mounted: 18,
+    spares: 2,
+    total: 20,
+    positions: [
+      'Front Axle 1 - Left Steering',
+      'Front Axle 1 - Right Steering',
+      'Front Axle 2 - Left',
+      'Front Axle 2 - Right',
+      'Rear Axle 1 - Left Outer',
+      'Rear Axle 1 - Left Inner',
+      'Rear Axle 1 - Right Inner',
+      'Rear Axle 1 - Right Outer',
+      'Rear Axle 2 - Left Outer',
+      'Rear Axle 2 - Left Inner',
+      'Rear Axle 2 - Right Inner',
+      'Rear Axle 2 - Right Outer',
+      'Rear Axle 3 - Left Outer',
+      'Rear Axle 3 - Left Inner',
+      'Rear Axle 3 - Right Inner',
+      'Rear Axle 3 - Right Outer',
+      'Spare Tyre 1',
+      'Spare Tyre 2'
     ]
   }
 };
 
-// Human name for a wheel: single wheel = just the side; dual wheels = Outer/Inner.
-const wheelName = (side, idx, count) => {
-  if (count === 1) return side;
-  return idx === 0
-    ? (side === 'Left' ? 'Left Outer' : 'Right Inner')
-    : (side === 'Left' ? 'Left Inner' : 'Right Outer');
-};
+const REASONS = [
+  { id: 'blasted', label: '💥 Blasted / Burst', desc: 'Tyre blasted on road/trip' },
+  { id: 'damaged', label: '⚠️ Damaged / Cut', desc: 'Sidewall cut or heavy puncture' },
+  { id: 'worn', label: '🔄 Worn Out', desc: 'Normal wear & tear replacement' },
+  { id: 'upgrade', label: '🆕 Upgrade / New Tyre', desc: 'Preventative new tyre installation' },
+];
 
-const getPositionsForLayout = (layoutId) => {
-  const layout = AXLE_LAYOUTS[layoutId] || AXLE_LAYOUTS['18'];
-  const posList = [];
-  layout.sections.forEach(section => {
-    section.axles.forEach(axle => {
-      axle.left.forEach((id, i) => posList.push({ id, name: `${axle.name} — ${wheelName('Left', i, axle.left.length)}` }));
-      axle.right.forEach((id, i) => posList.push({ id, name: `${axle.name} — ${wheelName('Right', i, axle.right.length)}` }));
-    });
-  });
-  posList.push({ id: 'SP', name: 'Spare Tyre' });
-  return posList;
-};
+const CONDITIONS = [
+  { id: 'new', label: '🆕 Brand New Tyre' },
+  { id: 'retread', label: '♻️ Retreaded Tyre' },
+  { id: 'used', label: '🛠️ Used / Second Hand' },
+];
 
-const inferLayoutFromVehicle = (vehicle) => {
-  if (!vehicle) return '18';
-  const desc = `${vehicle.vehicleType || ''} ${vehicle.model || ''} ${vehicle.make || ''}`.toLowerCase();
-  if (desc.includes('canter') || desc.includes('6 wheel') || desc.includes('6w')) return '6';
-  if (desc.includes('trailer') || desc.includes('18')) return '18';
-  const gw = parseFloat(vehicle.grossWeight) || 0;
-  if (gw > 0 && gw <= 16000) return '6';
-  return '18';
-};
+const DISPOSAL_OPTIONS = [
+  { id: 'sold', label: '💰 Sold Scrap', desc: 'Sold old tyre for cash' },
+  { id: 'stored', label: '📦 Stored in Yard', desc: 'Kept in godown / retread stock' },
+  { id: 'discarded', label: '🗑️ Discarded', desc: 'Unusable / Scrapped (₹0)' },
+];
 
-const fmtRs = n => '₹' + Math.round(n).toLocaleString('en-IN');
+const fmtRs = n => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 export default function TyreModule() {
   const { user } = useAuth();
   const [tyres, setTyres] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
+  const [vouchers, setVouchers] = useState([]);
+  const [selfVehicles, setSelfVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  
-  // Search & Filters
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Search & Filters state
+  const [search, setSearch] = useState('');
+  const [entryTypeFilter, setEntryTypeFilter] = useState('all'); // 'all' | 'replacement' | 'voucher_repair'
+  const [reasonFilter, setReasonFilter] = useState('all');
   const [truckFilter, setTruckFilter] = useState('all');
-  
-  const [overrideLayoutId, setOverrideLayoutId] = useState('');
+  const [activeTab, setActiveTab] = useState('vehicles'); // 'vehicles' | 'history'
 
   // Modals state
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isFitModalOpen, setIsFitModalOpen] = useState(false);
-  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
-  const [isRetreadModalOpen, setIsRetreadModalOpen] = useState(false);
-  const [isScrapModalOpen, setIsScrapModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [delTarget, setDelTarget] = useState(null);
+  const [vehicleHistoryModal, setVehicleHistoryModal] = useState(null); // truckNo | null
 
-  const [selectedTyre, setSelectedTyre] = useState(null);
-  const [fitPosition, setFitPosition] = useState(''); // Preset fit position from visual map
-
-  // Forms state
-  const [addForm, setAddForm] = useState({
-    serialNo: '', brand: 'MRF', size: '10.00R20', type: 'new', purchasePrice: '', purchaseDate: new Date().toISOString().slice(0, 10), notes: ''
+  // Form State for Tyre Replacement
+  const [form, setForm] = useState({
+    truckNo: '',
+    vehicleType: '18', // '6' = Canter, '18' = Trailer
+    date: new Date().toISOString().slice(0, 10),
+    reason: 'blasted',
+    position: VEHICLE_CONFIGS['18'].positions[0],
+    condition: 'new',
+    brand: 'Apollo',
+    newPrice: '',
+    oldDisposal: 'sold', // 'sold', 'stored', 'discarded'
+    scrapPrice: '',
+    vendor: '',
+    remarks: ''
   });
-  const [fitForm, setFitForm] = useState({
-    truckNo: '', position: 'FL', fittedAtKm: '', fittedDate: new Date().toISOString().slice(0, 10)
-  });
-  const [removeForm, setRemoveForm] = useState({
-    removalDate: new Date().toISOString().slice(0, 10), removalKm: '', nextStatus: 'available'
-  });
-  const [retreadForm, setRetreadForm] = useState({
-    retreadDate: new Date().toISOString().slice(0, 10), retreadCost: '', retreaderName: '', notes: ''
-  });
-  const [scrapForm, setScrapForm] = useState({
-    scrapDate: new Date().toISOString().slice(0, 10), notes: ''
-  });
-
-  const [selfVehiclesList, setSelfVehiclesList] = useState([]);
-  const [vouchers, setVouchers] = useState([]);
-
-  // Reset overrideLayoutId when truckFilter changes
-  useEffect(() => {
-    setOverrideLayoutId('');
-  }, [truckFilter]);
-
-  const selectedVehicle = useMemo(() => {
-    return selfVehiclesList.find(v => v.truckNo === truckFilter);
-  }, [selfVehiclesList, truckFilter]);
-
-  const inferredLayoutId = useMemo(() => {
-    return inferLayoutFromVehicle(selectedVehicle);
-  }, [selectedVehicle]);
-
-  const activeLayoutId = overrideLayoutId || inferredLayoutId;
-  const activeLayout = AXLE_LAYOUTS[activeLayoutId] || AXLE_LAYOUTS['18'];
-
-  const availablePositions = useMemo(() => {
-    const truckNo = fitForm.truckNo || '';
-    // When fitting the truck shown on the axle map, honour the layout toggle —
-    // otherwise a wheel clicked on an overridden layout (e.g. TLO1) would not
-    // exist in the modal's position list.
-    if (truckNo && truckNo === truckFilter) return getPositionsForLayout(activeLayoutId);
-    const selectedVeh = selfVehiclesList.find(v => v.truckNo === truckNo);
-    const layoutId = inferLayoutFromVehicle(selectedVeh);
-    return getPositionsForLayout(layoutId);
-  }, [fitForm.truckNo, selfVehiclesList, truckFilter, activeLayoutId]);
-
-
 
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
       const [tyresRes, vehiclesRes, vouchersRes] = await Promise.all([
         ax.get('/tyres'),
-        ax.get('/vehicles'),
+        ax.get('/vehicles').catch(() => ({ data: [] })),
         ax.get('/vouchers').catch(() => ({ data: [] }))
       ]);
       setTyres(tyresRes.data || []);
+      setVouchers(vouchersRes.data || []);
+
       const allVeh = vehiclesRes.data || [];
-      // Own fleet only — market/vendor vehicles are managed in Market Vehicles,
-      // their tyres are not ours to track. Same rule as MileageModule.
       const selfVeh = allVeh.filter(v =>
         v.ownershipType === 'self' || (v.ownerName || '').toLowerCase().includes('vikas')
       );
-      setSelfVehiclesList(selfVeh);
-      setVehicles(selfVeh.map(v => v.truckNo));
-      setVouchers(vouchersRes.data || []);
+      setSelfVehicles(selfVeh);
     } catch (err) {
-      setError('Failed to fetch tyre records.');
+      console.error('Failed to fetch tyre records:', err);
+      setError('Failed to fetch tyre change history.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setError('');
-      await ax.post('/tyres', addForm);
-      setIsAddModalOpen(false);
-      setAddForm({
-        serialNo: '', brand: 'MRF', size: '10.00R20', type: 'new', purchasePrice: '', purchaseDate: new Date().toISOString().slice(0, 10), notes: ''
-      });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to register tyre.');
-    }
+  // Helper to infer vehicle type
+  const getVehicleType = (truckNo) => {
+    const veh = selfVehicles.find(v => v.truckNo === truckNo);
+    if (!veh) return '18';
+    const desc = `${veh.vehicleType || ''} ${veh.model || ''} ${veh.make || ''}`.toLowerCase();
+    if (desc.includes('canter') || desc.includes('6 wheel') || desc.includes('6w')) return '6';
+    return '18';
   };
 
-  const handleFitSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setError('');
-      const tyreId = selectedTyre.id;
-      await ax.post(`/tyres/${tyreId}/fit`, fitForm);
-      setIsFitModalOpen(false);
-      setSelectedTyre(null);
-      setFitForm({
-        truckNo: '', position: 'FL', fittedAtKm: '', fittedDate: new Date().toISOString().slice(0, 10)
-      });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to fit tyre.');
-    }
+  // Handle truck selection in form to auto-set vehicle type and position
+  const handleTruckChange = (truckNo) => {
+    const vType = getVehicleType(truckNo);
+    const cfg = VEHICLE_CONFIGS[vType] || VEHICLE_CONFIGS['18'];
+    setForm(prev => ({
+      ...prev,
+      truckNo,
+      vehicleType: vType,
+      position: cfg.positions[0]
+    }));
   };
 
-  const handleRemoveSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setError('');
-      const tyreId = selectedTyre.id;
-      await ax.post(`/tyres/${tyreId}/remove`, removeForm);
-      setIsRemoveModalOpen(false);
-      setSelectedTyre(null);
-      setRemoveForm({
-        removalDate: new Date().toISOString().slice(0, 10), removalKm: '', nextStatus: 'available'
-      });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to remove tyre.');
-    }
+  const handleOpenAddModal = (prefillTruck = '') => {
+    const truckNo = prefillTruck || (selfVehicles[0]?.truckNo || '');
+    const vType = getVehicleType(truckNo);
+    const cfg = VEHICLE_CONFIGS[vType] || VEHICLE_CONFIGS['18'];
+
+    setForm({
+      truckNo,
+      vehicleType: vType,
+      date: new Date().toISOString().slice(0, 10),
+      reason: 'blasted',
+      position: cfg.positions[0],
+      condition: 'new',
+      brand: 'Apollo',
+      newPrice: '',
+      oldDisposal: 'sold',
+      scrapPrice: '',
+      vendor: '',
+      remarks: ''
+    });
+    setModalOpen(true);
   };
 
-  const handleRetreadSubmit = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
+    if (!form.truckNo.trim()) return alert('Please select or enter a truck number');
+
+    const newCost = parseFloat(form.newPrice) || 0;
+    const scrapPrice = form.oldDisposal === 'sold' ? (parseFloat(form.scrapPrice) || 0) : 0;
+    const netCost = Math.max(0, newCost - scrapPrice);
+    const cleanTruck = form.truckNo.trim().toUpperCase();
+
+    // Auto-generate serialNo behind the scenes for backend compatibility
+    const autoSerial = `TYR-${cleanTruck}-${Date.now().toString().slice(-6)}`;
+
+    const payload = {
+      serialNo: autoSerial,
+      brand: form.brand,
+      type: form.condition,
+      purchasePrice: netCost, // Store net cost for accounting/PnL compatibility
+      purchaseDate: form.date,
+      status: 'fitted',
+      fitment: {
+        truckNo: cleanTruck,
+        vehicleType: form.vehicleType,
+        position: form.position,
+        reason: form.reason,
+        vendor: form.vendor,
+        newPrice: newCost,
+        oldDisposal: form.oldDisposal,
+        scrapPrice: scrapPrice,
+        netCost: netCost,
+        fittedDate: form.date
+      },
+      notes: `${form.reason === 'blasted' ? '💥 Blasted' : form.reason === 'damaged' ? '⚠️ Damaged' : form.reason === 'worn' ? '🔄 Worn Out' : '🆕 Upgrade'}${form.oldDisposal === 'sold' ? ` (Scrap Sold: ${fmtRs(scrapPrice)})` : ''}: ${form.remarks || 'Tyre replaced'}`
+    };
+
+    setSaving(true);
     try {
-      setError('');
-      const tyreId = selectedTyre.id;
-      await ax.post(`/tyres/${tyreId}/retread`, retreadForm);
-      setIsRetreadModalOpen(false);
-      setSelectedTyre(null);
-      setRetreadForm({
-        retreadDate: new Date().toISOString().slice(0, 10), retreadCost: '', retreaderName: '', notes: ''
-      });
+      await ax.post('/tyres', payload);
+      setModalOpen(false);
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to record retread.');
+      console.error('Failed to save tyre change record:', err);
+      alert(err.response?.data?.error || 'Failed to save tyre change record.');
+    } finally {
+      setSaving(false);
     }
   };
-
-  const handleScrapSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setError('');
-      const tyreId = selectedTyre.id;
-      await ax.post(`/tyres/${tyreId}/scrap`, scrapForm);
-      setIsScrapModalOpen(false);
-      setSelectedTyre(null);
-      setScrapForm({
-        scrapDate: new Date().toISOString().slice(0, 10), notes: ''
-      });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to scrap tyre.');
-    }
-  };
-
-  const [delTarget, setDelTarget] = useState(null);
 
   const handleDelete = async () => {
     if (!delTarget) return;
     try {
       await ax.delete(`/tyres/${delTarget.id}`);
+      setDelTarget(null);
       fetchData();
-      setDelTarget(null);
     } catch (err) {
-      setDelTarget(null);
+      console.error('Failed to delete record:', err);
+      alert('Failed to delete tyre record.');
     }
   };
 
-  const openFitModal = (tyre, position = '') => {
-    setSelectedTyre(tyre);
-    const targetTruck = truckFilter === 'all' ? '' : truckFilter;
-    // Same layout rule as availablePositions: the map's truck follows the toggle.
-    const layoutId = targetTruck
-      ? activeLayoutId
-      : inferLayoutFromVehicle(selfVehiclesList.find(v => v.truckNo === targetTruck));
-    const posList = getPositionsForLayout(layoutId);
-    const defaultPos = position || (posList[0]?.id || 'FL');
-    setFitForm(f => ({ ...f, position: defaultPos, truckNo: targetTruck }));
-    setIsFitModalOpen(true);
-  };
+  // Normalised tyre replacement records (own fleet vehicles only, excluding auto-seeded demo data)
+  const replacementList = useMemo(() => {
+    const selfTruckSet = new Set(selfVehicles.map(v => v.truckNo));
+    return tyres
+      .filter(t => {
+        const notes = (t.notes || '').toLowerCase();
+        const serial = (t.serialNo || '').toLowerCase();
+        if (notes.includes('auto-seeded') || notes.includes('seeded') || serial.includes('seeded')) {
+          return false; // Skip auto-seeded mock data so history starts clean & blank
+        }
+        const fitTruck = (t.fitment?.truckNo || t.truckNo || '').trim().toUpperCase();
+        if (!fitTruck) return false;
+        return selfTruckSet.has(fitTruck);
+      })
+      .map(t => {
+        const fit = t.fitment || {};
+        const truckNo = (fit.truckNo || t.truckNo || 'Unknown').trim().toUpperCase();
+        const reason = fit.reason || (t.notes && t.notes.includes('Blasted') ? 'blasted' : 'worn');
+        const position = fit.position || 'Wheel Position';
+        const vehicleType = fit.vehicleType || getVehicleType(truckNo);
+        const newPrice = fit.newPrice !== undefined ? parseFloat(fit.newPrice) : (parseFloat(t.purchasePrice) || 0);
+        const scrapPrice = parseFloat(fit.scrapPrice) || 0;
+        const oldDisposal = fit.oldDisposal || (scrapPrice > 0 ? 'sold' : 'stored');
+        const netCost = fit.netCost !== undefined ? parseFloat(fit.netCost) : (newPrice - scrapPrice);
 
-  const openRemoveModal = (tyre) => {
-    setSelectedTyre(tyre);
-    setIsRemoveModalOpen(true);
-  };
+        return {
+          id: t.id,
+          entryType: 'replacement',
+          date: t.purchaseDate || t.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+          truckNo,
+          vehicleType,
+          position,
+          reason,
+          condition: t.type || 'new',
+          brand: t.brand || 'Apollo',
+          newPrice,
+          oldDisposal,
+          scrapPrice,
+          netCost,
+          vendor: fit.vendor || '',
+          remarks: t.notes || '',
+          raw: t
+        };
+      });
+  }, [tyres, selfVehicles]);
 
-  const openRetreadModal = (tyre) => {
-    setSelectedTyre(tyre);
-    setIsRetreadModalOpen(true);
-  };
+  // Trip Voucher Puncture & Air Repair Entries (own fleet vehicles only)
+  const voucherRepairList = useMemo(() => {
+    const list = [];
+    const selfTruckSet = new Set(selfVehicles.map(v => v.truckNo));
+    vouchers.forEach(v => {
+      const tNo = (v.truckNo || '').trim().toUpperCase();
+      if (!tNo || !selfTruckSet.has(tNo)) return; // Skip market trucks
 
-  const openScrapModal = (tyre) => {
-    setSelectedTyre(tyre);
-    setIsScrapModalOpen(true);
-  };
-
-  const openHistoryModal = (tyre) => {
-    setSelectedTyre(tyre);
-    setIsHistoryModalOpen(true);
-  };
-
-  const getTyreAtPosition = (truck, pos) => {
-    return tyres.find(t => t.status === 'fitted' && t.fitment?.truckNo === truck && t.fitment?.position === pos);
-  };
-
-  // ── Axle map helpers ──
-  const positionNameMap = useMemo(() => {
-    const m = {};
-    getPositionsForLayout(activeLayoutId).forEach(p => { m[p.id] = p.name; });
-    return m;
-  }, [activeLayoutId]);
-
-  const layoutPositionIds = useMemo(() => {
-    const ids = [];
-    activeLayout.sections.forEach(s => s.axles.forEach(a => ids.push(...a.left, ...a.right)));
-    ids.push('SP');
-    return ids;
-  }, [activeLayout]);
-
-  // Road wheels only — the spare is reported separately so an "18-wheeler"
-  // never reads as "x / 19".
-  const fittedOnLayoutCount = useMemo(() => (
-    truckFilter === 'all' ? 0 : layoutPositionIds.filter(id => id !== 'SP' && getTyreAtPosition(truckFilter, id)).length
-  ), [layoutPositionIds, truckFilter, tyres]);
-
-  // Fitments recorded on positions that existed in the old 10/12/14/22-wheel
-  // layouts — still real data, so surface them instead of hiding.
-  const unmappedFitments = useMemo(() => (
-    truckFilter === 'all' ? [] : tyres.filter(t =>
-      t.status === 'fitted' && t.fitment?.truckNo === truckFilter && !layoutPositionIds.includes(t.fitment.position))
-  ), [tyres, truckFilter, layoutPositionIds]);
-
-  const handleWheelClick = (posId) => {
-    const t = getTyreAtPosition(truckFilter, posId);
-    if (t) { openRemoveModal(t); return; }
-    const av = tyres.find(ty => ty.status === 'available');
-    if (av) openFitModal(av, posId);
-    else alert('No available tyres in stock. Please register a tyre first.');
-  };
-
-  const renderWheel = (posId) => {
-    const t = getTyreAtPosition(truckFilter, posId);
-    const isFitted = !!t;
-    const posName = positionNameMap[posId] || posId;
-    return (
-      <div key={posId} onClick={() => handleWheelClick(posId)}
-        title={isFitted ? `${posName} — ${t.serialNo} (${t.brand}). Click to remove.` : `${posName} — empty. Click to fit a tyre.`}
-        style={{
-          width: '96px', padding: '6px 8px', borderRadius: '10px', textAlign: 'center', cursor: 'pointer',
-          background: isFitted ? 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' : 'var(--bg-th)',
-          border: isFitted ? '2px solid #10b981' : '2px dashed var(--border)',
-          boxShadow: isFitted ? '0 2px 8px rgba(16,185,129,0.25)' : 'none',
-          color: isFitted ? '#fff' : 'var(--text-muted)',
-          transition: 'transform 0.12s ease', boxSizing: 'border-box'
-        }}
-        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-      >
-        <div style={{ fontSize: '9px', fontWeight: 900, opacity: 0.7, letterSpacing: '0.05em' }}>{posId}</div>
-        <div style={{ fontSize: '12px', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isFitted ? t.serialNo : 'EMPTY'}</div>
-        <div style={{ fontSize: '9px', fontWeight: 700, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isFitted ? t.brand : 'tap to fit'}</div>
-      </div>
-    );
-  };
-
-  // Filter logic
-  const filteredTyres = tyres.filter(t => {
-    const matchesSearch = t.serialNo.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          t.brand.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
-    const matchesTruck = truckFilter === 'all' || (t.status === 'fitted' && t.fitment?.truckNo === truckFilter);
-    return matchesSearch && matchesStatus && matchesTruck;
-  });
-
-  // Self Vehicles Set
-  const selfTruckSet = useMemo(() => new Set(selfVehiclesList.map(v => v.truckNo)), [selfVehiclesList]);
-
-  // Fitments recorded on trucks that are not in the own fleet (market vehicles,
-  // deleted vehicles, typos). They no longer appear in the dropdown/ledger/KPIs,
-  // so surface them explicitly instead of letting them vanish.
-  const outsideFleetFitments = useMemo(() => (
-    tyres.filter(t => t.status === 'fitted' && t.fitment?.truckNo && !selfTruckSet.has(t.fitment.truckNo))
-  ), [tyres, selfTruckSet]);
-
-  // Calculate Tyre Expenses ONLY for Self Vehicles
-  const selfTyreExpenses = useMemo(() => {
-    // 1. Voucher Tyre Expenses for Self Vehicles
-    let voucherExpense = 0;
-    const vehicleVoucherExpenses = {};
-
-    (vouchers || []).forEach(v => {
-      if (!v.truckNo || !selfTruckSet.has(v.truckNo)) return;
       const pnc = parseFloat(v.tyrePuncture) || 0;
-      const gre = (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
-      const ext = parseFloat(v.extraCash) || 0;
-      const sum = pnc + gre + ext;
+      const air = (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreAir) || 0);
+      const totalRepair = pnc + air;
+      if (totalRepair > 0) {
+        list.push({
+          id: `vch_${v.id}`,
+          entryType: 'voucher_repair',
+          date: v.date || new Date().toISOString().slice(0, 10),
+          truckNo: tNo,
+          vehicleType: getVehicleType(tNo),
+          position: 'Puncture / Air Service',
+          reason: 'puncture_repair',
+          condition: 'service',
+          brand: 'Trip Voucher',
+          newPrice: totalRepair,
+          pncAmount: pnc,
+          airAmount: air,
+          oldDisposal: 'none',
+          scrapPrice: 0,
+          netCost: totalRepair,
+          lrNo: v.lrNo || '',
+          billNo: v.billNo || '',
+          remarks: `Trip Puncture (${fmtRs(pnc)}) & Air (${fmtRs(air)}) - Bill #${v.billNo || 'N/A'}, LR #${v.lrNo || 'N/A'}`
+        });
+      }
+    });
+    return list;
+  }, [vouchers, selfVehicles]);
 
-      voucherExpense += sum;
-      vehicleVoucherExpenses[v.truckNo] = (vehicleVoucherExpenses[v.truckNo] || 0) + sum;
+  // Combined Maintenance History
+  const combinedHistory = useMemo(() => {
+    return [...replacementList, ...voucherRepairList].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [replacementList, voucherRepairList]);
+
+  // Filtered History for Table
+  const filteredHistory = useMemo(() => {
+    return combinedHistory.filter(item => {
+      if (entryTypeFilter !== 'all' && item.entryType !== entryTypeFilter) return false;
+      if (truckFilter !== 'all' && item.truckNo !== truckFilter) return false;
+      if (reasonFilter !== 'all' && item.reason !== reasonFilter) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchTruck = item.truckNo.toLowerCase().includes(q);
+        const matchPos = item.position.toLowerCase().includes(q);
+        const matchBrand = item.brand.toLowerCase().includes(q);
+        const matchRemarks = item.remarks.toLowerCase().includes(q);
+        if (!matchTruck && !matchPos && !matchBrand && !matchRemarks) return false;
+      }
+      return true;
+    });
+  }, [combinedHistory, entryTypeFilter, truckFilter, reasonFilter, search]);
+
+  // Fleet Summary Map per Vehicle (own fleet vehicles ONLY)
+  const vehicleStatsMap = useMemo(() => {
+    const map = {};
+
+    // Initialize all self vehicles
+    selfVehicles.forEach(v => {
+      const vType = getVehicleType(v.truckNo);
+      const cfg = VEHICLE_CONFIGS[vType] || VEHICLE_CONFIGS['18'];
+
+      map[v.truckNo] = {
+        truckNo: v.truckNo,
+        vehicleType: vType,
+        config: cfg,
+        totalReplacements: 0,
+        totalNewCost: 0,
+        totalScrapIncome: 0,
+        totalPunctureAirCost: 0,
+        totalVoucherRepairs: 0,
+        netExpense: 0,
+        hasNewTyres: false,
+        newTyreCount: 0,
+        blastedCount: 0,
+        lastChangeDate: null,
+        lastReason: null
+      };
     });
 
-    // 2. Tyre Purchase & Retread Costs for Self Vehicles
-    let inventoryExpense = 0;
-    const vehicleInventoryExpenses = {};
+    // Populate with replacements & voucher repairs for self vehicles ONLY
+    combinedHistory.forEach(item => {
+      const entry = map[item.truckNo];
+      if (!entry) return; // Skip market vehicles
 
-    tyres.forEach(t => {
-      const fittedTruck = t.fitment?.truckNo;
-      if (t.status === 'fitted' && fittedTruck && selfTruckSet.has(fittedTruck)) {
-        const cost = (parseFloat(t.purchasePrice) || 0) + (parseFloat(t.retreadCost) || 0);
-        inventoryExpense += cost;
-        vehicleInventoryExpenses[fittedTruck] = (vehicleInventoryExpenses[fittedTruck] || 0) + cost;
+      if (item.entryType === 'replacement') {
+        entry.totalReplacements += 1;
+        entry.totalNewCost += item.newPrice;
+        entry.totalScrapIncome += item.scrapPrice;
+        entry.netExpense += item.netCost;
+
+        if (item.condition === 'new') {
+          entry.hasNewTyres = true;
+          entry.newTyreCount += 1;
+        }
+        if (item.reason === 'blasted') {
+          entry.blastedCount += 1;
+        }
+      } else if (item.entryType === 'voucher_repair') {
+        entry.totalVoucherRepairs += 1;
+        entry.totalPunctureAirCost += item.netCost;
+        entry.netExpense += item.netCost;
+      }
+
+      if (!entry.lastChangeDate || new Date(item.date) > new Date(entry.lastChangeDate)) {
+        entry.lastChangeDate = item.date;
+        entry.lastReason = item.reason;
       }
     });
 
-    return {
-      total: voucherExpense + inventoryExpense,
-      voucherExpense,
-      inventoryExpense,
-      vehicleVoucherExpenses,
-      vehicleInventoryExpenses
-    };
-  }, [vouchers, tyres, selfTruckSet]);
+    return map;
+  }, [selfVehicles, combinedHistory]);
 
-  // Own-fleet trucks for the axle-map dropdown (market vehicles excluded)
-  const selfTrucksList = useMemo(() => selfVehiclesList.map(v => v.truckNo).sort(), [selfVehiclesList]);
+  // Overall Header Metrics
+  const totalNewCostSum = useMemo(() => replacementList.reduce((s, x) => s + x.newPrice, 0), [replacementList]);
+  const totalScrapIncomeSum = useMemo(() => replacementList.reduce((s, x) => s + x.scrapPrice, 0), [replacementList]);
+  const totalVunctureAirCostSum = useMemo(() => voucherRepairList.reduce((s, x) => s + x.netCost, 0), [voucherRepairList]);
+  const overallNetExpenseSum = useMemo(() => (totalNewCostSum - totalScrapIncomeSum + totalVunctureAirCostSum), [totalNewCostSum, totalScrapIncomeSum, totalVunctureAirCostSum]);
+  const totalBlastedCount = useMemo(() => replacementList.filter(x => x.reason === 'blasted').length, [replacementList]);
 
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
-        <TruckLoader size={130} text="Loading tyre ledger & vehicle maps..." />
+        <TruckLoader size={120} text="Loading tyre change records..." />
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '40px' }}>
+    <div style={{ width: '100%', paddingBottom: '40px' }}>
       <ConfirmDialog
         open={!!delTarget}
-        title="Delete this tyre?"
-        message={<>Delete tyre <strong style={{ color: 'var(--text)' }}>{delTarget?.serialNo}</strong> ({delTarget?.brand}) from inventory permanently?</>}
-        confirmText="Delete Tyre"
+        title="Delete Tyre Record?"
+        message={<>Delete tyre change entry for truck <strong style={{ color: 'var(--text)' }}>{delTarget?.truckNo}</strong> ({fmtDate(delTarget?.date)})?</>}
+        confirmText="Delete Entry"
         danger
         onConfirm={handleDelete}
         onCancel={() => setDelTarget(null)}
       />
-      
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>Tyre Management</h1>
-          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Track tyre life cycles, assignments, rotating positions, and running distances for Self Vehicles.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={() => setIsAddModalOpen(true)} style={{
-            background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', 
-            borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '8px', 
-            fontSize: '14px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)' 
-          }}>
-            <Plus size={18} /> Register New Tyre
-          </button>
-        </div>
-      </div>
 
-      {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-        {[
-          { label: 'Self Fleet Count', val: `${selfVehiclesList.length} Trucks`, color: '#3b82f6' },
-          { label: 'Total Self Tyre Cost', val: fmtRs(selfTyreExpenses.total), color: '#10b981' },
-          { label: 'Fitted on Fleet', val: tyres.filter(t => t.status === 'fitted' && selfTruckSet.has(t.fitment?.truckNo)).length, color: '#6366f1' },
-          { label: 'Available (In stock)', val: tyres.filter(t => t.status === 'available').length, color: '#06b6d4' },
-          { label: 'Sent for Retread', val: tyres.filter(t => t.status === 'retreading').length, color: '#f59e0b' }
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</div>
-            <div style={{ fontSize: '24px', fontWeight: 900, color, lineHeight: 1.2, marginTop: '8px' }}>{val}</div>
+      {/* Page Header */}
+      <div className="page-hd" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ background: '#f59e0b', color: 'white', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Wrench size={24} />
           </div>
-        ))}
-      </div>
-
-      {/* Self Vehicles Fleet List Section */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '20px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>🚛 Self Vehicles Tyre Ledger</h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Tyre costs and maintenance calculated exclusively for Own Fleet vehicles.</p>
+            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 900 }}>Tyre Management & Vehicle History</h1>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
+              Log tyre changes, old tyre scrap sales (sold vs stored), and track trip voucher puncture & air expenses.
+            </p>
           </div>
         </div>
-        {selfVehiclesList.length === 0 ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No self vehicles registered in Fleet Management.</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-th)', borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Truck No.</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Make / Model</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Type</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Fitted Tyres</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Voucher Tyre Exp.</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Tyre Cost</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selfVehiclesList.map(v => {
-                  const fittedCount = tyres.filter(t => t.status === 'fitted' && t.fitment?.truckNo === v.truckNo).length;
-                  const vExp = selfTyreExpenses.vehicleVoucherExpenses[v.truckNo] || 0;
-                  const iExp = selfTyreExpenses.vehicleInventoryExpenses[v.truckNo] || 0;
-                  const totalExp = vExp + iExp;
-                  return (
-                    <tr key={v.id || v.truckNo} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 14px', fontWeight: 900, color: 'var(--primary)' }}>{v.truckNo}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{v.make} {v.model ? `(${v.model})` : ''}</td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)' }}>
-                          {AXLE_LAYOUTS[inferLayoutFromVehicle(v)]?.short}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: fittedCount > 0 ? 'rgba(16,185,129,0.1)' : 'var(--bg-th)', color: fittedCount > 0 ? '#10b981' : 'var(--text-muted)' }}>
-                          {fittedCount} Tyres
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>{fmtRs(vExp)}</td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 900, color: '#10b981' }}>{fmtRs(totalExp)}</td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => {
-                            setTruckFilter(v.truckNo);
-                            // Same normalisation as the truck dropdown — a truck view only shows fitted tyres
-                            if (statusFilter !== 'all' && statusFilter !== 'fitted') setStatusFilter('all');
-                          }}
-                          style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}
-                        >
-                          View Axle Map
-                        </button>
+
+        <button 
+          className="btn btn-p" 
+          onClick={() => handleOpenAddModal()} 
+          style={{ background: '#f59e0b', color: 'white', padding: '9px 18px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontWeight: 800, border: 'none', cursor: 'pointer' }}
+        >
+          <Plus size={18} /> Record Tyre Change
+        </button>
+      </div>
+
+      {/* Summary Metric Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+        <div className="card" style={{ padding: '16px', borderRadius: '14px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Net Tyre Expense</span>
+            <div style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '6px', borderRadius: '8px' }}>
+              <DollarSign size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 900, color: '#6366f1' }}>{fmtRs(overallNetExpenseSum)}</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>New tyres - Scrap sales + Puncture repairs</div>
+        </div>
+
+        <div className="card" style={{ padding: '16px', borderRadius: '14px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>💰 Scrap Sale Income</span>
+            <div style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '6px', borderRadius: '8px' }}>
+              <CircleDollarSign size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 900, color: '#10b981' }}>{fmtRs(totalScrapIncomeSum)}</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Cash received from sold blasted/old tyres</div>
+        </div>
+
+        <div className="card" style={{ padding: '16px', borderRadius: '14px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>💥 Blasted Tyres</span>
+            <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '6px', borderRadius: '8px' }}>
+              <AlertTriangle size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 900, color: '#ef4444' }}>{totalBlastedCount}</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Tyres replaced due to blasting</div>
+        </div>
+
+        <div className="card" style={{ padding: '16px', borderRadius: '14px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Voucher Punctures & Air</span>
+            <div style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '6px', borderRadius: '8px' }}>
+              <Wrench size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 900, color: '#f59e0b' }}>{fmtRs(totalVunctureAirCostSum)}</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>From {voucherRepairList.length} trip voucher entries</div>
+        </div>
+      </div>
+
+      {/* Main Navigation Tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+        <button
+          onClick={() => setActiveTab('vehicles')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: 800,
+            border: 'none',
+            background: activeTab === 'vehicles' ? 'var(--primary)' : 'transparent',
+            color: activeTab === 'vehicles' ? 'white' : 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <Truck size={15} /> Fleet Tyre Status ({Object.keys(vehicleStatsMap).length} Trucks)
+        </button>
+
+        <button
+          onClick={() => setActiveTab('history')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: 800,
+            border: 'none',
+            background: activeTab === 'history' ? 'var(--primary)' : 'transparent',
+            color: activeTab === 'history' ? 'white' : 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <FileText size={15} /> Tyre & Repair History ({filteredHistory.length})
+        </button>
+      </div>
+
+      {activeTab === 'vehicles' ? (
+        /* Fleet Vehicles Tyre Status View */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '16px' }}>
+          {Object.values(vehicleStatsMap).map(v => (
+            <div key={v.truckNo} className="card" style={{ padding: '18px', borderRadius: '14px', background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900, fontFamily: 'monospace', color: 'var(--primary)' }}>
+                      {v.truckNo}
+                    </h3>
+                    {/* Vehicle Type & Tyre Count Breakdown */}
+                    <div style={{ fontSize: '11.5px', color: 'var(--text)', fontWeight: 800, marginTop: '2px' }}>
+                      {v.vehicleType === '6' ? '🚚 Canter (6 Tyres + 1 Spare = 7 Total)' : '🚛 Trailer (18 Tyres + 2 Spares = 20 Total)'}
+                    </div>
+                  </div>
+
+                  {v.hasNewTyres ? (
+                    <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', padding: '4px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      ⭐ {v.newTyreCount} New
+                    </span>
+                  ) : v.blastedCount > 0 ? (
+                    <span style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '4px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      💥 {v.blastedCount} Blasted
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* Tyre Count & Wheel Breakdown Card */}
+                <div style={{ background: 'var(--bg-th)', padding: '10px 12px', borderRadius: '10px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Mounted Tyres:</span>
+                    <strong style={{ color: 'var(--text)' }}>{v.config.mounted} Tyres</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Spare Tyres:</span>
+                    <strong style={{ color: '#10b981' }}>{v.config.spares} Spare Tyre{v.config.spares > 1 ? 's' : ''}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', borderTop: '1px solid var(--border)', paddingTop: '4px', marginTop: '2px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 800 }}>Total Wheel Capacity:</span>
+                    <strong style={{ color: 'var(--primary)' }}>{v.config.total} Wheels Total</strong>
+                  </div>
+                </div>
+
+                {/* Stats Breakdown Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px', fontSize: '11.5px' }}>
+                  <div style={{ background: 'var(--bg-th)', padding: '8px 10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Replaced Tyres</div>
+                    <div style={{ fontWeight: 900, color: 'var(--text)' }}>{v.totalReplacements} tyres</div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-th)', padding: '8px 10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Scrap Sales Income</div>
+                    <div style={{ fontWeight: 900, color: '#10b981' }}>{fmtRs(v.totalScrapIncome)}</div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-th)', padding: '8px 10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Voucher Punctures</div>
+                    <div style={{ fontWeight: 900, color: '#f59e0b' }}>{fmtRs(v.totalPunctureAirCost)}</div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-th)', padding: '8px 10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Net Tyre Cost</div>
+                    <div style={{ fontWeight: 900, color: '#6366f1' }}>{fmtRs(v.netExpense)}</div>
+                  </div>
+                </div>
+
+                {v.lastChangeDate && (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+                    Last activity: <strong style={{ color: 'var(--text)' }}>{fmtDate(v.lastChangeDate)}</strong> {v.lastReason === 'blasted' ? '(💥 Blasted)' : ''}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  className="btn btn-g"
+                  onClick={() => setVehicleHistoryModal(v.truckNo)}
+                  style={{ flex: 1, padding: '7px 10px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', border: '1px solid var(--border)', cursor: 'pointer' }}
+                >
+                  <Eye size={14} /> View History
+                </button>
+                <button
+                  className="btn btn-p"
+                  onClick={() => handleOpenAddModal(v.truckNo)}
+                  style={{ flex: 1, padding: '7px 10px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', background: '#f59e0b', color: 'white', border: 'none', cursor: 'pointer' }}
+                >
+                  <Plus size={14} /> Record Change
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* History Search & Filter View */
+        <>
+          <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', borderRadius: '12px', background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '220px' }}>
+              <Search size={16} color="var(--text-muted)" />
+              <input
+                type="text"
+                placeholder="Search truck no, position, brand, remarks, LR/Bill No..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text)', fontSize: '13px', width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Entry Type Filter */}
+              <select
+                value={entryTypeFilter}
+                onChange={e => setEntryTypeFilter(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '12px', background: 'var(--bg-th)', color: 'var(--text)', border: '1px solid var(--border)', fontWeight: 600 }}
+              >
+                <option value="all">All Entry Types</option>
+                <option value="replacement">🆕 Tyre Replacements</option>
+                <option value="voucher_repair">🔧 Voucher Punctures & Air</option>
+              </select>
+
+              {/* Truck Selector Filter */}
+              <select
+                value={truckFilter}
+                onChange={e => setTruckFilter(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '12px', background: 'var(--bg-th)', color: 'var(--text)', border: '1px solid var(--border)', fontWeight: 600 }}
+              >
+                <option value="all">All Vehicles</option>
+                {selfVehicles.map(v => (
+                  <option key={v.truckNo} value={v.truckNo}>{v.truckNo}</option>
+                ))}
+              </select>
+
+              {/* Reason Filter */}
+              <select
+                value={reasonFilter}
+                onChange={e => setReasonFilter(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '12px', background: 'var(--bg-th)', color: 'var(--text)', border: '1px solid var(--border)', fontWeight: 600 }}
+              >
+                <option value="all">All Reasons</option>
+                <option value="blasted">💥 Blasted / Burst</option>
+                <option value="damaged">⚠️ Damaged</option>
+                <option value="worn">🔄 Worn Out</option>
+                <option value="upgrade">🆕 Upgrade</option>
+                <option value="puncture_repair">🔧 Voucher Puncture/Air</option>
+              </select>
+
+              {(search || entryTypeFilter !== 'all' || truckFilter !== 'all' || reasonFilter !== 'all') && (
+                <button
+                  onClick={() => { setSearch(''); setEntryTypeFilter('all'); setTruckFilter('all'); setReasonFilter('all'); }}
+                  style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <X size={14} /> Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* History Table */}
+          <div className="card tbl-wrap" style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-th)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>
+                Tyre Change & Repair Log ({filteredHistory.length} entries)
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-th)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '10px 14px', fontWeight: 800, width: '40px' }}>#</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>DATE</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>TRUCK NO</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>EVENT / REASON</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>POSITION / AXLE</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>NEW COST / REPAIR</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>OLD TYRE DISPOSAL</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>NET COST</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800 }}>REMARKS / REFERENCES</th>
+                    <th style={{ padding: '10px 14px', fontWeight: 800, textAlign: 'center' }}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                        No tyre replacement or puncture repair entries found matching your filters.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredHistory.map((item, index) => {
+                      const isBlasted = item.reason === 'blasted';
+                      const isVoucher = item.entryType === 'voucher_repair';
+                      return (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', background: isBlasted ? 'rgba(239,68,68,0.02)' : isVoucher ? 'rgba(245,158,11,0.02)' : 'transparent' }}>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>{index + 1}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 700 }}>{fmtDate(item.date)}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 900, color: 'var(--primary)', fontFamily: 'monospace', fontSize: '13px' }}>
+                            {item.truckNo}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            {isBlasted ? (
+                              <span style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                💥 Blasted
+                              </span>
+                            ) : isVoucher ? (
+                              <span style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🔧 Puncture / Air
+                              </span>
+                            ) : item.reason === 'damaged' ? (
+                              <span style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                ⚠️ Damaged
+                              </span>
+                            ) : item.reason === 'upgrade' ? (
+                              <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🆕 Upgrade
+                              </span>
+                            ) : (
+                              <span style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.3)', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🔄 Worn Out
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--text)' }}>
+                            {item.position}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ fontWeight: 800 }}>{fmtRs(item.newPrice)}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.brand}</div>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            {isVoucher ? (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                            ) : item.oldDisposal === 'sold' ? (
+                              <div>
+                                <span style={{ color: '#10b981', fontWeight: 800, fontSize: '12px' }}>💰 Sold for {fmtRs(item.scrapPrice)}</span>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Scrap income credit</div>
+                              </div>
+                            ) : item.oldDisposal === 'stored' ? (
+                              <span style={{ color: '#6366f1', fontWeight: 700, fontSize: '11.5px' }}>📦 Stored in Yard</span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '11.5px' }}>🗑️ Discarded (₹0)</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontWeight: 900, color: '#6366f1' }}>
+                            {fmtRs(item.netCost)}
+                          </td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: '11.5px', maxWidth: '240px' }}>
+                            {item.remarks || '—'}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            {!isVoucher ? (
+                              <button
+                                onClick={() => setDelTarget(item)}
+                                title="Delete Record"
+                                style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            ) : (
+                              <span title="Trip voucher entries are managed in Vouchers Module" style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Voucher</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
-      {/* Interactive Visual Truck Map */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Axle-Wise Fitment Map</h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Select a truck to view or manage its current tyre placements in real-time.</p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)' }}>Select Truck:</span>
-            <select 
-              value={truckFilter} 
-              onChange={e => {
-                setTruckFilter(e.target.value);
-                if (e.target.value !== 'all') {
-                  // Keep statusFilter all or fitted
-                  if (statusFilter !== 'all' && statusFilter !== 'fitted') setStatusFilter('all');
-                }
-              }} 
-              style={{ padding: '8px 16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontWeight: 600 }}
-            >
-              <option value="all">— Select Vehicle —</option>
-              {selfTrucksList.map(truck => <option key={truck} value={truck}>{truck}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {truckFilter === 'all' ? (
-          <div style={{ padding: '40px 20px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '16px', background: 'var(--bg-row-even)' }}>
-            <Disc size={36} style={{ color: 'var(--text-muted)', marginBottom: '12px', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Choose a vehicle from the dropdown above to see its tyre layout.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-            {/* Vehicle info + layout toggle + fitted summary */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-row-even)', border: '1px solid var(--border)', borderRadius: '14px', flexWrap: 'wrap', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '14px', fontWeight: 900, color: 'var(--primary)' }}>{truckFilter}</span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  {selectedVehicle ? `${selectedVehicle.make || ''} ${selectedVehicle.model || ''}`.trim() : ''}
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '4px 10px', borderRadius: '8px' }}>
-                  {fittedOnLayoutCount} / {layoutPositionIds.length - 1} wheels fitted
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: getTyreAtPosition(truckFilter, 'SP') ? '#10b981' : 'var(--text-muted)', background: 'var(--bg-th)', padding: '4px 10px', borderRadius: '8px' }}>
-                  Spare: {getTyreAtPosition(truckFilter, 'SP') ? 'fitted' : 'empty'}
-                </span>
+      {/* Record Tyre Replacement Modal */}
+      {modalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '540px', borderRadius: '16px', background: 'var(--bg-card)', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+            <div style={{ background: '#f59e0b', color: 'white', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Wrench size={20} />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900 }}>Record Tyre Change</h3>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>Vehicle Type:</span>
-                {['18', '6'].map(id => { const layout = AXLE_LAYOUTS[id]; return (
-                  <button key={id} onClick={() => setOverrideLayoutId(id)} style={{
-                    padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                    border: activeLayoutId === id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    background: activeLayoutId === id ? 'rgba(99,102,241,0.1)' : 'var(--bg-input)',
-                    color: activeLayoutId === id ? 'var(--primary)' : 'var(--text-muted)'
-                  }}>
-                    {layout.name}
-                  </button>
-                ); })}
-              </div>
+              <button onClick={() => setModalOpen(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={16} />
+              </button>
             </div>
 
-            {/* Legend */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '26px', height: '14px', borderRadius: '4px', background: 'linear-gradient(180deg,#1e293b,#0f172a)', border: '2px solid #10b981', display: 'inline-block' }} />
-                Fitted — click to remove
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '26px', height: '14px', borderRadius: '4px', background: 'var(--bg-th)', border: '2px dashed var(--border)', display: 'inline-block' }} />
-                Empty — click to fit
-              </span>
-              <span>Top row = left side of truck · bottom row = right side · front is on the left</span>
-            </div>
-
-            {/* Axle schematic — front of vehicle on the left */}
-            <div style={{ overflowX: 'auto', paddingBottom: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'stretch', gap: '16px', minWidth: 'min-content' }}>
-
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 4px' }}>
-                  <span style={{ fontSize: '20px' }}>🚚</span>
-                  <span style={{ fontSize: '10px', fontWeight: 900, color: 'var(--text-muted)', letterSpacing: '0.1em', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>FRONT</span>
-                </div>
-
-                {activeLayout.sections.map(section => (
-                  <div key={section.name} style={{ border: '2px solid var(--border)', borderRadius: '16px', padding: '14px 18px', background: 'var(--bg-row-even)' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '12px', textAlign: 'center' }}>
-                      {section.icon} {section.name}
-                    </div>
-                    <div style={{ display: 'flex', gap: '22px' }}>
-                      {section.axles.map(axle => (
-                        <div key={axle.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {axle.left.map(id => renderWheel(id))}
-                          </div>
-                          <div style={{ width: '10px', height: '30px', borderRadius: '5px', background: 'var(--border)' }} />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {axle.right.map(id => renderWheel(id))}
-                          </div>
-                          <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text)', marginTop: '6px', whiteSpace: 'nowrap' }}>{axle.name}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-
-                <div style={{ border: '2px dashed var(--border)', borderRadius: '16px', padding: '14px 18px', background: 'var(--bg-row-even)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Spare</div>
-                  {renderWheel('SP')}
-                </div>
-              </div>
-            </div>
-
-            {/* Tyres fitted on positions that are not part of the selected layout */}
-            {unmappedFitments.length > 0 && (
-              <div style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
-                <strong>{unmappedFitments.length} fitted tyre(s) are on positions outside the selected layout:</strong>{' '}
-                {unmappedFitments.map(t => `${t.serialNo} (${t.fitment.position})`).join(', ')}.
-                If the vehicle type above is wrong, switch the toggle — otherwise use the tyre cards below to remove and refit them.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Fitments recorded on trucks that are not in the own fleet */}
-        {outsideFleetFitments.length > 0 && (
-          <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px', color: 'var(--text)' }}>
-            <strong>{outsideFleetFitments.length} fitted tyre(s) are recorded on trucks outside your own fleet:</strong>{' '}
-            {outsideFleetFitments.slice(0, 10).map(t => `${t.serialNo} (${t.fitment.truckNo})`).join(', ')}
-            {outsideFleetFitments.length > 10 ? ` +${outsideFleetFitments.length - 10} more` : ''}.
-            These trucks are not listed above — set the tyre list below to "All" / "Fitted" to find and remove them.
-          </div>
-        )}
-      </div>
-
-      {/* Toolbar filters */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input 
-            type="text" 
-            className="fi"
-            placeholder="Search Serial No or Brand..." 
-            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '38px' }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-card)', padding: '3px', borderRadius: '10px', border: '1px solid var(--border)', height: '38px', alignItems: 'center' }}>
-          {['all', 'available', 'fitted', 'retreading', 'scrapped'].map(t => (
-            <button key={t} onClick={() => setStatusFilter(t)} style={{
-              height: '30px', padding: '0 12px', borderRadius: '7px', border: 'none', fontSize: '12px', fontWeight: 700, textTransform: 'capitalize', cursor: 'pointer',
-              background: statusFilter === t ? 'var(--accent)' : 'transparent',
-              color: statusFilter === t ? 'white' : 'var(--text-muted)',
-              transition: 'all 0.15s'
-            }}>
-              {t === 'available' ? 'Available' : t === 'fitted' ? 'Fitted' : t === 'retreading' ? 'Retread' : t === 'scrapped' ? 'Scrapped' : 'All'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Grid of Tyres */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-          {filteredTyres.map(tyre => (
-            <motion.div key={tyre.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', position: 'relative' }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '2px 6px', borderRadius: '4px' }}>
-                      {tyre.size}
-                    </span>
-                    <span style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', background: 'var(--bg-input)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
-                      {tyre.type}
-                    </span>
-                  </div>
-                  <h3 style={{ margin: '6px 0 2px 0', fontSize: '18px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.02em' }}>{tyre.serialNo}</h3>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>{tyre.brand}</div>
-                </div>
+            <form onSubmit={handleSave} style={{ padding: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={() => openHistoryModal(tyre)} title="Rotation History" className="btn btn-sm btn-g btn-icon"><RefreshCw size={13} /></button>
-                  <button onClick={() => setDelTarget(tyre)} title="Delete Tyre" className="btn btn-sm btn-d btn-icon"><Trash2 size={13} /></button>
-                </div>
-              </div>
-
-              {/* Status Specific Details */}
-              <div style={{ background: 'var(--bg-input)', borderRadius: '12px', padding: '12px', marginBottom: '14px', fontSize: '13px' }}>
-                {tyre.status === 'fitted' && tyre.fitment && (
+                {/* Truck Selection & Vehicle Type */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Vehicle Fitted:</span>
-                      <span style={{ fontWeight: 800, color: '#10b981' }}>{tyre.fitment.truckNo}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Position:</span>
-                      <span style={{ fontWeight: 700 }}>{tyre.fitment.position}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Fitted Date:</span>
-                      <span>{fmtDate(tyre.fitment.fittedDate)}</span>
-                    </div>
-                  </div>
-                )}
-                {tyre.status === 'available' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <CheckCircle2 size={14} /> Ready for Fitment
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Purchase: {fmtDate(tyre.purchaseDate)} (Cost: {fmtRs(tyre.purchasePrice)})</div>
-                  </div>
-                )}
-                {tyre.status === 'retreading' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ color: '#f59e0b', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <RotateCw size={14} className="spin" /> Out for Retreading
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Send for retread to reuse tyre casing.</div>
-                  </div>
-                )}
-                {tyre.status === 'scrapped' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ color: 'var(--danger)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <XCircle size={14} /> Scrapped
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Scrap Date: {fmtDate(tyre.scrapDate)}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Running summary & Quick action */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Life KM Run</div>
-                  <div style={{ fontSize: '15px', fontWeight: 900 }}>{tyre.totalKmRun.toLocaleString()} KM</div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {tyre.status === 'available' && (
-                    <button onClick={() => openFitModal(tyre)} className="btn btn-sm btn-g" style={{ fontWeight: 800 }}>Fit Tyre</button>
-                  )}
-                  {tyre.status === 'fitted' && (
-                    <button onClick={() => openRemoveModal(tyre)} className="btn btn-sm btn-d" style={{ fontWeight: 800 }}>Remove</button>
-                  )}
-                  {tyre.status === 'retreading' && (
-                    <button onClick={() => openRetreadModal(tyre)} className="btn btn-sm btn-g" style={{ fontWeight: 800, background: '#f59e0b', borderColor: '#f59e0b' }}>Record Retread</button>
-                  )}
-                  {tyre.status !== 'scrapped' && tyre.status !== 'fitted' && tyre.status !== 'retreading' && (
-                    <>
-                      <button onClick={() => openRetreadModal(tyre)} className="btn btn-sm" style={{ fontWeight: 700, border: '1px solid var(--border)', background: 'transparent' }}>Retread</button>
-                      <button onClick={() => openScrapModal(tyre)} className="btn btn-sm btn-d" style={{ fontWeight: 700 }}>Scrap</button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          ))}
-          {filteredTyres.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--bg-card)', borderRadius: '16px', border: '1px dashed var(--border)' }}>
-              No tyres registered matching these filters.
-            </div>
-          )}
-        </div>
-
-      {/* Modal 1: Register New Tyre */}
-      <AnimatePresence>
-        {isAddModalOpen && (
-          <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ background: 'var(--bg-card)', borderRadius: '16px', width: '100%', maxWidth: '520px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Register New Tyre</h3>
-                <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={18} /></button>
-              </div>
-              <form onSubmit={handleAddSubmit} style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Serial No. *</label>
-                    <input className="fi" type="text" placeholder="e.g. MRF-84930129" value={addForm.serialNo} onChange={e => setAddForm({ ...addForm, serialNo: e.target.value })} required />
-                  </div>
-                  <div className="field">
-                    <label>Brand</label>
-                    <select className="fi" value={addForm.brand} onChange={e => setAddForm({ ...addForm, brand: e.target.value })}>
-                      {BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Size</label>
-                    <select className="fi" value={addForm.size} onChange={e => setAddForm({ ...addForm, size: e.target.value })}>
-                      {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Type</label>
-                    <select className="fi" value={addForm.type} onChange={e => setAddForm({ ...addForm, type: e.target.value })}>
-                      <option value="new">New Tyre</option>
-                      <option value="retread">Retreaded Tyre</option>
-                      <option value="old">Old / Used Tyre</option>
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Cost</label>
-                    <input className="fi" type="number" placeholder="₹" value={addForm.purchasePrice} onChange={e => setAddForm({ ...addForm, purchasePrice: e.target.value })} />
-                  </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Purchase Date</label>
-                    <input className="fi" type="date" value={addForm.purchaseDate} onChange={e => setAddForm({ ...addForm, purchaseDate: e.target.value })} />
-                  </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Notes</label>
-                    <textarea className="fi" rows={2} placeholder="Optional purchase notes..." value={addForm.notes} onChange={e => setAddForm({ ...addForm, notes: e.target.value })} />
-                  </div>
-                  {error && <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{error}</div>}
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                    <button type="button" className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }} onClick={() => setIsAddModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn btn-g" style={{ fontWeight: 800 }}>Register Tyre</button>
-                  </div>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal 2: Fit Tyre to Vehicle */}
-      <AnimatePresence>
-        {isFitModalOpen && selectedTyre && (
-          <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ background: 'var(--bg-card)', borderRadius: '16px', width: '100%', maxWidth: '500px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Fit Tyre — {selectedTyre.serialNo}</h3>
-                <button type="button" onClick={() => setIsFitModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={18} /></button>
-              </div>
-              <form onSubmit={handleFitSubmit} style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Truck No. *</label>
-                    <AutocompleteInput 
-                      value={fitForm.truckNo} 
-                      onChange={e => setFitForm({ ...fitForm, truckNo: e.target.value.toUpperCase() })} 
-                      suggestions={vehicles} 
-                      placeholder="Enter truck e.g. HR47G1234"
-                      required={true}
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      Truck No. *
+                    </label>
+                    <AutocompleteInput
+                      value={form.truckNo}
+                      onChange={e => handleTruckChange(e.target.value)}
+                      suggestions={selfVehicles.map(v => v.truckNo)}
+                      placeholder="Select Truck (e.g. HR63E9632)"
+                      required
                     />
                   </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Position *</label>
-                    <select className="fi" value={fitForm.position} onChange={e => setFitForm({ ...fitForm, position: e.target.value })}>
-                      {availablePositions.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      Vehicle Wheel Config
+                    </label>
+                    <select
+                      className="fi"
+                      value={form.vehicleType}
+                      onChange={e => {
+                        const vType = e.target.value;
+                        const cfg = VEHICLE_CONFIGS[vType] || VEHICLE_CONFIGS['18'];
+                        setForm(f => ({ ...f, vehicleType: vType, position: cfg.positions[0] }));
+                      }}
+                      style={{ fontSize: '12px', fontWeight: 700 }}
+                    >
+                      <option value="18">🚛 Trailer (18 + 2 Spares = 20)</option>
+                      <option value="6">🚚 Canter (6 + 1 Spare = 7)</option>
                     </select>
                   </div>
-                  <div className="field">
-                    <label>Fit Odometer *</label>
-                    <input className="fi" type="number" placeholder="KM" value={fitForm.fittedAtKm} onChange={e => setFitForm({ ...fitForm, fittedAtKm: e.target.value })} required />
-                  </div>
-                  <div className="field">
-                    <label>Fit Date *</label>
-                    <input className="fi" type="date" value={fitForm.fittedDate} onChange={e => setFitForm({ ...fitForm, fittedDate: e.target.value })} required />
-                  </div>
-                  {error && <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{error}</div>}
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                    <button type="button" className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }} onClick={() => setIsFitModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn btn-g" style={{ fontWeight: 800 }}>Confirm Fitment</button>
-                  </div>
                 </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* Modal 3: Remove Tyre */}
-      <AnimatePresence>
-        {isRemoveModalOpen && selectedTyre && (
-          <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ background: 'var(--bg-card)', borderRadius: '16px', width: '100%', maxWidth: '500px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Remove Tyre — {selectedTyre.serialNo}</h3>
-                <button type="button" onClick={() => setIsRemoveModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={18} /></button>
-              </div>
-              <form onSubmit={handleRemoveSubmit} style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  {selectedTyre.fitment && (
-                    <div style={{ gridColumn: '1 / -1', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px' }}>
-                      Fitted to <strong style={{ color: '#10b981' }}>{selectedTyre.fitment.truckNo}</strong> at position <strong>{selectedTyre.fitment.position}</strong> with Odometer <strong>{selectedTyre.fitment.fittedAtKm.toLocaleString()} KM</strong>.
-                    </div>
-                  )}
-                  <div className="field">
-                    <label>Removal KM *</label>
-                    <input className="fi" type="number" placeholder="KM" value={removeForm.removalKm} onChange={e => setRemoveForm({ ...removeForm, removalKm: e.target.value })} required />
-                  </div>
-                  <div className="field">
-                    <label>Removal Date *</label>
-                    <input className="fi" type="date" value={removeForm.removalDate} onChange={e => setRemoveForm({ ...removeForm, removalDate: e.target.value })} required />
-                  </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Next Status *</label>
-                    <select className="fi" value={removeForm.nextStatus} onChange={e => setRemoveForm({ ...removeForm, nextStatus: e.target.value })}>
-                      <option value="available">Available (Put back in stock)</option>
-                      <option value="retreading">Sent for Retreading</option>
-                      <option value="scrapped">Scrapped (Out of service)</option>
-                    </select>
-                  </div>
-                  {error && <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{error}</div>}
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                    <button type="button" className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }} onClick={() => setIsRemoveModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn btn-d" style={{ fontWeight: 800 }}>Confirm Removal</button>
-                  </div>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal 4: Record Retread */}
-      <AnimatePresence>
-        {isRetreadModalOpen && selectedTyre && (
-          <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ background: 'var(--bg-card)', borderRadius: '16px', width: '100%', maxWidth: '500px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Record Retread — {selectedTyre.serialNo}</h3>
-                <button type="button" onClick={() => setIsRetreadModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={18} /></button>
-              </div>
-              <form onSubmit={handleRetreadSubmit} style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field">
-                    <label>Retread Date *</label>
-                    <input className="fi" type="date" value={retreadForm.retreadDate} onChange={e => setRetreadForm({ ...retreadForm, retreadDate: e.target.value })} required />
-                  </div>
-                  <div className="field">
-                    <label>Retread Cost *</label>
-                    <input className="fi" type="number" placeholder="₹" value={retreadForm.retreadCost} onChange={e => setRetreadForm({ ...retreadForm, retreadCost: e.target.value })} required />
-                  </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Retreader Vendor</label>
-                    <input className="fi" type="text" placeholder="e.g. Apollo Retread Center" value={retreadForm.retreaderName} onChange={e => setRetreadForm({ ...retreadForm, retreaderName: e.target.value })} />
-                  </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Notes</label>
-                    <textarea className="fi" rows={2} placeholder="Retreading comments..." value={retreadForm.notes} onChange={e => setRetreadForm({ ...retreadForm, notes: e.target.value })} />
-                  </div>
-                  {error && <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{error}</div>}
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                    <button type="button" className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }} onClick={() => setIsRetreadModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn btn-g" style={{ fontWeight: 800 }}>Confirm Retread</button>
-                  </div>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal 5: Scrap Tyre */}
-      <AnimatePresence>
-        {isScrapModalOpen && selectedTyre && (
-          <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ background: 'var(--bg-card)', borderRadius: '16px', width: '100%', maxWidth: '500px', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Scrap Tyre — {selectedTyre.serialNo}</h3>
-                <button type="button" onClick={() => setIsScrapModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={18} /></button>
-              </div>
-              <form onSubmit={handleScrapSubmit} style={{ padding: '20px' }}>
-                <div className="fg fg-2" style={{ gap: '14px' }}>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Scrap Date *</label>
-                    <input className="fi" type="date" value={scrapForm.scrapDate} onChange={e => setScrapForm({ ...scrapForm, scrapDate: e.target.value })} required />
-                  </div>
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <label>Reason / Notes</label>
-                    <textarea className="fi" rows={3} placeholder="Provide details e.g. Side cut, worn out, tread wear limit..." value={scrapForm.notes} onChange={e => setScrapForm({ ...scrapForm, notes: e.target.value })} />
-                  </div>
-                  {error && <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '12px', fontWeight: 700 }}>{error}</div>}
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                    <button type="button" className="btn" style={{ border: '1px solid var(--border)', background: 'transparent' }} onClick={() => setIsScrapModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn btn-d" style={{ fontWeight: 800 }}>Scrap Tyre</button>
-                  </div>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal 6: Rotation History */}
-      <AnimatePresence>
-        {isHistoryModalOpen && selectedTyre && (
-          <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              style={{ background: 'var(--bg-card)', borderRadius: '20px', width: '100%', maxWidth: '700px', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
-              <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Replacement Reason */}
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 900 }}>Tyre rotation & run history</h3>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Serial: {selectedTyre.serialNo} · Brand: {selectedTyre.brand}</div>
-                </div>
-                <button type="button" onClick={() => setIsHistoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XIcon size={20} /></button>
-              </div>
-              <div style={{ padding: '24px', maxHeight: '60vh', overflowY: 'auto' }}>
-                
-                {/* Statistics header */}
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                  <div style={{ flex: 1, background: 'var(--bg-input)', borderRadius: '12px', padding: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Accumulated Running</div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>{selectedTyre.totalKmRun.toLocaleString()} KM</div>
-                  </div>
-                  <div style={{ flex: 1, background: 'var(--bg-input)', borderRadius: '12px', padding: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Rotations</div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, marginTop: '4px' }}>{(selectedTyre.rotationHistory || []).length}</div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Reason for Replacement *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {REASONS.map(r => (
+                      <button
+                        type="button"
+                        key={r.id}
+                        onClick={() => setForm(f => ({ ...f, reason: r.id }))}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          fontSize: '11.5px',
+                          fontWeight: form.reason === r.id ? 900 : 600,
+                          border: form.reason === r.id ? '2px solid #f59e0b' : '1px solid var(--border)',
+                          background: form.reason === r.id ? 'rgba(245,158,11,0.12)' : 'var(--bg-th)',
+                          color: form.reason === r.id ? '#f59e0b' : 'var(--text)',
+                          textAlign: 'left',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {/* Timeline */}
-                <div style={{ position: 'relative', borderLeft: '2px solid var(--border)', marginLeft: '12px', paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  
-                  {/* Current Fitment */}
-                  {selectedTyre.status === 'fitted' && selectedTyre.fitment && (
-                    <div style={{ position: 'relative' }}>
-                      <div style={{ position: 'absolute', left: '-31px', top: '4px', width: '12px', height: '12px', borderRadius: '50%', background: '#10b981', border: '2px solid var(--bg-card)' }}></div>
-                      <div style={{ fontWeight: 800, color: '#10b981', fontSize: '13px' }}>Currently Active Fitment</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                        Fitted on <strong style={{ color: 'var(--text)' }}>{selectedTyre.fitment.truckNo}</strong> at position <strong style={{ color: 'var(--text)' }}>{selectedTyre.fitment.position}</strong> since {fmtDate(selectedTyre.fitment.fittedDate)} (Fit Odometer: {selectedTyre.fitment.fittedAtKm.toLocaleString()} KM).
+                {/* Position / Axle */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Tyre Position / Axle Location *
+                  </label>
+                  <select
+                    className="fi"
+                    value={form.position}
+                    onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
+                    required
+                    style={{ fontSize: '12.5px', fontWeight: 700 }}
+                  >
+                    {(VEHICLE_CONFIGS[form.vehicleType] || VEHICLE_CONFIGS['18']).positions.map(pos => (
+                      <option key={pos} value={pos}>{pos}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* New Tyre Condition & Brand */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      New Tyre Condition *
+                    </label>
+                    <select
+                      className="fi"
+                      value={form.condition}
+                      onChange={e => setForm(f => ({ ...f, condition: e.target.value }))}
+                      style={{ fontSize: '12px', fontWeight: 700 }}
+                    >
+                      {CONDITIONS.map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      Brand / Company
+                    </label>
+                    <select
+                      className="fi"
+                      value={form.brand}
+                      onChange={e => setForm(f => ({ ...f, brand: e.target.value }))}
+                      style={{ fontSize: '12px', fontWeight: 700 }}
+                    >
+                      {BRANDS.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Date & New Tyre Cost */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      Date of Replacement *
+                    </label>
+                    <input
+                      type="date"
+                      className="fi"
+                      value={form.date}
+                      onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      New Tyre Price (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      className="fi"
+                      placeholder="e.g. 24000"
+                      value={form.newPrice}
+                      onChange={e => setForm(f => ({ ...f, newPrice: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Old / Blasted Tyre Disposal Options */}
+                <div style={{ background: 'var(--bg-th)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>
+                    Old / Blasted Tyre Disposal
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                    {DISPOSAL_OPTIONS.map(d => (
+                      <button
+                        type="button"
+                        key={d.id}
+                        onClick={() => setForm(f => ({ ...f, oldDisposal: d.id }))}
+                        style={{
+                          padding: '7px 8px',
+                          borderRadius: '8px',
+                          fontSize: '11px',
+                          fontWeight: form.oldDisposal === d.id ? 900 : 600,
+                          border: form.oldDisposal === d.id ? '2px solid #10b981' : '1px solid var(--border)',
+                          background: form.oldDisposal === d.id ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)',
+                          color: form.oldDisposal === d.id ? '#10b981' : 'var(--text)',
+                          textAlign: 'center',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {form.oldDisposal === 'sold' && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 800, color: '#10b981', marginBottom: '4px' }}>
+                        Scrap Sale Amount Received (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        className="fi"
+                        placeholder="e.g. 1500 (enter sale price)"
+                        value={form.scrapPrice}
+                        onChange={e => setForm(f => ({ ...f, scrapPrice: e.target.value }))}
+                        required={form.oldDisposal === 'sold'}
+                      />
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        Net cost will be: <strong>{fmtRs((parseFloat(form.newPrice) || 0) - (parseFloat(form.scrapPrice) || 0))}</strong>
                       </div>
                     </div>
                   )}
+                </div>
 
-                  {/* Historical rotations */}
-                  {(selectedTyre.rotationHistory || []).slice().reverse().map((h, i) => (
-                    <div key={i} style={{ position: 'relative' }}>
-                      <div style={{ position: 'absolute', left: '-31px', top: '4px', width: '12px', height: '12px', borderRadius: '50%', background: 'var(--primary)', border: '2px solid var(--bg-card)' }}></div>
-                      <div style={{ fontWeight: 800, fontSize: '13px' }}>Fitted on {h.truckNo} ({h.position})</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                        <span>Fitment: {fmtDate(h.fittedDate)} ({h.fittedAtKm.toLocaleString()} KM)</span>
-                        <span style={{ margin: '0 8px' }}>→</span>
-                        <span>Removal: {fmtDate(h.removedDate)} ({h.removedAtKm.toLocaleString()} KM)</span>
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', marginTop: '4px', background: 'rgba(139,92,246,0.08)', display: 'inline-block', padding: '2px 8px', borderRadius: '4px' }}>
-                        Ran: {h.kmRun.toLocaleString()} KM
-                      </div>
-                    </div>
-                  ))}
+                {/* Vendor / Remarks */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Remarks / Shop Name
+                  </label>
+                  <input
+                    type="text"
+                    className="fi"
+                    placeholder="e.g. Bought from MRF Shop, Jaipur Highway"
+                    value={form.remarks}
+                    onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
+                  />
+                </div>
 
-                  {/* Registered date */}
-                  <div style={{ position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: '-31px', top: '4px', width: '12px', height: '12px', borderRadius: '50%', background: 'var(--text-muted)', border: '2px solid var(--bg-card)' }}></div>
-                    <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text-muted)' }}>Registered in Inventory</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Purchased on {fmtDate(selectedTyre.purchaseDate)} as a <strong>{selectedTyre.type}</strong> tyre.
-                    </div>
-                  </div>
-
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button type="button" className="btn btn-g" onClick={() => setModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-p" disabled={saving} style={{ background: '#f59e0b', border: 'none', color: 'white', fontWeight: 800 }}>
+                    {saving ? 'Saving...' : 'Save Tyre Record'}
+                  </button>
                 </div>
 
               </div>
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', background: 'var(--bg-row-even)' }}>
-                <button type="button" className="btn btn-g" style={{ fontWeight: 800 }} onClick={() => setIsHistoryModalOpen(false)}>Close History</button>
-              </div>
-            </motion.div>
+            </form>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
+      {/* Vehicle Detailed Tyre History Modal */}
+      {vehicleHistoryModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '780px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', borderRadius: '16px', background: 'var(--bg-card)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+            <div style={{ background: 'var(--primary)', color: 'white', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 900, fontFamily: 'monospace' }}>
+                  {vehicleHistoryModal} — Full Tyre & Maintenance History
+                </h3>
+                <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '2px' }}>
+                  {vehicleStatsMap[vehicleHistoryModal]?.config.name} ({vehicleStatsMap[vehicleHistoryModal]?.config.mounted} Mounted + {vehicleStatsMap[vehicleHistoryModal]?.config.spares} Spare = {vehicleStatsMap[vehicleHistoryModal]?.config.total} Total Wheels)
+                </div>
+              </div>
+              <button onClick={() => setVehicleHistoryModal(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
+              {/* Vehicle Tyre Summary Bar */}
+              {(() => {
+                const stat = vehicleStatsMap[vehicleHistoryModal];
+                if (!stat) return null;
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', background: 'var(--bg-th)', padding: '12px', borderRadius: '10px', marginBottom: '16px', fontSize: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Replaced Tyres</div>
+                      <div style={{ fontWeight: 900, fontSize: '15px', color: 'var(--text)' }}>{stat.totalReplacements} tyres</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Scrap Income</div>
+                      <div style={{ fontWeight: 900, fontSize: '15px', color: '#10b981' }}>{fmtRs(stat.totalScrapIncome)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Voucher Punctures</div>
+                      <div style={{ fontWeight: 900, fontSize: '15px', color: '#f59e0b' }}>{fmtRs(stat.totalPunctureAirCost)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Net Expense</div>
+                      <div style={{ fontWeight: 900, fontSize: '15px', color: '#6366f1' }}>{fmtRs(stat.netExpense)}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
+                Timeline of Tyre Replacements & Trip Punctures
+              </h4>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {combinedHistory.filter(x => x.truckNo === vehicleHistoryModal).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '12.5px' }}>
+                    No tyre change or repair records logged for truck {vehicleHistoryModal} yet.
+                  </div>
+                ) : (
+                  combinedHistory.filter(x => x.truckNo === vehicleHistoryModal).map(item => (
+                    <div key={item.id} style={{ padding: '12px 14px', borderRadius: '10px', background: 'var(--bg-th)', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 800, fontSize: '12.5px' }}>{fmtDate(item.date)}</span>
+                          {item.reason === 'blasted' ? (
+                            <span style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', padding: '2px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 900 }}>💥 Blasted</span>
+                          ) : item.entryType === 'voucher_repair' ? (
+                            <span style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '2px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 900 }}>🔧 Voucher Repair</span>
+                          ) : (
+                            <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', padding: '2px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 900 }}>🆕 Replacement</span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                          {item.position} {item.brand ? `(${item.brand})` : ''}
+                        </div>
+
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {item.remarks}
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        {item.entryType === 'replacement' ? (
+                          <>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>New Tyre: {fmtRs(item.newPrice)}</div>
+                            {item.oldDisposal === 'sold' && (
+                              <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>Scrap Sold: -{fmtRs(item.scrapPrice)}</div>
+                            )}
+                            <div style={{ fontSize: '14px', fontWeight: 900, color: '#6366f1', marginTop: '2px' }}>Net: {fmtRs(item.netCost)}</div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: '14px', fontWeight: 900, color: '#f59e0b' }}>
+                            {fmtRs(item.netCost)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-th)', textAlign: 'right' }}>
+              <button className="btn btn-g" onClick={() => setVehicleHistoryModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -253,6 +253,9 @@ export default function VendorModule() {
       const cleanedNo = cleanTruckNo(formData.truckNo);
       if (!cleanedNo) throw new Error('Valid truck number is required.');
 
+      const duplicate = vehicles.find(v => v.id !== editingId && cleanTruckNo(v.truckNo) === cleanedNo);
+      if (duplicate) throw new Error(`Vehicle already exists for truck ${cleanedNo}`);
+
       const payload = { 
         ...formData, 
         truckNo: cleanedNo, 
@@ -551,7 +554,7 @@ export default function VendorModule() {
 
                   <div className="field">
                     <label>Truck Number *</label>
-                    <input className="fi" required disabled={!!editingId} value={formData.truckNo} onChange={e => setFormData(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} placeholder="e.g. HR47B4010" />
+                    <input className="fi" required value={formData.truckNo} onChange={e => setFormData(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} placeholder="e.g. HR47B4010" />
                   </div>
 
                   <div className="field">
