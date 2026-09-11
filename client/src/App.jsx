@@ -498,12 +498,10 @@ function AppInner() {
         { id: 'staff', label: 'Profile Pay' },
       ]
     },
-    { id: 'labour_dump', label: 'Labour Account', Icon: HardHat, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance' },
-    { id: 'whatsapp_dump', label: 'WhatsApp Control', Icon: MessageSquare, color: '#25D366', section: 'jksuper', permKey: 'vehicle' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -555,12 +553,10 @@ function AppInner() {
         { id: 'staff', label: 'Profile Pay' },
       ]
     },
-    { id: 'labour_jharli', label: 'Labour Account', Icon: HardHat, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance' },
-    { id: 'whatsapp_jharli', label: 'WhatsApp Control', Icon: MessageSquare, color: '#25D366', section: 'jharli', permKey: 'vehicle' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 

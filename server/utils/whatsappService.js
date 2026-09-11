@@ -163,6 +163,32 @@ const DEFAULT_TEMPLATES = {
   }
 };
 
+// ─── Emoji Stripping Helper ───────────────────────────────────────────────────
+
+function stripEmojis(str) {
+  if (!str) return '';
+  return str
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}\u{2B50}\u{2B55}\u{203C}\u{2049}\u{25AA}\u{25AB}\u{25FB}-\u{25FE}]/gu, '')
+    .replace(/[^\S\r\n]+/g, ' ')
+    .trim();
+}
+
+function cleanEventsEmojis(eventsObj) {
+  if (!eventsObj || typeof eventsObj !== 'object') return {};
+  const cleaned = {};
+  for (const [key, val] of Object.entries(eventsObj)) {
+    if (val && typeof val === 'object') {
+      cleaned[key] = {
+        ...val,
+        template: stripEmojis(val.template || '')
+      };
+    } else {
+      cleaned[key] = val;
+    }
+  }
+  return cleaned;
+}
+
 // ─── Config CRUD ───────────────────────────────────────────────────────────────
 
 async function getWhatsAppConfig(req = null) {
@@ -176,16 +202,18 @@ async function getWhatsAppConfig(req = null) {
       if (doc.exists) cfg = doc.data();
     }
     const finalCfg = cfg || {};
+    const rawEvents = { ...DEFAULT_TEMPLATES, ...(finalCfg.events || {}) };
+    const cleanedEvents = cleanEventsEmojis(rawEvents);
     return {
       enabled: finalCfg.enabled !== undefined ? finalCfg.enabled : true,
       gatewayUrl: (finalCfg.gatewayUrl || '').trim().replace(/\/+$/, ''),
       apiKey: (finalCfg.apiKey || '').trim(),
       adminPhone: finalCfg.adminPhone || HARDCODED_ADMIN,
       payloadFormat: 'openwa',
-      events: { ...DEFAULT_TEMPLATES, ...(finalCfg.events || {}) }
+      events: cleanedEvents
     };
   } catch (e) {
-    return { enabled: false, gatewayUrl: '', apiKey: '', adminPhone: HARDCODED_ADMIN, payloadFormat: 'openwa', events: DEFAULT_TEMPLATES };
+    return { enabled: false, gatewayUrl: '', apiKey: '', adminPhone: HARDCODED_ADMIN, payloadFormat: 'openwa', events: cleanEventsEmojis(DEFAULT_TEMPLATES) };
   }
 }
 
@@ -195,6 +223,7 @@ async function saveWhatsAppConfig(config, req = null) {
     gatewayUrl: (config.gatewayUrl || '').trim().replace(/\/+$/, ''),
     apiKey: (config.apiKey || '').trim(),
     payloadFormat: 'openwa',
+    events: config.events ? cleanEventsEmojis(config.events) : undefined,
     updatedAt: new Date().toISOString()
   };
   if (!isAvailable()) {
@@ -332,11 +361,12 @@ async function checkWhatsAppStatus(req = null) {
  * Unknown keys are left as empty strings so the message is never broken.
  */
 function interpolateTemplate(template, data) {
-  return template.replace(/\{(\w+)\}/g, (_, key) => {
+  const result = (template || '').replace(/\{(\w+)\}/g, (_, key) => {
     const val = data[key];
     if (val === undefined || val === null) return '';
     return String(val);
   });
+  return stripEmojis(result);
 }
 
 // ─── Vehicle info lookup ───────────────────────────────────────────────────────
@@ -527,7 +557,9 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
     throw new Error('Invalid phone number provided for WhatsApp image dispatch');
   }
 
+  const cleanCaption = stripEmojis(caption);
   const base64Data = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+  const rawBase64 = imageBuffer.toString('base64');
   const activeSessionId = await discoverActiveSessionId(baseUrl, apiKey, configuredSessionId);
   const sessionTargets = Array.from(new Set([activeSessionId, configuredSessionId, 'default'])).filter(Boolean);
 
@@ -538,18 +570,44 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
     attempts.push(
       {
         endpoint: `/api/sessions/${sId}/messages/send-image`,
-        payload: { chatId, file: base64Data, caption }
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-image`,
+        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
       },
       {
         endpoint: `/api/sessions/${sId}/messages/send-file`,
-        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption }
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-file`,
+        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-media`,
+        payload: { chatId, file: base64Data, caption: cleanCaption }
       },
       {
         endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-image`,
-        payload: { to: chatId, file: base64Data, caption }
+        payload: { to: chatId, file: base64Data, caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-media`,
+        payload: { to: chatId, media: base64Data, caption: cleanCaption }
       }
     );
   }
+  attempts.push(
+    {
+      endpoint: '/api/messages/send-image',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    },
+    {
+      endpoint: '/api/messages/send-file',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    }
+  );
 
   let lastError = null;
   for (const attempt of attempts) {
