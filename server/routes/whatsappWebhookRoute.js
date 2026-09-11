@@ -123,6 +123,11 @@ async function markVoucherPaid(voucherId, colName, paidDate) {
  *
  * Different OpenWA versions may wrap payload differently — we handle both.
  */
+// GET / OPTIONS — OpenWA "test webhook" pings the URL with a GET request.
+// Return 200 so the connectivity check passes.
+router.get('/', (req, res) => res.status(200).json({ ok: true, service: 'VGTC WhatsApp Webhook' }));
+router.options('/', (req, res) => res.sendStatus(200));
+
 router.post('/', async (req, res) => {
     // ACK immediately — OpenWA expects 200 quickly or it will retry
     res.sendStatus(200);
