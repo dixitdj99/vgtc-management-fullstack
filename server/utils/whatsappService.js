@@ -17,6 +17,7 @@
  */
 
 const axios = require('axios');
+const { createCanvas } = require('@napi-rs/canvas');
 const { db, isAvailable } = require('../firebase');
 const { getCol } = require('./collectionUtils');
 const localStore = require('./localStore');
@@ -34,21 +35,21 @@ const DEFAULT_TEMPLATES = {
   lr_created_owner: {
     enabled: true,
     template: [
-      '🚛 *VGTC Loading Receipt — Owner Copy*',
+      '*VGTC Loading Receipt — Owner Copy*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📋 *LR No:* #{lrNo}',
-      '📅 *Date:* {date}',
-      '🚚 *Truck:* {truckNo}',
-      '📍 *Route:* {source} → {destination}',
-      '🏭 *Party:* {partyName}',
+      '*LR No:* #{lrNo}',
+      '*Date:* {date}',
+      '*Truck:* {truckNo}',
+      '*Route:* {source} -> {destination}',
+      '*Party:* {partyName}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📦 *Material:*',
+      '*Material:*',
       '{materialsText}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '⚖️ *Total Weight:* {totalWeight} MT  🛒 *Bags:* {totalBags}',
-      '💰 *Freight Rate:* ₹{freight}/MT',
-      '💵 *Total Freight:* ₹{totalFreight}',
-      '🔖 *Billing:* {billing}',
+      '*Total Weight:* {totalWeight} MT  *Bags:* {totalBags}',
+      '*Freight Rate:* Rs.{freight}/MT',
+      '*Total Freight:* Rs.{totalFreight}',
+      '*Billing:* {billing}',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
@@ -57,18 +58,18 @@ const DEFAULT_TEMPLATES = {
   lr_created_driver: {
     enabled: true,
     template: [
-      '🚚 *Trip Dispatched — Driver Alert*',
+      '*Trip Dispatched — Driver Alert*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📋 *LR No:* #{lrNo}',
-      '📅 *Date:* {date}',
-      '🚚 *Your Truck:* {truckNo}',
-      '📍 *Destination:* {destination}',
-      '🏭 *Party:* {partyName}',
+      '*LR No:* #{lrNo}',
+      '*Date:* {date}',
+      '*Your Truck:* {truckNo}',
+      '*Destination:* {destination}',
+      '*Party:* {partyName}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📦 *Load:* {totalBags} Bags ({totalWeight} MT)',
-      '🔖 *Billing Type:* {billing}',
+      '*Load:* {totalBags} Bags ({totalWeight} MT)',
+      '*Billing Type:* {billing}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '⚠️ Please carry all documents. Drive safe!',
+      'Please carry all documents. Drive safe!',
       '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
   },
@@ -76,22 +77,22 @@ const DEFAULT_TEMPLATES = {
   voucher_created_owner: {
     enabled: true,
     template: [
-      '📄 *VGTC Freight Voucher — Owner Copy*',
+      '*VGTC Freight Voucher — Owner Copy*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📋 *Voucher:* #{voucherNo}  🔗 *LR:* #{lrNo}',
-      '📅 *Date:* {date}',
-      '🚚 *Truck:* {truckNo}',
-      '📍 *Route:* {destination}',
+      '*Voucher:* #{voucherNo}  *LR:* #{lrNo}',
+      '*Date:* {date}',
+      '*Truck:* {truckNo}',
+      '*Route:* {destination}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '💰 *Gross Freight:* ₹{grossFreight}',
-      '➖ Diesel Advance: ₹{advanceDiesel}',
-      '➖ Cash Advance: ₹{advanceCash}',
-      '➖ Online Advance: ₹{advanceOnline}',
-      '➖ Munshi: ₹{munshi}',
-      '➖ Commission: ₹{commission}',
+      '*Gross Freight:* Rs.{grossFreight}',
+      '- Diesel Advance: Rs.{advanceDiesel}',
+      '- Cash Advance: Rs.{advanceCash}',
+      '- Online Advance: Rs.{advanceOnline}',
+      '- Munshi: Rs.{munshi}',
+      '- Commission: Rs.{commission}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ *Net Balance Due:* ₹{netBalance}',
-      '📊 *Status:* {paymentStatus}',
+      '*Net Balance Due:* Rs.{netBalance}',
+      '*Status:* {paymentStatus}',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
@@ -100,19 +101,19 @@ const DEFAULT_TEMPLATES = {
   voucher_created_driver: {
     enabled: true,
     template: [
-      '💰 *Your Trip Settlement — Driver Alert*',
+      '*Your Trip Settlement — Driver Alert*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📋 *Voucher:* #{voucherNo}  🔗 *LR:* #{lrNo}',
-      '📅 *Date:* {date}',
-      '🚚 *Truck:* {truckNo}',
-      '📍 *Route:* {destination}',
+      '*Voucher:* #{voucherNo}  *LR:* #{lrNo}',
+      '*Date:* {date}',
+      '*Truck:* {truckNo}',
+      '*Route:* {destination}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '➖ Diesel Advance: ₹{advanceDiesel}',
-      '➖ Cash Advance: ₹{advanceCash}',
-      '➖ Munshi: ₹{munshi}',
+      '- Diesel Advance: Rs.{advanceDiesel}',
+      '- Cash Advance: Rs.{advanceCash}',
+      '- Munshi: Rs.{munshi}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ *Balance remaining for you:* ₹{netBalance}',
-      '📊 *Payment Status:* {paymentStatus}',
+      '*Balance remaining for you:* Rs.{netBalance}',
+      '*Payment Status:* {paymentStatus}',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
@@ -120,27 +121,27 @@ const DEFAULT_TEMPLATES = {
   balance_paid: {
     enabled: true,
     template: [
-      '💸 *VGTC Balance Payment Dispatched*',
+      '*VGTC Balance Payment Dispatched*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '🚚 *Truck:* {truckNo}',
-      '📋 *Trips Included:* {tripCount}',
-      '📅 *Period:* {periodFrom} – {periodTo}',
-      '📦 *Batch Note:* {note}',
+      '*Truck:* {truckNo}',
+      '*Trips Included:* {tripCount}',
+      '*Period:* {periodFrom} - {periodTo}',
+      '*Batch Note:* {note}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ Payment batch sent for processing.',
+      'Payment batch sent for processing.',
       '_Contact VGTC for clearance: 9416319445_'
     ].join('\n')
   },
   cashout: {
     enabled: true,
     template: [
-      '💵 *VGTC Cash Out Alert*',
+      '*VGTC Cash Out Alert*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '👤 *Recipient:* {entityName}',
-      '🏷️ *Type:* {entityType}',
-      '💰 *Amount:* ₹{amount}',
-      '📝 *Remark:* {remark}',
-      '📅 *Date:* {date}',
+      '*Recipient:* {entityName}',
+      '*Type:* {entityType}',
+      '*Amount:* Rs.{amount}',
+      '*Remark:* {remark}',
+      '*Date:* {date}',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '_VIKAS GOODS TRANSPORT CO._',
       '_This is an automated cashbook alert._'
@@ -149,13 +150,13 @@ const DEFAULT_TEMPLATES = {
   deposit: {
     enabled: true,
     template: [
-      '💰 *VGTC Deposit Received*',
+      '*VGTC Deposit Received*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '💵 *Amount:* ₹{amount}',
-      '📝 *Remark:* {remark}',
-      '📅 *Date:* {date}',
+      '*Amount:* Rs.{amount}',
+      '*Remark:* {remark}',
+      '*Date:* {date}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ Amount credited to cashbook.',
+      'Amount credited to cashbook.',
       '_VIKAS GOODS TRANSPORT CO._',
       '_This is an automated cashbook alert._'
     ].join('\n')
@@ -507,6 +508,246 @@ async function sendWhatsAppMessage(phone, message, req = null) {
 
   const msg = errToReport?.response?.data?.message || errToReport?.response?.data?.error || errToReport?.message || 'Failed to dispatch message via OpenWA';
   throw new Error(msg);
+}
+
+// ─── Image Send Utility ────────────────────────────────────────────────────────
+
+async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
+  const config = await getWhatsAppConfig(req);
+  if (!config.enabled || !config.gatewayUrl) {
+    throw new Error('WhatsApp gateway is disabled or URL not configured');
+  }
+
+  const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
+  const apiKey = (config.apiKey || '').trim();
+  const configuredSessionId = (config.sessionId || 'default').trim();
+  const chatId = formatPhoneWid(phone);
+
+  if (!chatId) {
+    throw new Error('Invalid phone number provided for WhatsApp image dispatch');
+  }
+
+  const base64Data = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+  const activeSessionId = await discoverActiveSessionId(baseUrl, apiKey, configuredSessionId);
+  const sessionTargets = Array.from(new Set([activeSessionId, configuredSessionId, 'default'])).filter(Boolean);
+
+  const headers = getOpenWaHeaders(apiKey);
+
+  const attempts = [];
+  for (const sId of sessionTargets) {
+    attempts.push(
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-image`,
+        payload: { chatId, file: base64Data, caption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-file`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption }
+      },
+      {
+        endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-image`,
+        payload: { to: chatId, file: base64Data, caption }
+      }
+    );
+  }
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const url = buildOpenWaUrl(baseUrl, attempt.endpoint, apiKey);
+      const res = await axios.post(url, attempt.payload, { headers, timeout: 45000 });
+      if (res.status >= 200 && res.status < 300) {
+        return res.data;
+      }
+    } catch (err) {
+      lastError = err;
+      if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+        throw new Error(`OpenWA Authentication Failed (Status ${err.response.status})`);
+      }
+    }
+  }
+
+  throw lastError || new Error('Failed to dispatch image via OpenWA');
+}
+
+// ─── Receipt Canvas Image Generator ───────────────────────────────────────────
+
+function generateLrReceiptImageBuffer(lr) {
+  const width = 650;
+  const height = 950;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(20, 20, width - 40, height - 40);
+
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('VIKAS GOODS TRANSPORT', width / 2, 70);
+
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('Jharli, Jhajjar | 9416319445, 9728954901, 9728284849', width / 2, 95);
+
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('LOADING SLIP • लोडिंग स्लिप', width / 2, 130);
+
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(40, 145);
+  ctx.lineTo(width - 40, 145);
+  ctx.stroke();
+
+  const lrNo = String(lr.lrNo || lr.id || 'N/A');
+  const dateStr = String(lr.date || new Date().toLocaleDateString('en-IN'));
+
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`नं0 / No. ${lrNo}`, 40, 185);
+
+  ctx.textAlign = 'right';
+  ctx.fillText(`दिनांक / Date: ${dateStr}`, width - 40, 185);
+
+  const topY = 205;
+  const topH = 135;
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(40, topY, width - 80, topH);
+
+  const rowH = topH / 3;
+  ctx.beginPath();
+  ctx.moveTo(40, topY + rowH);
+  ctx.lineTo(width - 40, topY + rowH);
+  ctx.moveTo(40, topY + rowH * 2);
+  ctx.lineTo(width - 40, topY + rowH * 2);
+  ctx.moveTo(230, topY);
+  ctx.lineTo(230, topY + topH);
+  ctx.stroke();
+
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'left';
+
+  ctx.fillText('गाड़ी नं0 / TRUCK NO.', 50, topY + 28);
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(String(lr.truckNo || '—').toUpperCase(), 245, topY + 28);
+
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('पार्टी / PARTY', 50, topY + rowH + 28);
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(String(lr.partyName || '—').toUpperCase(), 245, topY + rowH + 28);
+
+  const materials = Array.isArray(lr.materials) && lr.materials.length > 0
+    ? lr.materials
+    : [{ type: lr.material || 'Cement', bags: lr.bags || 0, weight: lr.weight || 0 }];
+  const totalBags = materials.reduce((s, m) => s + (parseInt(m.bags) || 0), 0);
+  const totalWeight = materials.reduce((s, m) => s + (parseFloat(m.weight) || 0), 0);
+
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('वजन / WEIGHT', 50, topY + rowH * 2 + 28);
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(`${totalWeight.toFixed(2)} MT`, 245, topY + rowH * 2 + 28);
+
+  const tableY = 360;
+  const col1W = 330;
+  const col2W = 110;
+  const col3W = (width - 80) - col1W - col2W;
+  const headerH = 40;
+  const itemRowH = 45;
+  const totalRowH = 45;
+  const tableH = headerH + (materials.length * itemRowH) + totalRowH;
+
+  ctx.strokeRect(40, tableY, width - 80, tableH);
+
+  ctx.fillStyle = '#f3f4f6';
+  ctx.fillRect(40, tableY, width - 80, headerH);
+  ctx.fillStyle = '#000000';
+
+  ctx.beginPath();
+  ctx.moveTo(40, tableY + headerH);
+  ctx.lineTo(width - 40, tableY + headerH);
+
+  const c1X = 40 + col1W;
+  const c2X = c1X + col2W;
+  ctx.moveTo(c1X, tableY);
+  ctx.lineTo(c1X, tableY + tableH);
+  ctx.moveTo(c2X, tableY);
+  ctx.lineTo(c2X, tableY + tableH);
+  ctx.stroke();
+
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('सामान / MATERIAL', 50, tableY + 26);
+
+  ctx.textAlign = 'center';
+  ctx.fillText('बैग / BAGS', c1X + col2W / 2, tableY + 26);
+  ctx.fillText('वजन / WT', c2X + col3W / 2, tableY + 26);
+
+  let curY = tableY + headerH;
+  for (let i = 0; i < materials.length; i++) {
+    const m = materials[i];
+    ctx.beginPath();
+    ctx.moveTo(40, curY + itemRowH);
+    ctx.lineTo(width - 40, curY + itemRowH);
+    ctx.stroke();
+
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'left';
+    const matLabel = m.type || lr.material || 'Cement';
+    const remarkSub = lr.godown || lr.remark ? ` (${lr.godown || lr.remark})` : '';
+    ctx.fillText(`${matLabel}${remarkSub}`, 50, curY + 28);
+
+    ctx.textAlign = 'center';
+    ctx.fillText(String(m.bags || 0), c1X + col2W / 2, curY + 28);
+    ctx.fillText(parseFloat(m.weight || 0).toFixed(2), c2X + col3W / 2, curY + 28);
+
+    curY += itemRowH;
+  }
+
+  ctx.fillStyle = '#f9fafb';
+  ctx.fillRect(40, curY, width - 80, totalRowH);
+  ctx.fillStyle = '#000000';
+
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('कुल / TOTAL', 50, curY + 28);
+
+  ctx.textAlign = 'center';
+  ctx.fillText(String(totalBags), c1X + col2W / 2, curY + 28);
+  ctx.fillText(totalWeight.toFixed(2), c2X + col3W / 2, curY + 28);
+
+  const sigY = tableY + tableH + 100;
+
+  ctx.beginPath();
+  ctx.moveTo(60, sigY);
+  ctx.lineTo(240, sigY);
+  ctx.stroke();
+
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('चालक / DRIVER', 80, sigY + 25);
+
+  const boxW = 220;
+  const boxH = 90;
+  const boxX = width - 40 - boxW;
+  const boxY = sigY - 50;
+
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('हस्ताक्षर / SIGNATURE', boxX + boxW / 2, boxY + 22);
+
+  ctx.font = 'italic bold 22px cursive, sans-serif';
+  ctx.fillText('Vikas Admin', boxX + boxW / 2, boxY + 54);
+
+  ctx.font = '11px sans-serif';
+  ctx.fillText('Auth. Signatory', boxX + boxW / 2, boxY + 75);
+
+  return canvas.toBuffer('image/png');
 }
 
 // ─── Event notification dispatcher ────────────────────────────────────────────
@@ -868,6 +1109,8 @@ module.exports = {
   saveWhatsAppConfig,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
+  sendWhatsAppImage,
+  generateLrReceiptImageBuffer,
   startWhatsAppSession,
   sendEventNotification,
   generateLrReceiptHtml,
