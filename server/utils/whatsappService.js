@@ -174,22 +174,26 @@ async function getWhatsAppConfig(req = null) {
       const doc = await db.collection(colName).doc(CONFIG_DOC_ID).get();
       if (doc.exists) cfg = doc.data();
     }
-    return cfg || {
-      enabled: true,
-      gatewayUrl: '',
-      apiKey: '',
-      adminPhone: HARDCODED_ADMIN,
+    const finalCfg = cfg || {};
+    return {
+      enabled: finalCfg.enabled !== undefined ? finalCfg.enabled : true,
+      gatewayUrl: (finalCfg.gatewayUrl || '').trim().replace(/\/+$/, ''),
+      apiKey: (finalCfg.apiKey || '').trim(),
+      adminPhone: finalCfg.adminPhone || HARDCODED_ADMIN,
       payloadFormat: 'openwa',
-      events: DEFAULT_TEMPLATES
+      events: { ...DEFAULT_TEMPLATES, ...(finalCfg.events || {}) }
     };
   } catch (e) {
-    return { enabled: false, gatewayUrl: '', apiKey: '', adminPhone: HARDCODED_ADMIN, events: DEFAULT_TEMPLATES };
+    return { enabled: false, gatewayUrl: '', apiKey: '', adminPhone: HARDCODED_ADMIN, payloadFormat: 'openwa', events: DEFAULT_TEMPLATES };
   }
 }
 
 async function saveWhatsAppConfig(config, req = null) {
   const payload = {
     ...config,
+    gatewayUrl: (config.gatewayUrl || '').trim().replace(/\/+$/, ''),
+    apiKey: (config.apiKey || '').trim(),
+    payloadFormat: 'openwa',
     updatedAt: new Date().toISOString()
   };
   if (!isAvailable()) {
@@ -199,6 +203,30 @@ async function saveWhatsAppConfig(config, req = null) {
     await db.collection(colName).doc(CONFIG_DOC_ID).set(payload, { merge: true });
   }
   return payload;
+}
+
+// ─── OpenWA Helper Utilities ───────────────────────────────────────────────────
+
+function getOpenWaHeaders(apiKey) {
+  const cleanKey = (apiKey || '').trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (cleanKey) {
+    headers['api_key'] = cleanKey;
+    headers['api-key'] = cleanKey;
+    headers['x-api-key'] = cleanKey;
+    headers['Authorization'] = `Bearer ${cleanKey}`;
+  }
+  return headers;
+}
+
+function buildOpenWaUrl(baseUrl, endpointPath, apiKey) {
+  const cleanUrl = (baseUrl || '').trim().replace(/\/+$/, '');
+  const cleanKey = (apiKey || '').trim();
+  if (cleanKey) {
+    const sep = endpointPath.includes('?') ? '&' : '?';
+    return `${cleanUrl}${endpointPath}${sep}api_key=${encodeURIComponent(cleanKey)}`;
+  }
+  return `${cleanUrl}${endpointPath}`;
 }
 
 // ─── Phone normalisation ───────────────────────────────────────────────────────
@@ -221,31 +249,44 @@ async function checkWhatsAppStatus(req = null) {
     return { connected: false, message: 'Gateway URL not configured' };
   }
 
-  const baseUrl = config.gatewayUrl.replace(/\/+$/, '');
+  const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
+  const apiKey = (config.apiKey || '').trim();
+  const headers = getOpenWaHeaders(apiKey);
 
-  try {
-    const res = await axios.get(`${baseUrl}/api/health/ready`, {
-      timeout: 5000,
-      headers: config.apiKey ? { 'x-api-key': config.apiKey, 'Authorization': `Bearer ${config.apiKey}` } : {}
-    });
-    if (res.status === 200) {
-      return { connected: true, message: 'OpenWA Gateway Online & Ready' };
-    }
-  } catch (err) {
+  const checkEndpoints = [
+    '/api/health/ready',
+    '/check-auth',
+    '/getMe',
+    '/api/sessions',
+    '/ping',
+    ''
+  ];
+
+  let isUnauthorized = false;
+  let lastErrMessage = '';
+
+  for (const ep of checkEndpoints) {
     try {
-      const res = await axios.get(`${baseUrl}/api/sessions`, {
-        timeout: 5000,
-        headers: config.apiKey ? { 'x-api-key': config.apiKey, 'Authorization': `Bearer ${config.apiKey}` } : {}
-      });
-      if (res.status === 200) {
-        return { connected: true, message: 'OpenWA Gateway Online' };
+      const url = buildOpenWaUrl(baseUrl, ep, apiKey);
+      const res = await axios.get(url, { headers, timeout: 5000 });
+      if (res.status >= 200 && res.status < 300) {
+        return { connected: true, message: 'OpenWA Gateway Online & Authenticated' };
       }
-    } catch (e) {
-      return { connected: false, message: err.message || 'Gateway Unreachable' };
+    } catch (err) {
+      if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+        isUnauthorized = true;
+        lastErrMessage = err.response.data?.message || err.response.data?.error || 'Invalid API Key';
+      } else {
+        lastErrMessage = err.message || 'Gateway Unreachable';
+      }
     }
   }
 
-  return { connected: false, message: 'Gateway Offline' };
+  if (isUnauthorized) {
+    return { connected: false, message: `Invalid API Key — OpenWA Authentication Failed: ${lastErrMessage}` };
+  }
+
+  return { connected: false, message: `Gateway Unreachable: ${lastErrMessage}` };
 }
 
 // ─── Template interpolation ────────────────────────────────────────────────────
@@ -322,49 +363,58 @@ async function sendWhatsAppMessage(phone, message, req = null) {
     throw new Error('WhatsApp Gateway URL is not configured');
   }
 
-  const baseUrl = config.gatewayUrl.replace(/\/+$/, '');
+  const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
+  const apiKey = (config.apiKey || '').trim();
   const chatId = formatPhoneWid(phone);
 
   if (!chatId) {
     throw new Error('Invalid phone number provided for WhatsApp dispatch');
   }
 
-  const headers = { 'Content-Type': 'application/json' };
-  if (config.apiKey) {
-    headers['x-api-key'] = config.apiKey;
-    headers['Authorization'] = `Bearer ${config.apiKey}`;
-  }
+  const headers = getOpenWaHeaders(apiKey);
 
-  const payload = {
-    chatId: chatId,
-    text: message
-  };
+  const attempts = [
+    {
+      endpoint: '/sendText',
+      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
+    },
+    {
+      endpoint: '/api/sendText',
+      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
+    },
+    {
+      endpoint: '/api/sessions/default/messages/send-text',
+      payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
+    },
+    {
+      endpoint: '/api/messages/send-text',
+      payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
+    },
+    {
+      endpoint: '/send',
+      payload: { api_key: apiKey, to: phone, message: message, text: message }
+    }
+  ];
 
-  let response;
-  try {
-    response = await axios.post(`${baseUrl}/api/sessions/default/messages/send-text`, payload, {
-      headers,
-      timeout: 10000
-    });
-  } catch (err) {
+  let lastError = null;
+  for (const attempt of attempts) {
     try {
-      response = await axios.post(`${baseUrl}/api/messages/send-text`, payload, {
-        headers,
-        timeout: 10000
-      });
-    } catch (err2) {
-      try {
-        response = await axios.post(`${baseUrl}/send`, { to: phone, message }, {
-          headers,
-          timeout: 10000
-        });
-      } catch (err3) {
-        throw new Error(err.response?.data?.message || err.message || 'Failed to dispatch message via OpenWA');
+      const url = buildOpenWaUrl(baseUrl, attempt.endpoint, apiKey);
+      const res = await axios.post(url, attempt.payload, { headers, timeout: 10000 });
+      if (res.status >= 200 && res.status < 300) {
+        return res.data;
+      }
+    } catch (err) {
+      lastError = err;
+      if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+        const errMsg = err.response.data?.message || err.response.data?.error || 'Invalid API Key';
+        throw new Error(`OpenWA Authentication Failed: ${errMsg} (Status 401/403)`);
       }
     }
   }
 
-  return response.data;
+  const msg = lastError?.response?.data?.message || lastError?.response?.data?.error || lastError?.message || 'Failed to dispatch message via OpenWA';
+  throw new Error(msg);
 }
 
 // ─── Event notification dispatcher ────────────────────────────────────────────

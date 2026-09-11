@@ -3,7 +3,7 @@ import ax from '../api';
 import { motion } from 'framer-motion';
 import {
   MessageSquare, Send, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Settings, Info, Loader2, Sparkles, Zap, Eye, Phone
+  Settings, Info, Loader2, Sparkles, Zap, Eye, Phone, Key
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
@@ -14,7 +14,7 @@ export default function WhatsAppControlModule() {
     gatewayUrl: '',
     apiKey: '',
     adminPhone: '8708032492',
-    payloadFormat: 'standard',
+    payloadFormat: 'openwa',
     events: {
       lr_created_owner: { enabled: true, template: '' },
       lr_created_driver: { enabled: true, template: '' },
@@ -31,7 +31,6 @@ export default function WhatsAppControlModule() {
   const [status, setStatus] = useState({ checking: true, connected: false, message: '' });
   const [testForm, setTestForm] = useState({ phone: '', message: '' });
   const [testResult, setTestResult] = useState(null);
-  const [guideTab, setGuideTab] = useState('ultramsg');
   const [previews, setPreviews] = useState({});
   const [previewingKey, setPreviewingKey] = useState(null);
   const [notifyState, setNotifyState] = useState(null);
@@ -62,7 +61,14 @@ export default function WhatsAppControlModule() {
     setLoading(true);
     try {
       const res = await ax.get('/whatsapp/config');
-      if (res.data) setConfig(prev => ({ ...prev, ...res.data }));
+      if (res.data) {
+        setConfig(prev => ({
+          ...prev,
+          ...res.data,
+          apiKey: (res.data.apiKey || '').trim(),
+          gatewayUrl: (res.data.gatewayUrl || '').trim()
+        }));
+      }
     } catch (e) {
       console.error('Failed to fetch WhatsApp config', e);
     } finally {
@@ -71,16 +77,16 @@ export default function WhatsAppControlModule() {
   };
 
   const checkConnection = async () => {
-    setStatus({ checking: true, connected: false, message: 'Pinging WhatsApp Gateway...' });
+    setStatus({ checking: true, connected: false, message: 'Pinging OpenWA Gateway...' });
     try {
       const res = await ax.get('/whatsapp/status');
       setStatus({
         checking: false,
         connected: res.data?.connected || false,
-        message: res.data?.connected ? 'Online & Ready to Send' : (res.data?.message || 'Gateway Disconnected')
+        message: res.data?.connected ? 'OpenWA Online & Authenticated' : (res.data?.message || 'OpenWA Disconnected')
       });
     } catch (e) {
-      setStatus({ checking: false, connected: false, message: 'Gateway Offline or Unreachable' });
+      setStatus({ checking: false, connected: false, message: 'OpenWA Gateway Unreachable' });
     }
   };
 
@@ -88,11 +94,17 @@ export default function WhatsAppControlModule() {
     e?.preventDefault();
     setSaving(true);
     try {
-      await ax.post('/whatsapp/config', config);
-      showToast('success', 'WhatsApp Gateway Configuration Saved Successfully!');
+      const payload = {
+        ...config,
+        apiKey: (config.apiKey || '').trim(),
+        gatewayUrl: (config.gatewayUrl || '').trim(),
+        payloadFormat: 'openwa'
+      };
+      await ax.post('/whatsapp/config', payload);
+      showToast('success', 'OpenWA Gateway Configuration Saved Successfully!');
       checkConnection();
     } catch (err) {
-      showToast('error', err.response?.data?.error || 'Failed to save gateway configuration');
+      showToast('error', err.response?.data?.error || 'Failed to save OpenWA gateway configuration');
     } finally {
       setSaving(false);
     }
@@ -104,15 +116,21 @@ export default function WhatsAppControlModule() {
     setTesting(true);
     setTestResult(null);
     try {
-      await ax.post('/whatsapp/config', config);
+      const payload = {
+        ...config,
+        apiKey: (config.apiKey || '').trim(),
+        gatewayUrl: (config.gatewayUrl || '').trim(),
+        payloadFormat: 'openwa'
+      };
+      await ax.post('/whatsapp/config', payload);
       const res = await ax.post('/whatsapp/test', testForm);
       setTestResult({ success: true, data: res.data });
-      showToast('success', '✅ Test WhatsApp message dispatched successfully!');
+      showToast('success', '✅ Test WhatsApp message dispatched successfully via OpenWA!');
       checkConnection();
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'WhatsApp message dispatch failed';
       setTestResult({ success: false, error: msg });
-      showToast('error', '❌ WhatsApp Dispatch Failed: ' + msg);
+      showToast('error', '❌ OpenWA Dispatch Failed: ' + msg);
     } finally {
       setTesting(false);
     }
@@ -121,7 +139,7 @@ export default function WhatsAppControlModule() {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', width: '100%' }}>
-        <TruckLoader size={120} text="Loading WhatsApp Gateway configurations..." />
+        <TruckLoader size={120} text="Loading OpenWA Gateway configurations..." />
       </div>
     );
   }
@@ -152,13 +170,13 @@ export default function WhatsAppControlModule() {
         <div>
           <h1>
             <span className="adm-icon-tile"><MessageSquare size={20} /></span>
-            WhatsApp Control Center
+            OpenWA WhatsApp Control Center
           </h1>
-          <p>Automated WhatsApp notification gateway & message templates configuration</p>
+          <p>Automated WhatsApp notification gateway & message templates (OpenWA Rest API)</p>
         </div>
         <div className="adm-head-actions">
           <button type="button" className="adm-btn adm-btn--sm" onClick={checkConnection} disabled={status.checking}>
-            <RefreshCw size={13} className={status.checking ? 'adm-spin' : ''} /> Check Status
+            <RefreshCw size={13} className={status.checking ? 'adm-spin' : ''} /> Check Connection
           </button>
         </div>
       </div>
@@ -174,10 +192,10 @@ export default function WhatsAppControlModule() {
         )}
         <div style={{ flex: 1 }}>
           <strong style={{ fontSize: '13.5px' }}>
-            Gateway Status: {status.checking ? 'Checking...' : status.connected ? 'ONLINE & READY' : 'OFFLINE / UNREACHABLE'}
+            OpenWA Status: {status.checking ? 'Checking Connection...' : status.connected ? 'ONLINE & AUTHENTICATED' : 'DISCONNECTED / INVALID API KEY'}
           </strong>
           <div style={{ fontSize: '11.5px', opacity: 0.85, marginTop: '1px' }}>
-            {status.message || 'Configure your WhatsApp API Gateway below'}
+            {status.message || 'Configure your OpenWA Gateway URL and Secret Key below'}
           </div>
         </div>
         <span className={`adm-chip ${status.connected ? 'adm-chip--ok' : 'adm-chip--err'}`}>
@@ -187,14 +205,14 @@ export default function WhatsAppControlModule() {
 
       {/* Grid: Gateway Connection Settings + Test Dispatch */}
       <div className="adm-grid-2">
-        {/* Panel 1: Gateway Configuration Form */}
+        {/* Panel 1: OpenWA Connection Settings */}
         <section className="adm-panel">
           <header className="adm-panel-hd">
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
               <span className="adm-icon-tile"><Settings size={18} /></span>
               <div>
-                <h2>Gateway Connection Settings</h2>
-                <p className="adm-sub">Configure API instance URL, token & default admin phone</p>
+                <h2>OpenWA Connection Settings</h2>
+                <p className="adm-sub">Base URL, Secret API Key & Admin Phone</p>
               </div>
             </div>
           </header>
@@ -203,8 +221,8 @@ export default function WhatsAppControlModule() {
             {/* Enable/Disable Toggle */}
             <div className="adm-toggle-row">
               <div className="adm-toggle-text">
-                <div className="adm-toggle-name">Enable Automated WhatsApp</div>
-                <div className="adm-toggle-hint">Master switch for all system event notifications</div>
+                <div className="adm-toggle-name">Enable Automated WhatsApp Notifications</div>
+                <div className="adm-toggle-hint">Master switch for all system event notifications via OpenWA</div>
               </div>
               <button
                 type="button"
@@ -215,35 +233,38 @@ export default function WhatsAppControlModule() {
               />
             </div>
 
-            {/* Gateway Base URL */}
+            {/* OpenWA Gateway Base URL */}
             <div className="adm-field">
               <label htmlFor="wa-gateway-url">
-                WhatsApp Gateway Base URL <span className="adm-req">*</span>
+                OpenWA Gateway Base URL <span className="adm-req">*</span>
               </label>
               <input
                 id="wa-gateway-url"
                 type="text"
                 className="adm-input"
-                placeholder="e.g. https://api.ultramsg.com/instance12345 or http://192.168.1.100:3000"
+                placeholder="e.g. https://vgtc-openwa.northflank.app or http://192.168.1.100:3000"
                 value={config.gatewayUrl || ''}
                 onChange={e => setConfig({ ...config, gatewayUrl: e.target.value })}
                 required
               />
-              <span className="adm-hint">URL of your WhatsApp API instance, Baileys HTTP server, or UltraMsg endpoint.</span>
+              <span className="adm-hint">Base URL of your deployed OpenWA REST instance.</span>
             </div>
 
-            {/* API Token / Secret Key */}
+            {/* OpenWA API Key / Secret Key */}
             <div className="adm-field">
-              <label htmlFor="wa-api-key">API Token / Secret Key</label>
+              <label htmlFor="wa-api-key">
+                <Key size={11} /> OpenWA Secret API Key
+              </label>
               <input
                 id="wa-api-key"
-                type="password"
+                type="text"
                 className="adm-input"
-                placeholder="e.g. ultramsg_token_xyz or bearer_token"
+                placeholder="e.g. owa_k1_600675f80f0fd9e27c3684df40bfa892fe14330a43cb0754e533b48e87471202"
                 value={config.apiKey || ''}
                 onChange={e => setConfig({ ...config, apiKey: e.target.value })}
+                autoComplete="off"
               />
-              <span className="adm-hint">Sent in Authorization header or payload token query parameter.</span>
+              <span className="adm-hint">Secret API Key from your OpenWA instance environment variable or startup logs (starts with <code>owa_k1_...</code>). Trailing spaces are automatically trimmed.</span>
             </div>
 
             {/* Admin Phone */}
@@ -262,24 +283,8 @@ export default function WhatsAppControlModule() {
               <span className="adm-hint">Deposit & cashout alerts will be sent to this number. Default: 8708032492.</span>
             </div>
 
-            {/* Payload Format */}
-            <div className="adm-field">
-              <label htmlFor="wa-payload-format">Gateway Payload Type</label>
-              <select
-                id="wa-payload-format"
-                className="adm-select"
-                value={config.payloadFormat || 'aisensy'}
-                onChange={e => setConfig({ ...config, payloadFormat: e.target.value })}
-              >
-                <option value="aisensy">AiSensy WhatsApp API (Meta Official BSP Partner)</option>
-                <option value="standard">Standard JSON API (to, phone, message)</option>
-                <option value="ultramsg">UltraMsg WhatsApp API (to, body, token)</option>
-                <option value="wppconnect">WPPConnect Gateway Server (/api/send-message)</option>
-              </select>
-            </div>
-
             <button type="submit" className="adm-btn adm-btn--primary adm-btn--block" disabled={saving}>
-              {saving ? <Loader2 size={15} className="adm-spin" /> : <><Sparkles size={15} /> Save Gateway Settings</>}
+              {saving ? <Loader2 size={15} className="adm-spin" /> : <><Sparkles size={15} /> Save OpenWA Settings</>}
             </button>
           </form>
         </section>
@@ -291,7 +296,7 @@ export default function WhatsAppControlModule() {
               <span className="adm-icon-tile"><Send size={18} /></span>
               <div>
                 <h2>Send Test WhatsApp Message</h2>
-                <p className="adm-sub">Dispatch a live test message to verify your connection</p>
+                <p className="adm-sub">Dispatch a live test message to verify your OpenWA connection</p>
               </div>
             </div>
           </header>
@@ -303,7 +308,7 @@ export default function WhatsAppControlModule() {
                 id="wa-test-phone"
                 type="text"
                 className="adm-input"
-                placeholder="e.g. 9876543210 or +919876543210"
+                placeholder="e.g. 8708032492 or 9876543210"
                 value={testForm.phone}
                 onChange={e => setTestForm({ ...testForm, phone: e.target.value })}
                 required
@@ -311,7 +316,7 @@ export default function WhatsAppControlModule() {
             </div>
 
             <div className="adm-field">
-              <label htmlFor="wa-test-msg">Custom Message (Optional)</label>
+              <label htmlFor="wa-test-msg">Custom Test Message (Optional)</label>
               <textarea
                 id="wa-test-msg"
                 className="adm-textarea"
@@ -329,9 +334,9 @@ export default function WhatsAppControlModule() {
             {testResult && (
               <div className={`adm-note ${testResult.success ? 'adm-note--success' : 'adm-note--danger'}`}>
                 <div>
-                  <strong>{testResult.success ? '✅ WhatsApp Sent Successfully' : '❌ Dispatch Failed'}</strong>
+                  <strong>{testResult.success ? '✅ WhatsApp Sent Successfully via OpenWA' : '❌ Dispatch Failed'}</strong>
                   <div style={{ fontSize: '11px', fontFamily: 'monospace', marginTop: '2px' }}>
-                    {testResult.success ? JSON.stringify(testResult.data?.result?.gatewayResponse || 'OK') : testResult.error}
+                    {testResult.success ? JSON.stringify(testResult.data?.result || 'OK') : testResult.error}
                   </div>
                 </div>
               </div>
@@ -427,68 +432,30 @@ export default function WhatsAppControlModule() {
         </div>
       </section>
 
-      {/* Section 4: Setup Guide */}
+      {/* Section 4: OpenWA Setup Guide */}
       <section className="adm-panel">
         <header className="adm-panel-hd">
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
             <span className="adm-icon-tile"><Info size={18} /></span>
             <div>
-              <h2>WhatsApp Gateway Setup Guide</h2>
-              <p className="adm-sub">Options & instructions for connecting your gateway</p>
+              <h2>OpenWA Gateway Setup Instructions</h2>
+              <p className="adm-sub">How to connect and authenticate your OpenWA instance</p>
             </div>
           </div>
         </header>
 
-        <div className="adm-panel-bd adm-sec">
-          <div className="adm-tabs">
-            {[
-              { id: 'ultramsg', name: 'Option 1: UltraMsg / Cloud API' },
-              { id: 'baileys', name: 'Option 2: Self-Hosted Baileys / WPPConnect' },
-              { id: 'termux', name: 'Option 3: Phone Local Bridge' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={guideTab === tab.id}
-                className="adm-tab"
-                onClick={() => setGuideTab(tab.id)}
-              >
-                {tab.name}
-              </button>
-            ))}
-          </div>
-
-          {guideTab === 'ultramsg' && (
-            <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
-              <ol style={{ paddingLeft: '20px', margin: 0 }}>
-                <li>Create a free account on UltraMsg or GreenAPI or Twilio.</li>
-                <li>Scan the QR code to link your business WhatsApp number.</li>
-                <li>Copy your Instance Base URL (e.g. <code>https://api.ultramsg.com/instanceXXXXX</code>) into the Gateway URL field above.</li>
-                <li>Set Payload Type to <b>UltraMsg WhatsApp API</b> and paste your API Token.</li>
-              </ol>
-            </div>
-          )}
-
-          {guideTab === 'baileys' && (
-            <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
-              <ol style={{ paddingLeft: '20px', margin: 0 }}>
-                <li>Run WPPConnect or Baileys Node server on your server / VPS on port 3000.</li>
-                <li>Set Gateway URL to <code>http://localhost:3000</code> or your server domain.</li>
-                <li>Select <b>WPPConnect Gateway Server</b> or Standard JSON format.</li>
-              </ol>
-            </div>
-          )}
-
-          {guideTab === 'termux' && (
-            <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
-              <ol style={{ paddingLeft: '20px', margin: 0 }}>
-                <li>Run an HTTP WhatsApp Gateway bridge app or Termux script on an Android phone.</li>
-                <li>Expose the local HTTP port via Cloudflare Tunnel or local LAN IP (e.g. <code>http://192.168.1.100:8080</code>).</li>
-                <li>Enter the URL into Gateway Base URL above and test connection.</li>
-              </ol>
-            </div>
-          )}
+        <div className="adm-panel-bd adm-sec" style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
+          <ol style={{ paddingLeft: '20px', margin: 0 }}>
+            <li style={{ marginBottom: '8px' }}>
+              <b>OpenWA Base URL</b>: Enter the public URL where your OpenWA Docker container or server is hosted (e.g. <code>https://vgtc-openwa.northflank.app</code>).
+            </li>
+            <li style={{ marginBottom: '8px' }}>
+              <b>OpenWA Secret Key</b>: Copy the secret key starting with <code>owa_k1_...</code> from your OpenWA deployment logs or environment variables. Paste it into the <i>OpenWA Secret API Key</i> field above.
+            </li>
+            <li>
+              <b>Scan QR Code</b>: Open your OpenWA deployment URL in browser to scan the WhatsApp QR code once if not already logged in.
+            </li>
+          </ol>
         </div>
       </section>
     </div>
