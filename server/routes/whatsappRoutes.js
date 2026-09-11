@@ -68,7 +68,11 @@ router.post('/test', async (req, res) => {
 router.get('/preview/:eventKey', async (req, res) => {
   try {
     const { eventKey } = req.params;
-    const validKeys = ['lr_created', 'voucher_created', 'balance_paid', 'cashout', 'deposit'];
+    const validKeys = [
+      'lr_created', 'lr_created_owner', 'lr_created_driver',
+      'voucher_created', 'voucher_created_owner', 'voucher_created_driver',
+      'balance_paid', 'cashout', 'deposit'
+    ];
     if (!validKeys.includes(eventKey)) {
       return res.status(400).json({ error: `Unknown event key: ${eventKey}` });
     }

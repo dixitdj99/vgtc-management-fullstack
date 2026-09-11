@@ -6,13 +6,19 @@
  *
  * Call dispatchLrNotification(lrData, req) AFTER res.json() is called.
  * It never throws, so it is safe in any context.
+ *
+ * Logic:
+ *  - Admin: receives lr_created_owner alert (default admin: 8708032492)
+ *  - Driver: receives lr_created_driver alert (trip info, drive safe)
+ *  - Owner: receives lr_created_owner alert ONLY FOR MARKET VEHICLES.
+ *           For SELF vehicles (ownershipType === 'self'), owner notification is SKIPPED.
  */
 
-const { sendEventNotification, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, lookupVehicleInfo, getWhatsAppConfig } = require('../utils/whatsappService');
 
 /**
- * Builds template data from an LR document and dispatches a WhatsApp
- * notification to the truck owner and (optionally) admin.
+ * Builds template data from an LR document and dispatches WhatsApp
+ * notifications to driver, owner (market trucks only), and admin.
  *
  * @param {object} lrData   Merged { ...req.body, ...result }
  * @param {object} req      Express request object (for org context)
@@ -44,11 +50,28 @@ async function dispatchLrNotification(lrData, req) {
             remark:       lrData.remark  || '—',
         };
 
-        const vehiclePhone = await lookupVehiclePhone(lrData.truckNo, req);
-        const waCfg        = await getWhatsAppConfig(req);
-        const phones       = [vehiclePhone, waCfg.adminPhone].filter(Boolean);
+        const vInfo       = await lookupVehicleInfo(lrData.truckNo, req);
+        const waCfg       = await getWhatsAppConfig(req);
+        const adminPhone  = waCfg.adminPhone || '8708032492';
 
-        await sendEventNotification('lr_created', templateData, phones, req);
+        const isSelf = (vInfo?.ownershipType === 'self') || (lrData.ownershipType === 'self') || (lrData.isSelf === true);
+        const ownerPhone  = vInfo?.ownerContact || lrData.ownerContact || '';
+        const driverPhone = vInfo?.driverContact || lrData.driverContact || '';
+
+        // 1. Driver alert — sent to driver for all vehicles
+        if (driverPhone) {
+            await sendEventNotification('lr_created_driver', templateData, [driverPhone], req);
+        }
+
+        // 2. Owner alert — sent ONLY for market vehicles (skipped for self vehicles)
+        if (!isSelf && ownerPhone) {
+            await sendEventNotification('lr_created_owner', templateData, [ownerPhone], req);
+        }
+
+        // 3. Admin alert — sent to admin number (8708032492)
+        if (adminPhone) {
+            await sendEventNotification('lr_created_owner', templateData, [adminPhone], req);
+        }
     } catch (e) {
         console.error('[WA-Hook] LR notify FAILED:', e.message);
     }

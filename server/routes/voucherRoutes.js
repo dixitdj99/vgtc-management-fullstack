@@ -6,7 +6,7 @@ const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
-const { sendEventNotification, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, lookupVehicleInfo, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -62,11 +62,28 @@ router.post('/', async (req, res) => {
                     paymentStatus: vData.paymentStatus || 'Balance Pending',
                 };
 
-                const vehiclePhone = await lookupVehiclePhone(vData.truckNo, req);
-                const waCfg        = await getWhatsAppConfig(req);
-                const phones       = [vehiclePhone, waCfg.adminPhone].filter(Boolean);
+                const vInfo       = await lookupVehicleInfo(vData.truckNo, req);
+                const waCfg       = await getWhatsAppConfig(req);
+                const adminPhone  = waCfg.adminPhone || '8708032492';
 
-                await sendEventNotification('voucher_created', templateData, phones, req);
+                const isSelf = (vInfo?.ownershipType === 'self') || (vData.ownershipType === 'self') || (vData.isSelf === true);
+                const ownerPhone  = vInfo?.ownerContact || vData.ownerContact || '';
+                const driverPhone = vInfo?.driverContact || vData.driverContact || '';
+
+                // 1. Driver voucher alert — sent to driver
+                if (driverPhone) {
+                    await sendEventNotification('voucher_created_driver', templateData, [driverPhone], req);
+                }
+
+                // 2. Owner voucher copy — sent ONLY for market vehicles (not self vehicles)
+                if (!isSelf && ownerPhone) {
+                    await sendEventNotification('voucher_created_owner', templateData, [ownerPhone], req);
+                }
+
+                // 3. Admin copy — sent to admin number (8708032492)
+                if (adminPhone) {
+                    await sendEventNotification('voucher_created_owner', templateData, [adminPhone], req);
+                }
             } catch (waErr) {
                 console.error('[WA-Hook] Voucher notify FAILED:', waErr.message);
             }
