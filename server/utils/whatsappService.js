@@ -425,11 +425,11 @@ async function sendWhatsAppMessage(phone, message, req = null) {
         console.log('[WA] Session inactive detected — attempting auto-start trigger on OpenWA...');
         try {
           const startUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/start`, apiKey);
-          await axios.post(startUrl, { api_key: apiKey }, { headers, timeout: 15000 });
+          await axios.post(startUrl, {}, { headers, timeout: 15000 });
         } catch (startErr) {
           try {
             const startUrl2 = buildOpenWaUrl(baseUrl, '/api/sessions/start', apiKey);
-            await axios.post(startUrl2, { api_key: apiKey }, { headers, timeout: 15000 });
+            await axios.post(startUrl2, {}, { headers, timeout: 15000 });
           } catch (e) { /* ignore fallback start error */ }
         }
       }
@@ -446,6 +446,12 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   // Final retry after auto session start attempt if session inactive was encountered
   if (errText.includes('is not active') || errText.includes('Start the session first')) {
     try {
+      // Trigger session start first
+      try {
+        const startUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/start`, apiKey);
+        await axios.post(startUrl, {}, { headers, timeout: 15000 });
+      } catch (e) { /* ignore */ }
+
       const retryUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/messages/send-text`, apiKey);
       const res = await axios.post(retryUrl, { chatId, text: message }, { headers, timeout: 30000 });
       if (res.status >= 200 && res.status < 300) return res.data;
@@ -798,6 +804,22 @@ function previewTemplate(eventKey, config) {
   return interpolateTemplate(eventCfg.template || '', sampleData);
 }
 
+async function startWhatsAppSession(req = null) {
+  const config = await getWhatsAppConfig(req);
+  if (!config.gatewayUrl) {
+    throw new Error('WhatsApp Gateway URL is not configured');
+  }
+
+  const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
+  const apiKey = (config.apiKey || '').trim();
+  const sessionId = (config.sessionId || 'default').trim();
+  const headers = getOpenWaHeaders(apiKey);
+
+  const startUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/start`, apiKey);
+  const res = await axios.post(startUrl, {}, { headers, timeout: 15000 });
+  return res.data;
+}
+
 // ─── Exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -805,12 +827,13 @@ module.exports = {
   saveWhatsAppConfig,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
+  startWhatsAppSession,
   sendEventNotification,
   generateLrReceiptHtml,
   generateVoucherHtml,
   previewTemplate,
-  lookupVehiclePhone,
   lookupVehicleInfo,
+  lookupVehiclePhone,
   formatPhoneWid,
   DEFAULT_TEMPLATES
 };

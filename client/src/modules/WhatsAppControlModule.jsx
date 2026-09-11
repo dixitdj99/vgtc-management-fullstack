@@ -3,7 +3,7 @@ import ax from '../api';
 import { motion } from 'framer-motion';
 import {
   MessageSquare, Send, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Settings, Info, Loader2, Sparkles, Zap, Eye, Phone, Key
+  Settings, Info, Loader2, Sparkles, Zap, Eye, Phone, Key, Play
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
@@ -136,6 +136,23 @@ export default function WhatsAppControlModule() {
     }
   };
 
+  const [startingSession, setStartingSession] = useState(false);
+
+  const handleStartSession = async () => {
+    setStartingSession(true);
+    try {
+      const ax = getAxios();
+      await ax.post('/whatsapp/start-session');
+      showToast('success', '🚀 OpenWA Session Start trigger sent!');
+      setTimeout(checkConnection, 2000);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to start session';
+      showToast('error', '❌ Session Start Failed: ' + msg);
+    } finally {
+      setStartingSession(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', width: '100%' }}>
@@ -175,6 +192,9 @@ export default function WhatsAppControlModule() {
           <p>Automated WhatsApp notification gateway & message templates (OpenWA Rest API)</p>
         </div>
         <div className="adm-head-actions">
+          <button type="button" className="adm-btn adm-btn--secondary adm-btn--sm" onClick={handleStartSession} disabled={startingSession}>
+            <Play size={13} className={startingSession ? 'adm-spin' : ''} /> {startingSession ? 'Starting Session...' : 'Start Session'}
+          </button>
           <button type="button" className="adm-btn adm-btn--sm" onClick={checkConnection} disabled={status.checking}>
             <RefreshCw size={13} className={status.checking ? 'adm-spin' : ''} /> Check Connection
           </button>
