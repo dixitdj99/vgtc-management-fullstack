@@ -3,7 +3,7 @@ import ax from '../api';
 import { motion } from 'framer-motion';
 import {
   MessageSquare, Send, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Settings, Wifi, Shield, Cpu, Info, Copy, Check, ExternalLink, Loader2, Sparkles, Zap
+  Settings, Wifi, Shield, Cpu, Info, Copy, Check, ExternalLink, Loader2, Sparkles, Zap, Eye, EyeOff, Phone
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 
@@ -12,13 +12,14 @@ export default function WhatsAppControlModule() {
     enabled: true,
     gatewayUrl: '',
     apiKey: '',
+    adminPhone: '',
     payloadFormat: 'standard',
     events: {
-      lr_created: { enabled: true, template: 'VGTC Alert: LR #{lrNo} generated for Truck {truckNo}. Qty: {qty} Bags, Destination: {destination}. Party: {partyName}.' },
-      voucher_created: { enabled: true, template: 'VGTC Alert: Voucher #{voucherNo} generated for Truck {truckNo}. Freight: Rs.{freight}, Advance: Rs.{advance}. Driver: {driverName}.' },
-      balance_paid: { enabled: true, template: 'VGTC Payment: Balance payment of Rs.{amount} paid for Truck {truckNo} (Batch #{batchNo}). Status: PAID.' },
-      cashout: { enabled: true, template: 'VGTC Cashbook: Cash Out of Rs.{amount} given to {entityName} ({entityType}). Remark: {remark}. Date: {date}.' },
-      deposit: { enabled: true, template: 'VGTC Cashbook: Deposit of Rs.{amount} received into Cashbook. Remark: {remark}. Date: {date}.' }
+      lr_created: { enabled: true, template: '' },
+      voucher_created: { enabled: true, template: '' },
+      balance_paid: { enabled: true, template: '' },
+      cashout: { enabled: true, template: '' },
+      deposit: { enabled: true, template: '' }
     }
   });
   const [loading, setLoading] = useState(true);
@@ -29,12 +30,27 @@ export default function WhatsAppControlModule() {
   const [testResult, setTestResult] = useState(null);
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [guideTab, setGuideTab] = useState('ultramsg');
-0
-  const [notify, setNotify] = useState(null); // { type: 'success' | 'error', message: '' }
+  const [previews, setPreviews] = useState({});
+  const [previewingKey, setPreviewingKey] = useState(null);
+
+  const notify = null;  // replaced by showToast below
+  const [notifyState, setNotifyState] = useState(null);
 
   const showToast = (type, message) => {
-    setNotify({ type, message });
-    setTimeout(() => setNotify(null), 4000);
+    setNotifyState({ type, message });
+    setTimeout(() => setNotifyState(null), 4000);
+  };
+
+  const handlePreviewTemplate = async (eventKey) => {
+    setPreviewingKey(eventKey);
+    try {
+      const res = await ax.get(`/whatsapp/preview/${eventKey}`);
+      setPreviews(p => ({ ...p, [eventKey]: res.data.preview }));
+    } catch (e) {
+      setPreviews(p => ({ ...p, [eventKey]: '⚠️ Preview failed: ' + (e.response?.data?.error || e.message) }));
+    } finally {
+      setPreviewingKey(null);
+    }
   };
 
   useEffect(() => {
@@ -120,21 +136,21 @@ export default function WhatsAppControlModule() {
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '40px' }}>
       {/* Toast Notification Banner */}
-      {notify && (
+      {notifyState && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           style={{
             position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
-            background: notify.type === 'success' ? 'rgba(16,185,129,0.92)' : 'rgba(239,68,68,0.92)',
+            background: notifyState.type === 'success' ? 'rgba(16,185,129,0.92)' : 'rgba(239,68,68,0.92)',
             color: '#ffffff', padding: '12px 20px', borderRadius: '12px',
             fontSize: '13px', fontWeight: 700, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
             display: 'flex', alignItems: 'center', gap: '10px', backdropFilter: 'blur(8px)'
           }}
         >
-          {notify.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-          <span>{notify.message}</span>
+          {notifyState.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+          <span>{notifyState.message}</span>
         </motion.div>
       )}
 
@@ -248,6 +264,24 @@ export default function WhatsAppControlModule() {
               </div>
             </div>
 
+            {/* Admin Phone */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                <Phone size={12} style={{ marginRight: '4px' }} />
+                Admin WhatsApp Number
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. 9416319445 (for deposit & cashout alerts)"
+                value={config.adminPhone || ''}
+                onChange={e => setConfig({ ...config, adminPhone: e.target.value })}
+              />
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Deposit and cashout alerts will be sent to this number. Leave blank to skip admin alerts.
+              </div>
+            </div>
+
             {/* Payload Format */}
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
@@ -341,21 +375,25 @@ export default function WhatsAppControlModule() {
 
         <div style={{ display: 'grid', gap: '16px' }}>
           {[
-            { key: 'lr_created', title: '1. LR Generated Alert', desc: 'Sent when Loading Receipt (LR) is created' },
-            { key: 'voucher_created', title: '2. Voucher Generated Alert', desc: 'Sent when Dispatch Freight Voucher is generated' },
-            { key: 'balance_paid', title: '3. Balance Payment Paid', desc: 'Sent when lorry balance payment is marked PAID' },
-            { key: 'cashout', title: '4. Cashbook Cash Out', desc: 'Sent when expense cash out is paid' },
-            { key: 'deposit', title: '5. Cashbook Deposit', desc: 'Sent when cash deposit is logged' }
+            { key: 'lr_created', title: '1. LR Generated Alert', desc: 'Truck owner + admin • Rich multi-line text', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {freight} {totalFreight} {billing} {materialsText}' },
+            { key: 'voucher_created', title: '2. Voucher Generated Alert', desc: 'Truck owner + admin • Freight slip summary', tags: '{voucherNo} {lrNo} {truckNo} {driverName} {destination} {grossFreight} {netBalance} {advanceDiesel} {advanceCash}' },
+            { key: 'balance_paid', title: '3. Balance Payment Batch Sent', desc: 'Truck owner • Payment batch notification', tags: '{truckNo} {tripCount} {periodFrom} {periodTo} {note}' },
+            { key: 'cashout', title: '4. Cashbook Cash Out', desc: 'Admin number only', tags: '{entityName} {entityType} {amount} {remark} {date}' },
+            { key: 'deposit', title: '5. Cashbook Deposit', desc: 'Admin number only', tags: '{amount} {remark} {date}' }
           ].map(evt => {
             const evtConfig = config.events?.[evt.key] || { enabled: true, template: '' };
+            const previewText = previews[evt.key];
             return (
               <div key={evt.key} style={{ background: 'var(--bg-sub)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px', gap: '10px' }}>
+                  <div style={{ flex: 1 }}>
                     <span style={{ fontSize: '13px', fontWeight: 800 }}>{evt.title}</span>
                     <span style={{ fontSize: '11px', color: 'var(--text-sub)', marginLeft: '10px' }}>{evt.desc}</span>
+                    <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace', lineHeight: 1.5 }}>
+                      Available tags: <span style={{ color: '#25D366' }}>{evt.tags}</span>
+                    </div>
                   </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>
                     <input
                       type="checkbox"
                       checked={evtConfig.enabled !== false}
@@ -365,19 +403,44 @@ export default function WhatsAppControlModule() {
                       }}
                       style={{ accentColor: '#25D366' }}
                     />
-                    Enable Alert
+                    Enable
                   </label>
                 </div>
                 <textarea
                   className="form-control"
-                  rows={2}
+                  rows={4}
                   value={evtConfig.template || ''}
                   onChange={e => {
                     const updated = { ...config.events, [evt.key]: { ...evtConfig, template: e.target.value } };
                     setConfig({ ...config, events: updated });
                   }}
-                  style={{ fontSize: '12.5px', fontFamily: 'monospace' }}
+                  style={{ fontSize: '12px', fontFamily: 'monospace', marginBottom: '8px' }}
                 />
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-g btn-sm"
+                    onClick={() => handlePreviewTemplate(evt.key)}
+                    disabled={previewingKey === evt.key}
+                    style={{ fontSize: '11px' }}
+                  >
+                    {previewingKey === evt.key ? <Loader2 size={11} className="spin" /> : <Eye size={11} />}
+                    Preview Sample
+                  </button>
+                  {previewText && (
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Click to toggle preview below</span>
+                  )}
+                </div>
+                {previewText && (
+                  <div style={{
+                    marginTop: '10px', background: '#0f1117', border: '1px solid #25D36640', borderRadius: '10px',
+                    padding: '12px 14px', fontSize: '12px', fontFamily: 'monospace', whiteSpace: 'pre-wrap',
+                    color: '#e2e8f0', lineHeight: 1.7, maxHeight: '280px', overflowY: 'auto'
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#25D366', marginBottom: '6px', fontWeight: 700 }}>📱 PREVIEW (sample data):</div>
+                    {previewText}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -5,6 +5,7 @@ const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
+const { dispatchLrNotification } = require('./lrWhatsAppHook');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -68,9 +69,10 @@ router.post('/', async (req, res) => {
             console.log('[Backup-Hook] Skipping LR backup — Drive not authorized');
         }
 
-
-
         res.status(201).json(result);
+
+        // WhatsApp Notification — fire and forget, never blocks response
+        dispatchLrNotification({ ...req.body, ...result }, req);
     } catch (error) {
         res.status(error.status || 500).json({ error: error.message });
     }

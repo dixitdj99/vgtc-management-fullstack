@@ -5,7 +5,10 @@ const {
   getWhatsAppConfig,
   saveWhatsAppConfig,
   checkWhatsAppStatus,
-  sendWhatsAppMessage
+  sendWhatsAppMessage,
+  previewTemplate,
+  generateLrReceiptHtml,
+  generateVoucherHtml
 } = require('../utils/whatsappService');
 
 router.use(requireAuth);
@@ -57,6 +60,72 @@ router.post('/test', async (req, res) => {
     console.error('whatsapp test send error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/whatsapp/preview/:eventKey
+// Returns a sample interpolated message for the given event key.
+// Used by the Control Module to preview templates without sending.
+router.get('/preview/:eventKey', async (req, res) => {
+  try {
+    const { eventKey } = req.params;
+    const validKeys = ['lr_created', 'voucher_created', 'balance_paid', 'cashout', 'deposit'];
+    if (!validKeys.includes(eventKey)) {
+      return res.status(400).json({ error: `Unknown event key: ${eventKey}` });
+    }
+    const config = await getWhatsAppConfig(req);
+    const preview = previewTemplate(eventKey, config);
+    res.json({ eventKey, preview });
+  } catch (err) {
+    console.error('whatsapp preview error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/whatsapp/preview/receipt/lr
+// Returns the LR receipt HTML for browser preview
+router.get('/preview/receipt/lr', async (req, res) => {
+  const sampleLr = {
+    lrNo: '1042',
+    date: new Date().toLocaleDateString('en-IN'),
+    truckNo: 'HR55AA1234',
+    destination: 'Rewari',
+    partyName: 'M/S Sample Cement Traders',
+    billing: 'To Pay',
+    remark: 'Handle with care',
+    freight: 5500,
+    materials: [
+      { type: 'OPC Cement', bags: 300, weight: 18 },
+      { type: 'PPC Cement', bags: 100, weight: 6 },
+    ],
+    id: 'preview-sample-id'
+  };
+  const html = generateLrReceiptHtml(sampleLr);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// GET /api/whatsapp/preview/receipt/voucher
+// Returns the Voucher HTML for browser preview
+router.get('/preview/receipt/voucher', async (req, res) => {
+  const sampleVoucher = {
+    voucherNo: '501',
+    lrNo: '1042',
+    date: new Date().toLocaleDateString('en-IN'),
+    truckNo: 'HR55AA1234',
+    driverName: 'Ramesh Kumar',
+    destination: 'Rewari',
+    weight: 24,
+    rate: 4500,
+    advanceDiesel: 5000,
+    advanceCash: 2000,
+    advanceOnline: 0,
+    munshi: 100,
+    commission: 0,
+    id: 'preview-voucher-id'
+  };
+  const html = generateVoucherHtml(sampleVoucher);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
 });
 
 module.exports = router;
