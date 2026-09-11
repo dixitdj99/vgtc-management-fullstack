@@ -196,6 +196,9 @@ app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRo
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
+// Public (no-auth) webhook — OpenWA POSTs here on message.received.
+// Must be mounted BEFORE the requireAuth whatsapp routes so OpenWA's call is not rejected.
+app.use('/api/whatsapp/webhook', require('./routes/whatsappWebhookRoute'));
 app.use('/api/whatsapp', requireAuth, require('./routes/whatsappRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret
 

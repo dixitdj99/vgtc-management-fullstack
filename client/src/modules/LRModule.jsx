@@ -1216,33 +1216,48 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 }
 
 /* ── Main LR Module ── */
-function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
+function DeleteConfirm({ row, rows, apiUrl, onClose, onConfirm }) {
   const [deleting, setDeleting] = useState(false);
+  const items = useMemo(() => {
+    if (rows && Array.isArray(rows) && rows.length > 0) return rows;
+    if (row) return [row];
+    return [];
+  }, [row, rows]);
+
   const handleDelete = async () => {
+    if (!items.length) return;
     setDeleting(true);
     try {
-      // Refund stock first
       let SYNC_API;
       if (apiUrl.includes('/jkl/lr')) SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (apiUrl.includes('/kosli/lr')) SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (apiUrl.includes('/jhajjar/lr')) SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
       else if (apiUrl.includes('/bahadurgarh/lr')) SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
-      if (row.billing) {
-        await ax.post(SYNC_API, {
-          oldChallanNos: row.billing,
-          newChallanNos: "",
-          material: row.material,
-          quantity: row.totalBags
-        });
+
+      for (const item of items) {
+        if (item.billing) {
+          try {
+            await ax.post(SYNC_API, {
+              oldChallanNos: item.billing,
+              newChallanNos: "",
+              material: item.material,
+              quantity: item.totalBags
+            });
+          } catch (e) { /* ignore stock sync error */ }
+        }
+        await ax.delete(apiUrl + '/' + item.id);
       }
-      await ax.delete(apiUrl + '/' + row.id);
       onConfirm();
     } catch (e) {
       console.error(e);
       alert('Delete failed: ' + (e.response?.data?.error || e.message));
     } finally { setDeleting(false); }
   };
+
+  const isMultiple = items.length > 1;
+  const single = items[0] || {};
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
       <motion.div
@@ -1252,15 +1267,17 @@ function DeleteConfirm({ row, apiUrl, onClose, onConfirm }) {
         <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(244,63,94,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <AlertTriangle size={26} color="#f43f5e" />
         </div>
-        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Delete Entry?</div>
+        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>
+          {isMultiple ? `Delete ${items.length} Entries?` : 'Delete Entry?'}
+        </div>
         <div style={{ fontSize: '12.5px', color: 'var(--text-sub)', marginBottom: '6px' }}>
-          LR <strong style={{ color: 'var(--text)' }}>#{row.lrNo}</strong> · {row.material} · {row.truckNo}
+          {isMultiple ? `${items.length} loading receipts selected for deletion` : `LR #${single.lrNo} · ${single.material} · ${single.truckNo}`}
         </div>
         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '22px' }}>This action cannot be undone.</div>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
           <button className="btn btn-g" onClick={onClose}>Cancel</button>
           <button className="btn btn-d" onClick={handleDelete} disabled={deleting} title="Confirm Delete">
-            {deleting ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete</>}
+            {deleting ? <Loader2 size={13} className="spin" /> : <><Trash2 size={13} /> Delete {isMultiple ? `(${items.length})` : ''}</>}
           </button>
         </div>
       </motion.div>
@@ -1873,7 +1890,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
       {/* Delete Confirm */}
       <AnimatePresence>
-        {deleteRow && <DeleteConfirm row={deleteRow} apiUrl={API} onClose={() => setDeleteRow(null)} onConfirm={() => { setDeleteRow(null); fetchLRData(); }} />}
+        {deleteRow && <DeleteConfirm rows={Array.isArray(deleteRow) ? deleteRow : [deleteRow]} apiUrl={API} onClose={() => setDeleteRow(null)} onConfirm={() => { setDeleteRow(null); setSelectedLrs(new Set()); fetchLRData(); }} />}
       </AnimatePresence>
 
       {/* Challan Selection Popup */}
@@ -2373,11 +2390,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     className="btn btn-d btn-sm"
                     disabled={selectedLrs.size === 0}
                     onClick={() => {
-                      const firstId = Array.from(selectedLrs)[0];
-                      const target = receipts.find(r => r.id === firstId);
-                      if (target) setDeleteRow(target);
+                      const selectedList = receipts.filter(r => selectedLrs.has(r.id));
+                      if (selectedList.length > 0) setDeleteRow(selectedList);
                     }}
-                    title="Delete Checked Entry (Admin Only)"
+                    title="Delete Checked Entries (Admin Only)"
                   >
                     <Trash2 size={13} /> Delete
                   </button>

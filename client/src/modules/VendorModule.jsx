@@ -618,24 +618,26 @@ export default function VendorModule() {
                     </div>
                   </div>
 
-                  <div className="field">
-                    <label>Owner / Supplier Name</label>
-                    <input className="fi" value={formData.ownerName} onChange={e => setFormData(f => ({ ...f, ownerName: e.target.value }))} placeholder="e.g. RAJESH KUMAR" />
-                  </div>
+                  <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div className="field">
+                      <label>Owner / Supplier Name</label>
+                      <input className="fi" value={formData.ownerName} onChange={e => setFormData(f => ({ ...f, ownerName: e.target.value }))} placeholder="e.g. RAJESH KUMAR" />
+                    </div>
 
-                  <div className="field">
-                    <label>Owner Contact Phone</label>
-                    <input className="fi" value={formData.ownerContact} onChange={e => setFormData(f => ({ ...f, ownerContact: e.target.value }))} placeholder="e.g. 9876543210" />
-                  </div>
+                    <div className="field">
+                      <label>Owner Contact Phone</label>
+                      <input className="fi" value={formData.ownerContact} onChange={e => setFormData(f => ({ ...f, ownerContact: e.target.value }))} placeholder="e.g. 9876543210" />
+                    </div>
 
-                  <div className="field">
-                    <label>Driver Name</label>
-                    <input className="fi" value={formData.driverName} onChange={e => setFormData(f => ({ ...f, driverName: e.target.value }))} placeholder="Active driver name" />
-                  </div>
+                    <div className="field">
+                      <label>Driver Name</label>
+                      <input className="fi" value={formData.driverName} onChange={e => setFormData(f => ({ ...f, driverName: e.target.value }))} placeholder="Active driver name" />
+                    </div>
 
-                  <div className="field">
-                    <label>Driver Contact Phone</label>
-                    <input className="fi" value={formData.driverContact} onChange={e => setFormData(f => ({ ...f, driverContact: e.target.value }))} placeholder="Driver mobile number" />
+                    <div className="field">
+                      <label>Driver Contact Phone</label>
+                      <input className="fi" value={formData.driverContact} onChange={e => setFormData(f => ({ ...f, driverContact: e.target.value }))} placeholder="Driver mobile number" />
+                    </div>
                   </div>
 
                   {/* Bank Transfer Details */}

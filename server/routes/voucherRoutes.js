@@ -90,6 +90,15 @@ router.post('/', async (req, res) => {
                 if (adminPhone) {
                     await sendEventNotification('voucher_created_owner', templateData, [adminPhone], req);
                 }
+
+                // 4. Online Advance Clerk Alert — sent to admin ONLY when advanceOnline > 0
+                //    The clerk must reply "PAID {voucherNo}" to the WhatsApp bot to confirm
+                //    payment done. The OpenWA webhook (POST /api/whatsapp/webhook) will then
+                //    mark isOnlinePaid = true and notify owner + driver.
+                if (online > 0 && adminPhone) {
+                    await sendEventNotification('online_advance_clerk', templateData, [adminPhone], req);
+                    console.log(`[WA-Hook] Online advance clerk alert sent for voucher ${templateData.voucherNo} (Rs.${templateData.advanceOnline})`);
+                }
             } catch (waErr) {
                 console.error('[WA-Hook] Voucher notify FAILED:', waErr.message);
             }

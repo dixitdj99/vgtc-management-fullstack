@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Shield, Users, Fuel, Settings, Mail, Building2, TrendingUp, Cloud,
-  LayoutDashboard, UserCircle, Briefcase,
+  LayoutDashboard, UserCircle, Briefcase, MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import AdminDashboard from './admin/AdminDashboard';
@@ -15,6 +15,7 @@ import SystemSettings from './admin/SystemSettings';
 import AdminModule from '../modules/AdminModule';
 import StaffProfileModule from '../modules/StaffProfileModule';
 import PartyMaster from '../modules/PartyMaster';
+import WhatsAppControlModule from '../modules/WhatsAppControlModule';
 import './admin/admin.css';
 
 const TAB_STORAGE_KEY = 'vgtc-adminpage-tab';
@@ -47,6 +48,7 @@ const TAB_GROUPS = [
     label: 'System',
     tabs: [
       { id: 'overview', label: 'System Overview', Icon: LayoutDashboard },
+      { id: 'whatsapp', label: 'WhatsApp Control', Icon: MessageSquare },
       { id: 'pl_sheet', label: 'Profit & Loss', Icon: TrendingUp },
       { id: 'settings', label: 'Email & Organisation', Icon: Mail },
       { id: 'backup', label: 'Google Drive Backup', Icon: Cloud },
@@ -159,6 +161,7 @@ export default function AdminPage() {
               {activeTab === 'firms' && <FirmManager />}
               {activeTab === 'fuel' && <FuelStationManager />}
               {activeTab === 'overview' && <AdminDashboard />}
+              {activeTab === 'whatsapp' && <WhatsAppControlModule />}
               {activeTab === 'pl_sheet' && <ProfitLossSheet />}
               {activeTab === 'settings' && <SystemSettings />}
               {activeTab === 'backup' && <AdminModule />}

@@ -3,9 +3,10 @@ import ax from '../api';
 import { motion } from 'framer-motion';
 import {
   MessageSquare, Send, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Settings, Wifi, Shield, Cpu, Info, Copy, Check, ExternalLink, Loader2, Sparkles, Zap, Eye, EyeOff, Phone
+  Settings, Info, Loader2, Sparkles, Zap, Eye, Phone, Key, Play
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
+import '../pages/admin/admin.css';
 
 export default function WhatsAppControlModule() {
   const [config, setConfig] = useState({
@@ -13,7 +14,7 @@ export default function WhatsAppControlModule() {
     gatewayUrl: '',
     apiKey: '',
     adminPhone: '8708032492',
-    payloadFormat: 'standard',
+    payloadFormat: 'openwa',
     events: {
       lr_created_owner: { enabled: true, template: '' },
       lr_created_driver: { enabled: true, template: '' },
@@ -30,12 +31,8 @@ export default function WhatsAppControlModule() {
   const [status, setStatus] = useState({ checking: true, connected: false, message: '' });
   const [testForm, setTestForm] = useState({ phone: '', message: '' });
   const [testResult, setTestResult] = useState(null);
-  const [copiedCmd, setCopiedCmd] = useState(false);
-  const [guideTab, setGuideTab] = useState('ultramsg');
   const [previews, setPreviews] = useState({});
   const [previewingKey, setPreviewingKey] = useState(null);
-
-  const notify = null;  // replaced by showToast below
   const [notifyState, setNotifyState] = useState(null);
 
   const showToast = (type, message) => {
@@ -64,7 +61,14 @@ export default function WhatsAppControlModule() {
     setLoading(true);
     try {
       const res = await ax.get('/whatsapp/config');
-      if (res.data) setConfig(prev => ({ ...prev, ...res.data }));
+      if (res.data) {
+        setConfig(prev => ({
+          ...prev,
+          ...res.data,
+          apiKey: (res.data.apiKey || '').trim(),
+          gatewayUrl: (res.data.gatewayUrl || '').trim()
+        }));
+      }
     } catch (e) {
       console.error('Failed to fetch WhatsApp config', e);
     } finally {
@@ -73,16 +77,16 @@ export default function WhatsAppControlModule() {
   };
 
   const checkConnection = async () => {
-    setStatus({ checking: true, connected: false, message: 'Pinging WhatsApp Gateway...' });
+    setStatus({ checking: true, connected: false, message: 'Pinging OpenWA Gateway...' });
     try {
       const res = await ax.get('/whatsapp/status');
       setStatus({
         checking: false,
         connected: res.data?.connected || false,
-        message: res.data?.connected ? 'Online & Ready to Send' : (res.data?.message || 'Gateway Disconnected')
+        message: res.data?.connected ? 'OpenWA Online & Authenticated' : (res.data?.message || 'OpenWA Disconnected')
       });
     } catch (e) {
-      setStatus({ checking: false, connected: false, message: 'Gateway Offline or Unreachable' });
+      setStatus({ checking: false, connected: false, message: 'OpenWA Gateway Unreachable' });
     }
   };
 
@@ -90,11 +94,17 @@ export default function WhatsAppControlModule() {
     e?.preventDefault();
     setSaving(true);
     try {
-      await ax.post('/whatsapp/config', config);
-      showToast('success', 'WhatsApp Gateway Configuration Saved Successfully!');
+      const payload = {
+        ...config,
+        apiKey: (config.apiKey || '').trim(),
+        gatewayUrl: (config.gatewayUrl || '').trim(),
+        payloadFormat: 'openwa'
+      };
+      await ax.post('/whatsapp/config', payload);
+      showToast('success', 'OpenWA Gateway Configuration Saved Successfully!');
       checkConnection();
     } catch (err) {
-      showToast('error', err.response?.data?.error || 'Failed to save gateway configuration');
+      showToast('error', err.response?.data?.error || 'Failed to save OpenWA gateway configuration');
     } finally {
       setSaving(false);
     }
@@ -106,37 +116,53 @@ export default function WhatsAppControlModule() {
     setTesting(true);
     setTestResult(null);
     try {
-      // Auto-save configuration first so the latest gateway credentials/URL are active on server
-      await ax.post('/whatsapp/config', config);
+      const payload = {
+        ...config,
+        apiKey: (config.apiKey || '').trim(),
+        gatewayUrl: (config.gatewayUrl || '').trim(),
+        payloadFormat: 'openwa'
+      };
+      await ax.post('/whatsapp/config', payload);
       const res = await ax.post('/whatsapp/test', testForm);
       setTestResult({ success: true, data: res.data });
-      showToast('success', '✅ Test WhatsApp message dispatched successfully!');
+      showToast('success', '✅ Test WhatsApp message dispatched successfully via OpenWA!');
       checkConnection();
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'WhatsApp message dispatch failed';
       setTestResult({ success: false, error: msg });
-      showToast('error', '❌ WhatsApp Dispatch Failed: ' + msg);
+      showToast('error', '❌ OpenWA Dispatch Failed: ' + msg);
     } finally {
       setTesting(false);
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    setCopiedCmd(true);
-    setTimeout(() => setCopiedCmd(false), 2000);
+  const [startingSession, setStartingSession] = useState(false);
+
+  const handleStartSession = async () => {
+    setStartingSession(true);
+    try {
+      const ax = getAxios();
+      await ax.post('/whatsapp/start-session');
+      showToast('success', '🚀 OpenWA Session Start trigger sent!');
+      setTimeout(checkConnection, 2000);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to start session';
+      showToast('error', '❌ Session Start Failed: ' + msg);
+    } finally {
+      setStartingSession(false);
+    }
   };
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', width: '100%' }}>
-        <TruckLoader size={130} text="Loading WhatsApp Gateway configurations..." />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', width: '100%' }}>
+        <TruckLoader size={120} text="Loading OpenWA Gateway configurations..." />
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '40px' }}>
+    <div className="adm adm-page" style={{ paddingBottom: '40px' }}>
       {/* Toast Notification Banner */}
       {notifyState && (
         <motion.div
@@ -145,10 +171,10 @@ export default function WhatsAppControlModule() {
           exit={{ opacity: 0, y: -10 }}
           style={{
             position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
-            background: notifyState.type === 'success' ? 'rgba(16,185,129,0.92)' : 'rgba(239,68,68,0.92)',
+            background: notifyState.type === 'success' ? 'var(--primary)' : 'var(--danger)',
             color: '#ffffff', padding: '12px 20px', borderRadius: '12px',
             fontSize: '13px', fontWeight: 700, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-            display: 'flex', alignItems: 'center', gap: '10px', backdropFilter: 'blur(8px)'
+            display: 'flex', alignItems: 'center', gap: '10px'
           }}
         >
           {notifyState.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
@@ -156,185 +182,164 @@ export default function WhatsAppControlModule() {
         </motion.div>
       )}
 
-      {/* Header */}
-      <div className="page-hd">
+      {/* Page Header */}
+      <div className="adm-head">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '38px', height: '38px', borderRadius: '12px', background: '#25D36620',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <MessageSquare size={22} color="#25D366" />
-            </div>
-            <div>
-              <h2 style={{ fontSize: '20px', fontWeight: 900, margin: 0, color: 'var(--text)' }}>WhatsApp Control Center</h2>
-              <p style={{ fontSize: '12px', color: 'var(--text-sub)', margin: 0 }}>Automated WhatsApp notification gateway & message templates</p>
-            </div>
-          </div>
+          <h1>
+            <span className="adm-icon-tile"><MessageSquare size={20} /></span>
+            OpenWA WhatsApp Control Center
+          </h1>
+          <p>Automated WhatsApp notification gateway & message templates (OpenWA Rest API)</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button className="btn btn-g btn-sm" onClick={checkConnection} disabled={status.checking}>
-            <RefreshCw size={13} className={status.checking ? 'spin' : ''} /> Check Status
+        <div className="adm-head-actions">
+          <button type="button" className="adm-btn adm-btn--secondary adm-btn--sm" onClick={handleStartSession} disabled={startingSession}>
+            <Play size={13} className={startingSession ? 'adm-spin' : ''} /> {startingSession ? 'Starting Session...' : 'Start Session'}
+          </button>
+          <button type="button" className="adm-btn adm-btn--sm" onClick={checkConnection} disabled={status.checking}>
+            <RefreshCw size={13} className={status.checking ? 'adm-spin' : ''} /> Check Connection
           </button>
         </div>
       </div>
 
-      {/* Gateway Status Badge Banner */}
-      <div style={{
-        background: status.connected ? 'rgba(37,211,102,0.08)' : 'rgba(239,68,68,0.08)',
-        border: `1px solid ${status.connected ? 'rgba(37,211,102,0.25)' : 'rgba(239,68,68,0.25)'}`,
-        borderRadius: '14px', padding: '14px 18px', marginBottom: '22px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {status.checking ? (
-            <Loader2 size={20} className="spin" color="#25D366" />
-          ) : status.connected ? (
-            <CheckCircle2 size={22} color="#25D366" />
-          ) : (
-            <XCircle size={22} color="#ef4444" />
-          )}
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>
-              Gateway Status: {status.checking ? 'Checking...' : status.connected ? 'ONLINE' : 'OFFLINE / UNREACHABLE'}
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-sub)' }}>
-              {status.message || 'Configure your WhatsApp API Gateway below'}
-            </div>
+      {/* Gateway Status Note Banner */}
+      <div className={`adm-note ${status.connected ? 'adm-note--success' : 'adm-note--danger'}`}>
+        {status.checking ? (
+          <Loader2 size={18} className="adm-spin" />
+        ) : status.connected ? (
+          <CheckCircle2 size={18} />
+        ) : (
+          <XCircle size={18} />
+        )}
+        <div style={{ flex: 1 }}>
+          <strong style={{ fontSize: '13.5px' }}>
+            OpenWA Status: {status.checking ? 'Checking Connection...' : status.connected ? 'ONLINE & AUTHENTICATED' : 'DISCONNECTED / INVALID API KEY'}
+          </strong>
+          <div style={{ fontSize: '11.5px', opacity: 0.85, marginTop: '1px' }}>
+            {status.message || 'Configure your OpenWA Gateway URL and Secret Key below'}
           </div>
         </div>
-        <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: status.connected ? '#25D366' : '#ef4444', background: status.connected ? 'rgba(37,211,102,0.15)' : 'rgba(239,68,68,0.15)', padding: '4px 10px', borderRadius: '8px' }}>
+        <span className={`adm-chip ${status.connected ? 'adm-chip--ok' : 'adm-chip--err'}`}>
           {status.connected ? 'Active Gateway' : 'Setup Required'}
-        </div>
+        </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '22px', marginBottom: '28px' }}>
-        {/* Left Column: Gateway Configuration Form */}
-        <div className="card" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-            <Settings size={18} color="#25D366" />
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Gateway Connection Settings</h3>
-          </div>
-
-          <form onSubmit={handleSaveConfig}>
-            {/* Enable/Disable Toggle */}
-            <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-sub)', padding: '12px 14px', borderRadius: '10px' }}>
+      {/* Grid: Gateway Connection Settings + Test Dispatch */}
+      <div className="adm-grid-2">
+        {/* Panel 1: OpenWA Connection Settings */}
+        <section className="adm-panel">
+          <header className="adm-panel-hd">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <span className="adm-icon-tile"><Settings size={18} /></span>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 700 }}>Enable Automated WhatsApp</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-sub)' }}>Master switch for all system event notifications</div>
+                <h2>OpenWA Connection Settings</h2>
+                <p className="adm-sub">Base URL, Secret API Key & Admin Phone</p>
               </div>
-              <input
-                type="checkbox"
-                checked={config.enabled}
-                onChange={e => setConfig({ ...config, enabled: e.target.checked })}
-                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#25D366' }}
+            </div>
+          </header>
+
+          <form onSubmit={handleSaveConfig} className="adm-panel-bd adm-sec">
+            {/* Enable/Disable Toggle */}
+            <div className="adm-toggle-row">
+              <div className="adm-toggle-text">
+                <div className="adm-toggle-name">Enable Automated WhatsApp Notifications</div>
+                <div className="adm-toggle-hint">Master switch for all system event notifications via OpenWA</div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={config.enabled}
+                className="adm-switch"
+                onClick={() => setConfig({ ...config, enabled: !config.enabled })}
               />
             </div>
 
-            {/* Gateway URL */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                WhatsApp Gateway Base URL <span style={{ color: '#ef4444' }}>*</span>
+            {/* OpenWA Gateway Base URL */}
+            <div className="adm-field">
+              <label htmlFor="wa-gateway-url">
+                OpenWA Gateway Base URL <span className="adm-req">*</span>
               </label>
               <input
+                id="wa-gateway-url"
                 type="text"
-                className="form-control"
-                placeholder="e.g. https://api.ultramsg.com/instance12345 or http://192.168.1.100:3000"
+                className="adm-input"
+                placeholder="e.g. https://vgtc-openwa.northflank.app or http://192.168.1.100:3000"
                 value={config.gatewayUrl || ''}
                 onChange={e => setConfig({ ...config, gatewayUrl: e.target.value })}
                 required
               />
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                URL of your WhatsApp API instance, Baileys HTTP server, or UltraMsg endpoint.
-              </div>
+              <span className="adm-hint">Base URL of your deployed OpenWA REST instance.</span>
             </div>
 
-            {/* API Key / Token */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                API Token / Secret Key
+            {/* OpenWA API Key / Secret Key */}
+            <div className="adm-field">
+              <label htmlFor="wa-api-key">
+                <Key size={11} /> OpenWA Secret API Key
               </label>
               <input
-                type="password"
-                className="form-control"
-                placeholder="e.g. ultramsg_token_xyz or bearer_token"
+                id="wa-api-key"
+                type="text"
+                className="adm-input"
+                placeholder="e.g. owa_k1_600675f80f0fd9e27c3684df40bfa892fe14330a43cb0754e533b48e87471202"
                 value={config.apiKey || ''}
                 onChange={e => setConfig({ ...config, apiKey: e.target.value })}
+                autoComplete="off"
               />
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Sent in Authorization header or payload token query parameter.
-              </div>
+              <span className="adm-hint">Secret API Key from your OpenWA instance environment variable or startup logs (starts with <code>owa_k1_...</code>). Trailing spaces are automatically trimmed.</span>
             </div>
 
             {/* Admin Phone */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                <Phone size={12} style={{ marginRight: '4px' }} />
-                Admin WhatsApp Number
+            <div className="adm-field">
+              <label htmlFor="wa-admin-phone">
+                <Phone size={11} /> Admin WhatsApp Number
               </label>
               <input
+                id="wa-admin-phone"
                 type="text"
-                className="form-control"
-                placeholder="e.g. 9416319445 (for deposit & cashout alerts)"
+                className="adm-input"
+                placeholder="e.g. 8708032492"
                 value={config.adminPhone || ''}
                 onChange={e => setConfig({ ...config, adminPhone: e.target.value })}
               />
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Deposit and cashout alerts will be sent to this number. Leave blank to skip admin alerts.
-              </div>
+              <span className="adm-hint">Deposit & cashout alerts will be sent to this number. Default: 8708032492.</span>
             </div>
 
-            {/* Payload Format */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                Gateway Payload Type
-              </label>
-              <select
-                className="form-control"
-                value={config.payloadFormat || 'aisensy'}
-                onChange={e => setConfig({ ...config, payloadFormat: e.target.value })}
-              >
-                <option value="aisensy">AiSensy WhatsApp API (Meta Official BSP Partner)</option>
-                <option value="standard">Standard JSON API (to, phone, message)</option>
-                <option value="ultramsg">UltraMsg WhatsApp API (to, body, token)</option>
-                <option value="wppconnect">WPPConnect Gateway Server (/api/send-message)</option>
-              </select>
-            </div>
-
-            <button type="submit" className="btn btn-p" disabled={saving} style={{ width: '100%', background: '#25D366', color: '#000', fontWeight: 800 }}>
-              {saving ? <Loader2 size={15} className="spin" /> : <><Sparkles size={15} /> Save Gateway Settings</>}
+            <button type="submit" className="adm-btn adm-btn--primary adm-btn--block" disabled={saving}>
+              {saving ? <Loader2 size={15} className="adm-spin" /> : <><Sparkles size={15} /> Save OpenWA Settings</>}
             </button>
           </form>
-        </div>
+        </section>
 
-        {/* Right Column: Send Test WhatsApp Panel */}
-        <div className="card" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-            <Send size={18} color="#25D366" />
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Send Test WhatsApp Message</h3>
-          </div>
+        {/* Panel 2: Send Test WhatsApp Message */}
+        <section className="adm-panel">
+          <header className="adm-panel-hd">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <span className="adm-icon-tile"><Send size={18} /></span>
+              <div>
+                <h2>Send Test WhatsApp Message</h2>
+                <p className="adm-sub">Dispatch a live test message to verify your OpenWA connection</p>
+              </div>
+            </div>
+          </header>
 
-          <form onSubmit={handleSendTestMsg}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                Recipient Mobile Number
-              </label>
+          <form onSubmit={handleSendTestMsg} className="adm-panel-bd adm-sec">
+            <div className="adm-field">
+              <label htmlFor="wa-test-phone">Recipient Mobile Number <span className="adm-req">*</span></label>
               <input
+                id="wa-test-phone"
                 type="text"
-                className="form-control"
-                placeholder="e.g. 9876543210 or +919876543210"
+                className="adm-input"
+                placeholder="e.g. 8708032492 or 9876543210"
                 value={testForm.phone}
                 onChange={e => setTestForm({ ...testForm, phone: e.target.value })}
                 required
               />
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                Custom Message (Optional)
-              </label>
+            <div className="adm-field">
+              <label htmlFor="wa-test-msg">Custom Test Message (Optional)</label>
               <textarea
-                className="form-control"
+                id="wa-test-msg"
+                className="adm-textarea"
                 rows={3}
                 placeholder="Leave blank for automatic test notification message..."
                 value={testForm.message}
@@ -342,178 +347,137 @@ export default function WhatsAppControlModule() {
               />
             </div>
 
-            <button type="submit" className="btn btn-g" disabled={testing || !config.gatewayUrl} style={{ width: '100%' }}>
-              {testing ? <Loader2 size={15} className="spin" /> : <><Send size={15} /> Dispatch Test Message</>}
+            <button type="submit" className="adm-btn adm-btn--primary adm-btn--block" disabled={testing || !config.gatewayUrl}>
+              {testing ? <Loader2 size={15} className="adm-spin" /> : <><Send size={15} /> Dispatch Test Message</>}
             </button>
-          </form>
 
-          {testResult && (
-            <div style={{
-              marginTop: '16px', padding: '12px 14px', borderRadius: '10px', fontSize: '12px',
-              background: testResult.success ? 'rgba(37,211,102,0.1)' : 'rgba(239,68,68,0.1)',
-              border: `1px solid ${testResult.success ? 'rgba(37,211,102,0.3)' : 'rgba(239,68,68,0.3)'}`,
-              color: testResult.success ? '#25D366' : '#ef4444'
-            }}>
-              <div style={{ fontWeight: 800, marginBottom: '4px' }}>
-                {testResult.success ? '✅ WhatsApp Sent Successfully' : '❌ Dispatch Failed'}
+            {testResult && (
+              <div className={`adm-note ${testResult.success ? 'adm-note--success' : 'adm-note--danger'}`}>
+                <div>
+                  <strong>{testResult.success ? '✅ WhatsApp Sent Successfully via OpenWA' : '❌ Dispatch Failed'}</strong>
+                  <div style={{ fontSize: '11px', fontFamily: 'monospace', marginTop: '2px' }}>
+                    {testResult.success ? JSON.stringify(testResult.data?.result || 'OK') : testResult.error}
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-sub)', fontFamily: 'monospace' }}>
-                {testResult.success ? JSON.stringify(testResult.data?.result?.gatewayResponse || 'OK') : testResult.error}
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </form>
+        </section>
       </div>
 
-      {/* Automated Event WhatsApp Message Templates */}
-      <div className="card" style={{ padding: '24px', marginBottom: '28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-          <Zap size={18} color="#25D366" />
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Automated Event Message Templates</h3>
-        </div>
-        <p style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '20px' }}>
-          Customize WhatsApp message text sent automatically when operational events occur. Use tags like <code>{"{lrNo}"}</code>, <code>{"{truckNo}"}</code>, <code>{"{freight}"}</code>, <code>{"{advance}"}</code>, <code>{"{amount}"}</code>.
-        </p>
+      {/* Section 3: Automated Event Message Templates */}
+      <section className="adm-panel">
+        <header className="adm-panel-hd">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <span className="adm-icon-tile"><Zap size={18} /></span>
+            <div>
+              <h2>Automated Event Message Templates</h2>
+              <p className="adm-sub">Customize WhatsApp text sent automatically when operational events occur.</p>
+            </div>
+          </div>
+          <button onClick={handleSaveConfig} className="adm-btn adm-btn--primary adm-btn--sm" disabled={saving}>
+            {saving ? <Loader2 size={14} className="adm-spin" /> : <><Sparkles size={14} /> Save All Templates</>}
+          </button>
+        </header>
 
-        <div style={{ display: 'grid', gap: '16px' }}>
+        <div className="adm-panel-bd adm-sec">
           {[
-            { key: 'lr_created_owner', title: '1a. LR Created — Owner Copy (Market Vehicles)', desc: 'Truck owner • Full loading receipt with rates', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {freight} {totalFreight} {billing} {materialsText}' },
-            { key: 'lr_created_driver', title: '1b. LR Created — Driver Alert (All Vehicles)', desc: 'Truck driver • Trip dispatch notice without rates', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {billing}' },
-            { key: 'voucher_created_owner', title: '2a. Voucher Created — Owner Copy (Market Vehicles)', desc: 'Truck owner • Freight voucher with full deductions', tags: '{voucherNo} {lrNo} {truckNo} {destination} {grossFreight} {netBalance} {advanceDiesel} {advanceCash} {advanceOnline} {munshi} {commission}' },
+            { key: 'lr_created_owner', title: '1a. LR Created — Owner Copy (Market Vehicles)', desc: 'Truck owner • Full loading receipt with freight rates', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {freight} {totalFreight} {billing} {materialsText}' },
+            { key: 'lr_created_driver', title: '1b. LR Created — Driver Alert (All Vehicles)', desc: 'Truck driver • Trip dispatch notice without freight rates', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {billing}' },
+            { key: 'voucher_created_owner', title: '2a. Voucher Created — Owner Copy (Market Vehicles)', desc: 'Truck owner • Freight voucher with full deduction breakdown', tags: '{voucherNo} {lrNo} {truckNo} {destination} {grossFreight} {netBalance} {advanceDiesel} {advanceCash} {advanceOnline} {munshi} {commission}' },
             { key: 'voucher_created_driver', title: '2b. Voucher Created — Driver Alert (All Vehicles)', desc: 'Truck driver • Net settlement amount notice', tags: '{voucherNo} {lrNo} {truckNo} {destination} {advanceDiesel} {advanceCash} {munshi} {netBalance} {paymentStatus}' },
-            { key: 'balance_paid', title: '3. Balance Payment Batch Sent', desc: 'Truck owner • Payment batch clearance alert', tags: '{truckNo} {tripCount} {periodFrom} {periodTo} {note}' },
+            { key: 'balance_paid', title: '3. Balance Payment Batch Sent', desc: 'Truck owner • Payment batch clearance notification', tags: '{truckNo} {tripCount} {periodFrom} {periodTo} {note}' },
             { key: 'cashout', title: '4. Cashbook Cash Out Alert', desc: 'Admin (8708032492)', tags: '{entityName} {entityType} {amount} {remark} {date}' },
             { key: 'deposit', title: '5. Cashbook Deposit Alert', desc: 'Admin (8708032492)', tags: '{amount} {remark} {date}' }
           ].map(evt => {
             const evtConfig = config.events?.[evt.key] || { enabled: true, template: '' };
             const previewText = previews[evt.key];
             return (
-              <div key={evt.key} style={{ background: 'var(--bg-sub)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px', gap: '10px' }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: '13px', fontWeight: 800 }}>{evt.title}</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-sub)', marginLeft: '10px' }}>{evt.desc}</span>
-                    <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace', lineHeight: 1.5 }}>
-                      Available tags: <span style={{ color: '#25D366' }}>{evt.tags}</span>
+              <div key={evt.key} className="adm-panel" style={{ background: 'var(--bg-th)', border: '1px solid var(--border)' }}>
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{evt.title}</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{evt.desc}</div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-sub)', fontFamily: 'monospace', marginTop: '4px' }}>
+                      Available tags: <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{evt.tags}</span>
                     </div>
                   </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={evtConfig.enabled !== false}
-                      onChange={e => {
-                        const updated = { ...config.events, [evt.key]: { ...evtConfig, enabled: e.target.checked } };
-                        setConfig({ ...config, events: updated });
-                      }}
-                      style={{ accentColor: '#25D366' }}
-                    />
-                    Enable
-                  </label>
-                </div>
-                <textarea
-                  className="form-control"
-                  rows={4}
-                  value={evtConfig.template || ''}
-                  onChange={e => {
-                    const updated = { ...config.events, [evt.key]: { ...evtConfig, template: e.target.value } };
-                    setConfig({ ...config, events: updated });
-                  }}
-                  style={{ fontSize: '12px', fontFamily: 'monospace', marginBottom: '8px' }}
-                />
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button
                     type="button"
-                    className="btn btn-g btn-sm"
-                    onClick={() => handlePreviewTemplate(evt.key)}
-                    disabled={previewingKey === evt.key}
-                    style={{ fontSize: '11px' }}
-                  >
-                    {previewingKey === evt.key ? <Loader2 size={11} className="spin" /> : <Eye size={11} />}
-                    Preview Sample
-                  </button>
+                    role="switch"
+                    aria-checked={evtConfig.enabled !== false}
+                    className="adm-switch"
+                    onClick={() => {
+                      const updated = { ...config.events, [evt.key]: { ...evtConfig, enabled: evtConfig.enabled === false } };
+                      setConfig({ ...config, events: updated });
+                    }}
+                  />
+                </div>
+                <div style={{ padding: '14px 16px' }}>
+                  <textarea
+                    className="adm-textarea"
+                    rows={4}
+                    value={evtConfig.template || ''}
+                    onChange={e => {
+                      const updated = { ...config.events, [evt.key]: { ...evtConfig, template: e.target.value } };
+                      setConfig({ ...config, events: updated });
+                    }}
+                    style={{ fontFamily: 'monospace', fontSize: '12px' }}
+                  />
+                  <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn--sm"
+                      onClick={() => handlePreviewTemplate(evt.key)}
+                      disabled={previewingKey === evt.key}
+                    >
+                      {previewingKey === evt.key ? <Loader2 size={13} className="adm-spin" /> : <Eye size={13} />}
+                      Preview Sample
+                    </button>
+                  </div>
                   {previewText && (
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Click to toggle preview below</span>
+                    <div style={{
+                      marginTop: '12px', background: 'var(--bg-inset)', border: '1px solid var(--border)',
+                      borderRadius: 'var(--adm-r-sm)', padding: '14px 16px', fontSize: '12px',
+                      fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: 'var(--text)', lineHeight: 1.65
+                    }}>
+                      <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--primary)', marginBottom: '6px' }}>📱 SAMPLE WHATSAPP MESSAGE PREVIEW:</div>
+                      {previewText}
+                    </div>
                   )}
                 </div>
-                {previewText && (
-                  <div style={{
-                    marginTop: '10px', background: '#0f1117', border: '1px solid #25D36640', borderRadius: '10px',
-                    padding: '12px 14px', fontSize: '12px', fontFamily: 'monospace', whiteSpace: 'pre-wrap',
-                    color: '#e2e8f0', lineHeight: 1.7, maxHeight: '280px', overflowY: 'auto'
-                  }}>
-                    <div style={{ fontSize: '10px', color: '#25D366', marginBottom: '6px', fontWeight: 700 }}>📱 PREVIEW (sample data):</div>
-                    {previewText}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
+      </section>
 
-        <div style={{ marginTop: '20px', textAlign: 'right' }}>
-          <button onClick={handleSaveConfig} className="btn btn-p" disabled={saving} style={{ background: '#25D366', color: '#000', fontWeight: 800 }}>
-            {saving ? <Loader2 size={14} className="spin" /> : <><Sparkles size={14} /> Save All Templates</>}
-          </button>
-        </div>
-      </div>
-
-      {/* Setup Guide Card */}
-      <div className="card" style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-          <Info size={18} color="#25D366" />
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>WhatsApp Gateway Options & Setup Guide</h3>
-        </div>
-
-        <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid var(--border)', marginBottom: '16px' }}>
-          {[
-            { id: 'ultramsg', name: 'Option 1: UltraMsg / Cloud API' },
-            { id: 'baileys', name: 'Option 2: Self-Hosted Baileys / WPPConnect' },
-            { id: 'termux', name: 'Option 3: Phone Local Bridge' }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setGuideTab(tab.id)}
-              style={{
-                background: 'none', border: 'none', borderBottom: guideTab === tab.id ? '2px solid #25D366' : '2px solid transparent',
-                padding: '8px 14px', fontSize: '13px', fontWeight: 700, color: guideTab === tab.id ? '#25D366' : 'var(--text-sub)', cursor: 'pointer'
-              }}
-            >
-              {tab.name}
-            </button>
-          ))}
-        </div>
-
-        {guideTab === 'ultramsg' && (
-          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
-            <ol style={{ paddingLeft: '20px', margin: 0 }}>
-              <li>Create a free account on UltraMsg or GreenAPI or Twilio.</li>
-              <li>Scan the QR code to link your business WhatsApp number.</li>
-              <li>Copy your Instance Base URL (e.g. <code>https://api.ultramsg.com/instanceXXXXX</code>) into the Gateway URL field above.</li>
-              <li>Set Payload Type to <b>UltraMsg WhatsApp API</b> and paste your API Token.</li>
-            </ol>
+      {/* Section 4: OpenWA Setup Guide */}
+      <section className="adm-panel">
+        <header className="adm-panel-hd">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <span className="adm-icon-tile"><Info size={18} /></span>
+            <div>
+              <h2>OpenWA Gateway Setup Instructions</h2>
+              <p className="adm-sub">How to connect and authenticate your OpenWA instance</p>
+            </div>
           </div>
-        )}
+        </header>
 
-        {guideTab === 'baileys' && (
-          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
-            <ol style={{ paddingLeft: '20px', margin: 0 }}>
-              <li>Run WPPConnect or Baileys Node server on your server / VPS on port 3000.</li>
-              <li>Set Gateway URL to <code>http://localhost:3000</code> or your server domain.</li>
-              <li>Select <b>WPPConnect Gateway Server</b> or Standard JSON format.</li>
-            </ol>
-          </div>
-        )}
-
-        {guideTab === 'termux' && (
-          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
-            <ol style={{ paddingLeft: '20px', margin: 0 }}>
-              <li>Run an HTTP WhatsApp Gateway bridge app or Termux script on an Android phone.</li>
-              <li>Expose the local HTTP port via Cloudflare Tunnel or local LAN IP (e.g. <code>http://192.168.1.100:8080</code>).</li>
-              <li>Enter the URL into Gateway Base URL above and test connection.</li>
-            </ol>
-          </div>
-        )}
-      </div>
+        <div className="adm-panel-bd adm-sec" style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-sub)' }}>
+          <ol style={{ paddingLeft: '20px', margin: 0 }}>
+            <li style={{ marginBottom: '8px' }}>
+              <b>OpenWA Base URL</b>: Enter the public URL where your OpenWA Docker container or server is hosted (e.g. <code>https://vgtc-openwa.northflank.app</code>).
+            </li>
+            <li style={{ marginBottom: '8px' }}>
+              <b>OpenWA Secret Key</b>: Copy the secret key starting with <code>owa_k1_...</code> from your OpenWA deployment logs or environment variables. Paste it into the <i>OpenWA Secret API Key</i> field above.
+            </li>
+            <li>
+              <b>Scan QR Code</b>: Open your OpenWA deployment URL in browser to scan the WhatsApp QR code once if not already logged in.
+            </li>
+          </ol>
+        </div>
+      </section>
     </div>
   );
 }
