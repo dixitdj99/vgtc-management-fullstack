@@ -185,8 +185,12 @@ router.post('/', async (req, res) => {
 
         if (!msgBody) return;
 
-        // ── Parse "PAID {voucherNo}" or button response ───────────────────────
-        const matchPaid = msgBody.match(/^PAID[\s:-]+(\S+)/i) || msgBody.match(/^PAID$/i);
+        // ── Parse "PAID {voucherNo}" or "/reply PAID {voucherNo}" response ────
+        const matchPaid = (
+            msgBody.match(/^(?:\/reply\s+)?PAID[\s:-]+(\S+)/i) ||
+            msgBody.match(/^\/reply[\s:-]+(\S+)/i) ||
+            msgBody.match(/^PAID$/i)
+        );
         if (!matchPaid) {
             console.log(`[WA-Webhook] No-op message from ${from}: "${msgBody}"`);
             return;

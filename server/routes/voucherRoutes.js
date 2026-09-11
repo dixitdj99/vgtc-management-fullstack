@@ -196,7 +196,6 @@ router.patch('/:id', async (req, res) => {
             });
         }
 
-<<<<<<< HEAD
         if (req.body.paymentClearedDate) {
             const smsService = require('../utils/smsService');
             const whatsappService = require('../utils/whatsappService');
@@ -206,8 +205,6 @@ router.patch('/:id', async (req, res) => {
                 smsService.triggerEventSms('balance_paid', { ...updated, amount: updated.paidBalance }, req);
             }
         }
-=======
->>>>>>> initial-branch
 
         res.json({ message: 'Voucher updated' });
 

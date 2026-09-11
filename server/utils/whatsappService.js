@@ -178,8 +178,11 @@ const DEFAULT_TEMPLATES = {
       '━━━━━━━━━━━━━━━━━━━━━━',
       '*Online Advance Amount:* Rs.{advanceOnline}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      'After transferring the payment, reply to this message:',
+      'TO MARK PAYMENT DONE:',
+      'Reply to this message with:',
       '*PAID {voucherNo}*',
+      'or',
+      '*/reply PAID {voucherNo}*',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
@@ -725,26 +728,71 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
   const attempts = [];
   for (const sId of sessionTargets) {
     attempts.push(
+      // 1. Direct session endpoints (OpenWA REST, WPPConnect, Baileys)
+      {
+        endpoint: `/api/sessions/${sId}/send-image`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/send-file`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/send-media`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/sendImage`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/sendFile`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/sendMedia`,
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+
+      // 2. Nested messages endpoints (NestJS OpenWA wrapper)
       {
         endpoint: `/api/sessions/${sId}/messages/send-image`,
         payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
       },
       {
-        endpoint: `/api/sessions/${sId}/messages/send-image`,
-        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
-      },
-      {
         endpoint: `/api/sessions/${sId}/messages/send-file`,
         payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
-      },
-      {
-        endpoint: `/api/sessions/${sId}/messages/send-file`,
-        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
       },
       {
         endpoint: `/api/sessions/${sId}/messages/send-media`,
-        payload: { chatId, file: base64Data, caption: cleanCaption }
+        payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
       },
+
+      // 3. Raw Base64 payloads
+      {
+        endpoint: `/api/sessions/${sId}/send-image`,
+        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/send-file`,
+        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/sendImage`,
+        payload: { chatId, file: rawBase64, filename: 'Loading_Slip.png', caption: cleanCaption }
+      },
+
+      // 4. Alias field names (image / media)
+      {
+        endpoint: `/api/sessions/${sId}/send-image`,
+        payload: { chatId, image: base64Data, caption: cleanCaption }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/send-media`,
+        payload: { chatId, media: base64Data, caption: cleanCaption }
+      },
+
+      // 5. Ingress whatsapp-web.js routes
       {
         endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-image`,
         payload: { to: chatId, file: base64Data, caption: cleanCaption }
@@ -755,7 +803,29 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
       }
     );
   }
+
+  // 6. Generic top-level endpoints
   attempts.push(
+    {
+      endpoint: '/api/send-image',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    },
+    {
+      endpoint: '/api/send-file',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    },
+    {
+      endpoint: '/api/sendImage',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    },
+    {
+      endpoint: '/api/sendFile',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    },
+    {
+      endpoint: '/api/sendMedia',
+      payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
+    },
     {
       endpoint: '/api/messages/send-image',
       payload: { chatId, file: base64Data, filename: 'Loading_Slip.png', caption: cleanCaption }
