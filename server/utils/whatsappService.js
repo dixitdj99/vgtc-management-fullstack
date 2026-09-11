@@ -401,7 +401,7 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   for (const attempt of attempts) {
     try {
       const url = buildOpenWaUrl(baseUrl, attempt.endpoint, apiKey);
-      const res = await axios.post(url, attempt.payload, { headers, timeout: 10000 });
+      const res = await axios.post(url, attempt.payload, { headers, timeout: 30000 });
       if (res.status >= 200 && res.status < 300) {
         return res.data;
       }
@@ -418,11 +418,11 @@ async function sendWhatsAppMessage(phone, message, req = null) {
         console.log('[WA] Session inactive detected — attempting auto-start trigger on OpenWA...');
         try {
           const startUrl = buildOpenWaUrl(baseUrl, '/api/sessions/default/start', apiKey);
-          await axios.post(startUrl, { api_key: apiKey }, { headers, timeout: 8000 });
+          await axios.post(startUrl, { api_key: apiKey }, { headers, timeout: 15000 });
         } catch (startErr) {
           try {
             const startUrl2 = buildOpenWaUrl(baseUrl, '/api/sessions/start', apiKey);
-            await axios.post(startUrl2, { api_key: apiKey }, { headers, timeout: 8000 });
+            await axios.post(startUrl2, { api_key: apiKey }, { headers, timeout: 15000 });
           } catch (e) { /* ignore fallback start error */ }
         }
       }
@@ -434,11 +434,15 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   if (errText.includes('is not active') || errText.includes('Start the session first')) {
     try {
       const retryUrl = buildOpenWaUrl(baseUrl, '/sendText', apiKey);
-      const res = await axios.post(retryUrl, { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }, { headers, timeout: 10000 });
+      const res = await axios.post(retryUrl, { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }, { headers, timeout: 30000 });
       if (res.status >= 200 && res.status < 300) return res.data;
     } catch (retryErr) {
       lastError = retryErr;
     }
+  }
+
+  if (lastError?.code === 'ECONNABORTED' || String(lastError?.message).includes('timeout')) {
+    throw new Error('OpenWA Gateway timed out (30s) — Ensure session QR is scanned & active in OpenWA dashboard');
   }
 
   const msg = lastError?.response?.data?.message || lastError?.response?.data?.error || lastError?.message || 'Failed to dispatch message via OpenWA';
