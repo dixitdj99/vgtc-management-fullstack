@@ -18,11 +18,12 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
-import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard, HardHat } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard, HardHat, MessageSquare } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import StaffProfileModule from './modules/StaffProfileModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
+import WhatsAppControlModule from './modules/WhatsAppControlModule';
 import PublicReceipt from './pages/PublicReceipt';
 import LabourLoadingStatus from './modules/LabourLoadingStatus';
 import LabourAccount from './modules/LabourAccount';
@@ -502,6 +503,7 @@ function AppInner() {
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance' },
+    { id: 'whatsapp_dump', label: 'WhatsApp Control', Icon: MessageSquare, color: '#25D366', section: 'jksuper', permKey: 'vehicle' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -558,6 +560,7 @@ function AppInner() {
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance' },
+    { id: 'whatsapp_jharli', label: 'WhatsApp Control', Icon: MessageSquare, color: '#25D366', section: 'jharli', permKey: 'vehicle' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -744,6 +747,7 @@ function AppInner() {
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
       {(id === 'attendance_dump' || id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
+      {(id === 'whatsapp_dump' || id === 'whatsapp_jkl' || id === 'whatsapp_jharli' || id === 'whatsapp_main') && <WhatsAppControlModule />}
       {(id === 'labour_dump' || id === 'labour_jharli' || id === 'labour_main') && <LabourAccount canEdit={user.role === 'admin' || user.permissions?.pay === 'edit'} />}
       {/* ── Generic (non-VGTC orgs) ── */}
       {id === 'lr_main' && <LRModule role={user.role} permissions={user.permissions} brand="main" />}
