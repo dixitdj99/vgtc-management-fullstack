@@ -242,6 +242,40 @@ function formatPhoneWid(phone) {
   return cleaned;
 }
 
+/**
+ * Resolves the active session ID or UUID from OpenWA.
+ * OpenWA stores sessions with a name ("default") and a UUID ("4543ed69-1a93-...").
+ * Queries GET /api/sessions to find the active/connected session UUID or returns `configuredSessionId`.
+ */
+async function discoverActiveSessionId(baseUrl, apiKey, configuredSessionId = 'default') {
+  try {
+    const headers = getOpenWaHeaders(apiKey);
+    const url = buildOpenWaUrl(baseUrl, '/api/sessions', apiKey);
+    const res = await axios.get(url, { headers, timeout: 5000 });
+
+    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      // 1. Look for a session matching configuredSessionId by name or id with status CONNECTED/WORKING/ACTIVE
+      const exactMatch = res.data.find(s =>
+        (s.name === configuredSessionId || s.id === configuredSessionId) &&
+        ['CONNECTED', 'WORKING', 'ACTIVE', 'STARTING'].includes((s.status || '').toUpperCase())
+      );
+      if (exactMatch) return exactMatch.id || exactMatch.name;
+
+      // 2. Look for ANY session with status CONNECTED/WORKING/ACTIVE
+      const activeMatch = res.data.find(s =>
+        ['CONNECTED', 'WORKING', 'ACTIVE'].includes((s.status || '').toUpperCase())
+      );
+      if (activeMatch) return activeMatch.id || activeMatch.name;
+
+      // 3. Fallback to first session's id or name
+      if (res.data[0].id) return res.data[0].id;
+    }
+  } catch (e) {
+    console.log('[WA] Note: /api/sessions discovery skipped:', e.message);
+  }
+  return configuredSessionId || 'default';
+}
+
 // ─── Status check ─────────────────────────────────────────────────────────────
 
 async function checkWhatsAppStatus(req = null) {
