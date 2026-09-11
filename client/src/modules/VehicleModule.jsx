@@ -1263,15 +1263,6 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         </div>
 
                         <div className="fg fg-2" style={{ marginTop: '20px' }}>
-                            {form.ownershipType !== 'self' && (
-                                <div className="field-h">
-                                    <label>Owner Name</label>
-                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                                        <input className="fi" type="text" value={form.ownerName} onChange={e => autofillFromOwner(e.target.value)} list="owner-list" />
-                                        <datalist id="owner-list">{uniqueOwners.map(o => <option key={o} value={o} />)}</datalist>
-                                    </div>
-                                </div>
-                            )}
                             <div className="field-h">
                                 <label>Driver Name</label>
                                 <select className="fi" value={form.driverName} onChange={e => { const p = profiles.find(x => x.name === e.target.value); setForm({ ...form, driverName: e.target.value, driverContact: p?.mobileNumbers?.[0] || '' }); }}>
@@ -1279,6 +1270,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                     {profiles.filter(p => p.type === 'Driver').map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                                 </select>
                             </div>
+                            {form.driverContact && (
+                                <div className="field-h">
+                                    <label>Driver Phone</label>
+                                    <input className="fi" type="text" readOnly value={form.driverContact} style={{ background: 'var(--bg-th)', opacity: 0.9 }} />
+                                </div>
+                            )}
                         </div>
 
                         {err && <div style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '12px', fontWeight: 600 }}>{err}</div>}
