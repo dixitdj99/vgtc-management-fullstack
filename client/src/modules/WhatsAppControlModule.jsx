@@ -12,11 +12,13 @@ export default function WhatsAppControlModule() {
     enabled: true,
     gatewayUrl: '',
     apiKey: '',
-    adminPhone: '',
+    adminPhone: '8708032492',
     payloadFormat: 'standard',
     events: {
-      lr_created: { enabled: true, template: '' },
-      voucher_created: { enabled: true, template: '' },
+      lr_created_owner: { enabled: true, template: '' },
+      lr_created_driver: { enabled: true, template: '' },
+      voucher_created_owner: { enabled: true, template: '' },
+      voucher_created_driver: { enabled: true, template: '' },
       balance_paid: { enabled: true, template: '' },
       cashout: { enabled: true, template: '' },
       deposit: { enabled: true, template: '' }
@@ -375,11 +377,13 @@ export default function WhatsAppControlModule() {
 
         <div style={{ display: 'grid', gap: '16px' }}>
           {[
-            { key: 'lr_created', title: '1. LR Generated Alert', desc: 'Truck owner + admin • Rich multi-line text', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {freight} {totalFreight} {billing} {materialsText}' },
-            { key: 'voucher_created', title: '2. Voucher Generated Alert', desc: 'Truck owner + admin • Freight slip summary', tags: '{voucherNo} {lrNo} {truckNo} {driverName} {destination} {grossFreight} {netBalance} {advanceDiesel} {advanceCash}' },
-            { key: 'balance_paid', title: '3. Balance Payment Batch Sent', desc: 'Truck owner • Payment batch notification', tags: '{truckNo} {tripCount} {periodFrom} {periodTo} {note}' },
-            { key: 'cashout', title: '4. Cashbook Cash Out', desc: 'Admin number only', tags: '{entityName} {entityType} {amount} {remark} {date}' },
-            { key: 'deposit', title: '5. Cashbook Deposit', desc: 'Admin number only', tags: '{amount} {remark} {date}' }
+            { key: 'lr_created_owner', title: '1a. LR Created — Owner Copy (Market Vehicles)', desc: 'Truck owner • Full loading receipt with rates', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {freight} {totalFreight} {billing} {materialsText}' },
+            { key: 'lr_created_driver', title: '1b. LR Created — Driver Alert (All Vehicles)', desc: 'Truck driver • Trip dispatch notice without rates', tags: '{lrNo} {truckNo} {date} {partyName} {destination} {totalBags} {totalWeight} {billing}' },
+            { key: 'voucher_created_owner', title: '2a. Voucher Created — Owner Copy (Market Vehicles)', desc: 'Truck owner • Freight voucher with full deductions', tags: '{voucherNo} {lrNo} {truckNo} {destination} {grossFreight} {netBalance} {advanceDiesel} {advanceCash} {advanceOnline} {munshi} {commission}' },
+            { key: 'voucher_created_driver', title: '2b. Voucher Created — Driver Alert (All Vehicles)', desc: 'Truck driver • Net settlement amount notice', tags: '{voucherNo} {lrNo} {truckNo} {destination} {advanceDiesel} {advanceCash} {munshi} {netBalance} {paymentStatus}' },
+            { key: 'balance_paid', title: '3. Balance Payment Batch Sent', desc: 'Truck owner • Payment batch clearance alert', tags: '{truckNo} {tripCount} {periodFrom} {periodTo} {note}' },
+            { key: 'cashout', title: '4. Cashbook Cash Out Alert', desc: 'Admin (8708032492)', tags: '{entityName} {entityType} {amount} {remark} {date}' },
+            { key: 'deposit', title: '5. Cashbook Deposit Alert', desc: 'Admin (8708032492)', tags: '{amount} {remark} {date}' }
           ].map(evt => {
             const evtConfig = config.events?.[evt.key] || { enabled: true, template: '' };
             const previewText = previews[evt.key];

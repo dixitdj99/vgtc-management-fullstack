@@ -7,11 +7,13 @@
  * sent via OpenWA gateway.
  *
  * Events supported:
- *  - lr_created        → truck owner phone (rich text + image receipt)
- *  - voucher_created   → truck owner phone (rich text + image receipt)
- *  - balance_paid      → truck owner phone (text alert)
- *  - cashout           → entity phone or admin (text alert)
- *  - deposit           → admin phone (text alert)
+ *  - lr_created_owner    → truck owner (market vehicles only)
+ *  - lr_created_driver   → truck driver (all vehicles)
+ *  - voucher_created_owner → truck owner (market vehicles only)
+ *  - voucher_created_driver → truck driver (all vehicles)
+ *  - balance_paid        → truck owner phone
+ *  - cashout             → admin phone
+ *  - deposit             → admin phone
  */
 
 const axios = require('axios');
@@ -22,59 +24,97 @@ const localStore = require('./localStore');
 const CONFIG_COL = 'whatsapp_config';
 const CONFIG_DOC_ID = 'gateway';
 
+// Hardcoded admin number — always receives deposit/cashout alerts
+const HARDCODED_ADMIN = '8708032492';
+
 // ─── Default event templates ───────────────────────────────────────────────────
 // Placeholders use {fieldName} syntax — all resolved by interpolateTemplate().
 const DEFAULT_TEMPLATES = {
-  lr_created: {
+  // Owner message for market vehicles (receives freight & payment details)
+  lr_created_owner: {
     enabled: true,
     template: [
-      '🚛 *VGTC Loading Receipt*',
+      '🚛 *VGTC Loading Receipt — Owner Copy*',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '📋 *LR No:* #{lrNo}',
       '📅 *Date:* {date}',
-      '🚚 *Truck No:* {truckNo}',
-      '📍 *From:* {source}  →  *To:* {destination}',
+      '🚚 *Truck:* {truckNo}',
+      '📍 *Route:* {source} → {destination}',
       '🏭 *Party:* {partyName}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📦 *Material Details:*',
+      '📦 *Material:*',
       '{materialsText}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '⚖️ *Total Weight:* {totalWeight} MT',
-      '🛍️ *Total Bags:* {totalBags}',
+      '⚖️ *Total Weight:* {totalWeight} MT  🛒 *Bags:* {totalBags}',
       '💰 *Freight Rate:* ₹{freight}/MT',
       '💵 *Total Freight:* ₹{totalFreight}',
-      '━━━━━━━━━━━━━━━━━━━━━━',
       '🔖 *Billing:* {billing}',
-      '📝 *Remark:* {remark}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '_VIKAS GOODS TRANSPORT CO._',
-      '_Jhajjar (Haryana) | 9416319445_'
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
   },
-  voucher_created: {
+  // Driver message (trip dispatch confirmation, no financial details)
+  lr_created_driver: {
     enabled: true,
     template: [
-      '📄 *VGTC Voucher / Freight Slip*',
+      '🚚 *Trip Dispatched — Driver Alert*',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '📋 *Voucher No:* #{voucherNo}',
-      '🔗 *LR No:* #{lrNo}',
+      '📋 *LR No:* #{lrNo}',
+      '📅 *Date:* {date}',
+      '🚚 *Your Truck:* {truckNo}',
+      '📍 *Destination:* {destination}',
+      '🏭 *Party:* {partyName}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '📦 *Load:* {totalBags} Bags ({totalWeight} MT)',
+      '🔖 *Billing Type:* {billing}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '⚠️ Please carry all documents. Drive safe!',
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
+    ].join('\n')
+  },
+  // Owner voucher message (full deduction breakdown)
+  voucher_created_owner: {
+    enabled: true,
+    template: [
+      '📄 *VGTC Freight Voucher — Owner Copy*',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '📋 *Voucher:* #{voucherNo}  🔗 *LR:* #{lrNo}',
       '📅 *Date:* {date}',
       '🚚 *Truck:* {truckNo}',
-      '👤 *Driver:* {driverName}',
-      '📍 *Route:* {source} → {destination}',
+      '📍 *Route:* {destination}',
       '━━━━━━━━━━━━━━━━━━━━━━',
       '💰 *Gross Freight:* ₹{grossFreight}',
-      '➖ *Diesel Advance:* ₹{advanceDiesel}',
-      '➖ *Cash Advance:* ₹{advanceCash}',
-      '➖ *Online Advance:* ₹{advanceOnline}',
-      '➖ *Munshi:* ₹{munshi}',
-      '➖ *Commission:* ₹{commission}',
+      '➖ Diesel Advance: ₹{advanceDiesel}',
+      '➖ Cash Advance: ₹{advanceCash}',
+      '➖ Online Advance: ₹{advanceOnline}',
+      '➖ Munshi: ₹{munshi}',
+      '➖ Commission: ₹{commission}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ *Net Balance:* ₹{netBalance}',
+      '✅ *Net Balance Due:* ₹{netBalance}',
       '📊 *Status:* {paymentStatus}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '_VIKAS GOODS TRANSPORT CO._',
-      '_For queries: 9416319445_'
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
+    ].join('\n')
+  },
+  // Driver voucher message (just their settlement amount)
+  voucher_created_driver: {
+    enabled: true,
+    template: [
+      '💰 *Your Trip Settlement — Driver Alert*',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '📋 *Voucher:* #{voucherNo}  🔗 *LR:* #{lrNo}',
+      '📅 *Date:* {date}',
+      '🚚 *Truck:* {truckNo}',
+      '📍 *Route:* {destination}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '➖ Diesel Advance: ₹{advanceDiesel}',
+      '➖ Cash Advance: ₹{advanceCash}',
+      '➖ Munshi: ₹{munshi}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '✅ *Balance remaining for you:* ₹{netBalance}',
+      '📊 *Payment Status:* {paymentStatus}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
   },
   balance_paid: {
@@ -84,13 +124,11 @@ const DEFAULT_TEMPLATES = {
       '━━━━━━━━━━━━━━━━━━━━━━',
       '🚚 *Truck:* {truckNo}',
       '📋 *Trips Included:* {tripCount}',
-      '💰 *Total Amount:* ₹{totalAmount}',
       '📅 *Period:* {periodFrom} – {periodTo}',
       '📦 *Batch Note:* {note}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ Payment batch has been sent for processing.',
-      '_Contact VGTC for clearance details._',
-      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
+      '✅ Payment batch sent for processing.',
+      '_Contact VGTC for clearance: 9416319445_'
     ].join('\n')
   },
   cashout: {
@@ -117,7 +155,7 @@ const DEFAULT_TEMPLATES = {
       '📝 *Remark:* {remark}',
       '📅 *Date:* {date}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      '✅ Amount has been credited to the cashbook.',
+      '✅ Amount credited to cashbook.',
       '_VIKAS GOODS TRANSPORT CO._',
       '_This is an automated cashbook alert._'
     ].join('\n')
@@ -140,12 +178,12 @@ async function getWhatsAppConfig(req = null) {
       enabled: true,
       gatewayUrl: '',
       apiKey: '',
-      adminPhone: '',
+      adminPhone: HARDCODED_ADMIN,
       payloadFormat: 'openwa',
       events: DEFAULT_TEMPLATES
     };
   } catch (e) {
-    return { enabled: false, gatewayUrl: '', apiKey: '', adminPhone: '', events: DEFAULT_TEMPLATES };
+    return { enabled: false, gatewayUrl: '', apiKey: '', adminPhone: HARDCODED_ADMIN, events: DEFAULT_TEMPLATES };
   }
 }
 
@@ -224,13 +262,14 @@ function interpolateTemplate(template, data) {
   });
 }
 
-// ─── Vehicle phone lookup ──────────────────────────────────────────────────────
+// ─── Vehicle info lookup ───────────────────────────────────────────────────────
 
 /**
- * Fetches ownerContact / driverContact from the vehicles collection for a
- * given truckNo. Returns the first non-empty phone found.
+ * Fetches the full vehicle record for a given truckNo.
+ * Returns { ownerContact, driverContact, ownershipType, ownerName, driverName }
+ * or null if not found.
  */
-async function lookupVehiclePhone(truckNo, req) {
+async function lookupVehicleInfo(truckNo, req) {
   if (!truckNo) return null;
   try {
     const colName = getCol('vehicles', req);
@@ -249,10 +288,27 @@ async function lookupVehiclePhone(truckNo, req) {
     }
     const v = vehicles[0];
     if (!v) return null;
-    return v.ownerContact || v.driverContact || null;
+    return {
+      ownerContact:   v.ownerContact   || '',
+      driverContact:  v.driverContact  || '',
+      ownershipType:  v.ownershipType  || 'market',   // 'self' | 'market'
+      ownerName:      v.ownerName      || '',
+      driverName:     v.driverName     || '',
+    };
   } catch (e) {
+    console.error('[WA] lookupVehicleInfo error:', e.message);
     return null;
   }
+}
+
+/**
+ * Legacy helper — kept for backward compat with freightBatchRoutes.
+ * Returns only the first available phone (ownerContact > driverContact).
+ */
+async function lookupVehiclePhone(truckNo, req) {
+  const info = await lookupVehicleInfo(truckNo, req);
+  if (!info) return null;
+  return info.ownerContact || info.driverContact || null;
 }
 
 // ─── Core send ────────────────────────────────────────────────────────────────
@@ -659,6 +715,7 @@ module.exports = {
   generateVoucherHtml,
   previewTemplate,
   lookupVehiclePhone,
+  lookupVehicleInfo,
   formatPhoneWid,
   DEFAULT_TEMPLATES
 };
