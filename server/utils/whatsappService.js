@@ -379,21 +379,21 @@ async function sendWhatsAppMessage(phone, message, req = null) {
     // 1. Official rmyndharis/OpenWA NestJS route: /api/sessions/{sessionId}/messages/send-text
     {
       endpoint: `/api/sessions/${sessionId}/messages/send-text`,
-      payload: { chatId, text: message, to: chatId, message }
+      payload: { chatId, text: message }
     },
     // 2. OpenWA Ingress routes
     {
       endpoint: `/api/ingress/whatsapp-web.js/${sessionId}/send-message`,
-      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
+      payload: { to: chatId, content: message }
     },
     {
       endpoint: `/api/ingress/whatsapp-web.js/${sessionId}/send-text`,
-      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
+      payload: { to: chatId, text: message }
     },
     // 3. Fallback message endpoints
     {
       endpoint: '/api/messages/send-text',
-      payload: { chatId, text: message, to: chatId, message }
+      payload: { chatId, text: message }
     }
   ];
 
@@ -447,7 +447,7 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   if (errText.includes('is not active') || errText.includes('Start the session first')) {
     try {
       const retryUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/messages/send-text`, apiKey);
-      const res = await axios.post(retryUrl, { chatId, text: message, to: chatId, message }, { headers, timeout: 30000 });
+      const res = await axios.post(retryUrl, { chatId, text: message }, { headers, timeout: 30000 });
       if (res.status >= 200 && res.status < 300) return res.data;
     } catch (retryErr) {
       lastError = retryErr;
