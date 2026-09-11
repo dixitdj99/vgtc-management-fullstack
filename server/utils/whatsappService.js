@@ -375,7 +375,11 @@ async function sendWhatsAppMessage(phone, message, req = null) {
 
   const attempts = [
     {
-      endpoint: '/api/ingress/whatsapp-web.js/default/sendText',
+      endpoint: '/api/ingress/whatsapp-web.js/default/send-message',
+      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
+    },
+    {
+      endpoint: '/api/ingress/whatsapp-web.js/default/send-text',
       payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
     },
     {
@@ -383,8 +387,8 @@ async function sendWhatsAppMessage(phone, message, req = null) {
       payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
     },
     {
-      endpoint: '/api/ingress/whatsapp-web.js/default/messages/send-text',
-      payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
+      endpoint: '/api/ingress/whatsapp-web.js/default/sendText',
+      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
     },
     {
       endpoint: '/api/sessions/default/messages/send-text',
@@ -396,10 +400,6 @@ async function sendWhatsAppMessage(phone, message, req = null) {
     },
     {
       endpoint: '/api/sendText',
-      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
-    },
-    {
-      endpoint: '/sendText',
       payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
     }
   ];
@@ -441,8 +441,8 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   const errText = String(lastError?.response?.data?.message || lastError?.response?.data?.error || lastError?.message || '');
   if (errText.includes('is not active') || errText.includes('Start the session first')) {
     try {
-      const retryUrl = buildOpenWaUrl(baseUrl, '/sendText', apiKey);
-      const res = await axios.post(retryUrl, { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }, { headers, timeout: 30000 });
+      const retryUrl = buildOpenWaUrl(baseUrl, '/api/ingress/whatsapp-web.js/default/send-message', apiKey);
+      const res = await axios.post(retryUrl, { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }, { headers, timeout: 30000 });
       if (res.status >= 200 && res.status < 300) return res.data;
     } catch (retryErr) {
       lastError = retryErr;
