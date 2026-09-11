@@ -7,13 +7,16 @@
  * sent via OpenWA gateway.
  *
  * Events supported:
- *  - lr_created_owner    → truck owner (market vehicles only)
- *  - lr_created_driver   → truck driver (all vehicles)
- *  - voucher_created_owner → truck owner (market vehicles only)
- *  - voucher_created_driver → truck driver (all vehicles)
- *  - balance_paid        → truck owner phone
- *  - cashout             → admin phone
- *  - deposit             → admin phone
+ *  - lr_created_owner          → truck owner (market vehicles only)
+ *  - lr_created_driver         → truck driver (all vehicles)
+ *  - voucher_created_owner     → truck owner (market vehicles only)
+ *  - voucher_created_driver    → truck driver (all vehicles)
+ *  - online_advance_clerk      → admin/clerk when online advance voucher created
+ *  - online_advance_paid_owner → truck owner when advance marked paid via webhook
+ *  - online_advance_paid_driver→ truck driver when advance marked paid via webhook
+ *  - balance_paid              → truck owner phone
+ *  - cashout                   → admin phone
+ *  - deposit                   → admin phone
  */
 
 const axios = require('axios');
@@ -159,6 +162,55 @@ const DEFAULT_TEMPLATES = {
       'Amount credited to cashbook.',
       '_VIKAS GOODS TRANSPORT CO._',
       '_This is an automated cashbook alert._'
+    ].join('\n')
+  },
+  // Clerk/admin alert when a voucher with online advance is created
+  online_advance_clerk: {
+    enabled: true,
+    template: [
+      '*VGTC Online Advance — Action Required*',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '*Voucher:* #{voucherNo}  *LR:* #{lrNo}',
+      '*Date:* {date}',
+      '*Truck:* {truckNo}',
+      '*Driver:* {driverName}',
+      '*Route:* {destination}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '*Online Advance Amount:* Rs.{advanceOnline}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      'After transferring the payment, reply:',
+      '*PAID {voucherNo}*',
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
+    ].join('\n')
+  },
+  // Owner notification when online advance payment is confirmed
+  online_advance_paid_owner: {
+    enabled: true,
+    template: [
+      '*VGTC Online Advance Payment Done*',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '*Voucher:* #{voucherNo}  *LR:* #{lrNo}',
+      '*Truck:* {truckNo}',
+      '*Amount Transferred:* Rs.{advanceOnline}',
+      '*Paid On:* {paidDate}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      'Online advance has been transferred to your account.',
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
+    ].join('\n')
+  },
+  // Driver notification when online advance payment is confirmed
+  online_advance_paid_driver: {
+    enabled: true,
+    template: [
+      '*Your Online Advance is Paid*',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      '*Voucher:* #{voucherNo}  *LR:* #{lrNo}',
+      '*Truck:* {truckNo}',
+      '*Amount:* Rs.{advanceOnline}',
+      '*Paid On:* {paidDate}',
+      '━━━━━━━━━━━━━━━━━━━━━━',
+      'Please check your account for the transfer.',
+      '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
   }
 };
