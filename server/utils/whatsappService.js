@@ -178,8 +178,9 @@ const DEFAULT_TEMPLATES = {
       '━━━━━━━━━━━━━━━━━━━━━━',
       '*Online Advance Amount:* Rs.{advanceOnline}',
       '━━━━━━━━━━━━━━━━━━━━━━',
-      'After transferring the payment, reply:',
+      'After transferring the payment, reply to this message:',
       '*PAID {voucherNo}*',
+      '━━━━━━━━━━━━━━━━━━━━━━',
       '_VIKAS GOODS TRANSPORT CO. | 9416319445_'
     ].join('\n')
   },
@@ -592,6 +593,110 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   throw new Error(msg);
 }
 
+// ─── Button Send Utility ───────────────────────────────────────────────────────
+
+/**
+ * Dispatch an interactive button message via OpenWA.
+ * Falls back to sendWhatsAppMessage (text-only) if button dispatch fails.
+ *
+ * @param {string} phone
+ * @param {string} title
+ * @param {string} text
+ * @param {Array<{id: string, text: string}>} buttons
+ * @param {object} [req]
+ */
+async function sendWhatsAppButtons(phone, title, text, buttons = [], req = null) {
+  const config = await getWhatsAppConfig(req);
+  if (!config.enabled || !config.gatewayUrl) {
+    throw new Error('WhatsApp dispatch is disabled or Gateway URL not configured');
+  }
+
+  const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
+  const apiKey = (config.apiKey || '').trim();
+  const configuredSessionId = (config.sessionId || 'default').trim();
+  const chatId = formatPhoneWid(phone);
+
+  if (!chatId) {
+    throw new Error('Invalid phone number provided for WhatsApp dispatch');
+  }
+
+  const activeSessionId = await discoverActiveSessionId(baseUrl, apiKey, configuredSessionId);
+  const sessionTargets = Array.from(new Set([activeSessionId, configuredSessionId, 'default'])).filter(Boolean);
+  const headers = getOpenWaHeaders(apiKey);
+
+  const formattedButtons = buttons.map((b, idx) => ({
+    id: b.id || `btn_${idx}`,
+    buttonId: b.id || `btn_${idx}`,
+    text: b.text || b.label || 'Click',
+    displayText: b.text || b.label || 'Click',
+    buttonText: { displayText: b.text || b.label || 'Click' },
+    type: 1
+  }));
+
+  const fullText = title ? `${title}\n\n${text}` : text;
+
+  const attempts = [];
+  for (const sId of sessionTargets) {
+    attempts.push(
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-buttons`,
+        payload: {
+          chatId,
+          title: stripEmojis(title || 'Action Required'),
+          text: stripEmojis(text),
+          footer: 'VIKAS GOODS TRANSPORT CO.',
+          buttons: formattedButtons
+        }
+      },
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-reply-buttons`,
+        payload: {
+          chatId,
+          body: stripEmojis(fullText),
+          buttons: formattedButtons,
+          footer: 'VIKAS GOODS TRANSPORT CO.'
+        }
+      },
+      {
+        endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-buttons`,
+        payload: {
+          to: chatId,
+          body: stripEmojis(fullText),
+          buttons: formattedButtons
+        }
+      }
+    );
+  }
+
+  attempts.push({
+    endpoint: '/api/messages/send-buttons',
+    payload: {
+      chatId,
+      title: stripEmojis(title || 'Action Required'),
+      text: stripEmojis(text),
+      footer: 'VIKAS GOODS TRANSPORT CO.',
+      buttons: formattedButtons
+    }
+  });
+
+  for (const attempt of attempts) {
+    try {
+      const url = buildOpenWaUrl(baseUrl, attempt.endpoint, apiKey);
+      const res = await axios.post(url, attempt.payload, { headers, timeout: 15000 });
+      if (res.status >= 200 && res.status < 300) {
+        console.log(`[WA] Buttons sent successfully to ${chatId} via ${attempt.endpoint}`);
+        return res.data;
+      }
+    } catch (e) {
+      // Continue next attempt
+    }
+  }
+
+  // Fallback to text message if button endpoints are not supported by the OpenWA gateway version
+  console.log(`[WA] Button endpoints not supported by OpenWA gateway. Falling back to text message for ${chatId}`);
+  return await sendWhatsAppMessage(phone, fullText, req);
+}
+
 // ─── Image Send Utility ────────────────────────────────────────────────────────
 
 async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
@@ -891,7 +996,18 @@ async function sendEventNotification(eventKey, data, phones, req) {
 
     for (const phone of validPhones) {
       try {
-        await sendWhatsAppMessage(phone, message, req);
+        if (eventKey === 'online_advance_clerk') {
+          const voucherIdentifier = data.voucherNo || data.entryId || data.id || '';
+          await sendWhatsAppButtons(
+            phone,
+            '*VGTC Online Advance — Action Required*',
+            message,
+            [{ id: `PAID ${voucherIdentifier}`, text: '✅ Payment Done' }],
+            req
+          );
+        } else {
+          await sendWhatsAppMessage(phone, message, req);
+        }
         console.log(`[WA] ${eventKey} → ${phone}: sent`);
       } catch (e) {
         console.error(`[WA] ${eventKey} → ${phone}: FAILED —`, e.message);
@@ -1219,6 +1335,7 @@ module.exports = {
   saveWhatsAppConfig,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
+  sendWhatsAppButtons,
   sendWhatsAppImage,
   generateLrReceiptImageBuffer,
   startWhatsAppSession,

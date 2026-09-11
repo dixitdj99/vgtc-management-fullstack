@@ -41,26 +41,31 @@ function fmtDate(d) {
 }
 
 /**
- * Find an unpaid online-advance voucher by voucherNo.
+ * Find an unpaid online-advance voucher by voucherNo, entryId, lrNo, or doc ID.
  * Scans common Firestore collection names (accounts for org prefixes).
  * Returns { voucher, colName } or null.
  */
 async function findUnpaidVoucherByNo(voucherNo) {
-    const searchNo = String(voucherNo).trim();
+    const searchNo = String(voucherNo || '').trim().replace(/^#/, '');
+    if (!searchNo) return null;
 
     if (!isAvailable()) {
         // LocalStore mode — scan all collections whose name contains 'voucher'
         const store = localStore._store || {};
         const cols = Object.keys(store).filter(k => k.includes('voucher'));
-        // Also always include the bare name
         if (!cols.includes('vouchers')) cols.push('vouchers');
 
         for (const col of cols) {
             const docs = localStore.getAll(col);
             const found = docs.find(
-                d => String(d.voucherNo).trim() === searchNo
-                    && parseFloat(d.advanceOnline) > 0
-                    && !d.isOnlinePaid
+                d => (
+                    String(d.id || '').trim() === searchNo ||
+                    String(d.voucherNo || '').trim() === searchNo ||
+                    String(d.entryId || '').trim() === searchNo ||
+                    String(d.lrNo || '').trim() === searchNo
+                )
+                && parseFloat(d.advanceOnline) > 0
+                && !d.isOnlinePaid
             );
             if (found) return { voucher: found, colName: col };
         }
@@ -71,18 +76,57 @@ async function findUnpaidVoucherByNo(voucherNo) {
     const prefixes = ['vouchers', 'dev_vouchers', 'prod_vouchers'];
     for (const col of prefixes) {
         try {
-            const snap = await db.collection(col)
-                .where('voucherNo', '==', searchNo)
-                .get();
+            // 1. Try direct Document ID lookup first
+            const docRef = await db.collection(col).doc(searchNo).get();
+            if (docRef.exists) {
+                const data = docRef.data();
+                if (parseFloat(data.advanceOnline) > 0 && !data.isOnlinePaid) {
+                    return { voucher: { id: docRef.id, ...data }, colName: col };
+                }
+            }
+
+            // 2. Try voucherNo field equality (string)
+            let snap = await db.collection(col).where('voucherNo', '==', searchNo).get();
             if (!snap.empty) {
-                // Find the first doc that is actually an unpaid advance
                 const match = snap.docs.find(d => {
                     const data = d.data();
                     return parseFloat(data.advanceOnline) > 0 && !data.isOnlinePaid;
                 });
                 if (match) return { voucher: { id: match.id, ...match.data() }, colName: col };
             }
-        } catch (_) { /* collection may not exist */ }
+
+            // 3. Try numeric voucherNo if searchNo is numeric
+            if (!isNaN(searchNo)) {
+                snap = await db.collection(col).where('voucherNo', '==', Number(searchNo)).get();
+                if (!snap.empty) {
+                    const match = snap.docs.find(d => {
+                        const data = d.data();
+                        return parseFloat(data.advanceOnline) > 0 && !data.isOnlinePaid;
+                    });
+                    if (match) return { voucher: { id: match.id, ...match.data() }, colName: col };
+                }
+            }
+
+            // 4. Try entryId field equality
+            snap = await db.collection(col).where('entryId', '==', searchNo).get();
+            if (!snap.empty) {
+                const match = snap.docs.find(d => {
+                    const data = d.data();
+                    return parseFloat(data.advanceOnline) > 0 && !data.isOnlinePaid;
+                });
+                if (match) return { voucher: { id: match.id, ...match.data() }, colName: col };
+            }
+
+            // 5. Try lrNo field equality
+            snap = await db.collection(col).where('lrNo', '==', searchNo).get();
+            if (!snap.empty) {
+                const match = snap.docs.find(d => {
+                    const data = d.data();
+                    return parseFloat(data.advanceOnline) > 0 && !data.isOnlinePaid;
+                });
+                if (match) return { voucher: { id: match.id, ...match.data() }, colName: col };
+            }
+        } catch (_) { /* collection or index error */ }
     }
     return null;
 }
@@ -108,23 +152,8 @@ async function markVoucherPaid(voucherId, colName, paidDate) {
 /**
  * POST /api/whatsapp/webhook
  *
- * OpenWA sends a JSON body. Example for message.received:
- * {
- *   event: "message.received",
- *   session: "default",
- *   payload: {
- *     id: "...",
- *     body: "PAID 501",
- *     from: "918708032492@c.us",
- *     fromMe: false,
- *     type: "chat"
- *   }
- * }
- *
- * Different OpenWA versions may wrap payload differently — we handle both.
+ * OpenWA sends a JSON body for message.received or button responses.
  */
-// GET / OPTIONS — OpenWA "test webhook" pings the URL with a GET request.
-// Return 200 so the connectivity check passes.
 router.get('/', (req, res) => res.status(200).json({ ok: true, service: 'VGTC WhatsApp Webhook' }));
 router.options('/', (req, res) => res.sendStatus(200));
 
@@ -137,32 +166,46 @@ router.post('/', async (req, res) => {
         const event   = body.event || body.type || '';
         const payload = body.payload || body.data || body;
 
-        // Skip anything that isn't an incoming text message
-        if (event && event !== 'message.received') return;
+        // Skip anything sent by ourselves
         if (payload.fromMe === true) return;
 
-        const msgBody = (payload.body || payload.text || payload.content || '').trim();
-        const from    = payload.from || payload.chatId || '';
+        // Extract text content from message body, text, or interactive button response
+        const msgBody = (
+            payload.selectedButtonId ||
+            payload.buttonId ||
+            payload.selectedOptionId ||
+            payload.body ||
+            payload.text ||
+            payload.content ||
+            payload.caption ||
+            ''
+        ).trim();
+
+        const from = payload.from || payload.chatId || payload.author || '';
 
         if (!msgBody) return;
 
-        // ── Parse "PAID {voucherNo}" ──────────────────────────────────────────
-        const matchPaid = msgBody.match(/^PAID\s+(\S+)/i);
+        // ── Parse "PAID {voucherNo}" or button response ───────────────────────
+        const matchPaid = msgBody.match(/^PAID[\s:-]+(\S+)/i) || msgBody.match(/^PAID$/i);
         if (!matchPaid) {
             console.log(`[WA-Webhook] No-op message from ${from}: "${msgBody}"`);
             return;
         }
 
-        const voucherNo = matchPaid[1].replace(/^#/, '');
-        console.log(`[WA-Webhook] PAID reply for voucher ${voucherNo} from ${from}`);
+        const voucherNo = matchPaid[1] ? matchPaid[1].replace(/^#/, '') : '';
+        console.log(`[WA-Webhook] PAID reply for voucher "${voucherNo || msgBody}" from ${from}`);
 
-        // Extract phone digits for replies
-        const fromPhone = from.replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '');
+        // Extract phone digits for replies (handling @c.us, @s.whatsapp.net, @lid, @g.us)
+        const fromPhone = from
+            .replace(/@c\.us$/, '')
+            .replace(/@s\.whatsapp\.net$/, '')
+            .replace(/@lid$/, '')
+            .replace(/@g\.us$/, '');
 
         // ── Locate voucher ────────────────────────────────────────────────────
         const found = await findUnpaidVoucherByNo(voucherNo);
         if (!found) {
-            console.warn(`[WA-Webhook] Voucher ${voucherNo} not found or already paid`);
+            console.warn(`[WA-Webhook] Voucher "${voucherNo}" not found or already paid`);
             try {
                 await sendWhatsAppMessage(
                     fromPhone,

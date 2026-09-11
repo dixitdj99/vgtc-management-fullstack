@@ -51,7 +51,7 @@ router.post('/', async (req, res) => {
                 const net        = gross - diesel - cash - online - munshi - commission;
 
                 const templateData = {
-                    voucherNo:     vData.voucherNo || vData.id,
+                    voucherNo:     vData.voucherNo || vData.entryId || vData.id,
                     lrNo:          vData.lrNo,
                     date:          vData.date || new Date().toLocaleDateString('en-IN'),
                     truckNo:       vData.truckNo,
@@ -72,32 +72,47 @@ router.post('/', async (req, res) => {
                 const waCfg       = await getWhatsAppConfig(req);
                 const adminPhone  = waCfg.adminPhone || '8708032492';
 
-                const isSelf = (vInfo?.ownershipType === 'self') || (vData.ownershipType === 'self') || (vData.isSelf === true);
+                const isSelf      = (vInfo?.ownershipType === 'self') || (vData.ownershipType === 'self') || (vData.isSelf === true);
                 const ownerPhone  = vInfo?.ownerContact || vData.ownerContact || '';
                 const driverPhone = vInfo?.driverContact || vData.driverContact || '';
 
-                // 1. Driver voucher alert — sent to driver
-                if (driverPhone) {
-                    await sendEventNotification('voucher_created_driver', templateData, [driverPhone], req);
+                const cleanDigits = (p) => {
+                    if (!p) return '';
+                    let c = String(p).replace(/\D/g, '');
+                    if (c.length === 10) c = '91' + c;
+                    return c;
+                };
+
+                const cleanDriver = cleanDigits(driverPhone);
+                const cleanOwner  = cleanDigits(ownerPhone);
+                const cleanAdmin  = cleanDigits(adminPhone);
+
+                const recipientMap = new Map();
+
+                // 1. Driver recipient
+                if (cleanDriver) {
+                    recipientMap.set(cleanDriver, { eventKey: 'voucher_created_driver', rawPhone: driverPhone });
                 }
 
-                // 2. Owner voucher copy — sent ONLY for market vehicles (not self vehicles)
-                if (!isSelf && ownerPhone) {
-                    await sendEventNotification('voucher_created_owner', templateData, [ownerPhone], req);
+                // 2. Owner recipient (market vehicles only)
+                if (!isSelf && cleanOwner && cleanOwner !== cleanDriver) {
+                    recipientMap.set(cleanOwner, { eventKey: 'voucher_created_owner', rawPhone: ownerPhone });
                 }
 
-                // 3. Admin copy — sent to admin number (8708032492)
-                if (adminPhone) {
-                    await sendEventNotification('voucher_created_owner', templateData, [adminPhone], req);
+                // 3. Admin recipient — sent ONLY if cleanAdmin is distinct from owner/driver
+                // If there is an online advance, admin gets online_advance_clerk alert exclusively
+                if (cleanAdmin) {
+                    if (online > 0) {
+                        recipientMap.set(cleanAdmin, { eventKey: 'online_advance_clerk', rawPhone: adminPhone });
+                    } else if (!recipientMap.has(cleanAdmin)) {
+                        recipientMap.set(cleanAdmin, { eventKey: 'voucher_created_owner', rawPhone: adminPhone });
+                    }
                 }
 
-                // 4. Online Advance Clerk Alert — sent to admin ONLY when advanceOnline > 0
-                //    The clerk must reply "PAID {voucherNo}" to the WhatsApp bot to confirm
-                //    payment done. The OpenWA webhook (POST /api/whatsapp/webhook) will then
-                //    mark isOnlinePaid = true and notify owner + driver.
-                if (online > 0 && adminPhone) {
-                    await sendEventNotification('online_advance_clerk', templateData, [adminPhone], req);
-                    console.log(`[WA-Hook] Online advance clerk alert sent for voucher ${templateData.voucherNo} (Rs.${templateData.advanceOnline})`);
+                // Dispatch exactly 1 message per unique phone
+                for (const [cleanP, info] of recipientMap.entries()) {
+                    await sendEventNotification(info.eventKey, templateData, [info.rawPhone], req);
+                    console.log(`[WA-Hook] Voucher alert [${info.eventKey}] sent to ${info.rawPhone}`);
                 }
             } catch (waErr) {
                 console.error('[WA-Hook] Voucher notify FAILED:', waErr.message);
