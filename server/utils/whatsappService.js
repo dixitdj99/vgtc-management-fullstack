@@ -211,9 +211,10 @@ function getOpenWaHeaders(apiKey) {
   const cleanKey = (apiKey || '').trim();
   const headers = { 'Content-Type': 'application/json' };
   if (cleanKey) {
+    headers['X-API-Key'] = cleanKey;
+    headers['x-api-key'] = cleanKey;
     headers['api_key'] = cleanKey;
     headers['api-key'] = cleanKey;
-    headers['x-api-key'] = cleanKey;
     headers['Authorization'] = `Bearer ${cleanKey}`;
   }
   return headers;
@@ -254,11 +255,11 @@ async function checkWhatsAppStatus(req = null) {
   const headers = getOpenWaHeaders(apiKey);
 
   const checkEndpoints = [
+    '/api/sessions',
     '/api/health/ready',
+    '/api/health',
     '/check-auth',
     '/getMe',
-    '/api/sessions',
-    '/ping',
     ''
   ];
 
@@ -365,6 +366,7 @@ async function sendWhatsAppMessage(phone, message, req = null) {
 
   const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
   const apiKey = (config.apiKey || '').trim();
+  const sessionId = (config.sessionId || 'default').trim();
   const chatId = formatPhoneWid(phone);
 
   if (!chatId) {
@@ -374,39 +376,32 @@ async function sendWhatsAppMessage(phone, message, req = null) {
   const headers = getOpenWaHeaders(apiKey);
 
   const attempts = [
+    // 1. Official rmyndharis/OpenWA NestJS route: /api/sessions/{sessionId}/messages/send-text
     {
-      endpoint: '/api/ingress/whatsapp-web.js/default/send-message',
+      endpoint: `/api/sessions/${sessionId}/messages/send-text`,
+      payload: { chatId, text: message, to: chatId, message }
+    },
+    // 2. OpenWA Ingress routes
+    {
+      endpoint: `/api/ingress/whatsapp-web.js/${sessionId}/send-message`,
       payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
     },
     {
-      endpoint: '/api/ingress/whatsapp-web.js/default/send-text',
+      endpoint: `/api/ingress/whatsapp-web.js/${sessionId}/send-text`,
       payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
     },
-    {
-      endpoint: '/api/ingress/whatsapp-web.js/default/sendMessage',
-      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
-    },
-    {
-      endpoint: '/api/ingress/whatsapp-web.js/default/sendText',
-      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
-    },
-    {
-      endpoint: '/api/sessions/default/messages/send-text',
-      payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
-    },
+    // 3. Fallback message endpoints
     {
       endpoint: '/api/messages/send-text',
-      payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
-    },
-    {
-      endpoint: '/api/sendText',
-      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
+      payload: { chatId, text: message, to: chatId, message }
     }
   ];
 
   let lastError = null;
+  let primaryError = null;
 
-  for (const attempt of attempts) {
+  for (let i = 0; i < attempts.length; i++) {
+    const attempt = attempts[i];
     try {
       const url = buildOpenWaUrl(baseUrl, attempt.endpoint, apiKey);
       const res = await axios.post(url, attempt.payload, { headers, timeout: 30000 });
@@ -415,6 +410,10 @@ async function sendWhatsAppMessage(phone, message, req = null) {
       }
     } catch (err) {
       lastError = err;
+      if (i === 0) {
+        primaryError = err;
+      }
+
       if (err.response && (err.response.status === 401 || err.response.status === 403)) {
         const errMsg = err.response.data?.message || err.response.data?.error || 'Invalid API Key';
         throw new Error(`OpenWA Authentication Failed: ${errMsg} (Status 401/403)`);
@@ -425,7 +424,7 @@ async function sendWhatsAppMessage(phone, message, req = null) {
       if (errText.includes('is not active') || errText.includes('Start the session first')) {
         console.log('[WA] Session inactive detected — attempting auto-start trigger on OpenWA...');
         try {
-          const startUrl = buildOpenWaUrl(baseUrl, '/api/sessions/default/start', apiKey);
+          const startUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/start`, apiKey);
           await axios.post(startUrl, { api_key: apiKey }, { headers, timeout: 15000 });
         } catch (startErr) {
           try {
@@ -437,23 +436,29 @@ async function sendWhatsAppMessage(phone, message, req = null) {
     }
   }
 
+  // Pick primary error if it wasn't a 404 (e.g. session inactive, bad request) to avoid masking with fallback 404s
+  const errToReport = (primaryError && primaryError.response && primaryError.response.status !== 404)
+    ? primaryError
+    : lastError;
+
+  const errText = String(errToReport?.response?.data?.message || errToReport?.response?.data?.error || errToReport?.message || '');
+
   // Final retry after auto session start attempt if session inactive was encountered
-  const errText = String(lastError?.response?.data?.message || lastError?.response?.data?.error || lastError?.message || '');
   if (errText.includes('is not active') || errText.includes('Start the session first')) {
     try {
-      const retryUrl = buildOpenWaUrl(baseUrl, '/api/ingress/whatsapp-web.js/default/send-message', apiKey);
-      const res = await axios.post(retryUrl, { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }, { headers, timeout: 30000 });
+      const retryUrl = buildOpenWaUrl(baseUrl, `/api/sessions/${sessionId}/messages/send-text`, apiKey);
+      const res = await axios.post(retryUrl, { chatId, text: message, to: chatId, message }, { headers, timeout: 30000 });
       if (res.status >= 200 && res.status < 300) return res.data;
     } catch (retryErr) {
       lastError = retryErr;
     }
   }
 
-  if (lastError?.code === 'ECONNABORTED' || String(lastError?.message).includes('timeout')) {
+  if (errToReport?.code === 'ECONNABORTED' || String(errToReport?.message).includes('timeout')) {
     throw new Error('OpenWA Gateway timed out (30s) — Ensure session QR is scanned & active in OpenWA dashboard');
   }
 
-  const msg = lastError?.response?.data?.message || lastError?.response?.data?.error || lastError?.message || 'Failed to dispatch message via OpenWA';
+  const msg = errToReport?.response?.data?.message || errToReport?.response?.data?.error || errToReport?.message || 'Failed to dispatch message via OpenWA';
   throw new Error(msg);
 }
 
