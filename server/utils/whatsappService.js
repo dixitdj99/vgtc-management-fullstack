@@ -375,12 +375,16 @@ async function sendWhatsAppMessage(phone, message, req = null) {
 
   const attempts = [
     {
-      endpoint: '/sendText',
-      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
+      endpoint: '/api/ingress/whatsapp-web.js/default/sendText',
+      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
     },
     {
-      endpoint: '/api/sendText',
-      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
+      endpoint: '/api/ingress/whatsapp-web.js/default/sendMessage',
+      payload: { api_key: apiKey, to: chatId, content: message, text: message, args: { to: chatId, content: message } }
+    },
+    {
+      endpoint: '/api/ingress/whatsapp-web.js/default/messages/send-text',
+      payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
     },
     {
       endpoint: '/api/sessions/default/messages/send-text',
@@ -391,8 +395,12 @@ async function sendWhatsAppMessage(phone, message, req = null) {
       payload: { api_key: apiKey, chatId: chatId, text: message, to: chatId, message: message }
     },
     {
-      endpoint: '/send',
-      payload: { api_key: apiKey, to: phone, message: message, text: message }
+      endpoint: '/api/sendText',
+      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
+    },
+    {
+      endpoint: '/sendText',
+      payload: { api_key: apiKey, to: chatId, content: message, args: { to: chatId, content: message } }
     }
   ];
 
