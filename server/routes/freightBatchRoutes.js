@@ -20,6 +20,7 @@ const localStore = require('../utils/localStore');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
 const auditService = require('../services/auditService');
+const { sendEventNotification, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
 
 router.use(requireAuth, tenancyMiddleware);
 
@@ -163,6 +164,32 @@ router.post('/', async (req, res, next) => {
         });
 
         res.status(201).json({ created, skipped });
+
+        // WhatsApp — notify truck owners (one message per truck in the batch)
+        ;(async () => {
+            try {
+                const waCfg = await getWhatsAppConfig(req);
+                const byTruck = {};
+                for (const b of created) {
+                    if (!byTruck[b.truckNo]) byTruck[b.truckNo] = { count: 0, b };
+                    byTruck[b.truckNo].count += (b.voucherIds || []).length;
+                }
+                for (const [truckNo, { count, b }] of Object.entries(byTruck)) {
+                    const vehiclePhone = await lookupVehiclePhone(truckNo, req);
+                    const phones = [vehiclePhone].filter(Boolean);
+                    await sendEventNotification('balance_paid', {
+                        truckNo,
+                        tripCount: count,
+                        totalAmount: '—',   // amounts live on the vouchers; batch has none
+                        periodFrom: b.periodFrom || '—',
+                        periodTo:   b.periodTo   || '—',
+                        note:       b.note       || '—',
+                    }, phones, req);
+                }
+            } catch (waErr) {
+                console.error('[WA-Hook] freight-batch notify FAILED:', waErr.message);
+            }
+        })();
     } catch (err) { next(err); }
 });
 

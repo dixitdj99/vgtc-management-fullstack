@@ -6,6 +6,7 @@ const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
+const { sendEventNotification, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -25,6 +26,51 @@ router.post('/', async (req, res) => {
         const savedResult = result;
         const savedBody = { ...req.body };
         res.status(201).json(result);
+
+        // WhatsApp Notification — fire and forget
+        ;(async () => {
+            try {
+                const vData = { ...savedBody, ...savedResult };
+
+                // Calculate gross and net freight
+                const gross = vData.deliveries?.length > 0
+                    ? vData.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+                    : (parseFloat(vData.weight) || 0) * (parseFloat(vData.rate) || 0);
+                const diesel     = parseFloat(vData.advanceDiesel) || 0;
+                const cash       = parseFloat(vData.advanceCash) || 0;
+                const online     = parseFloat(vData.advanceOnline) || 0;
+                const weight     = parseFloat(vData.weight) || 0;
+                const munshi     = parseFloat(vData.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+                const commission = parseFloat(vData.commission) || 0;
+                const net        = gross - diesel - cash - online - munshi - commission;
+
+                const templateData = {
+                    voucherNo:     vData.voucherNo || vData.id,
+                    lrNo:          vData.lrNo,
+                    date:          vData.date || new Date().toLocaleDateString('en-IN'),
+                    truckNo:       vData.truckNo,
+                    driverName:    vData.driverName || '—',
+                    source:        vData.source || 'Jhajjar',
+                    destination:   vData.destination,
+                    grossFreight:  gross.toFixed(0),
+                    advanceDiesel: diesel.toFixed(0),
+                    advanceCash:   cash.toFixed(0),
+                    advanceOnline: online.toFixed(0),
+                    munshi:        munshi.toFixed(0),
+                    commission:    commission.toFixed(0),
+                    netBalance:    net.toFixed(0),
+                    paymentStatus: vData.paymentStatus || 'Balance Pending',
+                };
+
+                const vehiclePhone = await lookupVehiclePhone(vData.truckNo, req);
+                const waCfg        = await getWhatsAppConfig(req);
+                const phones       = [vehiclePhone, waCfg.adminPhone].filter(Boolean);
+
+                await sendEventNotification('voucher_created', templateData, phones, req);
+            } catch (waErr) {
+                console.error('[WA-Hook] Voucher notify FAILED:', waErr.message);
+            }
+        })();
 
         (async () => {
             try {
