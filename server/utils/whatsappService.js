@@ -400,36 +400,43 @@ async function sendWhatsAppMessage(phone, message, req = null) {
 
   const baseUrl = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
   const apiKey = (config.apiKey || '').trim();
-  const sessionId = (config.sessionId || 'default').trim();
+  const configuredSessionId = (config.sessionId || 'default').trim();
   const chatId = formatPhoneWid(phone);
 
   if (!chatId) {
     throw new Error('Invalid phone number provided for WhatsApp dispatch');
   }
 
+  // Discover active session UUID (e.g. "4543ed69-1a93-4644-a793-44f9b74b6be9") or default name
+  const activeSessionId = await discoverActiveSessionId(baseUrl, apiKey, configuredSessionId);
+  const sessionTargets = Array.from(new Set([activeSessionId, configuredSessionId, 'default'])).filter(Boolean);
+
   const headers = getOpenWaHeaders(apiKey);
 
-  const attempts = [
-    // 1. Official rmyndharis/OpenWA NestJS route: /api/sessions/{sessionId}/messages/send-text
-    {
-      endpoint: `/api/sessions/${sessionId}/messages/send-text`,
-      payload: { chatId, text: message }
-    },
-    // 2. OpenWA Ingress routes
-    {
-      endpoint: `/api/ingress/whatsapp-web.js/${sessionId}/send-message`,
-      payload: { to: chatId, content: message }
-    },
-    {
-      endpoint: `/api/ingress/whatsapp-web.js/${sessionId}/send-text`,
-      payload: { to: chatId, text: message }
-    },
-    // 3. Fallback message endpoints
-    {
-      endpoint: '/api/messages/send-text',
-      payload: { chatId, text: message }
-    }
-  ];
+  const attempts = [];
+  for (const sId of sessionTargets) {
+    attempts.push(
+      // Official rmyndharis/OpenWA NestJS route using session UUID/name: /api/sessions/{sessionId}/messages/send-text
+      {
+        endpoint: `/api/sessions/${sId}/messages/send-text`,
+        payload: { chatId, text: message }
+      },
+      // Ingress routes
+      {
+        endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-message`,
+        payload: { to: chatId, content: message }
+      },
+      {
+        endpoint: `/api/ingress/whatsapp-web.js/${sId}/send-text`,
+        payload: { to: chatId, text: message }
+      }
+    );
+  }
+  // Generic fallback endpoint
+  attempts.push({
+    endpoint: '/api/messages/send-text',
+    payload: { chatId, text: message }
+  });
 
   let lastError = null;
   let primaryError = null;
