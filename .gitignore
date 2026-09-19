@@ -24,3 +24,6 @@ firebase-debug.log
 
 
 OpenWA/
+*.apk
+scratch/
+android-terminal/

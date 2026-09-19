@@ -54,9 +54,30 @@ export default function useDashboardData() {
 
     const fetchLrs = () => {
         setLrs(s => ({ ...s, loading: true, error: false }));
-        ax.get(cfg.lrApi)
-            .then(r => setLrs({ loading: false, data: r.data || [], error: false }))
-            .catch(() => setLrs({ loading: false, data: null, error: true }));
+        const allEndpoints = ['/jkl/lr', '/kosli/lr', '/jhajjar/lr', '/bahadurgarh/lr'];
+        Promise.all(allEndpoints.map(ep => ax.get(ep).then(r => r.data || []).catch(() => [])))
+            .then(results => {
+                const combined = results.flat();
+                if (combined.length > 0) {
+                    const seen = new Set();
+                    const uniqueLrs = combined.filter(lr => {
+                        const k = lr.id || `${lr.truckNo}-${lr.lrNo}-${lr.date}`;
+                        if (seen.has(k)) return false;
+                        seen.add(k);
+                        return true;
+                    });
+                    setLrs({ loading: false, data: uniqueLrs, error: false });
+                } else {
+                    ax.get(cfg.lrApi)
+                        .then(r => setLrs({ loading: false, data: r.data || [], error: false }))
+                        .catch(() => setLrs({ loading: false, data: null, error: true }));
+                }
+            })
+            .catch(() => {
+                ax.get(cfg.lrApi)
+                    .then(r => setLrs({ loading: false, data: r.data || [], error: false }))
+                    .catch(() => setLrs({ loading: false, data: null, error: true }));
+            });
     };
     const fetchVouchers = () => {
         setVouchers(s => ({ ...s, loading: true, error: false }));
@@ -127,6 +148,103 @@ export default function useDashboardData() {
         return deposits - cashOuts - voucherAdv;
     }, [cashbook.data, vouchers.data]);
 
+    const ownVehiclesDuty = useMemo(() => {
+        if (!vehicles.data) return { list: [], totalOwn: 0, freeCount: 0, loadedCount: 0, onTripCount: 0, workingCount: 0 };
+
+        const clean = s => String(s || '').toUpperCase().replace(/\s+/g, '');
+        const today = todayStr();
+
+        const ownList = (vehicles.data || []).filter(v =>
+            v.ownershipType === 'self' ||
+            (v.ownershipType !== 'market' && String(v.ownerName || '').toLowerCase().includes('(self)')) ||
+            String(v.ownerName || '').toLowerCase().includes('vikas transport')
+        );
+
+        const list = ownList.map(v => {
+            const t = clean(v.truckNo);
+            const todayVouchers = (vouchers.data || []).filter(vx => clean(vx.truckNo) === t && String(vx.date || '').slice(0, 10) === today);
+            const todayLrs = (lrs.data || []).filter(lx => clean(lx.truckNo) === t && String(lx.date || '').slice(0, 10) === today);
+
+            // Latest historical activity for context if truck is free today
+            const allTruckVouchers = (vouchers.data || []).filter(vx => clean(vx.truckNo) === t).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+            const allTruckLrs = (lrs.data || []).filter(lx => clean(lx.truckNo) === t).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+            const lastActivity = allTruckVouchers[0] || allTruckLrs[0] || null;
+
+            let status = 'FREE'; // 'FREE' | 'LOADED' | 'ON_TRIP'
+            let activeTrip = null;
+
+            if (todayVouchers.length > 0) {
+                status = 'ON_TRIP';
+                const vch = todayVouchers[0];
+                activeTrip = {
+                    type: 'voucher',
+                    voucherNo: vch.voucherNo || vch.entryId || '',
+                    lrNo: vch.lrNo || '',
+                    destination: vch.destination || '—',
+                    material: vch.materialName || vch.material || 'Cement',
+                    weight: vch.weight || '',
+                    bags: vch.bags || '',
+                    partyName: vch.partyName || '—',
+                    driverName: vch.driverName || v.driverName || '—',
+                    advanceTotal: (parseFloat(vch.advanceDiesel === 'FULL' ? 4000 : vch.advanceDiesel) || 0) + (parseFloat(vch.advanceCash) || 0) + (parseFloat(vch.advanceOnline) || 0)
+                };
+            } else if (todayLrs.some(l => l.status === 'In Transit')) {
+                status = 'ON_TRIP';
+                const lr = todayLrs.find(l => l.status === 'In Transit') || todayLrs[0];
+                activeTrip = {
+                    type: 'lr_transit',
+                    lrNo: lr.lrNo || '',
+                    destination: lr.destination || '—',
+                    material: lr.material || 'Cement',
+                    weight: lr.weight || '',
+                    bags: lr.totalBags || '',
+                    partyName: lr.partyName || '—',
+                    driverName: lr.driverName || v.driverName || '—'
+                };
+            } else if (todayLrs.length > 0) {
+                status = 'LOADED';
+                const lr = todayLrs[0];
+                activeTrip = {
+                    type: 'lr_loaded',
+                    lrNo: lr.lrNo || '',
+                    destination: lr.destination || '—',
+                    material: lr.material || 'Cement',
+                    weight: lr.weight || '',
+                    bags: lr.totalBags || '',
+                    partyName: lr.partyName || '—',
+                    driverName: lr.driverName || v.driverName || '—'
+                };
+            }
+
+            return {
+                id: v.id || v.truckNo,
+                truckNo: v.truckNo,
+                ownerName: v.ownerName,
+                driverName: v.driverName || 'No Driver Assigned',
+                driverContact: v.driverContact || '',
+                status,
+                activeTrip,
+                lastActivity: lastActivity ? {
+                    date: lastActivity.date,
+                    destination: lastActivity.destination || '—',
+                    lrNo: lastActivity.lrNo || ''
+                } : null
+            };
+        });
+
+        // Sort so FREE vehicles appear first so managers immediately see idle trucks
+        const order = { 'FREE': 0, 'LOADED': 1, 'ON_TRIP': 2 };
+        list.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+
+        const totalOwn = list.length;
+        const freeCount = list.filter(x => x.status === 'FREE').length;
+        const loadedCount = list.filter(x => x.status === 'LOADED').length;
+        const onTripCount = list.filter(x => x.status === 'ON_TRIP').length;
+        const workingCount = loadedCount + onTripCount;
+
+        return { list, totalOwn, freeCount, loadedCount, onTripCount, workingCount };
+    }, [vehicles.data, lrs.data, vouchers.data]);
+
     const fleetAlerts = useMemo(() => {
         if (!maintAlerts.data && !vehicles.data) return null;
         const list = [];
@@ -175,7 +293,8 @@ export default function useDashboardData() {
     return {
         cfg,
         lrs, vouchers, cashbook, maintAlerts, vehicles, attendanceToday,
-        kpis: { todayLrCount, outstanding, cashInHand, fleetAlerts },
+        kpis: { todayLrCount, outstanding, cashInHand, fleetAlerts, ownVehiclesDuty },
+        ownVehiclesDuty,
         recentActivity,
         refetch: { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles, fetchAttendanceToday },
     };

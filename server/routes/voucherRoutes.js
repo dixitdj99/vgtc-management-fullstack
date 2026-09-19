@@ -6,7 +6,7 @@ const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
-const { sendEventNotification, lookupVehicleInfo, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, sendWhatsAppImage, generateVoucherImageBuffer, lookupVehicleInfo, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -17,20 +17,20 @@ const VEHICLE_COL = 'vehicles';
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
-        const result = await voucherService.createVoucher(req.orgId, req.body, getCol(BASE_COL, req));
+        const voucherData = {
+            ...req.body,
+            createdBy: req.user?.id || req.user?.username || '',
+            createdByName: req.user?.name || req.user?.username || '',
+            creatorPhone: req.user?.phone || req.user?.mobile || ''
+        };
+        const result = await voucherService.createVoucher(req.orgId, voucherData, getCol(BASE_COL, req));
         await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
-        // Trigger SMS and WhatsApp alerts
-        const smsService = require('../utils/smsService');
-        const whatsappService = require('../utils/whatsappService');
-        whatsappService.triggerEventWhatsApp('voucher_created', { ...req.body, ...result }, req);
-        smsService.triggerEventSms('voucher_created', { ...req.body, ...result }, req);
-
         // Real-time backup — fire and forget, never blocks response
         const savedResult = result;
-        const savedBody = { ...req.body };
+        const savedBody = { ...voucherData };
         res.status(201).json(result);
 
         // WhatsApp Notification — fire and forget
@@ -39,16 +39,22 @@ router.post('/', async (req, res) => {
                 const vData = { ...savedBody, ...savedResult };
 
                 // Calculate gross and net freight
-                const gross = vData.deliveries?.length > 0
+                const weight     = parseFloat(vData.weight) || 0;
+                const rate       = parseFloat(vData.rate) || 0;
+                const gross      = parseFloat(vData.freight) || (vData.deliveries?.length > 0
                     ? vData.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
-                    : (parseFloat(vData.weight) || 0) * (parseFloat(vData.rate) || 0);
+                    : weight * rate);
                 const diesel     = parseFloat(vData.advanceDiesel) || 0;
                 const cash       = parseFloat(vData.advanceCash) || 0;
                 const online     = parseFloat(vData.advanceOnline) || 0;
-                const weight     = parseFloat(vData.weight) || 0;
                 const munshi     = parseFloat(vData.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+                const shortage   = parseFloat(vData.shortage) || 0;
                 const commission = parseFloat(vData.commission) || 0;
-                const net        = gross - diesel - cash - online - munshi - commission;
+                const tyrePuncture = parseFloat(vData.tyrePuncture) || 0;
+                const tyreGreasing = (parseFloat(vData.tyreGreasingAir) || 0) + (parseFloat(vData.tyreGreasing) || 0) + (parseFloat(vData.tyreAir) || 0);
+                const extraCash  = parseFloat(vData.extraCash) || 0;
+                const totalDeductions = diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash;
+                const net        = gross - totalDeductions;
 
                 const templateData = {
                     voucherNo:     vData.voucherNo || vData.entryId || vData.id,
@@ -87,79 +93,84 @@ router.post('/', async (req, res) => {
                 const cleanOwner  = cleanDigits(ownerPhone);
                 const cleanAdmin  = cleanDigits(adminPhone);
 
-                const recipientMap = new Map();
-
-                // 1. Driver recipient
-                if (cleanDriver) {
-                    recipientMap.set(cleanDriver, { eventKey: 'voucher_created_driver', rawPhone: driverPhone });
+                // 1. Generate Voucher Receipt PNG image buffer
+                let voucherImageBuffer = null;
+                try {
+                    voucherImageBuffer = generateVoucherImageBuffer({
+                        ...vData,
+                        id: savedResult?.id,
+                        voucherNo: templateData.voucherNo,
+                        date: templateData.date,
+                        weight,
+                        rate,
+                        freight: gross,
+                        advanceDiesel: diesel,
+                        advanceCash: cash,
+                        advanceOnline: online,
+                        munshi,
+                        shortage,
+                        commission,
+                        tyrePuncture,
+                        tyreGreasingAir: tyreGreasing,
+                        extraCash
+                    });
+                } catch (imgErr) {
+                    console.error('[WA-Hook] Failed to render Voucher image slip:', imgErr.message);
                 }
 
-                // 2. Owner recipient (market vehicles only)
-                if (!isSelf && cleanOwner && cleanOwner !== cleanDriver) {
-                    recipientMap.set(cleanOwner, { eventKey: 'voucher_created_owner', rawPhone: ownerPhone });
-                }
+                const voucherCaption = [
+                    `*VIKAS GOODS TRANSPORT CO.*`,
+                    `📋 *Freight Voucher — #${templateData.voucherNo}*`,
+                    `*Date:* ${templateData.date} | *Truck:* ${String(vData.truckNo || '—').toUpperCase()}`,
+                    `*LR:* #${templateData.lrNo || '—'} | *Party:* ${vData.partyName || '—'}${vData.destination ? ' (' + vData.destination + ')' : ''}`,
+                    `*Gross Freight:* Rs.${gross.toLocaleString('en-IN')}`,
+                    `*Total Deductions:* Rs.${totalDeductions.toLocaleString('en-IN')}`,
+                    `*Net Balance:* Rs.${net.toLocaleString('en-IN')}`,
+                    `_Voucher slip attached above._`
+                ].join('\n');
 
-                // 3. Admin recipient — sent ONLY if cleanAdmin is distinct from owner/driver
-                // If there is an online advance, admin gets online_advance_clerk alert exclusively
-                if (cleanAdmin) {
-                    if (online > 0) {
-                        recipientMap.set(cleanAdmin, { eventKey: 'online_advance_clerk', rawPhone: adminPhone });
-                    } else if (!recipientMap.has(cleanAdmin)) {
-                        recipientMap.set(cleanAdmin, { eventKey: 'voucher_created_owner', rawPhone: adminPhone });
+                // 2. Dispatch Voucher Slip Image to all parties (Driver, Owner, Admin)
+                const imageRecipients = new Map();
+                if (cleanDriver) imageRecipients.set(cleanDriver, driverPhone);
+                if (!isSelf && cleanOwner) imageRecipients.set(cleanOwner, ownerPhone);
+                if (cleanAdmin) imageRecipients.set(cleanAdmin, adminPhone);
+
+                for (const [cleanP, rawPhone] of imageRecipients.entries()) {
+                    try {
+                        if (voucherImageBuffer) {
+                            await sendWhatsAppImage(rawPhone, voucherImageBuffer, voucherCaption, req);
+                            console.log(`[WA-Hook] Voucher image slip sent to ${rawPhone}`);
+                        } else {
+                            const eventKey = cleanP === cleanDriver ? 'voucher_created_driver' : 'voucher_created_owner';
+                            await sendEventNotification(eventKey, templateData, [rawPhone], req);
+                            console.log(`[WA-Hook] Voucher text alert [${eventKey}] sent to ${rawPhone}`);
+                        }
+                    } catch (err) {
+                        console.error(`[WA-Hook] Voucher alert to ${rawPhone} failed:`, err.message);
+                        try {
+                            const eventKey = cleanP === cleanDriver ? 'voucher_created_driver' : 'voucher_created_owner';
+                            await sendEventNotification(eventKey, templateData, [rawPhone], req);
+                        } catch (_) {}
                     }
                 }
 
-                // Dispatch exactly 1 message per unique phone
-                for (const [cleanP, info] of recipientMap.entries()) {
-                    await sendEventNotification(info.eventKey, templateData, [info.rawPhone], req);
-                    console.log(`[WA-Hook] Voucher alert [${info.eventKey}] sent to ${info.rawPhone}`);
+                // 3. If there is an online advance, ALSO send the action button message to the clerk/admin
+                if (online > 0 && cleanAdmin) {
+                    try {
+                        await sendEventNotification('online_advance_clerk', templateData, [adminPhone], req);
+                        console.log(`[WA-Hook] Online Advance Clerk alert sent to ${adminPhone}`);
+                    } catch (clerkErr) {
+                        console.error(`[WA-Hook] Clerk alert to ${adminPhone} failed:`, clerkErr.message);
+                    }
                 }
+
             } catch (waErr) {
                 console.error('[WA-Hook] Voucher notify FAILED:', waErr.message);
             }
         })();
 
-        (async () => {
-            try {
-                if (!await driveService.isAuthorized()) {
-                    console.log('[Backup-Hook] Skipping voucher backup — Drive not authorized');
-                    return;
-                }
-                const fs = require('fs');
-                const path = require('path');
-                const { generateVoucherPDF } = require('../utils/pdfService');
-                const sheetsService = require('../utils/sheetsService');
-
-                const voucherData = { ...savedBody, ...savedResult };
-                const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
-                if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-                const dateStr = (voucherData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
-                const fileName = `Voucher_LR${voucherData.lrNo || 'N-A'}_${dateStr}.pdf`;
-                const localPath = path.join(TEMP_DIR, fileName);
-
-                console.log(`[Backup-Hook] Generating voucher PDF: ${fileName}`);
-                await generateVoucherPDF(voucherData, localPath);
-
-                const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                const plantLabel = (savedBody.brand === 'jklakshmi' || voucherData.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
-                const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
-                const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
-                const monthStr = new Date(voucherData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
-                const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
-                await driveService.uploadFile(localPath, fileName, finalFolder);
-                if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-                await sheetsService.upsertVoucherRow(voucherData, savedBody.type || 'Dump', savedBody.brand);
-
-                await driveService.logActivity('Voucher_Create', 'success', `Backed up: ${fileName}`);
-                console.log(`[Backup-Hook] Voucher backed up successfully: ${fileName}`);
-            } catch (e) {
-                console.error('[Backup-Hook] Voucher create FAILED:', e.message);
-                console.error(e.stack);
-                await driveService.logActivity('Voucher_Create', 'error', 'Backup failed', e).catch(() => {});
-            }
-        })();
+        const { backupVoucher } = require('../utils/realtimeBackup');
+        backupVoucher({ ...savedBody, ...savedResult }, { brand: savedBody.brand, type: savedBody.type });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -229,27 +240,10 @@ router.patch('/:id', async (req, res) => {
                     }
 
                     // 2. Re-generate and re-upload PDF to Drive
-                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
-                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-                    const dateStr = (updated.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
-                    const fileName = `Voucher_LR${updated.lrNo || 'N-A'}_${dateStr}.pdf`;
-                    const localPath = path.join(TEMP_DIR, fileName);
-
-                    await generateVoucherPDF(updated, localPath);
-                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    const plantLabel = (updated.brand === 'jklakshmi' || updated.type === 'JK_Lakshmi') ? 'JK_Lakshmi' : 'JK_Super';
-                    const plantFolder = await driveService.getOrCreateFolder(plantLabel, rootId);
-                    const voucherFolder = await driveService.getOrCreateFolder('Vouchers', plantFolder);
-                    const monthStr = new Date(updated.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
-                    const finalFolder = await driveService.getOrCreateFolder(monthStr, voucherFolder);
-                    await driveService.uploadFile(localPath, fileName, finalFolder);
-                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-                    await driveService.logActivity('Voucher_Update', 'success', `Synced: ${fileName}`);
-                    console.log(`[Backup-Hook] Voucher update synced: ${fileName}`);
+                    const { backupVoucher } = require('../utils/realtimeBackup');
+                    await backupVoucher(updated, { brand: updated.brand, type: updated.type });
                 } catch (e) {
                     console.error('[Backup-Hook] Voucher update sync failed:', e.message);
-                    await driveService.logActivity('Voucher_Update', 'error', 'Sync failed', e).catch(() => {});
                 }
             })();
         }
@@ -346,6 +340,21 @@ router.delete('/:id', async (req, res) => {
         res.json({ message: 'Voucher deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/vouchers/remind-pending-advances
+ * Manually trigger scanning and sending pending online advance reminders with interactive buttons.
+ */
+router.post('/remind-pending-advances', requireAuth, tenancyMiddleware, async (req, res, next) => {
+    try {
+        const { checkAndSendPendingOnlineAdvanceReminders } = require('../services/onlineAdvanceReminderService');
+        const forceAll = req.body.forceAll === true;
+        const result = await checkAndSendPendingOnlineAdvanceReminders({ forceAll });
+        res.json(result);
+    } catch (err) {
+        next(err);
     }
 });
 

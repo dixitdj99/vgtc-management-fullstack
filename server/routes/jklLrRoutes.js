@@ -4,7 +4,7 @@ const lrService = require('../services/lrService');
 const { getCol } = require('../utils/collectionUtils');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
-const { dispatchLrNotification } = require('./lrWhatsAppHook');
+const { dispatchLrNotification, linkChallanToLr } = require('./lrWhatsAppHook');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -19,54 +19,23 @@ mountLrVoucherCheck(router, JKL_LR_COL);
 // Create
 router.post('/', async (req, res) => {
     try {
-        const result = await lrService.createLoadingReceipt(req.orgId, req.body, getCol(JKL_LR_COL, req), getCol(JKL_META_COL, req));
+        const lrData = {
+            ...req.body,
+            source: req.body.loadingPoint || req.body.plant || req.body.source || 'JK Lakshmi Plant (Jharli)',
+            createdBy: req.user?.id || req.user?.username || '',
+            createdByName: req.user?.name || req.user?.username || '',
+            creatorPhone: req.user?.phone || req.user?.mobile || ''
+        };
+        const result = await lrService.createLoadingReceipt(req.orgId, lrData, getCol(JKL_LR_COL, req), getCol(JKL_META_COL, req));
 
         // Real-time backup — runs whenever Google Drive is authorized
-        const driveService = require('../utils/driveService');
-        if (await driveService.isAuthorized()) {
-            (async () => {
-                try {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const { generateLoadingReceiptPDF } = require('../utils/pdfService');
-
-                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
-                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-                    const fullData = { ...req.body, ...result };
-                    const dateStr = (fullData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
-                    const fileName = `LR_${result.lrNo}_${dateStr}.pdf`;
-                    const localPath = path.join(TEMP_DIR, fileName);
-
-                    console.log(`[Backup-Hook] Generating JKL LR PDF: ${fileName}`);
-                    await generateLoadingReceiptPDF(fullData, localPath);
-
-                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    const plantFolder = await driveService.getOrCreateFolder('JK_Lakshmi', rootId);
-                    const lrFolder = await driveService.getOrCreateFolder('Loading Receipts', plantFolder);
-                    const monthStr = new Date(fullData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
-                    const finalFolder = await driveService.getOrCreateFolder(monthStr, lrFolder);
-                    await driveService.uploadFile(localPath, fileName, finalFolder);
-                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-                    const sheetsService = require('../utils/sheetsService');
-                    await sheetsService.upsertLrRow(fullData, 'jklakshmi');
-
-                    await driveService.logActivity('JKL_LR_Create', 'success', `Backed up: ${fileName}`);
-                    console.log(`[Backup-Hook] JKL LR backed up successfully: ${fileName}`);
-                } catch (e) {
-                    console.error('[Backup-Hook] JKL LR create FAILED:', e.message, e.stack);
-                    await driveService.logActivity('JKL_LR_Create', 'error', 'Backup failed', e);
-                }
-            })();
-        } else {
-            console.log('[Backup-Hook] Skipping JKL LR backup — Drive not authorized');
-        }
+        const { backupLoadingReceipt } = require('../utils/realtimeBackup');
+        backupLoadingReceipt({ ...lrData, ...result }, { brand: 'jklakshmi', plant: 'JK Lakshmi (Jharli)' });
 
         res.status(201).json(result);
 
         // WhatsApp Notification — fire and forget, never blocks response
-        dispatchLrNotification({ ...req.body, ...result }, req);
+        dispatchLrNotification({ ...lrData, ...result }, req);
     } catch (error) {
         res.status(error.status || 500).json({ error: error.message });
     }
@@ -77,6 +46,26 @@ router.get('/', async (req, res) => {
     try {
         const receipts = await lrService.getAllLoadingReceipts(req.orgId, getCol(JKL_LR_COL, req));
         res.json(receipts);
+    } catch (error) {
+        res.status(error.status || 500).json({ error: error.message });
+    }
+});
+
+// Link challan to an existing LR (Delayed Linking)
+router.post('/:id/link-challan', async (req, res) => {
+    try {
+        const { challanNo, quantity, material } = req.body;
+        const result = await linkChallanToLr({
+            lrId: req.params.id,
+            challanNo,
+            quantity,
+            material,
+            lrCollection: getCol(JKL_LR_COL, req),
+            brand: 'jkl',
+            orgId: req.orgId,
+            req
+        });
+        res.json(result);
     } catch (error) {
         res.status(error.status || 500).json({ error: error.message });
     }

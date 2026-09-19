@@ -609,6 +609,34 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const totalAvailable = MATS.reduce((s, mat) => s + (stockMap[mat]?.available || 0), 0);
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
 
+  const vehicleChallanBalances = useMemo(() => {
+    const map = new Map();
+    (challans || []).forEach(c => {
+      const s = (c.status || 'open').toLowerCase();
+      if (s !== 'open' && s !== 'partially_loaded') return;
+      const truck = (c.truckNo || 'Unassigned').toUpperCase().replace(/\s+/g, '');
+      let remainingBags = 0;
+      if (c.materials && c.materials.length > 0) {
+        remainingBags = c.materials.reduce((sum, m) => sum + Math.max(0, parseInt(m.totalBags || 0) - parseInt(m.loadedBags || 0)), 0);
+      } else {
+        const tot = parseInt(c.quantity || 0);
+        const ldd = parseInt(c.loadedBags || 0);
+        remainingBags = Math.max(0, tot - ldd);
+      }
+      if (remainingBags <= 0) return;
+
+      if (!map.has(truck)) {
+        map.set(truck, { truckNo: truck, count: 0, bags: 0, mt: 0, challans: [] });
+      }
+      const item = map.get(truck);
+      item.count += 1;
+      item.bags += remainingBags;
+      item.mt = parseFloat((item.bags * 0.05).toFixed(2));
+      item.challans.push(c);
+    });
+    return Array.from(map.values()).sort((a, b) => b.bags - a.bags);
+  }, [challans]);
+
   /* ── handlers ── */
   const [isConfirmingMigo, setIsConfirmingMigo] = useState(false);
   const triggerMigo = e => {
@@ -1351,6 +1379,46 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
             isSaving={saving}
           />
 
+          {/* ── Vehicle Challan Balances Summary Card ── */}
+          {vehicleChallanBalances.length > 0 && (
+            <div className="card" style={{ marginBottom: '14px', padding: '14px 18px', background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(99,102,241,0.04))', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Truck size={16} color="#d97706" />
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>Vehicle Challan Balances</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: 'rgba(245,158,11,0.15)', color: '#b45309' }}>
+                    {vehicleChallanBalances.length} Vehicles Pending Loading
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  Total: <strong style={{ color: '#d97706' }}>{vehicleChallanBalances.reduce((s, v) => s + v.bags, 0)} Bags</strong> ({vehicleChallanBalances.reduce((s, v) => s + v.mt, 0).toFixed(2)} MT)
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {vehicleChallanBalances.map(v => (
+                  <div
+                    key={v.truckNo}
+                    onClick={() => { setChallanFilter('open'); handleFilterChange('truckNo', [v.truckNo]); }}
+                    title={`Click to filter by ${v.truckNo}`}
+                    style={{
+                      padding: '6px 10px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px',
+                      display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                      cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                  >
+                    <span style={{ fontWeight: 800, color: 'var(--text)' }}>{v.truckNo}</span>
+                    <span style={{ height: '12px', width: '1px', background: 'var(--border)' }}></span>
+                    <span style={{ fontWeight: 800, color: '#d97706' }}>{v.bags} bags</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({v.mt} MT)</span>
+                    <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}>
+                      {v.count} chal
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Challan List */}
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '8px' }}>
@@ -1402,11 +1470,19 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   {filteredChallans.length === 0 && <tr><td colSpan={11} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No challans</td></tr>}
                   {[...filteredChallans].sort((a, b) => a.date > b.date ? -1 : 1).map((c, i) => {
                     const sm = STATUS_META[c.status] || STATUS_META.open;
+                    const isTransferred = (c.loadedByVehicle && c.loadedByVehicle !== c.truckNo) || c.isTransferred;
                     return (
                       <tr key={c.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                         <td style={{ ...TD, fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{c.challanNo}</td>
                         <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(c.date)}</td>
-                        <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>{c.truckNo}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>
+                          <div>{c.truckNo}</div>
+                          {isTransferred && (
+                            <div style={{ fontSize: '10px', color: '#d97706', fontWeight: 800, marginTop: '2px' }}>
+                              🔄 Loaded: {c.loadedByVehicle} {c.lrNo ? `(LR #${c.lrNo})` : ''}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ ...TD }}>
                           {c.materials ? (
                             c.materials.map((m, idx) => (

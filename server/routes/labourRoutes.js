@@ -8,6 +8,7 @@ const { getEnvCol } = require('../utils/collectionUtils');
 const { getEnvPrefix } = require('../utils/envConfig');
 const localStore = require('../utils/localStore');
 const stytchService = require('../utils/stytchService');
+const { createNotification } = require('../utils/notificationService');
 
 // ── Labour JWT Middleware ──────────────────────────────────
 const requireLabourAuth = (req, res, next) => {
@@ -270,7 +271,37 @@ router.patch('/lr/:godown/:id/status', requireLabourAuth, async (req, res) => {
 
         const update = { status };
         if (status === 'Started') update.startedAt = new Date().toISOString();
-        if (status === 'Loaded') update.loadedAt = new Date().toISOString();
+        if (status === 'Loaded') {
+            update.loadedAt = new Date().toISOString();
+            ;(async () => {
+                try {
+                    let lrDoc = null;
+                    if (isAvailable()) {
+                        const snap = await db.collection(fullCol).doc(id).get();
+                        if (snap.exists) lrDoc = snap.data();
+                    } else {
+                        lrDoc = localStore.get(fullCol, id);
+                    }
+                    if (lrDoc) {
+                        const tokenLabel = lrDoc.loadingNo || lrDoc.dailyTokenNo ? `Token #${lrDoc.loadingNo || lrDoc.dailyTokenNo}` : '';
+                        await createNotification({
+                            type: 'vehicle_loaded',
+                            title: `✅ Vehicle Loaded — LR #${lrDoc.lrNo || id}`,
+                            message: `Truck ${lrDoc.truckNo || '—'} is LOADED & READY FOR DISPATCH. (${tokenLabel ? tokenLabel + ' · ' : ''}${lrDoc.source || 'Plant'} → ${lrDoc.destination || '—'}${lrDoc.partyName ? ' · ' + lrDoc.partyName : ''})`,
+                            lrNo: lrDoc.lrNo,
+                            truckNo: lrDoc.truckNo,
+                            loadingNo: lrDoc.loadingNo || lrDoc.dailyTokenNo,
+                            source: lrDoc.source,
+                            destination: lrDoc.destination,
+                            partyName: lrDoc.partyName,
+                            status: 'Loaded'
+                        }, req);
+                    }
+                } catch (notifErr) {
+                    console.error('[Labour] Error notifying vehicle loaded:', notifErr.message);
+                }
+            })();
+        }
 
         if (isAvailable()) {
             await db.collection(fullCol).doc(id).update(update);

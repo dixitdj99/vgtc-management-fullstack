@@ -13,6 +13,7 @@ import { columnValues } from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
+import { useToast } from '../components/Toast';
 import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
 import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
@@ -153,7 +154,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC') {
         kind: isBill ? 'Statements' : 'Documents',
         plant: (v.type || '').replace(/_/g, ' ') || 'Other',
         name: archiveName('Voucher', v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join('-') : v.id?.slice(0, 6)), v.truckNo, v.date),
-        meta: { lrNo: v.lrNo, truckNo: v.truckNo, date: v.date, type: v.type },
+        meta: { lrNo: v.lrNo, truckNo: v.truckNo, date: v.date, type: v.type, docData: v },
     };
 
     if (brand === 'jklakshmi') {
@@ -1178,6 +1179,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
    ══════════════════════════════════════════════════ */
 export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
     const { user } = useAuth();
+    const { showToast } = useToast() || {};
     const org = user?.org || {};
     // Whoever is logged in signs the vouchers they print.
     const signedBy = user?.name || user?.username || 'VGTC';
@@ -1708,12 +1710,21 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
 
-            if (window.confirm('Voucher created successfully! Do you want to print it?')) {
-                // Merge over the payload: the response is authoritative for what
-                // was stored, but a partial response must not blank the slip.
-                printVoucher({ ...payload, ...newVoucher }, org, brand, signedBy);
+            // Auto-open print receipt in independent tab instead of asking user
+            printVoucher({ ...payload, ...newVoucher }, org, brand, signedBy);
+
+            const vNum = newVoucher.voucherNo || newVoucher.entryId || newVoucher.id || '';
+            if (showToast) {
+                showToast(`✅ Voucher #${vNum} created & WhatsApp message sent successfully!`, 'success');
             }
-        } catch { alert('Error saving voucher'); } finally { setSaving(false); }
+        } catch (err) {
+            const msg = err.response?.data?.error || err.message || 'Error saving voucher';
+            if (showToast) {
+                showToast(`❌ Voucher creation / WhatsApp dispatch failed: ${msg}`, 'error');
+            } else {
+                alert('Error saving voucher: ' + msg);
+            }
+        } finally { setSaving(false); }
     };
 
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));

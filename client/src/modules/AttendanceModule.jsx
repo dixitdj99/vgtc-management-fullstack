@@ -4,7 +4,7 @@ import ax from '../api';
 import * as XLSX from 'xlsx';
 import {
   Users, Calendar, ChevronLeft, ChevronRight, Loader2, Save, BarChart3,
-  Search, CheckCircle2, AlertTriangle, Sparkles, Download, RotateCcw,
+  Search, CheckCircle2, AlertTriangle, Sparkles, Download, RotateCcw, Camera,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import TruckLoader from '../components/TruckLoader';
@@ -443,17 +443,40 @@ export default function AttendanceModule() {
               : 'Monthly totals and payable days for payroll.'}
           </div>
         </div>
-        <div style={{ display: 'flex', ...card, overflow: 'hidden' }}>
-          {[{ id: 'daily', label: 'Daily Roll-Call', Icon: Calendar }, { id: 'monthly', label: 'Monthly Report', Icon: BarChart3 }].map(({ id, label, Icon }) => (
-            <button key={id} onClick={() => setView(id)} style={{
-              padding: '9px 16px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700,
-              background: view === id ? '#6366f1' : 'transparent',
-              color: view === id ? '#fff' : 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
-            }}>
-              <Icon size={13} /> {label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', ...card, overflow: 'hidden' }}>
+            {[{ id: 'daily', label: 'Daily Roll-Call', Icon: Calendar }, { id: 'monthly', label: 'Monthly Report', Icon: BarChart3 }].map(({ id, label, Icon }) => (
+              <button key={id} onClick={() => setView(id)} style={{
+                padding: '9px 16px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700,
+                background: view === id ? '#6366f1' : 'transparent',
+                color: view === id ? '#fff' : 'var(--text-muted)',
+                display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s',
+              }}>
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => window.open('/terminal', '_blank')}
+            style={{
+              padding: '9px 16px',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 800,
+              background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              borderRadius: '10px',
+              boxShadow: '0 2px 10px rgba(99,102,241,0.3)',
+              transition: 'all 0.15s'
+            }}
+            title="Launch full-screen VGTC OS Attendance & Driver Terminal"
+          >
+            <Camera size={14} /> Open VGTC Terminal
+          </button>
         </div>
       </div>
 

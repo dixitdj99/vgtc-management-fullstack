@@ -4,7 +4,7 @@ import TruckLoader from '../components/TruckLoader';
 import { motion } from 'framer-motion';
 import {
   Truck, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, Clock,
-  ChevronUp, ChevronDown, Download, Printer, Search, X
+  ChevronUp, ChevronDown, Download, Printer, Search, X, FileText, FileSpreadsheet, Send, Loader2
 } from 'lucide-react';
 import { exportToExcel, buildExportRows } from '../utils/exportUtils';
 import { printHtml, reportWatermarkCss } from '../utils/receiptPrint';
@@ -157,6 +157,7 @@ export default function TruckDashboard({ role, permissions }) {
       return {
         truckNo,
         ownerName: veh?.ownerName || '—',
+        ownerContact: veh?.ownerContact || veh?.driverContact || '',
         gpsType: veh?.gpsType || 'none',
         trips,
         totalWeight,
@@ -173,6 +174,39 @@ export default function TruckDashboard({ role, permissions }) {
       };
     });
   }, [vouchers, vehicles]);
+
+  const [sendingTruck, setSendingTruck] = useState(null);
+
+  const handleSendReport = async (truckNo, format, ownerContact, e) => {
+    e.stopPropagation();
+    let phone = (ownerContact || '').replace(/[^0-9]/g, '');
+    if (phone.length < 10) {
+      phone = window.prompt(`Enter WhatsApp number for truck ${truckNo}:`);
+      if (!phone) return;
+      phone = phone.replace(/[^0-9]/g, '');
+      if (phone.length < 10) {
+        alert('Please enter a valid 10-digit WhatsApp number.');
+        return;
+      }
+    }
+    setSendingTruck(`${truckNo}_${format}`);
+    try {
+      const res = await ax.post('/reports/send-whatsapp', {
+        truckNo,
+        format,
+        phone
+      });
+      if (res.data?.ok) {
+        alert(`✅ ${format.toUpperCase()} History Report successfully sent to +91 ${phone.slice(-10)} via WhatsApp!`);
+      } else {
+        alert(res.data?.message || 'Failed to send report.');
+      }
+    } catch (err) {
+      alert('Failed to send report: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSendingTruck(null);
+    }
+  };
 
   const sorted = useMemo(() => {
     let list = [...truckStats];
@@ -284,13 +318,17 @@ export default function TruckDashboard({ role, permissions }) {
                 <th style={{ ...TH, cursor: 'pointer' }} onClick={() => toggleSort('outstanding')}>Outstanding <SortIcon k="outstanding" /></th>
                 <th style={TH}><ColumnFilter label="Status" colKey="status" data={sorted} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                 <th style={{ ...TH, cursor: 'pointer' }} onClick={() => toggleSort('daysSinceLast')}>Last Trip <SortIcon k="daysSinceLast" /></th>
+                <th style={{ ...TH, textAlign: 'center' }}>WhatsApp Report</th>
               </tr>
             </thead>
             <tbody>
               {sorted.length === 0 ? (
-                <tr><td colSpan={11} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No data found</td></tr>
+                <tr><td colSpan={12} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No data found</td></tr>
               ) : sorted.map((r, i) => {
                 const overdueBorder = r.maxOverdueDays > 30 ? '3px solid #f43f5e' : r.maxOverdueDays > 15 ? '3px solid #f59e0b' : '';
+                const isSendingPdf = sendingTruck === `${r.truckNo}_pdf`;
+                const isSendingExcel = sendingTruck === `${r.truckNo}_excel`;
+
                 return (
                   <motion.tr key={r.truckNo} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.01 }}
                     style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)', borderLeft: overdueBorder, cursor: 'pointer', transition: 'background 0.12s' }}
@@ -333,6 +371,30 @@ export default function TruckDashboard({ role, permissions }) {
                         {r.daysSinceLast < 999 && <span style={{ fontSize: '10px', color: r.daysSinceLast > 30 ? '#f43f5e' : 'var(--text-muted)', fontWeight: 600 }}>{r.daysSinceLast}d ago</span>}
                       </div>
                     </td>
+                    <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
+                        <button
+                          className="btn btn-g btn-sm"
+                          style={{ padding: '4px 7px', fontSize: '11px', borderRadius: '5px' }}
+                          title="Send Monthly PDF Statement via WhatsApp"
+                          disabled={isSendingPdf || isSendingExcel}
+                          onClick={e => handleSendReport(r.truckNo, 'pdf', r.ownerContact, e)}
+                        >
+                          {isSendingPdf ? <Loader2 size={11} className="spin" /> : <FileText size={11} color="#ef4444" />}
+                          PDF
+                        </button>
+                        <button
+                          className="btn btn-g btn-sm"
+                          style={{ padding: '4px 7px', fontSize: '11px', borderRadius: '5px' }}
+                          title="Send Monthly Excel Statement via WhatsApp"
+                          disabled={isSendingPdf || isSendingExcel}
+                          onClick={e => handleSendReport(r.truckNo, 'excel', r.ownerContact, e)}
+                        >
+                          {isSendingExcel ? <Loader2 size={11} className="spin" /> : <FileSpreadsheet size={11} color="#10b981" />}
+                          Excel
+                        </button>
+                      </div>
+                    </td>
                   </motion.tr>
                 );
               })}
@@ -346,7 +408,7 @@ export default function TruckDashboard({ role, permissions }) {
                 <td style={{ ...TDF, textAlign: 'right', color: 'var(--accent)' }}>{fmtRs(totals.net)}</td>
                 <td style={TDF}></td>
                 <td style={{ ...TDF, textAlign: 'right', color: totals.outstanding > 0 ? 'var(--warn)' : 'var(--accent)', fontSize: '13px' }}>{fmtRs(totals.outstanding)}</td>
-                <td colSpan={2} style={TDF}></td>
+                <td colSpan={3} style={TDF}></td>
               </tr>
             </tfoot>
           </table>

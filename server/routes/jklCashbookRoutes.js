@@ -6,6 +6,7 @@ const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
 const { db, isAvailable } = require('../firebase');
 const advanceService = require('../services/vehicleAdvanceService');
+const { sendEventNotification, getWhatsAppConfig, lookupVehicleInfo, lookupProfilePhone } = require('../utils/whatsappService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -15,6 +16,25 @@ const PAYMENTS_COL = 'profile_payments';
 const ADVANCES_COL = 'vehicle_advances';
 
 const sheetsService = require('../utils/sheetsService');
+
+// Helper to resolve notification recipients for cashout
+async function getCashoutPhones(req, entityType, entityId, entityName) {
+    const waCfg = await getWhatsAppConfig(req);
+    const phones = [waCfg.adminPhone || '8708032492'];
+
+    // Look up profile contact number by ID or Name
+    let profilePhone = null;
+    if (entityId) profilePhone = await lookupProfilePhone(entityId, req);
+    if (!profilePhone && entityName) profilePhone = await lookupProfilePhone(entityName, req);
+    if (profilePhone) phones.push(profilePhone);
+
+    if (entityType === 'vehicle' && entityId) {
+        const vInfo = await lookupVehicleInfo(entityId, req);
+        if (vInfo?.ownerContact) phones.push(vInfo.ownerContact);
+        if (vInfo?.driverContact) phones.push(vInfo.driverContact);
+    }
+    return Array.from(new Set(phones.filter(Boolean)));
+}
 
 // GET  /api/jkl/cashbook
 router.get('/', async (req, res) => {
@@ -31,16 +51,52 @@ router.post('/deposit', async (req, res) => {
         const doc = await svc.addEntry(req.orgId, 'deposit', amount, remark, date, getCol(BASE_COL, req));
         sheetsService.upsertCashbook(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
+
+        // WhatsApp — notify admin of deposit
+        ;(async () => {
+            try {
+                const waCfg = await getWhatsAppConfig(req);
+                const phones = [waCfg.adminPhone || '8708032492'].filter(Boolean);
+                await sendEventNotification('deposit', {
+                    amount: parseFloat(amount || 0).toLocaleString('en-IN'),
+                    remark: remark || '—',
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                }, phones, req);
+                console.log(`[WA-Hook] JKL deposit alert sent for Rs.${amount}`);
+            } catch (e) { console.error('[WA-Hook] JKL deposit notify FAILED:', e.message); }
+        })();
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // POST /api/jkl/cashbook/cash-out
 router.post('/cash-out', async (req, res) => {
-    const { amount, remark, date } = req.body;
+    const { amount, remark, date, entityType, entityId, entityName } = req.body;
     try {
-        const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, getCol(BASE_COL, req));
+        const col = getCol(BASE_COL, req);
+        const extraMeta = {
+            entityType: entityType || 'expense',
+            entityId: entityId || 'office_spend',
+            entityName: entityName || 'Office Spend',
+        };
+        const doc = await svc.addEntry(req.orgId, 'cash_out', amount, remark, date, col, extraMeta);
         sheetsService.upsertCashbook(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
+
+        // WhatsApp — notify admin and recipient of cashout
+        ;(async () => {
+            try {
+                const phones = await getCashoutPhones(req, entityType, entityId, entityName);
+                const tplData = {
+                    entityName: entityName || 'Office Spend',
+                    entityType: entityType || 'Expense',
+                    amount: parseFloat(amount || 0).toLocaleString('en-IN'),
+                    remark: remark || '—',
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                };
+                await sendEventNotification('cashout', tplData, phones, req);
+                console.log(`[WA-Hook] JKL Cashout notification dispatched for ${tplData.entityName} (Rs.${tplData.amount})`);
+            } catch (e) { console.error('[WA-Hook] JKL cashout notify FAILED:', e.message); }
+        })();
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -91,6 +147,22 @@ router.post('/cash-out-linked', async (req, res) => {
 
         sheetsService.upsertCashbook(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
         res.status(201).json(doc);
+
+        // WhatsApp — notify admin and recipient of linked cashout
+        ;(async () => {
+            try {
+                const phones = await getCashoutPhones(req, entityType, entityId, entityName);
+                const tplData = {
+                    entityName: entityName || 'N/A',
+                    entityType: entityType || 'N/A',
+                    amount: parseFloat(amount || 0).toLocaleString('en-IN'),
+                    remark: remark || '—',
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                };
+                await sendEventNotification('cashout', tplData, phones, req);
+                console.log(`[WA-Hook] JKL Linked cashout alert dispatched for ${tplData.entityName} (Rs.${tplData.amount})`);
+            } catch (e) { console.error('[WA-Hook] JKL cashout-linked notify FAILED:', e.message); }
+        })();
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 

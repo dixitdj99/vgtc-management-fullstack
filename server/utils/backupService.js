@@ -119,46 +119,24 @@ async function runWeeklyBackup() {
  * Handles real-time backup for a single LR or Voucher entry.
  */
 async function backupEntryToDrive(entryType, data, plantName = PLANTS.SUPER) {
-    console.log(`[Realtime-Backup] Backing up ${entryType} for ${plantName}...`);
-    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-    try {
-        const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-        const plantId = await driveService.getOrCreateFolder(plantName, rootId);
-        
-        // Match the exact same routing as the inline routes!
-        const ext = entryType === 'Voucher' ? 'Voucher' : 'Loading Receipt Individual';
-        const folderId = await driveService.getOrCreateFolder(ext, plantId);
-
-        const fileName = `${entryType}_${data.lrNo || data.id || Date.now()}.pdf`;
-        const localPath = path.join(TEMP_DIR, fileName);
-
-        // Use the dedicated PDF generator that matches the browser print format
-        if (entryType === 'Voucher') {
-            await pdfService.generateVoucherPDF(data, localPath);
-        } else if (entryType === 'Loading_Receipt') {
-            await pdfService.generateLoadingReceiptPDF(data, localPath);
-        } else {
-            await pdfService.generateReceiptPDF(entryType, data, localPath);
-        }
-
-        await driveService.uploadFile(localPath, fileName, folderId);
-        if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-        await driveService.logActivity(`${entryType}_Individual`, 'success', `Entry backed up: ${fileName}`);
-    } catch (e) {
-        console.error('[Realtime-Backup] Failed:', e.message);
-        await driveService.logActivity(`${entryType}_Individual`, 'error', 'Realtime backup failed', e);
+    const { backupLoadingReceipt, backupVoucher } = require('./realtimeBackup');
+    if (entryType === 'Voucher') {
+        return backupVoucher(data, { plant: plantName });
     }
+    return backupLoadingReceipt(data, { plant: plantName });
 }
 
 /**
  * Voucher list backup — detailed table matching the balance sheet columns.
  */
 async function performVoucherListBackup(plantName, vouchers, rootId, dateStr) {
-    const folderId = await driveService.getOrCreateFolder('Voucher', rootId);
-    let fileLabel = typeof dateStr === 'string' && dateStr.includes('LR') ? dateStr : `Vouchers_${dateStr}`;
+    const backupPathUtils = require('./backupPathUtils');
+    const month = backupPathUtils.formatMonthFolder(new Date());
+    const segments = ['Weekly Reports', month];
+    const folderId = await driveService.ensurePath(segments);
 
-    const fileName = `Vouchers_${fileLabel}.pdf`;
+    let fileLabel = typeof dateStr === 'string' && dateStr.includes('LR') ? dateStr : `Vouchers_${dateStr}`;
+    const fileName = `Vouchers_${plantName.replace(/\s+/g, '_')}_${fileLabel}.pdf`;
     const localPath = path.join(TEMP_DIR, fileName);
 
     await pdfService.generateVoucherListPDF(plantName, vouchers, localPath);
@@ -173,7 +151,11 @@ async function performVoucherListBackup(plantName, vouchers, rootId, dateStr) {
  * Helper to handle single module flow: PDF -> Upload -> Cleanup
  */
 async function performModuleBackup(moduleName, headers, rows, rootId, labelStr) {
-    const folderId = await driveService.getOrCreateFolder(moduleName, rootId);
+    const backupPathUtils = require('./backupPathUtils');
+    const month = backupPathUtils.formatMonthFolder(new Date());
+    const segments = ['Weekly Reports', month];
+    const folderId = await driveService.ensurePath(segments);
+
     const fileName = `${moduleName}_${labelStr}.pdf`;
     const localPath = path.join(TEMP_DIR, fileName);
 

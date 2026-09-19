@@ -20,7 +20,7 @@ const localStore = require('../utils/localStore');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
 const auditService = require('../services/auditService');
-const { sendEventNotification, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, sendWhatsAppMessage, lookupVehiclePhone, lookupVehicleInfo, getWhatsAppConfig } = require('../utils/whatsappService');
 
 router.use(requireAuth, tenancyMiddleware);
 
@@ -268,6 +268,98 @@ router.patch('/bulk/due-date', async (req, res, next) => {
 
         res.json({ updated: targets.length, truckNo, dueDate: dueDate || null });
     } catch (err) { next(err); }
+});
+
+/**
+ * POST /api/freight-batches/notify-payout
+ * Sends a detailed WhatsApp payment breakdown to the vehicle owner.
+ * Body: { truckNo, ownerName?, paymentDate, paymentAmount, paymentMethod, vouchers[], periodFrom?, periodTo? }
+ *   vouchers[]: [{ lrNo, voucherNo, date, route, weight, gross, deductions, net }]
+ *
+ * Called by PayModule after clearing a freight payment to share full trip-wise breakdown.
+ */
+router.post('/notify-payout', async (req, res, next) => {
+    try {
+        const {
+            truckNo,
+            ownerName,
+            paymentDate,
+            paymentAmount,
+            paymentMethod,
+            vouchers = [],
+            periodFrom,
+            periodTo,
+            phone,
+            remainingBalance
+        } = req.body;
+
+        if (!truckNo) return res.status(400).json({ error: 'truckNo is required' });
+        if (!paymentAmount) return res.status(400).json({ error: 'paymentAmount is required' });
+
+        const recipientPhone = phone || (await lookupVehiclePhone(truckNo, req));
+        if (!recipientPhone) {
+            return res.status(400).json({ error: 'No phone number found for this vehicle' });
+        }
+
+        const fmtRs = (n) => `Rs.${parseFloat(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        const fmtDate = (d) => {
+            if (!d) return '—';
+            try {
+                const parts = String(d).split('-');
+                if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                return new Date(d).toLocaleDateString('en-IN');
+            } catch (_) { return d; }
+        };
+
+        const totalGross = vouchers.reduce((s, v) => s + (parseFloat(v.gross) || 0), 0);
+        const totalDeductions = vouchers.reduce((s, v) => s + (parseFloat(v.deductions) || 0), 0);
+        const totalNet = vouchers.reduce((s, v) => s + (parseFloat(v.net) || 0), 0);
+
+        const tripLines = vouchers.slice(0, 10).map((v, i) => {
+            const route = v.route || `${v.source || '?'} → ${v.destination || '?'}`;
+            return `${i + 1}. LR #${v.lrNo || '?'} | ${fmtDate(v.date)} | ${route} | Net: ${fmtRs(v.net)}`;
+        });
+        if (vouchers.length > 10) {
+            tripLines.push(`... and ${vouchers.length - 10} more trips`);
+        }
+
+        const periodLabel = (periodFrom && periodTo)
+            ? `${fmtDate(periodFrom)} to ${fmtDate(periodTo)}`
+            : fmtDate(paymentDate);
+
+        const message = [
+            `*VIKAS GOODS TRANSPORT CO.*`,
+            `💰 *FREIGHT PAYMENT SETTLED*`,
+            ``,
+            `*Truck:* ${String(truckNo).toUpperCase()}${ownerName ? ` | *Owner:* ${ownerName}` : ''}`,
+            `*Period:* ${periodLabel}`,
+            `*Trips Settled:* ${vouchers.length} trip${vouchers.length === 1 ? '' : 's'}`,
+            ``,
+            `*— Trip Details —*`,
+            ...tripLines,
+            ``,
+            `*— Payment Summary —*`,
+            `*Gross Freight:* ${fmtRs(totalGross)}`,
+            `*Total Advances:* - ${fmtRs(totalDeductions)}`,
+            `*Net Freight:* ${fmtRs(totalNet)}`,
+            ``,
+            `*Amount Paid:* *${fmtRs(paymentAmount)}*`,
+            `*Method:* ${paymentMethod || 'Cash'}`,
+            `*Date:* ${fmtDate(paymentDate)}`,
+            remainingBalance !== undefined ? `*Outstanding Balance:* ${fmtRs(remainingBalance)}` : '',
+            ``,
+            `_Payment recorded in VGTC Management Portal._`,
+            `_VIKAS GOODS TRANSPORT CO. | Jharli, Jhajjar_`
+        ].filter(l => l !== null && l !== undefined).join('\n');
+
+        await sendWhatsAppMessage(recipientPhone, message, req);
+        console.log(`[Pay-Hook] Payment breakdown sent to ${recipientPhone} for ${truckNo} (${vouchers.length} trips, ${fmtRs(paymentAmount)})`);
+
+        res.json({ ok: true, phone: recipientPhone, truckNo, trips: vouchers.length });
+    } catch (err) {
+        console.error('[Pay-Hook] notify-payout FAILED:', err.message);
+        next(err);
+    }
 });
 
 module.exports = router;

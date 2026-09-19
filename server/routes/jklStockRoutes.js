@@ -45,9 +45,20 @@ router.delete('/additions/:id', async (req, res) => {
     try { 
         await svc.deleteAddition(req.params.id, getCol(SCOL, req)); 
         sheetsService.deleteStockMigo(req.params.id, 'jklakshmi').catch(err => console.error('[Backup Hook] MIGO delete failed:', err.message));
-        res.json({ ok: true }); 
     }
     catch (e) { res.status(404).json({ error: e.message }); }
+});
+
+const { dispatchChallanCreatedNotification, getVehicleChallanBalances } = require('../utils/challanNotificationService');
+
+/* ── Challan Balances ── */
+router.get('/challans/balances', async (req, res) => {
+    try {
+        const data = await getVehicleChallanBalances(req.orgId, req.query.truckNo);
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 /* ── Challans ── */
@@ -60,9 +71,10 @@ router.post('/challans', async (req, res) => {
         const doc = await svc.createChallan(req.orgId, req.body, getCol(CCOL, req), JKL_MATERIALS);
         sheetsService.upsertStockChallan(doc, 'jklakshmi').catch(err => console.error('[Backup Hook] Challan upsert failed:', err.message));
 
-
-
         res.status(201).json(doc);
+
+        // WhatsApp notification to vehicle owner
+        dispatchChallanCreatedNotification(doc, req);
     }
     catch (e) { res.status(400).json({ error: e.message }); }
 });

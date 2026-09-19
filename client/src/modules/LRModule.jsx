@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, Truck, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import StyledAutocomplete from '../components/StyledAutocomplete';
@@ -19,6 +19,7 @@ import { archiveName } from '../utils/archiveDoc';
 import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 import TableScroll from '../components/TableScroll';
 import { fmtDate } from '../utils/format';
+import { useToast } from '../components/Toast';
 
 const PAGE_SIZE = 20;
 
@@ -239,7 +240,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
     module: 'Loading Receipts', kind: 'Documents',
     plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
     name: archiveName('LR', lrNo, base.truckNo, base.date),
-    meta: { lrNo, truckNo: base.truckNo, date: base.date, partyName: base.partyName },
+    meta: { lrNo, truckNo: base.truckNo, date: base.date, partyName: base.partyName, docData: { ...base, lrNo, brand, driverName } },
   };
 
   if (brand === 'jkl') {
@@ -829,6 +830,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               <label>Loading Type</label>
               <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
                 <option value="From Godown">From Godown</option>
+                <option value="Transfer">Transfer</option>
                 <option value="Crossing">Crossing</option>
                 <option value="Direct">Direct (no labour)</option>
               </select>
@@ -912,15 +914,13 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           <ChallanPopup
             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
             selectedChallans={form.usedChallans}
+            targetTruckNo={form.truckNo}
             onClose={() => setShowChalPopup(false)}
             onToggleSelect={(ch) => {
               const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
               if (isSelected) {
                 setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
               } else {
-                if (form.truckNo && ch.truckNo !== form.truckNo) {
-                  if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
-                }
                 setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
               }
             }}
@@ -933,19 +933,33 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [] }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [], targetTruckNo = '' }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
   const [challanSearch, setChallanSearch] = useState('');
 
+  const cleanTargetTruck = String(targetTruckNo || preFill?.truckNo || '').toUpperCase().replace(/\s+/g, '');
+  const [scope, setScope] = useState(cleanTargetTruck ? 'same' : 'all'); // 'same' | 'other' | 'all'
+
+  const sameTruckChallans = cleanTargetTruck
+    ? openChallans.filter(c => String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') === cleanTargetTruck)
+    : [];
+  const otherTruckChallans = cleanTargetTruck
+    ? openChallans.filter(c => String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') !== cleanTargetTruck)
+    : openChallans;
+
+  const currentPool = (cleanTargetTruck && scope === 'same')
+    ? sameTruckChallans
+    : ((cleanTargetTruck && scope === 'other') ? otherTruckChallans : openChallans);
+
   const filteredChallans = challanSearch
-    ? openChallans.filter(c => {
+    ? currentPool.filter(c => {
       const s = challanSearch.toLowerCase();
       return (c.challanNo || '').toLowerCase().includes(s) ||
         (c.truckNo || '').toLowerCase().includes(s) ||
         (c.partyName || '').toLowerCase().includes(s) ||
         (c.destination || '').toLowerCase().includes(s);
     })
-    : openChallans;
+    : currentPool;
 
   // For 'create' tab
   const [saving, setSaving] = useState(false);
@@ -962,7 +976,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
-    truckNo: preFill?.truckNo || '',
+    truckNo: cleanTargetTruck || preFill?.truckNo || '',
     date: preFill?.date || new Date().toISOString().split('T')[0],
     material: preFill?.material || MATERIALS[0],
     quantity: preFill?.quantity || '',
@@ -1013,6 +1027,22 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }
   };
 
+  const handleChallanClick = (c) => {
+    const isOtherTruck = cleanTargetTruck && String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') !== cleanTargetTruck;
+    if (isOtherTruck) {
+      const ok = window.confirm(
+        `Notice: Transfer Challan #${c.challanNo}?\n\n` +
+        `• Registered Vehicle: ${c.truckNo}\n` +
+        `• Loading Vehicle: ${cleanTargetTruck}\n\n` +
+        `This challan will be loaded by ${cleanTargetTruck}, and all freight will be credited to ${cleanTargetTruck}.\n` +
+        `WhatsApp alerts will be dispatched to both vehicle owners.\n\n` +
+        `Do you want to proceed with this transfer?`
+      );
+      if (!ok) return;
+    }
+    onToggleSelect(c);
+  };
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1020,7 +1050,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '560px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+        style={{ width: '94%', maxWidth: '580px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1029,7 +1059,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
             </div>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Select or Create Challan</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>Loading Receipt Attachment</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>
+                {cleanTargetTruck ? `Vehicle: ${cleanTargetTruck}` : 'Loading Receipt Attachment'}
+              </div>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
@@ -1053,6 +1085,45 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
           <AnimatePresence mode="wait">
             {tab === 'select' && (
               <motion.div key="select" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+                {/* Same Vehicle vs Other Vehicles Switcher */}
+                {cleanTargetTruck && (
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setScope('same')}
+                      style={{
+                        flex: 1, padding: '9px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer',
+                        border: scope === 'same' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                        background: scope === 'same' ? 'rgba(99,102,241,0.08)' : 'var(--bg)',
+                        color: scope === 'same' ? 'var(--primary)' : 'var(--text-muted)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      <Truck size={14} /> This Vehicle: {cleanTargetTruck} ({sameTruckChallans.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScope('other')}
+                      style={{
+                        flex: 1, padding: '9px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer',
+                        border: scope === 'other' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                        background: scope === 'other' ? 'rgba(245,158,11,0.1)' : 'var(--bg)',
+                        color: scope === 'other' ? '#d97706' : 'var(--text-muted)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      🔄 Other Vehicles / Transfer ({otherTruckChallans.length})
+                    </button>
+                  </div>
+                )}
+
+                {/* Transfer Banner */}
+                {cleanTargetTruck && scope === 'other' && (
+                  <div style={{ padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '8px', marginBottom: '12px', fontSize: '11px', color: '#b45309', lineHeight: 1.4 }}>
+                    <strong>Transfer Notice:</strong> Selecting another vehicle's challan will attribute all freight to <strong>{cleanTargetTruck}</strong>. WhatsApp alerts will be sent to both vehicle owners.
+                  </div>
+                )}
+
                 {/* Search */}
                 <div style={{ position: 'relative', marginBottom: '12px' }}>
                   <input className="fi" type="text" placeholder="Search by challan no, truck, party..."
@@ -1061,24 +1132,49 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 </div>
 
-                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Open Challans ({filteredChallans.length})</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                  {scope === 'same' ? `Challans for ${cleanTargetTruck}` : (scope === 'other' ? 'Other Vehicle Challans' : 'All Open Challans')} ({filteredChallans.length})
+                </div>
 
                 {filteredChallans.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '13px' }}>No challans found.</div>
+                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    <div>No open challans found {scope === 'same' ? `for ${cleanTargetTruck}` : ''}.</div>
+                    {scope === 'same' && (
+                      <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                        <button type="button" onClick={() => setScope('other')} style={{ padding: '6px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--text)' }}>
+                          🔄 Browse Other Vehicles
+                        </button>
+                        <button type="button" onClick={() => setTab('create')} style={{ padding: '6px 12px', borderRadius: '6px', background: 'var(--primary)', border: 'none', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                          + Create for {cleanTargetTruck}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {filteredChallans.map(c => {
                       const isSelected = selectedChallans.find(sc => sc.challanNo === c.challanNo);
+                      const isOther = cleanTargetTruck && String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') !== cleanTargetTruck;
                       return (
                         <div
                           key={c.id}
-                          onClick={() => onToggleSelect(c)}
-                          style={{ padding: '12px', background: isSelected ? 'rgba(99,102,241,0.06)' : 'var(--bg)', border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s' }}
+                          onClick={() => handleChallanClick(c)}
+                          style={{
+                            padding: '12px',
+                            background: isSelected ? 'rgba(99,102,241,0.06)' : (isOther ? 'rgba(245,158,11,0.03)' : 'var(--bg)'),
+                            border: isSelected ? '2px solid var(--primary)' : (isOther ? '1px dashed #f59e0b' : '1px solid var(--border)'),
+                            borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s'
+                          }}
                         >
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                               <span style={{ fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{c.challanNo}</span>
                               <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 700 }}>{c.truckNo}</span>
+                              {isOther && (
+                                <span style={{ padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#d97706', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>
+                                  🔄 TRANSFER
+                                </span>
+                              )}
                               {isSelected && <span style={{ padding: '2px 6px', background: 'var(--primary)', color: 'white', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
                             </div>
                             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -1289,6 +1385,7 @@ function DeleteConfirm({ row, rows, apiUrl, onClose, onConfirm }) {
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
   // Whoever is logged in signs the receipts they print.
   const { user } = useAuth();
+  const { showToast } = useToast() || {};
   const signedBy = user?.name || user?.username || 'VGTC';
 
   // The module opens on the list. Most visits are to look a receipt up, and the
@@ -1328,6 +1425,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [openChallans, setOpenChallans] = useState([]);
   const [allChallans, setAllChallans] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [rawVehicles, setRawVehicles] = useState([]);
   const [additions, setAdditions] = useState([]);
   const [destinationsList, setDestinationsList] = useState([]);
   useEffect(() => {
@@ -1380,7 +1478,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   };
   const [form, setForm] = useState({
     date: getSticky('lr.date', new Date().toISOString().split('T')[0]),
-    truckNo: '', partyName: '',
+    truckNo: '',
+    driverName: '',
+    driverContact: '',
+    ownerContact: '',
+    ownerName: '',
+    showContactOverride: false,
+    partyName: '',
     destination: '',
     note: '',
     voiceMessageBase64: '',
@@ -1557,12 +1661,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     try {
       const data = (await ax.get(`/vehicles`)).data;
       const list = Array.isArray(data) ? data : [];
+      setRawVehicles(list);
       const formatted = list.map(v => {
         const num = typeof v === 'string' ? v : (v.truckNo || '');
         return {
           label: num,
           value: num,
-          sublabel: typeof v === 'object' ? (v.ownerName || v.ownershipType || '') : ''
+          sublabel: typeof v === 'object' ? (v.ownerName || v.ownershipType || '') : '',
+          raw: v
         };
       }).filter(item => item.value);
       setVehicles(formatted);
@@ -1626,6 +1732,41 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     });
     return m;
   }, [additions, receipts, allChallans, MATERIALS]);
+
+  const matchedVehicle = useMemo(() => {
+    if (!form.truckNo) return null;
+    const clean = normTruck(form.truckNo);
+    return rawVehicles.find(v => normTruck(v.truckNo) === clean) || null;
+  }, [form.truckNo, rawVehicles]);
+
+  const handleTruckChange = (val) => {
+    const cleaned = cleanTruckNo(val);
+    const match = rawVehicles.find(v => normTruck(v.truckNo) === normTruck(cleaned));
+    setForm(f => ({
+      ...f,
+      truckNo: cleaned,
+      driverName: match?.driverName || '',
+      driverContact: match?.driverContact || '',
+      ownerContact: match?.ownerContact || '',
+      ownerName: match?.ownerName || '',
+      showContactOverride: false
+    }));
+  };
+
+  useEffect(() => {
+    const stickyTruck = getSticky('lr.truckNo', '');
+    if (stickyTruck && rawVehicles.length > 0) {
+      handleTruckChange(stickyTruck);
+      rememberSticky('lr.truckNo', '');
+    }
+  }, [rawVehicles]);
+
+  const isVehicleContactComplete = Boolean(
+    matchedVehicle &&
+    matchedVehicle.driverContact &&
+    matchedVehicle.ownerContact &&
+    matchedVehicle.driverName
+  );
 
   const updMat = (i, field, val) => {
     const m = [...form.materials]; m[i] = { ...m[i], [field]: val };
@@ -1799,10 +1940,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         }
       }
 
-      fetchLRData(); fetchChallans();
+      fetchLRData(); fetchChallans(); fetchVehicles();
       clearVoice();
       rememberSticky('lr.date', form.date);
-      setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+      setForm({
+        date: form.date,
+        truckNo: '',
+        driverName: '',
+        driverContact: '',
+        ownerContact: '',
+        ownerName: '',
+        showContactOverride: false,
+        partyName: '',
+        destination: '',
+        fuelStation: '',
+        note: '',
+        voiceMessageBase64: '',
+        usedChallans: [],
+        materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }]
+      });
 
       // POST /lr answers with { lrNo, ids } — a receipt number and the document
       // ids it wrote, NOT the rows themselves. Handing that to the printer as if
@@ -1823,16 +1979,18 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         partyName: m.partyName,
       }));
       printReceipt(printedRows, res.data.lrNo, brand, signedBy, vehicles);
+      if (showToast) {
+        showToast(`✅ Loading Receipt #${res.data.lrNo} created & WhatsApp message sent successfully!`, 'success');
+      }
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
-      // A refused LR number is the clerk's to fix, and the server already says
-      // exactly what is wrong — showing that plainly beats a JSON dump.
-      if (e.response?.status === 409 || e.response?.status === 400) {
-        alert(typeof errDetails === 'string' ? errDetails : JSON.stringify(errDetails));
+      const errMsg = typeof errDetails === 'string' ? errDetails : (errDetails.message || JSON.stringify(errDetails));
+      if (showToast) {
+        showToast(`❌ LR creation / WhatsApp dispatch failed: ${errMsg}`, 'error');
       } else {
-        alert('Error creating receipt: ' + JSON.stringify(errDetails));
+        alert('Error creating receipt: ' + errMsg);
       }
     } finally { setLoading(false); }
   };
@@ -1903,6 +2061,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             vehicles={vehicles.length ? vehicles.map(v => ({ ...v, brandMats: MATERIALS })) : [{ brandMats: MATERIALS }]}
             selectedChallans={form.usedChallans}
             preFill={chalPreFill}
+            targetTruckNo={linkingLrId ? receipts.find(r => r.id === linkingLrId)?.truckNo : form.truckNo}
             partySuggestions={partySuggestions}
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
@@ -1944,23 +2103,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   const remainingNeeded = Math.max(0, parseInt(receipt.totalBags || 0) - alreadyCovered);
                   const toDeduct = Math.min(challanBags, remainingNeeded);
 
-                  const existingBilling = (receipt.billing && receipt.billing !== 'No') ? receipt.billing : '';
-                  const newBilling = existingBilling ? `${existingBilling}, ${ch.challanNo}` : ch.challanNo;
-
-                  // 1. Patch LR billing
-                  await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newBilling });
-
-                  // 2. Sync stock (deduct challan bags from open challan)
-                  let SYNC_API;
-                  if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
-                  else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
-                  else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
-                  else SYNC_API = `${BASE_API}/stock/sync-lr`;
-                  await ax.post(SYNC_API, {
-                    oldChallanNos: '',
-                    newChallanNos: ch.challanNo,
+                  // Call centralized link-challan endpoint (handles LR billing update, transfer record, stock sync, & dual WhatsApp alerts)
+                  await ax.post(`${API}/${linkingLrId}/link-challan`, {
+                    challanNo: ch.challanNo,
+                    quantity: toDeduct,
                     material: receipt.material,
-                    quantity: toDeduct  // only the bags the LR actually still needs
+                    brand
                   });
 
                   fetchLRData(); fetchChallans();
@@ -1977,10 +2125,6 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               if (isSelected) {
                 newUsed = form.usedChallans.filter(c => c.challanNo !== ch.challanNo);
               } else {
-                if (form.truckNo && ch.truckNo !== form.truckNo) {
-                  const ok = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
-                  if (!ok) return;
-                }
                 newUsed = [...form.usedChallans, ch];
               }
 
@@ -2139,7 +2283,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     <label>Truck No. *</label>
                     <StyledAutocomplete
                       value={form.truckNo}
-                      onChange={val => setForm({ ...form, truckNo: cleanTruckNo(val) })}
+                      onChange={handleTruckChange}
                       options={vehicles}
                       uppercase
                       placeholder="ENTER TRUCK NUMBER E.G. HR47G1234"
@@ -2147,6 +2291,119 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     />
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block' }}>Invalid format</span>}
                   </div>
+
+                  {/* Vehicle Contacts Section */}
+                  {form.truckNo && validateTruckNo(form.truckNo) && (
+                    isVehicleContactComplete && !form.showContactOverride ? (
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: 'rgba(16, 185, 129, 0.08)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                          <Check size={15} color="#10b981" />
+                          <span style={{ fontWeight: 700, color: 'var(--text)' }}>
+                            Vehicle Contacts on Record:
+                          </span>
+                          <span style={{ color: 'var(--text-sub)' }}>
+                            Driver: <strong style={{ color: 'var(--text)' }}>{matchedVehicle.driverName || '—'}</strong> ({matchedVehicle.driverContact})
+                          </span>
+                          <span style={{ color: 'var(--text-muted)' }}>•</span>
+                          <span style={{ color: 'var(--text-sub)' }}>
+                            Owner: <strong style={{ color: 'var(--text)' }}>{matchedVehicle.ownerName || '—'}</strong> ({matchedVehicle.ownerContact})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => ({ ...f, showContactOverride: true }))}
+                          style={{
+                            background: 'none',
+                            border: '1px solid rgba(16, 185, 129, 0.4)',
+                            borderRadius: '6px',
+                            color: '#10b981',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Edit Contacts
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        background: 'rgba(245, 158, 11, 0.06)',
+                        border: '1px solid rgba(245, 158, 11, 0.25)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#f59e0b' }}>
+                            <AlertTriangle size={14} color="#f59e0b" />
+                            <span>{matchedVehicle ? `Update Missing Contacts for ${form.truckNo}` : `New Vehicle Contacts (${form.truckNo})`}</span>
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            💾 Automatically saves to vehicle profile & dispatches WhatsApp slips
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                          <div className="field-h">
+                            <label style={{ fontSize: '11px' }}>Driver Name</label>
+                            <input
+                              className="fi"
+                              type="text"
+                              placeholder="e.g. Ramesh Kumar"
+                              value={form.driverName || ''}
+                              onChange={e => setForm(f => ({ ...f, driverName: e.target.value }))}
+                            />
+                          </div>
+                          <div className="field-h">
+                            <label style={{ fontSize: '11px' }}>Driver Mobile / WhatsApp</label>
+                            <input
+                              className="fi"
+                              type="tel"
+                              placeholder="10-digit mobile"
+                              value={form.driverContact || ''}
+                              onChange={e => setForm(f => ({ ...f, driverContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                            />
+                          </div>
+                          <div className="field-h">
+                            <label style={{ fontSize: '11px' }}>Owner Mobile / WhatsApp</label>
+                            <input
+                              className="fi"
+                              type="tel"
+                              placeholder="10-digit mobile"
+                              value={form.ownerContact || ''}
+                              onChange={e => setForm(f => ({ ...f, ownerContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                            />
+                          </div>
+                          {!matchedVehicle && (
+                            <div className="field-h">
+                              <label style={{ fontSize: '11px' }}>Owner Name</label>
+                              <input
+                                className="fi"
+                                type="text"
+                                placeholder="e.g. Suresh Transporter"
+                                value={form.ownerName || ''}
+                                onChange={e => setForm(f => ({ ...f, ownerName: e.target.value }))}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
                   <div className="field-h">
                     <label><User size={11} /> Party Name</label>
                     <StyledAutocomplete
@@ -2254,6 +2511,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <label>Loading</label>
                         <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
                           <option value="From Godown">From Godown</option>
+                          <option value="Transfer">Transfer</option>
                           <option value="Crossing">Crossing</option>
                           <option value="Direct">Direct (no labour)</option>
                         </select>
