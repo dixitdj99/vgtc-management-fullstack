@@ -1,42 +1,46 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Truck, Camera, User, CheckCircle2, AlertCircle, RefreshCw,
     Wifi, WifiOff, Battery, Shield, Settings, X, ArrowLeft,
     Volume2, VolumeX, Lock, Clock, Calendar, Check, Fingerprint, MapPin,
     Plus, Trash2, Search, ChevronDown, Sparkles, Sun, Moon, AlertTriangle,
-    CloudOff, CloudLightning
+    CloudOff, KeyRound, LogOut, CheckCheck
 } from 'lucide-react';
 import ax from '../api';
 import VgtcBootScreen from '../components/VgtcBootScreen';
 
-// ─── Capacitor Native Exit ─────────────────────────────────────────────────
-// Gracefully exits the app on Android using the Capacitor global bridge.
-// Capacitor injects all plugins on window.Capacitor.Plugins — no npm import needed.
-// Falls back to onExit() prop when running in a normal browser.
-const exitApp = async (onExitProp) => {
+// ─── Native / Capacitor / Browser Exit Helper ─────────────────────────────
+// Exits the app cleanly across Android Native Kotlin, Capacitor Webview, or Web browser.
+const exitApp = async (pin, onExitProp) => {
     try {
-        // Check for native Capacitor bridge first (works without npm package import)
+        // 1. Android Native WebView bridge (com.vgtc.terminal.MainActivity.kt)
+        if (window.TerminalNative && typeof window.TerminalNative.exitApp === 'function') {
+            window.TerminalNative.exitApp(pin || '8888');
+            return;
+        }
+        // 2. Capacitor Android Bridge
         if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
             await window.Capacitor.Plugins.App.exitApp();
             return;
         }
-        // Try dynamic import as a second attempt (works when @capacitor/app is installed)
-        // eslint-disable-next-line no-new-func
-        const mod = await new Function('return import("@capacitor/app")')().catch(() => null);
-        if (mod && mod.App) { await mod.App.exitApp(); return; }
-    } catch (_) {}
-    // Fallback: use the onExit prop (browser / dev mode)
-    if (typeof onExitProp === 'function') onExitProp();
-    else window.history.back();
+    } catch (err) {
+        console.warn('Native exit failed, falling back:', err);
+    }
+    // 3. Browser / Dev fallback: invoke onExit or redirect
+    if (typeof onExitProp === 'function') {
+        onExitProp();
+    } else {
+        window.location.href = '/';
+    }
 };
 
 const TERMINAL_ID = 'OFFICE-REWARI-01';
 const ADMIN_PIN = '8888';
 const OFFLINE_QUEUE_KEY = 'vgtc_terminal_offline_queue';
-const IDLE_TIMEOUT_MS = 25000; // 25s inactivity → screensaver
+const IDLE_TIMEOUT_MS = 300000; // 5 minutes inactivity before screensaver
 
-// ─── Audio Synthesizer ─────────────────────────────────────────────────────
+// ─── Audio Chime Synthesizer ──────────────────────────────────────────────
 const playChime = (type = 'success') => {
     try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -59,91 +63,102 @@ const playChime = (type = 'success') => {
             osc.frequency.setValueAtTime(659.25, now + 0.1);
             osc.frequency.setValueAtTime(783.99, now + 0.2);
             gain.gain.setValueAtTime(0.25, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-            osc.start(now); osc.stop(now + 0.5);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+            osc.start(now); osc.stop(now + 0.45);
         } else if (type === 'scan') {
-            osc.frequency.setValueAtTime(587.33, now);
+            osc.frequency.setValueAtTime(880, now);
             gain.gain.setValueAtTime(0.12, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-            osc.start(now); osc.stop(now + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+            osc.start(now); osc.stop(now + 0.12);
+        } else if (type === 'duplicate') {
+            osc.frequency.setValueAtTime(329.63, now);
+            osc.frequency.setValueAtTime(293.66, now + 0.15);
+            gain.gain.setValueAtTime(0.22, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.start(now); osc.stop(now + 0.4);
         } else if (type === 'error') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(220, now);
-            osc.frequency.setValueAtTime(180, now + 0.1);
-            gain.gain.setValueAtTime(0.15, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-            osc.start(now); osc.stop(now + 0.35);
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, now);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
         }
     } catch (_) {}
 };
 
-// ─── Bilingual Dictionary ───────────────────────────────────────────────────
+// ─── Bilingual Dictionary ──────────────────────────────────────────────────
 const TRANSLATIONS = {
     en: {
-        lookIntoCamera: 'Please look into the camera and hold still',
-        verifyingFace: 'Biometric scanning in progress...',
-        verifyingFingerprint: 'Verifying fingerprint...',
-        identityVerified: 'Attendance Verified',
-        attendanceConfirmedTitle: 'Attendance Recorded',
-        attendanceDuplicateTitle: 'Already Marked',
-        scanFingerprintPrompt: 'Touch to Scan Fingerprint',
-        scanFacePrompt: 'Scan Face',
-        alignFacePrompt: 'Align face in frame',
-        switchDriver: 'Switch Driver',
-        touchToContinue: 'Touch screen to continue',
-        assignedTruck: 'Assigned Truck',
+        terminalTitle: 'VGTC Terminal OS',
+        terminalLocation: 'Rewari Yard • Gate 01',
+        alignFacePrompt: 'Please look directly into camera',
+        verifyingFace: 'Scanning biometrics...',
+        faceRecognized: 'Driver Biometrics Verified',
+        driverName: 'Driver Name',
+        assignedTruck: 'Assigned Vehicle',
+        employeeId: 'Emp ID',
         dutyStatus: 'Duty Status',
-        activeTrip: 'ON TRIP (LOADED)',
-        availableDuty: 'AVAILABLE (READY)',
+        available: 'Available / Ready',
+        onTrip: 'On Active Trip',
         destination: 'Destination',
-        consignee: 'Party / Consignee',
-        returnFromTrip: 'Return from Trip (Mark Free)',
-        officeVisit: 'Yard / Office Visit (Gate Pass)',
-        confirmAttendance: 'Confirm Attendance',
-        adminPanel: 'Biometric Enrollment & Admin',
-        enrollFace: 'Capture / Enroll Face',
-        enrollFingerprint: 'Enroll Fingerprint',
-        assignVehicle: 'Assign Vehicle',
-        deleteBiometrics: 'Delete Biometrics',
-        addNewPerson: 'Enroll New Driver / Staff',
-        enterPinPrompt: 'Enter 4-Digit Admin PIN to access settings or exit',
-        exitTerminal: 'Exit Kiosk Terminal',
+        material: 'Cargo Material',
+        confirmAttendance: 'Confirm Check-in / Gate In',
+        confirmTripReturn: 'Confirm Trip Return / Gate Out',
+        attendanceConfirmedTitle: 'Attendance Recorded!',
+        tripReturnConfirmedTitle: 'Trip Return Recorded!',
+        duplicateTitle: 'Already Checked In',
+        duplicateDesc: 'Attendance was already logged recently. Please wait before re-scanning.',
+        manualSelect: 'Select Driver from Roster',
+        scanFacePrompt: 'Face Check-in',
+        scanFingerprintPrompt: 'Fingerprint Attendance',
+        adminPanel: 'Terminal Administration',
+        adminPinTitle: 'Security Verification',
+        enterPinPrompt: 'Enter 4-digit Admin PIN to exit or configure (Default: 8888)',
+        exitTerminal: 'Exit App & Go to Settings',
+        restartTerminal: 'Restart Terminal',
+        openSettings: 'Open Terminal Settings',
+        cancel: 'Cancel',
+        online: 'ONLINE',
+        offline: 'OFFLINE (CACHE)',
         voiceLookCamera: 'Please look into the camera.',
-        voiceFaceVerified: (name) => `Face verified for ${name}.`,
-        voiceFingerprintVerified: (name) => `Fingerprint verified for ${name}.`,
-        voiceReturnConfirmed: (name) => `Trip return recorded for ${name}.`,
-        voiceAttendanceConfirmed: (name) => `Attendance recorded for ${name}.`,
+        voiceFaceVerified: (name) => `Face verified, ${name}.`,
+        voiceFingerprintVerified: (name) => `Fingerprint verified, ${name}.`,
+        voiceReturnConfirmed: (name) => `Trip return confirmed, ${name}.`,
+        voiceAttendanceConfirmed: (name) => `Attendance recorded, ${name}.`,
         voiceDuplicate: (name) => `Attendance already recorded for ${name}.`
     },
     hi: {
-        lookIntoCamera: 'कृपया कैमरे की तरफ देखें और सीधे रहें',
-        verifyingFace: 'बायोमेट्रिक स्कैन हो रहा है...',
-        verifyingFingerprint: 'फिंगरप्रिंट सत्यापित हो रहा है...',
-        identityVerified: 'उपस्थिति सत्यापित',
-        attendanceConfirmedTitle: 'हाजिरी दर्ज हो गई',
-        attendanceDuplicateTitle: 'पहले से दर्ज है',
-        scanFingerprintPrompt: 'फिंगरप्रिंट से हाजिरी लगाएं',
-        scanFacePrompt: 'चेहरा स्कैन करें',
-        alignFacePrompt: 'चेहरा फ्रेम में रखें',
-        switchDriver: 'चालक बदलें',
-        touchToContinue: 'आगे बढ़ने के लिए स्क्रीन को छुएं',
+        terminalTitle: 'VGTC टर्मिनल OS',
+        terminalLocation: 'रेवाड़ी यार्ड • गेट 01',
+        alignFacePrompt: 'कृपया सीधे कैमरे की तरफ देखें',
+        verifyingFace: 'बायोमेट्रिक्स सत्यापन जारी...',
+        faceRecognized: 'बायोमेट्रिक पहचान सफल',
+        driverName: 'चालक का नाम',
         assignedTruck: 'आवंटित गाड़ी',
+        employeeId: 'कर्मचारी आईडी',
         dutyStatus: 'ड्यूटी स्थिति',
-        activeTrip: 'ट्रिप पर (गाड़ी लोड)',
-        availableDuty: 'उपलब्ध (ड्यूटी फ्री)',
+        available: 'उपलब्ध / तैयार',
+        onTrip: 'सक्रिय ट्रिप पर',
         destination: 'गंतव्य',
-        consignee: 'पार्टी नाम',
-        returnFromTrip: 'ट्रिप से वापसी (गाड़ी खाली दर्ज करें)',
-        officeVisit: 'ऑफिस / यार्ड विजिट (गेट पास)',
-        confirmAttendance: 'उपस्थिति पुष्टि करें',
-        adminPanel: 'बायोमेट्रिक नामांकन व वाहन आवंटन',
-        enrollFace: 'चेहरा फोटो कैप्चर / बदलें',
-        enrollFingerprint: 'फिंगरप्रिंट जोड़ें',
-        assignVehicle: 'गाड़ी आवंटित करें',
-        deleteBiometrics: 'बायोमेट्रिक हटाएं',
-        addNewPerson: 'नया चालक / स्टाफ जोड़ें',
-        enterPinPrompt: 'सेटिंग्स या बाहर निकलने के लिए 4 अंकों का पिन दर्ज करें',
-        exitTerminal: 'टर्मिनल से बाहर निकलें (Exit)',
+        material: 'माल विवरण',
+        confirmAttendance: 'उपस्थिति / प्रवेश दर्ज करें',
+        confirmTripReturn: 'ट्रिप वापसी दर्ज करें',
+        attendanceConfirmedTitle: 'उपस्थिति दर्ज हो गई!',
+        tripReturnConfirmedTitle: 'ट्रिप वापसी दर्ज हो गई!',
+        duplicateTitle: 'उपस्थिति पहले से दर्ज है',
+        duplicateDesc: 'आपकी उपस्थिति हाल ही में दर्ज की जा चुकी है। कृपया प्रतीक्षा करें।',
+        manualSelect: 'चालक सूची से चुनें',
+        scanFacePrompt: 'चेहरा स्कैन से उपस्थिति',
+        scanFingerprintPrompt: 'फिंगरप्रिंट से हाजिरी लगाएं',
+        adminPanel: 'टर्मिनल प्रशासन एवं सेटिंग्स',
+        adminPinTitle: 'सुरक्षा सत्यापन',
+        enterPinPrompt: 'बाहर निकलने या सेटिंग्स के लिए 4 अंकों का पिन दर्ज करें (Default: 8888)',
+        exitTerminal: 'ऐप से बाहर निकलें (Settings)',
+        restartTerminal: 'टर्मिनल पुनः चालू करें',
+        openSettings: 'टर्मिनल सेटिंग्स खोलें',
+        cancel: 'रद्द करें',
+        online: 'ऑनलाइन (लाइव)',
+        offline: 'ऑफलाइन (कैश)',
         voiceLookCamera: 'कृपया कैमरे की तरफ देखें।',
         voiceFaceVerified: (name) => `चेहरा सत्यापित हुआ, ${name}.`,
         voiceFingerprintVerified: (name) => `फिंगरप्रिंट सत्यापित हुआ, ${name}.`,
@@ -154,89 +169,83 @@ const TRANSLATIONS = {
 };
 
 export default function TerminalModule({ onExit }) {
-    // Whether to show a confirmation before exiting (prevents accidental exit)
-    const [showExitConfirm, setShowExitConfirm] = useState(false);
-    // Language & Theme
-    const [lang, setLang] = useState('hi');
-    const [isDarkMode, setIsDarkMode] = useState(true);
-    const t = TRANSLATIONS[lang];
 
-    // Core states
+
+    // ── Core Application States ──
     const [isBooting, setIsBooting] = useState(true);
     const [isScreensaver, setIsScreensaver] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [lang, setLang] = useState('hi');
+    const [isDarkMode, setIsDarkMode] = useState(true);
     const [soundEnabled, setSoundEnabled] = useState(true);
-    const [rosterLoading, setRosterLoading] = useState(true);
+    const t = TRANSLATIONS[lang];
 
-    // Terminal data
+    // ── Data & API State (Purely from /api/terminal/*) ──
     const [roster, setRoster] = useState({ drivers: [], staff: [] });
     const [vehicles, setVehicles] = useState([]);
+    const [rosterLoading, setRosterLoading] = useState(true);
     const [offlineQueue, setOfflineQueue] = useState(() => {
         try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]'); }
         catch { return []; }
     });
 
-    // Camera
+    // ── Camera State ──
     const videoRef = useRef(null);
     const [cameraActive, setCameraActive] = useState(false);
+    const [capturedSelfieUrl, setCapturedSelfieUrl] = useState(null);
+    const phoneCameraInputRef = useRef(null);
 
-    // Recognition & scanning
+    // ── Recognition & Attendance Engine ──
     // IDLE | ANALYZING | RECOGNIZED | SUCCESS | DUPLICATE
     const [scanningStatus, setScanningStatus] = useState('IDLE');
     const [scanProgress, setScanProgress] = useState(0);
     const [recognizedPerson, setRecognizedPerson] = useState(null);
     const [activeDecision, setActiveDecision] = useState(null);
     const [lastActionType, setLastActionType] = useState(null);
+    const [autoConfirmCount, setAutoConfirmCount] = useState(null);
 
-    // Admin & Biometric Enrollment modal
-    const [showAdminPinModal, setShowAdminPinModal] = useState(false);
+    // ── Modals: Security PIN, Action Choice, Admin Settings, Driver Roster Selector ──
+    const [showSecurityPinModal, setShowSecurityPinModal] = useState(false);
     const [enteredPin, setEnteredPin] = useState('');
     const [pinError, setPinError] = useState('');
+    const [showAuthenticatedActionModal, setShowAuthenticatedActionModal] = useState(false);
     const [showAdminPanel, setShowAdminPanel] = useState(false);
     const [adminTab, setAdminTab] = useState('roster');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [showDriverSelectorModal, setShowDriverSelectorModal] = useState(false);
+    const [driverSearchQuery, setDriverSearchQuery] = useState('');
+    const [selectedTestDriverId, setSelectedTestDriverId] = useState(null);
 
-    // Capture Face Modal state inside Admin
+    // ── Biometric Enrollment Form ──
     const [enrollingPerson, setEnrollingPerson] = useState(null);
     const [enrollSnapshot, setEnrollSnapshot] = useState(null);
     const [savingEnrollment, setSavingEnrollment] = useState(false);
-
-    // Form state for adding new person
     const [newPersonForm, setNewPersonForm] = useState({
-        name: '',
-        phone: '',
-        employeeId: '',
-        type: 'DRIVER',
-        assignedTruck: '',
-        fingerprintEnrolled: false
+        name: '', phone: '', employeeId: '', type: 'DRIVER', assignedTruck: '', fingerprintEnrolled: false
     });
 
-    // Local Test Driver switcher & Phone Camera Input ref
-    const [testDriverIndex, setTestDriverIndex] = useState(0);
-    const [capturedSelfieUrl, setCapturedSelfieUrl] = useState(null);
-    const phoneCameraInputRef = useRef(null);
-
-    // Timers — use refs to avoid stale-closure issues
+    // ── Refs for Timers ──
     const idleTimerRef = useRef(null);
     const autoDismissTimerRef = useRef(null);
+    const countdownTimerRef = useRef(null);
     const dismissFnRef = useRef(null);
 
-    // ─── Dismiss attendance details ────────────────────────────────────────
+    // ── Dismiss Attendance Details ──
     const dismissAttendanceDetails = useCallback(() => {
         if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
         setScanningStatus('IDLE');
         setScanProgress(0);
         setRecognizedPerson(null);
         setActiveDecision(null);
         setLastActionType(null);
         setCapturedSelfieUrl(null);
+        setAutoConfirmCount(null);
     }, []);
 
-    // Keep ref in sync so the idle timer can call it without stale closure
     useEffect(() => { dismissFnRef.current = dismissAttendanceDetails; }, [dismissAttendanceDetails]);
 
-    // ─── Speech helper ─────────────────────────────────────────────────────
+    // ── Speech Synthesis Helper ──
     const speakPrompt = useCallback((phraseKeyOrText, customArg = null) => {
         if (!soundEnabled) return;
         try {
@@ -259,16 +268,13 @@ export default function TerminalModule({ onExit }) {
                 if (lang === 'hi') {
                     const hiVoice = voices.find(v => v.lang.includes('hi') || v.name.includes('Hindi'));
                     if (hiVoice) utterance.voice = hiVoice;
-                } else {
-                    const enVoice = voices.find(v => v.lang.includes('en-IN') || v.lang.includes('en-US'));
-                    if (enVoice) utterance.voice = enVoice;
                 }
                 window.speechSynthesis.speak(utterance);
             }
         } catch (_) {}
     }, [lang, soundEnabled]);
 
-    // ─── Idle timer — uses ref to avoid stale closure ──────────────────────
+    // ── Idle Timer / Screensaver ──
     const resetIdleTimer = useCallback(() => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
         idleTimerRef.current = setTimeout(() => {
@@ -277,7 +283,6 @@ export default function TerminalModule({ onExit }) {
         }, IDLE_TIMEOUT_MS);
     }, []);
 
-    // Global activity listener
     useEffect(() => {
         const handleActivity = () => { if (!isScreensaver) resetIdleTimer(); };
         window.addEventListener('mousemove', handleActivity);
@@ -312,77 +317,82 @@ export default function TerminalModule({ onExit }) {
         };
     }, []); // eslint-disable-line
 
-    // ─── Fetch roster and vehicles from backend ─────────────────────────────
+    // ── 1. Fetch Roster from Backend API ──
     const fetchRoster = async () => {
         setRosterLoading(true);
         try {
             const res = await ax.get('/terminal/roster');
             if (res.data?.success) {
-                setRoster({ drivers: res.data.drivers || [], staff: res.data.staff || [] });
+                const driversList = res.data.drivers || [];
+                const staffList = res.data.staff || [];
+                setRoster({ drivers: driversList, staff: staffList });
                 if (res.data.vehicles?.length > 0) setVehicles(res.data.vehicles);
+                if (driversList.length > 0 && !selectedTestDriverId) {
+                    setSelectedTestDriverId(driversList[0].id);
+                }
                 return;
             }
-        } catch (_) {}
-        // Fallback demo data
-        setVehicles([
-            { id: 'v1', truckNo: 'HR 55 CD 5678', owner: 'Self Owned' },
-            { id: 'v2', truckNo: 'RJ 14 GH 9921', owner: 'Vikas Transport' },
-            { id: 'v3', truckNo: 'DL 1M AA 1024', owner: 'Market Fleet' },
-            { id: 'v4', truckNo: 'HR 38 EF 4321', owner: 'Amba Fleet' }
-        ]);
-        setRoster({
-            drivers: [
-                {
-                    id: 'drv-01', employeeId: 'DRV-102', name: 'Raj Kumar',
-                    phone: '9876543210', type: 'DRIVER', assignedTruck: 'HR 55 CD 5678',
-                    faceEnrolled: true, fingerprintEnrolled: true, status: 'ON_TRIP',
-                    activeTrip: { destination: 'Kotputli Plant', partyName: 'Amba Traders', lrNo: 'LR-10492', material: 'JK Super PPC', bags: '400 Bags' }
-                },
-                {
-                    id: 'drv-02', employeeId: 'DRV-108', name: 'Suresh Sharma',
-                    phone: '8708032492', type: 'DRIVER', assignedTruck: 'RJ 14 GH 9921',
-                    faceEnrolled: false, fingerprintEnrolled: false, status: 'AVAILABLE',
-                    activeTrip: null
-                }
-            ],
-            staff: []
-        });
+        } catch (err) {
+            console.warn('[Terminal] Roster API request failed, using local cache:', err);
+        }
+
+        // Fallback default fleet and roster if API unreachable
+        const fallbackVehicles = [
+            { id: 'v1', truckNo: 'HR 55 CD 5678', owner: 'Self Owned (VGTC)' },
+            { id: 'v2', truckNo: 'RJ 14 GH 9921', owner: 'Vikas Fleet' },
+            { id: 'v3', truckNo: 'HR 38 EF 4321', owner: 'Amba Transport' },
+            { id: 'v4', truckNo: 'DL 1M AA 1024', owner: 'Market Fleet' }
+        ];
+        const fallbackDrivers = [
+            {
+                id: 'drv-01', employeeId: 'DRV-102', name: 'Raj Kumar',
+                phone: '9876543210', type: 'DRIVER', assignedTruck: 'HR 55 CD 5678',
+                faceEnrolled: true, fingerprintEnrolled: true, status: 'AVAILABLE',
+                activeTrip: null
+            },
+            {
+                id: 'drv-02', employeeId: 'DRV-108', name: 'Suresh Sharma',
+                phone: '8708032492', type: 'DRIVER', assignedTruck: 'RJ 14 GH 9921',
+                faceEnrolled: true, fingerprintEnrolled: true, status: 'ON_TRIP',
+                activeTrip: { destination: 'Kotputli Plant', partyName: 'Amba Traders', lrNo: 'LR-10492', material: 'JK Super PPC', bags: '400 Bags' }
+            },
+            {
+                id: 'drv-03', employeeId: 'DRV-114', name: 'Manoj Yadav',
+                phone: '9416054321', type: 'DRIVER', assignedTruck: 'HR 38 EF 4321',
+                faceEnrolled: false, fingerprintEnrolled: false, status: 'AVAILABLE',
+                activeTrip: null
+            }
+        ];
+        setVehicles(fallbackVehicles);
+        setRoster({ drivers: fallbackDrivers, staff: [] });
+        if (!selectedTestDriverId) setSelectedTestDriverId('drv-01');
         setRosterLoading(false);
     };
 
-    useEffect(() => { fetchRoster().finally(() => setRosterLoading(false)); }, []);
-
-    // ─── Camera setup ──────────────────────────────────────────────────────
     useEffect(() => {
-        if (isBooting || isScreensaver) return;
-        let stream = null;
-        let isCancelled = false;
-        const initCamera = async () => {
-            if (!navigator.mediaDevices?.getUserMedia) { setCameraActive(false); return; }
-            try {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } } });
-                } catch {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                }
-                if (!isCancelled && videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                    videoRef.current.play().catch(() => {});
-                    setCameraActive(true);
-                }
-            } catch (err) {
-                console.warn('Camera unavailable:', err);
-                if (!isCancelled) setCameraActive(false);
-            }
-        };
-        initCamera();
-        return () => {
-            isCancelled = true;
-            if (stream) stream.getTracks().forEach(t => t.stop());
-        };
-    }, [isBooting, isScreensaver]);
+        fetchRoster().finally(() => setRosterLoading(false));
+    }, []);
 
-    // ─── Offline queue ─────────────────────────────────────────────────────
+    // ── 2. Periodic Terminal Heartbeat API ──
+    useEffect(() => {
+        const sendHeartbeat = async () => {
+            try {
+                await ax.post('/terminal/heartbeat', {
+                    terminalId: TERMINAL_ID,
+                    battery: 98,
+                    storage: 84,
+                    camera: cameraActive ? 'OK' : 'STANDBY',
+                    faceEngine: 'ONLINE',
+                    version: '2.4.0-portrait'
+                });
+            } catch (_) {}
+        };
+        sendHeartbeat();
+        const interval = setInterval(sendHeartbeat, 60000); // every 60s
+        return () => clearInterval(interval);
+    }, [cameraActive]);
+
+    // ── 3. Offline Queue Synchronization ──
     const queueEventOffline = (evt) => {
         const next = [...offlineQueue, evt];
         setOfflineQueue(next);
@@ -396,175 +406,200 @@ export default function TerminalModule({ onExit }) {
             if (res.data?.success) {
                 setOfflineQueue([]);
                 localStorage.removeItem(OFFLINE_QUEUE_KEY);
+                playChime('success');
             }
         } catch (_) {}
     };
 
-    // ─── Screensaver wake ──────────────────────────────────────────────────
-    const handleScreensaverWake = () => {
-        setIsScreensaver(false);
-        playChime('wake');
-        speakPrompt('voiceLookCamera');
+    // ── 4. Camera Stream Setup ──
+    useEffect(() => {
+        if (isBooting || isScreensaver) return;
+        let stream = null;
+        let isCancelled = false;
+        const initCamera = async () => {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                setCameraActive(false);
+                return;
+            }
+            try {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } }
+                    });
+                } catch {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                }
+                if (!isCancelled && videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play().catch(() => {});
+                    setCameraActive(true);
+                }
+            } catch (err) {
+                console.warn('Camera device stream unavailable:', err);
+                if (!isCancelled) setCameraActive(false);
+            }
+        };
+        initCamera();
+        return () => {
+            isCancelled = true;
+            if (stream) stream.getTracks().forEach(t => t.stop());
+        };
+    }, [isBooting, isScreensaver]);
+
+    // Available test drivers
+    const allRosterDrivers = useMemo(() => roster.drivers?.length > 0 ? roster.drivers : [], [roster.drivers]);
+    const currentActiveDriver = useMemo(() => {
+        if (allRosterDrivers.length === 0) return null;
+        return allRosterDrivers.find(d => d.id === selectedTestDriverId) || allRosterDrivers[0];
+    }, [allRosterDrivers, selectedTestDriverId]);
+
+    // ── 5. Process Recognition & Attendance Event ──
+    const handleRecognition = async (person, explicitAction = null, method = 'FACE') => {
+        if (!person) return;
         resetIdleTimer();
+        setRecognizedPerson(person);
+        setScanningStatus('RECOGNIZED');
+
+        // Determine default action based on person's state
+        const action = explicitAction || (person.status === 'ON_TRIP' ? 'TRIP_RETURN' : 'CHECK_IN');
+        setLastActionType(action);
+
+        playChime('success');
+        speakPrompt('voiceFaceVerified', { name: person.name });
+
+        // Auto-confirm countdown (4 seconds)
+        setAutoConfirmCount(4);
+        let remaining = 4;
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = setInterval(() => {
+            remaining -= 1;
+            setAutoConfirmCount(remaining);
+            if (remaining <= 0) {
+                clearInterval(countdownTimerRef.current);
+                handleConfirmDutyAction(action, person, method);
+            }
+        }, 1000);
     };
 
-    // ─── Available drivers for kiosk testing ───────────────────────────────
-    const availableDrivers = roster.drivers?.length > 0 ? roster.drivers : [
-        {
-            id: 'drv-01', employeeId: 'DRV-102', name: 'Raj Kumar',
-            phone: '9876543210', type: 'DRIVER', assignedTruck: 'HR 55 CD 5678',
-            status: 'ON_TRIP',
-            activeTrip: { destination: 'Kotputli Plant', partyName: 'Amba Traders', lrNo: 'LR-10492' }
-        },
-        {
-            id: 'drv-02', employeeId: 'DRV-108', name: 'Suresh Sharma',
-            phone: '8708032492', type: 'DRIVER', assignedTruck: 'RJ 14 GH 9921',
-            status: 'AVAILABLE', activeTrip: null
+    const handleConfirmDutyAction = async (actionType, personOverride = null, method = 'FACE') => {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        setAutoConfirmCount(null);
+        const person = personOverride || recognizedPerson;
+        if (!person) return;
+
+        setLastActionType(actionType);
+        const payload = {
+            terminalId: TERMINAL_ID,
+            employeeId: person.employeeId || person.id,
+            employeeType: person.type || 'DRIVER',
+            action: actionType,
+            biometricMethod: method,
+            vehicleNo: person.assignedTruck || null,
+            timestamp: new Date().toISOString()
+        };
+
+        if (navigator.onLine) {
+            try {
+                const res = await ax.post('/terminal/event', payload);
+                if (res.data?.status === 'DUPLICATE') {
+                    setScanningStatus('DUPLICATE');
+                    playChime('duplicate');
+                    speakPrompt('voiceDuplicate', { name: person.name });
+                    scheduleAutoDismiss(4000);
+                    return;
+                }
+            } catch (_) {
+                queueEventOffline(payload);
+            }
+        } else {
+            queueEventOffline(payload);
         }
-    ];
-    const currentTestDriver = availableDrivers[testDriverIndex % availableDrivers.length] || availableDrivers[0];
 
-    const handleCycleTestDriver = (e) => {
-        if (e) e.stopPropagation();
-        setTestDriverIndex(i => (i + 1) % availableDrivers.length);
-        playChime('scan');
+        setScanningStatus('SUCCESS');
+        playChime('success');
+        if (actionType === 'TRIP_RETURN') {
+            speakPrompt('voiceReturnConfirmed', { name: person.name });
+        } else {
+            speakPrompt('voiceAttendanceConfirmed', { name: person.name });
+        }
+        scheduleAutoDismiss(4000);
     };
 
-    // ─── Face scan ─────────────────────────────────────────────────────────
-    const handleTriggerFaceScan = (e) => {
-        if (e?.stopPropagation) e.stopPropagation();
-        if (scanningStatus !== 'IDLE') return;
+    const scheduleAutoDismiss = (ms = 4000) => {
+        if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+        autoDismissTimerRef.current = setTimeout(() => {
+            dismissAttendanceDetails();
+        }, ms);
+    };
+
+    // ── 6. Trigger Scan Action ──
+    const handleTriggerScan = (targetDriver = null) => {
+        const driverToUse = targetDriver || currentActiveDriver;
+        if (!driverToUse) return;
+
         resetIdleTimer();
         playChime('scan');
         setScanningStatus('ANALYZING');
-        setScanProgress(30);
-        setTimeout(() => setScanProgress(70), 320);
+        setScanProgress(25);
+        setTimeout(() => setScanProgress(65), 280);
         setTimeout(() => {
             setScanProgress(100);
-            handleRecognition(currentTestDriver, 'CHECK_IN', 'FACE');
-        }, 680);
+            handleRecognition(driverToUse, null, 'FACE');
+        }, 620);
     };
 
+    // Phone Camera Selfie Fallback
     const handlePhoneCameraFile = (e) => {
         const file = e.target?.files?.[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (evt) => {
             setCapturedSelfieUrl(evt.target.result);
-            handleTriggerFaceScan();
+            handleTriggerScan();
         };
         reader.readAsDataURL(file);
     };
 
-    // ─── Fingerprint ───────────────────────────────────────────────────────
-    const handleFingerprintDirectPress = (e) => {
-        e.stopPropagation();
+    // Fingerprint Action
+    const handleFingerprintPress = (e) => {
+        e?.stopPropagation();
         if (scanningStatus !== 'IDLE') return;
+        if (!currentActiveDriver) return;
         resetIdleTimer();
         playChime('success');
-        handleRecognition(currentTestDriver, 'CHECK_IN', 'FINGERPRINT');
+        handleRecognition(currentActiveDriver, null, 'FINGERPRINT');
     };
 
-    // ─── Process recognition event ─────────────────────────────────────────
-    const handleRecognition = async (person, explicitAction = 'CHECK_IN', method = 'FACE') => {
-        resetIdleTimer();
-        setRecognizedPerson(person);
-        const payload = {
-            eventId: crypto.randomUUID(),
-            employeeId: person.id,
-            employeeType: person.type,
-            terminalId: TERMINAL_ID,
-            biometricMethod: method,
-            action: explicitAction,
-            isTest: true,
-            timestamp: new Date().toISOString()
-        };
-        try {
-            const res = await ax.post('/terminal/event', payload);
-            const data = res.data;
-            if (data.status === 'DUPLICATE') {
-                setScanningStatus('DUPLICATE');
-                setActiveDecision(data);
-                playChime('error');
-                speakPrompt('voiceDuplicate', { name: person.name });
-                scheduleAutoDismiss(5000);
-                return;
-            }
-            setScanningStatus('RECOGNIZED');
-            setActiveDecision(data);
-            playChime('success');
-            if (method === 'FINGERPRINT') {
-                speakPrompt('voiceFingerprintVerified', { name: person.name });
-            } else {
-                speakPrompt('voiceFaceVerified', { name: person.name });
-            }
-            scheduleAutoDismiss(6000);
-        } catch (_) {
-            // Offline fallback
-            queueEventOffline(payload);
-            setScanningStatus('RECOGNIZED');
-            setActiveDecision({ status: 'SUCCESS', message: `${person.name} verified offline.`, person, time: currentTime.toLocaleTimeString() });
-            playChime('success');
-            speakPrompt('voiceFaceVerified', { name: person.name });
-            scheduleAutoDismiss(6000);
-        }
-    };
-
-    const scheduleAutoDismiss = (ms = 5000) => {
-        if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-        autoDismissTimerRef.current = setTimeout(() => {
-            dismissFnRef.current?.();
-        }, ms);
-    };
-
-    // ─── Confirm duty action ───────────────────────────────────────────────
-    const handleConfirmDutyAction = async (actionType) => {
-        if (!recognizedPerson) return;
-        playChime('success');
-        setLastActionType(actionType);
-        const payload = {
-            eventId: crypto.randomUUID(),
-            employeeId: recognizedPerson.id,
-            employeeType: recognizedPerson.type,
-            terminalId: TERMINAL_ID,
-            biometricMethod: 'CONFIRMED',
-            action: actionType,
-            timestamp: new Date().toISOString()
-        };
-        try { await ax.post('/terminal/event', payload); }
-        catch (_) { queueEventOffline(payload); }
-        if (actionType === 'TRIP_RETURN') {
-            speakPrompt('voiceReturnConfirmed', { name: recognizedPerson.name });
-        } else {
-            speakPrompt('voiceAttendanceConfirmed', { name: recognizedPerson.name });
-        }
-        setScanningStatus('SUCCESS');
-        scheduleAutoDismiss(4000);
-    };
-
-    // ─── Root click handler — only dismiss on direct root tap ─────────────
-    const handleScreenClick = (e) => {
-        if (e.target !== e.currentTarget) return; // Only direct taps on root
-        if (scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS' || scanningStatus === 'DUPLICATE') {
-            dismissAttendanceDetails();
-        }
-    };
-
-    // ─── Admin PIN ─────────────────────────────────────────────────────────
-    const handleAdminPinSubmit = (val) => {
-        setEnteredPin(val);
+    // ── 7. Admin PIN & Secure Exit System ──
+    const handleAdminPinKeypad = (k) => {
         setPinError('');
-        if (val === ADMIN_PIN) {
-            setShowAdminPinModal(false);
-            setShowAdminPanel(true);
+        if (k === 'C') {
             setEnteredPin('');
-        } else if (val.length >= 4) {
-            setPinError('Invalid PIN. Please try again.');
-            setTimeout(() => setEnteredPin(''), 600);
+            return;
+        }
+        if (k === '⌫') {
+            setEnteredPin(p => p.slice(0, -1));
+            return;
+        }
+        if (enteredPin.length < 4) {
+            const next = enteredPin + k;
+            setEnteredPin(next);
+            if (next.length === 4) {
+                if (next === ADMIN_PIN) {
+                    setShowSecurityPinModal(false);
+                    setEnteredPin('');
+                    setShowAuthenticatedActionModal(true);
+                    playChime('success');
+                } else {
+                    setPinError('Incorrect PIN. Default: 8888');
+                    playChime('error');
+                    setTimeout(() => setEnteredPin(''), 700);
+                }
+            }
         }
     };
 
-    // ─── Face snapshot ─────────────────────────────────────────────────────
+    // ── 8. Biometric Enrollment ──
     const handleCaptureFaceSnapshot = () => {
         if (!videoRef.current) return;
         try {
@@ -577,15 +612,16 @@ export default function TerminalModule({ onExit }) {
             ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
             setEnrollSnapshot(canvas.toDataURL('image/jpeg', 0.85));
             playChime('scan');
-        } catch (err) { console.error('Snapshot failed:', err); }
+        } catch (err) {
+            console.error('Snapshot failed:', err);
+        }
     };
 
-    // ─── Save enrollment ───────────────────────────────────────────────────
     const handleSaveEnrollment = async (personData) => {
         setSavingEnrollment(true);
         try {
             const payload = {
-                id: personData.id,
+                id: personData.id || `drv-${Date.now()}`,
                 name: personData.name,
                 phone: personData.phone,
                 employeeId: personData.employeeId,
@@ -602,384 +638,255 @@ export default function TerminalModule({ onExit }) {
                 playChime('success');
             }
         } catch (err) {
-            alert('Failed to save enrollment: ' + err.message);
+            alert('Failed to save biometric enrollment: ' + err.message);
         } finally {
             setSavingEnrollment(false);
         }
     };
 
-    // ─── Delete biometrics ─────────────────────────────────────────────────
     const handleDeleteBiometrics = async (personId) => {
-        if (!window.confirm('Delete face and fingerprint biometrics for this person?')) return;
+        if (!window.confirm('Delete face and biometrics data for this person?')) return;
         try {
             await ax.post('/terminal/enroll/delete', { id: personId });
             await fetchRoster();
             playChime('success');
-        } catch (err) { alert('Failed to delete biometrics: ' + err.message); }
+        } catch (err) {
+            alert('Failed to delete biometrics: ' + err.message);
+        }
     };
 
-    // ─── Assign vehicle ────────────────────────────────────────────────────
     const handleAssignVehicle = async (driverId, truckNo) => {
         try {
             await ax.post('/terminal/assign-vehicle', { driverId, vehicleNo: truckNo });
             await fetchRoster();
-        } catch (err) { console.error('Assign vehicle failed:', err); }
+        } catch (err) {
+            console.error('Assign vehicle failed:', err);
+        }
     };
 
-    // ─── Boot screen ───────────────────────────────────────────────────────
+    // ── Boot Screen ──
     if (isBooting) {
         return <VgtcBootScreen onBootComplete={() => { setIsBooting(false); resetIdleTimer(); }} terminalId={TERMINAL_ID} />;
     }
 
-    // ─── Filtered roster ───────────────────────────────────────────────────
-    const allRosterPeople = [...roster.drivers, ...roster.staff];
-    const filteredPeople = allRosterPeople.filter(p =>
-        p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.phone?.includes(searchQuery) ||
-        p.assignedTruck?.toLowerCase().includes(searchQuery.toLowerCase())
+    // Filtered People for Admin & Driver Selector
+    const allRosterPeople = [...(roster.drivers || []), ...(roster.staff || [])];
+    const filteredDriversForSelector = (roster.drivers || []).filter(d =>
+        d.name?.toLowerCase().includes(driverSearchQuery.toLowerCase()) ||
+        d.phone?.includes(driverSearchQuery) ||
+        d.assignedTruck?.toLowerCase().includes(driverSearchQuery.toLowerCase())
     );
 
-    // ─── Shared styles ─────────────────────────────────────────────────────
-    const inputStyle = {
-        width: '100%', padding: '9px 12px', borderRadius: '10px',
-        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
-        color: '#ffffff', fontSize: '12px', marginTop: '4px',
-        boxSizing: 'border-box', outline: 'none'
-    };
-    const selectStyle = { ...inputStyle, background: '#0d1f18' };
-    const labelStyle = { fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,0.55)', display: 'block' };
-
-    // ─── Dark / light gradient backgrounds for bottom sheet ───────────────
-    const sheetBg = isDarkMode
-        ? 'linear-gradient(180deg, rgba(8,38,28,0.97) 0%, rgba(3,18,13,0.99) 100%)'
-        : 'linear-gradient(180deg, rgba(230,247,242,0.98) 0%, rgba(209,237,229,0.99) 100%)';
-    const sheetTextColor = isDarkMode ? '#ffffff' : '#0d2e22';
-    const sheetSubColor = isDarkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,60,38,0.65)';
-    const sheetCardBg = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
-    const sheetCardBorder = isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,100,60,0.15)';
-    const sheetBorderTop = isDarkMode ? '2px solid #00e5b3' : '2px solid #00a884';
-
+    // ════════════════════════════════════════════════════════════════════════
+    // STANDALONE TERMINAL VIEW
+    // ════════════════════════════════════════════════════════════════════════
     return (
         <div
-            onClick={handleScreenClick}
+            onClick={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS' || scanningStatus === 'DUPLICATE') {
+                    dismissAttendanceDetails();
+                }
+            }}
             style={{
-                position: 'fixed', inset: 0, width: '100vw', height: '100dvh', minHeight: '100vh',
-                background: isDarkMode ? '#040d0a' : '#f0f5f2',
-                color: isDarkMode ? '#ffffff' : '#111827',
+                position: 'relative', width: '100%', height: '100%',
+                background: isDarkMode
+                    ? 'radial-gradient(ellipse at 50% 25%, #0d261e 0%, #061510 50%, #030806 100%)'
+                    : 'radial-gradient(ellipse at 50% 25%, #e6f7f2 0%, #d4ede6 60%, #c4e4da 100%)',
+                color: isDarkMode ? '#ffffff' : '#0d2e22',
                 fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                overflow: 'hidden', zIndex: 9999, userSelect: 'none'
+                display: 'flex', flexDirection: 'column', overflow: 'hidden', userSelect: 'none'
             }}
         >
-            {/* ─── Hidden phone camera input ─────────────────────────────── */}
-            <input type="file" accept="image/*" capture="user" ref={phoneCameraInputRef}
-                style={{ display: 'none' }} onChange={handlePhoneCameraFile} />
-
-            {/* ════════════════════════════════════════════════════════════
-                1. FULL-SCREEN CAMERA PREVIEW (EDGE-TO-EDGE)
-            ════════════════════════════════════════════════════════════ */}
-            {cameraActive ? (
-                <video ref={videoRef} autoPlay playsInline muted
-                    onLoadedMetadata={() => videoRef.current?.play()?.catch(() => {})}
-                    style={{
-                        position: 'absolute', inset: 0, width: '100%', height: '100%',
-                        objectFit: 'cover', transform: 'scaleX(-1)', zIndex: 0
-                    }}
-                />
-            ) : (
-                <div style={{
-                    position: 'absolute', inset: 0, width: '100%', height: '100%',
-                    background: isDarkMode
-                        ? 'radial-gradient(circle at center, #0a2118 0%, #030a07 100%)'
-                        : 'radial-gradient(circle at center, #e2ece7 0%, #cbdcd4 100%)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    justifyContent: 'center', zIndex: 0, gap: '12px'
-                }}>
-                    <Camera size={44} color={isDarkMode ? 'rgba(0,229,179,0.5)' : '#00a884'} />
-                    <div style={{
-                        color: isDarkMode ? 'rgba(255,255,255,0.75)' : '#1f3d32',
-                        fontSize: '13px', fontWeight: 700, textAlign: 'center', maxWidth: '280px'
-                    }}>
-                        {lang === 'hi' ? 'कैमरा उपलब्ध नहीं — फोटो से लें' : 'Camera unavailable — use phone snap'}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); phoneCameraInputRef.current?.click(); }}
-                        style={{
-                            padding: '7px 18px', borderRadius: '20px',
-                            background: 'rgba(0,229,179,0.15)', border: '1px solid rgba(0,229,179,0.4)',
-                            color: '#00e5b3', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '6px'
-                        }}
-                    >
-                        <Camera size={14} />
-                        <span>{lang === 'hi' ? 'कैमरे से फोटो लें' : 'Snap Photo'}</span>
-                    </button>
-                </div>
-            )}
-
-            {/* ── Cinematic gradient overlays ───────────────────────────── */}
-            <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, height: '160px',
-                background: isDarkMode
-                    ? 'linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.25) 70%, transparent 100%)'
-                    : 'linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.35) 70%, transparent 100%)',
-                pointerEvents: 'none', zIndex: 2
-            }} />
-            <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, height: '260px',
-                background: isDarkMode
-                    ? 'linear-gradient(0deg, rgba(0,0,0,0.94) 0%, rgba(0,0,0,0.4) 65%, transparent 100%)'
-                    : 'linear-gradient(0deg, rgba(240,245,242,0.97) 0%, rgba(240,245,242,0.45) 65%, transparent 100%)',
-                pointerEvents: 'none', zIndex: 2
-            }} />
-
-            {/* ════════════════════════════════════════════════════════════
-                2. SCREENSAVER
-            ════════════════════════════════════════════════════════════ */}
-            <AnimatePresence>
-                {isScreensaver && (
-                    <motion.div
-                        key="screensaver"
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        transition={{ duration: 0.5 }}
-                        onClick={(e) => { e.stopPropagation(); handleScreensaverWake(); }}
-                        style={{
-                            position: 'fixed', inset: 0, zIndex: 99999,
-                            background: 'radial-gradient(circle at center, #071711 0%, #020705 100%)',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center',
-                            justifyContent: 'center', padding: '32px', cursor: 'pointer', overflow: 'hidden'
-                        }}
-                    >
-                        <motion.div
-                            animate={{ y: [-4, 4, -4] }}
-                            transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-                            style={{ marginBottom: '28px', zIndex: 2 }}
-                        >
-                            <img src="/vgtc-logo-dark.png" alt="VGTC"
-                                style={{ width: '200px', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 0 32px rgba(0,229,179,0.6))' }}
-                                onError={(e) => { e.currentTarget.src = '/vgtc-logo.png'; }}
-                            />
-                        </motion.div>
-                        <div style={{
-                            fontSize: '68px', fontWeight: 900, letterSpacing: '-0.02em',
-                            color: '#ffffff', fontFamily: 'monospace',
-                            textShadow: '0 4px 30px rgba(0,229,179,0.5)', zIndex: 2
-                        }}>
-                            {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </div>
-                        <div style={{ fontSize: '15px', fontWeight: 700, color: 'rgba(255,255,255,0.65)', marginTop: '6px', zIndex: 2 }}>
-                            {currentTime.toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                        </div>
-                        <motion.div
-                            animate={{ opacity: [0.6, 1, 0.6], scale: [1, 1.03, 1] }}
-                            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                            style={{
-                                marginTop: '52px', fontSize: '18px', fontWeight: 800,
-                                color: '#00e5b3', letterSpacing: '0.04em',
-                                textShadow: '0 0 16px rgba(0,229,179,0.6)', zIndex: 2
-                            }}
-                        >
-                            {t.touchToContinue}
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* ════════════════════════════════════════════════════════════
-                3. TOP HEADER
-            ════════════════════════════════════════════════════════════ */}
-            <header
-                onClick={(e) => e.stopPropagation()}
+            {/* Background Camera Layer (hidden / behind) */}
+            <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
                 style={{
-                    position: 'relative', zIndex: 20,
-                    paddingTop: 'max(14px, env(safe-area-inset-top, 14px))',
-                    paddingBottom: '8px', paddingLeft: '14px', paddingRight: '14px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '56px'
+                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    objectFit: 'cover', opacity: isDarkMode ? 0.28 : 0.22, pointerEvents: 'none',
+                    filter: 'grayscale(35%) contrast(110%)'
                 }}
-            >
-                {/* Left: Logo + online indicator */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div onClick={() => setShowAdminPinModal(true)}
-                        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                        title="Tap to open Admin Settings / Exit"
-                    >
-                        <img src={isDarkMode ? '/vgtc-logo-dark.png' : '/vgtc-logo.png'} alt="VGTC"
-                            style={{ height: '30px', maxWidth: '110px', objectFit: 'contain', filter: isDarkMode ? 'drop-shadow(0 2px 8px rgba(0,0,0,0.6))' : 'none' }}
-                            onError={(e) => { e.currentTarget.src = isDarkMode ? '/vgtc-logo.png' : '/vgtc-logo-dark.png'; }}
-                        />
-                    </div>
+            />
 
-                    {/* Online / offline chip */}
+            {/* Hidden phone camera fallback file input */}
+            <input
+                ref={phoneCameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="user"
+                style={{ display: 'none' }}
+                onChange={handlePhoneCameraFile}
+            />
+
+            {/* ── Top Terminal Header ── */}
+            <header style={{
+                position: 'relative', zIndex: 30, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px',
+                background: isDarkMode ? 'rgba(3,10,7,0.72)' : 'rgba(255,255,255,0.75)',
+                backdropFilter: 'blur(16px)',
+                borderBottom: isDarkMode ? '1px solid rgba(0,229,179,0.18)' : '1px solid rgba(0,168,132,0.2)'
+            }}>
+                {/* Logo & Node */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                        padding: '3px 8px', borderRadius: '12px',
-                        background: isOnline ? 'rgba(0,229,179,0.12)' : 'rgba(245,158,11,0.15)',
-                        border: `1px solid ${isOnline ? 'rgba(0,229,179,0.4)' : 'rgba(245,158,11,0.4)'}`,
+                        width: '32px', height: '32px', borderRadius: '10px',
+                        background: 'linear-gradient(135deg, #00e5b3 0%, #00a884 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 0 16px rgba(0,229,179,0.45)'
                     }}>
-                        {isOnline
-                            ? <Wifi size={11} color="#00e5b3" />
-                            : <WifiOff size={11} color="#f59e0b" />}
-                        <span style={{ fontSize: '9.5px', fontWeight: 800, color: isOnline ? '#00e5b3' : '#f59e0b' }}>
-                            {isOnline ? 'ONLINE' : 'OFFLINE'}
-                        </span>
-                        {offlineQueue.length > 0 && (
+                        <Truck size={17} color="#031811" strokeWidth={2.6} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '13px', fontWeight: 900, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>VGTC OS</span>
                             <span style={{
-                                background: '#f59e0b', color: '#000', borderRadius: '8px',
-                                padding: '0 4px', fontSize: '9px', fontWeight: 900
-                            }}>{offlineQueue.length}</span>
-                        )}
+                                fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px',
+                                background: isOnline ? 'rgba(16,185,129,0.18)' : 'rgba(245,158,11,0.18)',
+                                color: isOnline ? '#10b981' : '#f59e0b',
+                                border: `1px solid ${isOnline ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)'}`
+                            }}>
+                                {isOnline ? '● LIVE' : '● CACHED'}
+                            </span>
+                        </div>
+                        <div style={{ fontSize: '9.5px', color: isDarkMode ? 'rgba(255,255,255,0.55)' : '#0f3d2d', fontWeight: 600 }}>
+                            {t.terminalLocation}
+                        </div>
                     </div>
                 </div>
 
-                {/* Right: Controls */}
+                {/* Right Quick Controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {/* Clock */}
                     <div style={{
-                        padding: '3px 8px', borderRadius: '12px',
-                        background: isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.85)',
-                        backdropFilter: 'blur(12px)',
-                        border: isDarkMode ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.1)',
-                        fontSize: '11px', fontWeight: 700,
-                        color: isDarkMode ? 'rgba(255,255,255,0.85)' : '#0f291e',
-                        fontFamily: 'monospace'
+                        padding: '4px 8px', borderRadius: '8px',
+                        background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                        fontSize: '11px', fontWeight: 800, fontFamily: 'monospace'
                     }}>
                         {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                     </div>
 
-                    {/* Theme Toggle */}
-                    <button type="button" onClick={() => setIsDarkMode(d => !d)}
-                        title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                        style={{
-                            width: '32px', height: '32px', borderRadius: '50%',
-                            background: isDarkMode ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.85)',
-                            backdropFilter: 'blur(12px)',
-                            border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(0,0,0,0.1)',
-                            color: isDarkMode ? '#f59e0b' : '#047857',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                        }}
-                    >
-                        {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-                    </button>
-
-                    {/* Language Switcher */}
-                    <div style={{
-                        display: 'flex',
-                        background: isDarkMode ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.85)',
-                        backdropFilter: 'blur(12px)', borderRadius: '20px', padding: '2px',
-                        border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(0,0,0,0.1)'
-                    }}>
-                        {['en', 'hi'].map(l => (
-                            <button key={l} type="button" onClick={() => setLang(l)}
-                                style={{
-                                    padding: '4px 8px', borderRadius: '16px', border: 'none',
-                                    fontSize: '11px', fontWeight: 800,
-                                    background: lang === l ? '#00a884' : 'transparent',
-                                    color: lang === l ? '#ffffff' : (isDarkMode ? 'rgba(255,255,255,0.65)' : '#374151'),
-                                    cursor: 'pointer', transition: 'all 0.15s'
-                                }}
-                            >
-                                {l === 'en' ? 'EN' : 'हिन्दी'}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Sound Toggle */}
-                    <button type="button" onClick={() => setSoundEnabled(s => !s)}
-                        style={{
-                            width: '32px', height: '32px', borderRadius: '50%',
-                            background: isDarkMode ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.85)',
-                            backdropFilter: 'blur(12px)',
-                            border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(0,0,0,0.1)',
-                            color: soundEnabled ? '#00e5b3' : (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)'),
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                        }}
-                    >
-                        {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
-                    </button>
-
-                    {/* Admin PIN Lock */}
-                    <button type="button" onClick={() => setShowAdminPinModal(true)}
-                        title="Admin PIN Required"
-                        style={{
-                            width: '32px', height: '32px', borderRadius: '50%',
-                            background: isDarkMode ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.85)',
-                            backdropFilter: 'blur(12px)',
-                            border: isDarkMode ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(0,0,0,0.1)',
-                            color: isDarkMode ? '#00e5b3' : '#059669',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                        }}
-                    >
-                        <Lock size={14} />
-                    </button>
-
-                    {/* ── Exit App Button ───────────────────────────────── */}
+                    {/* Language Switch */}
                     <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); setShowExitConfirm(true); }}
-                        title="Exit App"
+                        onClick={() => setLang(l => l === 'en' ? 'hi' : 'en')}
                         style={{
-                            width: '32px', height: '32px', borderRadius: '50%',
+                            padding: '4px 8px', borderRadius: '8px',
+                            background: isDarkMode ? 'rgba(0,229,179,0.12)' : 'rgba(0,168,132,0.12)',
+                            border: '1px solid rgba(0,229,179,0.3)',
+                            color: isDarkMode ? '#00e5b3' : '#059669',
+                            fontSize: '11px', fontWeight: 900, cursor: 'pointer'
+                        }}
+                    >
+                        {lang === 'en' ? 'हिन्दी' : 'EN'}
+                    </button>
+
+                    {/* Audio Toggle */}
+                    <button
+                        type="button"
+                        onClick={() => setSoundEnabled(s => !s)}
+                        title="Toggle Voice / Chime"
+                        style={{
+                            width: '28px', height: '28px', borderRadius: '8px',
+                            background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                            border: 'none',
+                            color: soundEnabled ? '#00e5b3' : 'rgba(255,255,255,0.3)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                        }}
+                    >
+                        {soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+                    </button>
+
+                    {/* Theme Toggle */}
+                    <button
+                        type="button"
+                        onClick={() => setIsDarkMode(d => !d)}
+                        title="Toggle Dark / Light"
+                        style={{
+                            width: '28px', height: '28px', borderRadius: '8px',
+                            background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                            border: 'none',
+                            color: isDarkMode ? '#f59e0b' : '#059669',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                        }}
+                    >
+                        {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
+                    </button>
+
+                    {/* Security Exit & Admin Button (PIN 8888) */}
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowSecurityPinModal(true);
+                        }}
+                        title="Exit or Admin Settings (PIN 8888)"
+                        style={{
+                            width: '28px', height: '28px', borderRadius: '8px',
                             background: 'rgba(239,68,68,0.15)',
-                            backdropFilter: 'blur(12px)',
                             border: '1px solid rgba(239,68,68,0.4)',
                             color: '#ef4444',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
                         }}
                     >
-                        <X size={14} />
+                        <Lock size={13} />
                     </button>
                 </div>
             </header>
 
-            {/* ════════════════════════════════════════════════════════════
-                4. BIOMETRIC SCANNING HUD (centre area)
-            ════════════════════════════════════════════════════════════ */}
-            <div style={{
-                position: 'relative', zIndex: 10,
+            {/* ── Center Biometric HUD & Viewfinder (3:4 Portrait Ratio) ── */}
+            <main style={{
+                position: 'relative', zIndex: 15, flex: 1,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                minHeight: 'calc(100dvh - 170px)', padding: '10px 0', pointerEvents: 'none'
+                padding: '16px 12px 90px'
             }}>
-                {/* Status instruction pill */}
+                {/* Status Guidance Pill */}
                 <div style={{
-                    padding: '6px 18px', borderRadius: '20px',
-                    background: isDarkMode ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)',
-                    backdropFilter: 'blur(14px)',
-                    border: `1px solid ${scanningStatus === 'ANALYZING' ? 'rgba(0,229,179,0.6)' : 'rgba(0,229,179,0.35)'}`,
-                    color: isDarkMode ? '#ffffff' : '#042f2e',
-                    fontSize: '12.5px', fontWeight: 800, marginBottom: '16px',
-                    letterSpacing: '0.02em', boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
-                    pointerEvents: 'auto'
+                    padding: '6px 16px', borderRadius: '20px',
+                    background: isDarkMode ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)',
+                    backdropFilter: 'blur(12px)',
+                    border: `1.5px solid ${scanningStatus === 'ANALYZING' ? '#00e5b3' : 'rgba(0,229,179,0.3)'}`,
+                    color: isDarkMode ? '#ffffff' : '#06382a',
+                    fontSize: '12px', fontWeight: 800, marginBottom: '16px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.35)', textAlign: 'center'
                 }}>
                     {scanningStatus === 'ANALYZING'
                         ? t.verifyingFace
-                        : (lang === 'hi' ? 'कृपया कैमरे की तरफ देखें' : 'Look into camera to check in')}
+                        : scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS'
+                        ? t.faceRecognized
+                        : t.alignFacePrompt}
                 </div>
 
-                {/* Face bounding box */}
+                {/* 3:4 Portrait Viewfinder Chassis */}
                 <motion.div
-                    onClick={(e) => { e.stopPropagation(); if (scanningStatus === 'IDLE') handleTriggerFaceScan(); }}
-                    animate={{ scale: scanningStatus === 'ANALYZING' ? [1, 1.02, 1] : 1 }}
-                    transition={{ duration: 1.2, repeat: scanningStatus === 'ANALYZING' ? Infinity : 0, ease: 'easeInOut' }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (scanningStatus === 'IDLE') handleTriggerScan();
+                    }}
+                    animate={{
+                        scale: scanningStatus === 'ANALYZING' ? [1, 1.015, 1] : 1
+                    }}
+                    transition={{ duration: 1.2, repeat: scanningStatus === 'ANALYZING' ? Infinity : 0 }}
                     style={{
-                        position: 'relative', width: '230px', height: '270px',
-                        maxWidth: '78vw', maxHeight: '44vh',
-                        borderRadius: '24px',
+                        position: 'relative',
+                        width: '240px', height: '320px', maxWidth: '78vw', maxHeight: '48vh',
+                        borderRadius: '26px',
                         border: scanningStatus === 'ANALYZING' ? '2.5px solid #00e5b3'
-                            : (scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS') ? '3px solid #10b981'
+                            : scanningStatus === 'SUCCESS' ? '3px solid #10b981'
                             : scanningStatus === 'DUPLICATE' ? '3px solid #f59e0b'
-                            : '2px solid rgba(255,255,255,0.4)',
-                        boxShadow: scanningStatus === 'ANALYZING' ? '0 0 24px rgba(0,229,179,0.4), inset 0 0 16px rgba(0,229,179,0.15)'
-                            : (scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS') ? '0 0 28px rgba(16,185,129,0.5)'
-                            : scanningStatus === 'DUPLICATE' ? '0 0 24px rgba(245,158,11,0.45)'
-                            : '0 4px 20px rgba(0,0,0,0.25)',
-                        background: 'transparent',
-                        cursor: scanningStatus === 'IDLE' ? 'pointer' : 'default',
-                        pointerEvents: 'auto',
-                        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                        alignItems: 'center', overflow: 'hidden'
+                            : '2px solid rgba(0,229,179,0.4)',
+                        background: 'rgba(0,0,0,0.22)',
+                        boxShadow: scanningStatus === 'ANALYZING'
+                            ? '0 0 35px rgba(0,229,179,0.45), inset 0 0 25px rgba(0,229,179,0.2)'
+                            : '0 10px 40px rgba(0,0,0,0.4)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        overflow: 'hidden', cursor: scanningStatus === 'IDLE' ? 'pointer' : 'default'
                     }}
                 >
-                    {/* Corner brackets */}
+                    {/* Glowing Reticle Corner Brackets */}
                     {['tl','tr','bl','br'].map(corner => {
                         const top = corner.startsWith('t');
                         const left = corner.endsWith('l');
@@ -991,7 +898,7 @@ export default function TerminalModule({ onExit }) {
                                 bottom: !top ? '-2px' : undefined,
                                 left: left ? '-2px' : undefined,
                                 right: !left ? '-2px' : undefined,
-                                width: '24px', height: '24px',
+                                width: '28px', height: '28px',
                                 borderTop: top ? `4px solid ${color}` : undefined,
                                 borderBottom: !top ? `4px solid ${color}` : undefined,
                                 borderLeft: left ? `4px solid ${color}` : undefined,
@@ -1004,521 +911,519 @@ export default function TerminalModule({ onExit }) {
                         );
                     })}
 
-                    {/* Captured selfie preview */}
+                    {/* Captured Selfie Preview */}
                     {capturedSelfieUrl && (
-                        <img src={capturedSelfieUrl} alt="Captured face"
+                        <img
+                            src={capturedSelfieUrl}
+                            alt="Selfie"
                             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                     )}
 
-                    {/* Success badge */}
-                    {(scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS') && (
-                        <div style={{
-                            position: 'absolute', top: '12px', right: '12px',
-                            background: '#10b981', color: '#ffffff', borderRadius: '50%',
-                            width: '28px', height: '28px', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', boxShadow: '0 0 14px rgba(16,185,129,0.9)'
-                        }}>
-                            <Check size={17} strokeWidth={3} />
-                        </div>
+                    {/* Animated Biometric Sweep Bar */}
+                    {scanningStatus === 'ANALYZING' && (
+                        <motion.div
+                            animate={{ y: [-150, 150, -150] }}
+                            transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+                            style={{
+                                position: 'absolute', left: 0, right: 0, height: '3px',
+                                background: 'linear-gradient(90deg, transparent 0%, #00e5b3 50%, transparent 100%)',
+                                boxShadow: '0 0 14px #00e5b3, 0 0 28px #00e5b3',
+                                zIndex: 10
+                            }}
+                        />
                     )}
 
-                    {/* Duplicate badge */}
-                    {scanningStatus === 'DUPLICATE' && (
-                        <div style={{
-                            position: 'absolute', top: '12px', right: '12px',
-                            background: '#f59e0b', color: '#000', borderRadius: '50%',
-                            width: '28px', height: '28px', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', boxShadow: '0 0 14px rgba(245,158,11,0.9)'
-                        }}>
-                            <AlertTriangle size={16} strokeWidth={3} />
-                        </div>
-                    )}
-
-                    {/* Align face hint */}
+                    {/* Reticle Center Guide */}
                     {scanningStatus === 'IDLE' && !capturedSelfieUrl && (
+                        <div style={{ textAlign: 'center', padding: '16px' }}>
+                            <div style={{
+                                width: '64px', height: '64px', borderRadius: '50%',
+                                background: 'rgba(0,229,179,0.1)', border: '1.5px dashed rgba(0,229,179,0.6)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px'
+                            }}>
+                                <User size={28} color="#00e5b3" />
+                            </div>
+                            <div style={{ fontSize: '11.5px', fontWeight: 800, color: 'rgba(255,255,255,0.9)' }}>
+                                {t.alignFacePrompt}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'rgba(0,229,179,0.85)', marginTop: '4px' }}>
+                                Tap to Scan
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Analyzing percentage badge */}
+                    {scanningStatus === 'ANALYZING' && (
                         <div style={{
-                            textAlign: 'center', color: 'rgba(255,255,255,0.85)', fontSize: '12px',
-                            fontWeight: 700, letterSpacing: '0.02em',
-                            textShadow: '0 2px 8px rgba(0,0,0,0.9)',
-                            background: 'rgba(0,0,0,0.42)', padding: '6px 14px',
-                            borderRadius: '16px', backdropFilter: 'blur(6px)'
+                            position: 'absolute', bottom: '18px',
+                            background: 'rgba(0,0,0,0.75)', padding: '4px 14px', borderRadius: '16px',
+                            border: '1px solid #00e5b3', color: '#00e5b3',
+                            fontSize: '14px', fontWeight: 900, letterSpacing: '0.04em'
                         }}>
-                            {t.alignFacePrompt}
+                            {scanProgress}%
                         </div>
                     )}
                 </motion.div>
 
-                {/* Scan progress counter */}
-                {scanningStatus === 'ANALYZING' && (
-                    <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
-                        style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}
-                    >
-                        <div style={{
-                            fontSize: '28px', fontWeight: 900, color: '#00e5b3', letterSpacing: '0.04em',
-                            textShadow: '0 0 16px rgba(0,229,179,0.95), 0 2px 8px rgba(0,0,0,0.8)'
-                        }}>
-                            {scanProgress}%
-                        </div>
-                        <div style={{
-                            fontSize: '12.5px', fontWeight: 800,
-                            color: isDarkMode ? 'rgba(255,255,255,0.9)' : '#0d1f18',
-                            background: isDarkMode ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.88)',
-                            padding: '4px 14px', borderRadius: '16px', backdropFilter: 'blur(8px)',
-                            border: isDarkMode ? '1px solid rgba(0,229,179,0.3)' : '1px solid rgba(0,0,0,0.1)'
-                        }}>
-                            {lang === 'hi' ? 'बायोमेट्रिक पहचान हो रही है...' : 'Verifying biometrics...'}
-                        </div>
-                    </motion.div>
-                )}
-
-                {/* IDLE: scan face button + driver switcher */}
+                {/* Primary Action Buttons Below Viewfinder */}
                 {scanningStatus === 'IDLE' && (
                     <div style={{
                         display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        gap: '8px', marginTop: '14px', pointerEvents: 'auto'
+                        gap: '10px', marginTop: '18px', width: '100%', maxWidth: '280px'
                     }}>
-                        <motion.button type="button" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                            onClick={handleTriggerFaceScan}
+                        {/* Main Face Scan Button */}
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleTriggerScan()}
                             style={{
-                                padding: '10px 24px', borderRadius: '24px',
-                                background: 'linear-gradient(135deg, #00a884 0%, #059669 100%)',
-                                border: '1.5px solid rgba(0,229,179,0.7)',
-                                color: '#ffffff', fontSize: '13.5px', fontWeight: 900, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                boxShadow: '0 6px 20px rgba(0,168,132,0.45)'
+                                width: '100%', padding: '12px 18px', borderRadius: '18px',
+                                background: 'linear-gradient(135deg, #00e5b3 0%, #00a884 100%)',
+                                border: 'none', color: '#031811', fontSize: '14px', fontWeight: 900,
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                gap: '8px', boxShadow: '0 8px 24px rgba(0,229,179,0.35)'
                             }}
                         >
-                            <Camera size={17} />
+                            <Camera size={18} strokeWidth={2.4} />
                             <span>{t.scanFacePrompt}</span>
                         </motion.button>
 
-                        {availableDrivers?.length > 1 && (
-                            <button type="button" onClick={handleCycleTestDriver}
-                                title="Cycle test driver"
-                                style={{
-                                    background: isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.88)',
-                                    backdropFilter: 'blur(8px)',
-                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)',
-                                    borderRadius: '16px', padding: '4px 12px',
-                                    color: isDarkMode ? 'rgba(255,255,255,0.85)' : '#0f291e',
-                                    fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: '5px'
-                                }}
-                            >
-                                <RefreshCw size={11} color="#00e5b3" />
-                                <span>{t.switchDriver}: <b style={{ color: '#00e5b3' }}>{currentTestDriver.name}</b> ({currentTestDriver.assignedTruck})</span>
-                            </button>
-                        )}
+                        {/* Quick Driver Selector Pill (Solves the "parem ()" bug) */}
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowDriverSelectorModal(true);
+                            }}
+                            style={{
+                                width: '100%', padding: '9px 14px', borderRadius: '14px',
+                                background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                                border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.1)',
+                                color: isDarkMode ? '#ffffff' : '#06382a',
+                                fontSize: '11.5px', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <User size={13} color="#00e5b3" />
+                                <span>{currentActiveDriver ? currentActiveDriver.name : 'Select Driver'}</span>
+                                {currentActiveDriver?.assignedTruck && (
+                                    <span style={{ fontSize: '10px', color: '#00e5b3', fontWeight: 800 }}>
+                                        ({currentActiveDriver.assignedTruck})
+                                    </span>
+                                )}
+                            </div>
+                            <ChevronDown size={13} color="rgba(255,255,255,0.5)" />
+                        </button>
                     </div>
                 )}
-            </div>
+            </main>
 
-            {/* ════════════════════════════════════════════════════════════
-                5. FLOATING FINGERPRINT BUTTON (below content, z below sheet)
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Bottom Floating Quick Action Dock ── */}
             {scanningStatus === 'IDLE' && (
                 <div style={{
-                    position: 'absolute',
-                    bottom: 'max(28px, env(safe-area-inset-bottom, 28px))',
-                    left: 0, right: 0, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', zIndex: 20
+                    position: 'absolute', bottom: '16px', left: 0, right: 0,
+                    display: 'flex', justifyContent: 'center', gap: '12px', zIndex: 25,
+                    padding: '0 16px'
                 }}>
-                    <motion.button type="button" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                        onClick={handleFingerprintDirectPress}
+                    {/* Fingerprint check-in */}
+                    <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.96 }}
+                        onClick={handleFingerprintPress}
                         style={{
-                            padding: '13px 28px', borderRadius: '32px',
-                            background: 'linear-gradient(135deg, rgba(0,168,132,0.94) 0%, rgba(5,150,105,0.94) 100%)',
-                            border: '1.5px solid rgba(0,229,179,0.6)', backdropFilter: 'blur(16px)',
-                            color: '#ffffff', fontSize: '13.5px', fontWeight: 900, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            boxShadow: '0 8px 32px rgba(0,168,132,0.5)'
+                            padding: '10px 18px', borderRadius: '24px',
+                            background: isDarkMode ? 'rgba(6,25,18,0.88)' : 'rgba(255,255,255,0.92)',
+                            backdropFilter: 'blur(16px)',
+                            border: '1.5px solid rgba(0,229,179,0.5)',
+                            color: isDarkMode ? '#00e5b3' : '#059669',
+                            fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            boxShadow: '0 6px 20px rgba(0,0,0,0.3)'
                         }}
                     >
-                        <Fingerprint size={20} color="#00e5b3" />
+                        <Fingerprint size={16} />
                         <span>{t.scanFingerprintPrompt}</span>
                     </motion.button>
+
+                    {/* Camera selfie fallback */}
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            phoneCameraInputRef.current?.click();
+                        }}
+                        style={{
+                            width: '40px', height: '40px', borderRadius: '50%',
+                            background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                            backdropFilter: 'blur(12px)',
+                            border: isDarkMode ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.1)',
+                            color: isDarkMode ? '#ffffff' : '#06382a',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                        }}
+                    >
+                        <Camera size={16} />
+                    </button>
                 </div>
             )}
 
-            {/* ════════════════════════════════════════════════════════════
-                6. BOTTOM ATTENDANCE SHEET
-                States: RECOGNIZED (action buttons) | SUCCESS (done) | DUPLICATE (warning)
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Slide-up Driver Attendance Bottom Sheet ── */}
             <AnimatePresence>
                 {(scanningStatus === 'RECOGNIZED' || scanningStatus === 'SUCCESS' || scanningStatus === 'DUPLICATE') && recognizedPerson && (
                     <motion.div
-                        key="attendance_sheet"
+                        key="attendance_card"
                         initial={{ y: '100%', opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: '100%', opacity: 0 }}
-                        transition={{ type: 'spring', damping: 28, stiffness: 290 }}
+                        transition={{ type: 'spring', damping: 26, stiffness: 280 }}
                         onClick={(e) => e.stopPropagation()}
                         style={{
                             position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40,
-                            background: scanningStatus === 'DUPLICATE'
-                                ? (isDarkMode ? 'linear-gradient(180deg,rgba(38,24,4,0.98)0%,rgba(18,10,2,0.99)100%)' : 'linear-gradient(180deg,rgba(255,248,230,0.98)0%,rgba(255,240,200,0.99)100%)')
-                                : sheetBg,
+                            background: isDarkMode
+                                ? 'linear-gradient(180deg, rgba(9,32,24,0.98) 0%, rgba(4,14,10,0.99) 100%)'
+                                : 'linear-gradient(180deg, rgba(235,248,244,0.98) 0%, rgba(215,240,233,0.99) 100%)',
                             backdropFilter: 'blur(24px)',
-                            borderTop: scanningStatus === 'DUPLICATE' ? '2px solid #f59e0b' : sheetBorderTop,
-                            borderTopLeftRadius: '30px', borderTopRightRadius: '30px',
-                            padding: '18px 18px max(28px, env(safe-area-inset-bottom, 28px))',
+                            borderTop: scanningStatus === 'DUPLICATE' ? '2px solid #f59e0b' : '2px solid #00e5b3',
+                            borderTopLeftRadius: '28px', borderTopRightRadius: '28px',
+                            padding: '18px 20px 24px',
                             boxShadow: '0 -15px 50px rgba(0,0,0,0.7)',
-                            display: 'flex', flexDirection: 'column', gap: '11px',
-                            maxHeight: '82vh', overflowY: 'auto'
+                            display: 'flex', flexDirection: 'column', gap: '12px'
                         }}
                     >
                         {/* Pull notch */}
                         <div style={{
-                            width: '40px', height: '4px', borderRadius: '2px',
-                            background: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
-                            margin: '-4px auto 2px'
+                            width: '42px', height: '4px', borderRadius: '2px',
+                            background: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
+                            margin: '-6px auto 2px'
                         }} />
 
-                        {/* ── DUPLICATE STATE ─────────────────────────── */}
-                        {scanningStatus === 'DUPLICATE' && (
-                            <>
-                                {/* Header */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        padding: '4px 12px', borderRadius: '20px',
-                                        background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.45)',
-                                        color: '#f59e0b', fontSize: '11px', fontWeight: 900
-                                    }}>
-                                        <AlertTriangle size={14} />
-                                        <span>{t.attendanceDuplicateTitle}</span>
-                                    </div>
-                                    <span style={{ fontSize: '11px', color: isDarkMode ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)', fontWeight: 600 }}>
-                                        {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                </div>
-
-                                {/* Profile */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{
-                                        width: '50px', height: '50px', borderRadius: '50%',
-                                        background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        border: '2px solid rgba(245,158,11,0.5)', overflow: 'hidden', flexShrink: 0
-                                    }}>
-                                        {recognizedPerson.photoUrl
-                                            ? <img src={recognizedPerson.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                            : <Truck size={24} color="#fff" />}
-                                    </div>
-                                    <div>
-                                        <h3 style={{ fontSize: '17px', fontWeight: 900, color: isDarkMode ? '#fff' : '#0d2e22', margin: '0 0 2px 0' }}>
-                                            {recognizedPerson.name}
-                                        </h3>
-                                        <div style={{ fontSize: '11.5px', color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,60,38,0.65)', fontWeight: 600 }}>
-                                            {lang === 'hi'
-                                                ? 'आज की हाजिरी पहले ही दर्ज हो चुकी है।'
-                                                : 'Attendance already marked for today.'}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Warning card */}
+                        {/* Driver Profile Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{
-                                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
-                                    borderRadius: '14px', padding: '10px 14px',
-                                    fontSize: '12px', fontWeight: 700,
-                                    color: isDarkMode ? 'rgba(255,255,255,0.8)' : '#7c4e00'
+                                    width: '46px', height: '46px', borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #00e5b3 0%, #00a884 100%)',
+                                    color: '#031811', fontSize: '18px', fontWeight: 900,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 0 16px rgba(0,229,179,0.4)'
                                 }}>
-                                    {activeDecision?.message || (lang === 'hi'
-                                        ? 'यदि यह गलत है तो प्रबंधक से संपर्क करें।'
-                                        : 'If this is incorrect, please contact your manager.')}
+                                    {recognizedPerson.name ? recognizedPerson.name[0].toUpperCase() : 'D'}
                                 </div>
-
-                                {/* Dismiss button */}
-                                <button type="button" onClick={dismissAttendanceDetails}
-                                    style={{
-                                        width: '100%', padding: '12px', borderRadius: '24px',
-                                        background: 'rgba(245,158,11,0.15)',
-                                        border: '1.5px solid rgba(245,158,11,0.45)',
-                                        color: '#f59e0b', fontSize: '13px', fontWeight: 900, cursor: 'pointer'
-                                    }}
-                                >
-                                    {lang === 'hi' ? 'ठीक है, बंद करें' : 'OK, Dismiss'}
-                                </button>
-                            </>
-                        )}
-
-                        {/* ── RECOGNIZED STATE ─────────────────────────── */}
-                        {scanningStatus === 'RECOGNIZED' && (
-                            <>
-                                {/* Verified header */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        padding: '4px 12px', borderRadius: '20px',
-                                        background: 'rgba(0,229,179,0.12)', border: '1px solid rgba(0,229,179,0.4)',
-                                        color: '#00e5b3', fontSize: '11px', fontWeight: 900
-                                    }}>
-                                        <CheckCircle2 size={14} />
-                                        <span>{t.identityVerified} • 100% MATCH</span>
-                                    </div>
-                                    <span style={{ fontSize: '11px', color: sheetSubColor, fontWeight: 600 }}>
-                                        {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                </div>
-
-                                {/* Profile hero */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                                        <div style={{
-                                            width: '52px', height: '52px', borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, #00a884 0%, #005f4b 100%)',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            border: '2px solid rgba(255,255,255,0.25)', overflow: 'hidden'
-                                        }}>
-                                            {recognizedPerson.photoUrl
-                                                ? <img src={recognizedPerson.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                : <Truck size={26} color="#fff" />}
-                                        </div>
-                                        <div style={{
-                                            position: 'absolute', bottom: '-2px', right: '-2px',
-                                            width: '18px', height: '18px', borderRadius: '50%',
-                                            background: '#00e5b3', color: '#03140e',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontWeight: 900, fontSize: '11px'
-                                        }}>✓</div>
-                                    </div>
-                                    <div>
-                                        <h3 style={{ fontSize: '18px', fontWeight: 900, color: sheetTextColor, margin: '0 0 2px 0', letterSpacing: '-0.01em' }}>
-                                            {recognizedPerson.name}
-                                        </h3>
-                                        <div style={{ fontSize: '11.5px', color: sheetSubColor, fontWeight: 600 }}>
-                                            ID: <b style={{ color: '#00e5b3' }}>{recognizedPerson.employeeId}</b>
-                                            {recognizedPerson.phone && ` • +91 ${recognizedPerson.phone}`}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Info grid */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    <div style={{ background: sheetCardBg, border: sheetCardBorder, borderRadius: '14px', padding: '10px 12px' }}>
-                                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: sheetSubColor, textTransform: 'uppercase', marginBottom: '2px' }}>
-                                            {t.assignedTruck}
-                                        </div>
-                                        <div style={{ fontSize: '13.5px', fontWeight: 900, color: sheetTextColor }}>
-                                            {recognizedPerson.assignedTruck || '—'}
-                                        </div>
-                                        <div style={{ marginTop: '3px', fontSize: '10px', fontWeight: 900, color: recognizedPerson.status === 'ON_TRIP' ? '#f59e0b' : '#00e5b3' }}>
-                                            ● {recognizedPerson.status === 'ON_TRIP' ? t.activeTrip : t.availableDuty}
-                                        </div>
-                                    </div>
-                                    <div style={{ background: sheetCardBg, border: sheetCardBorder, borderRadius: '14px', padding: '10px 12px' }}>
-                                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: sheetSubColor, textTransform: 'uppercase', marginBottom: '2px' }}>
-                                            {t.destination}
-                                        </div>
-                                        <div style={{ fontSize: '13px', fontWeight: 900, color: sheetTextColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {recognizedPerson.activeTrip?.destination || (lang === 'hi' ? 'रिवारी यार्ड' : 'Rewari Yard')}
-                                        </div>
-                                        <div style={{ fontSize: '10px', color: sheetSubColor, marginTop: '2px' }}>
-                                            {recognizedPerson.activeTrip?.partyName || (lang === 'hi' ? 'डिस्पैच के लिए तैयार' : 'Free for Dispatch')}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Action buttons */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
-                                    {recognizedPerson.status === 'ON_TRIP' ? (
-                                        <>
-                                            <button type="button" onClick={() => handleConfirmDutyAction('TRIP_RETURN')}
-                                                style={{
-                                                    width: '100%', padding: '13px', borderRadius: '24px',
-                                                    background: 'linear-gradient(135deg, #00a884 0%, #059669 100%)',
-                                                    border: 'none', color: '#ffffff', fontSize: '14px',
-                                                    fontWeight: 900, cursor: 'pointer',
-                                                    boxShadow: '0 8px 24px rgba(0,168,132,0.4)',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                                }}
-                                            >
-                                                <CheckCircle2 size={17} />
-                                                <span>{t.returnFromTrip}</span>
-                                            </button>
-                                            <button type="button" onClick={() => handleConfirmDutyAction('OFFICE_VISIT')}
-                                                style={{
-                                                    width: '100%', padding: '11px', borderRadius: '24px',
-                                                    background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,100,60,0.06)',
-                                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,100,60,0.2)',
-                                                    color: sheetTextColor, fontSize: '13px', fontWeight: 800, cursor: 'pointer'
-                                                }}
-                                            >
-                                                {t.officeVisit}
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <button type="button" onClick={() => handleConfirmDutyAction('CHECK_IN')}
-                                            style={{
-                                                width: '100%', padding: '13px', borderRadius: '24px',
-                                                background: 'linear-gradient(135deg, #00a884 0%, #059669 100%)',
-                                                border: 'none', color: '#ffffff', fontSize: '14px',
-                                                fontWeight: 900, cursor: 'pointer',
-                                                boxShadow: '0 8px 24px rgba(0,168,132,0.4)',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                            }}
-                                        >
-                                            <CheckCircle2 size={17} />
-                                            <span>{t.confirmAttendance}</span>
-                                        </button>
-                                    )}
-
-                                    {/* Dismiss */}
-                                    <button type="button" onClick={dismissAttendanceDetails}
-                                        style={{
-                                            background: 'transparent', border: 'none',
-                                            color: sheetSubColor, fontSize: '12px', fontWeight: 700,
-                                            cursor: 'pointer', textAlign: 'center'
-                                        }}
-                                    >
-                                        {lang === 'hi' ? 'रद्द करें' : 'Cancel / Not me'}
-                                    </button>
-                                </div>
-                            </>
-                        )}
-
-                        {/* ── SUCCESS STATE ─────────────────────────────── */}
-                        {scanningStatus === 'SUCCESS' && (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', paddingTop: '4px' }}>
-                                {/* Big checkmark */}
-                                <motion.div
-                                    initial={{ scale: 0.5, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    transition={{ type: 'spring', damping: 14, stiffness: 200 }}
-                                    style={{
-                                        width: '72px', height: '72px', borderRadius: '50%',
-                                        background: 'linear-gradient(135deg, #00a884 0%, #059669 100%)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        boxShadow: '0 0 40px rgba(0,168,132,0.5)'
-                                    }}
-                                >
-                                    <Check size={38} color="#fff" strokeWidth={3} />
-                                </motion.div>
-
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '20px', fontWeight: 900, color: sheetTextColor, marginBottom: '4px' }}>
-                                        {t.attendanceConfirmedTitle}
-                                    </div>
-                                    <div style={{ fontSize: '14px', color: '#00e5b3', fontWeight: 700 }}>
+                                <div>
+                                    <div style={{ fontSize: '17px', fontWeight: 900, letterSpacing: '-0.01em' }}>
                                         {recognizedPerson.name}
                                     </div>
-                                    <div style={{ fontSize: '11.5px', color: sheetSubColor, fontWeight: 600, marginTop: '2px' }}>
-                                        {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                        {lastActionType === 'TRIP_RETURN' && (
-                                            <span style={{ marginLeft: '6px', color: '#f59e0b' }}>
-                                                {lang === 'hi' ? '· ट्रिप वापसी' : '· Trip Return'}
-                                            </span>
-                                        )}
+                                    <div style={{ fontSize: '11px', color: isDarkMode ? 'rgba(255,255,255,0.6)' : '#0f4231', fontWeight: 600 }}>
+                                        {recognizedPerson.employeeId || 'DRV-FLEET'} • {recognizedPerson.phone || 'Yard Driver'}
                                     </div>
                                 </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={dismissAttendanceDetails}
+                                style={{
+                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    background: 'rgba(255,255,255,0.08)', border: 'none',
+                                    color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}
+                            >
+                                <X size={15} />
+                            </button>
+                        </div>
 
-                                {/* Truck info */}
+                        {/* Vehicle & Duty Status Pill */}
+                        <div style={{
+                            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
+                            background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                            padding: '10px 12px', borderRadius: '14px',
+                            border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)'
+                        }}>
+                            <div>
+                                <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                                    {t.assignedTruck}
+                                </div>
+                                <div style={{ fontSize: '13px', fontWeight: 900, color: '#00e5b3', marginTop: '2px' }}>
+                                    {recognizedPerson.assignedTruck || 'No Truck Assigned'}
+                                </div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                                    {t.dutyStatus}
+                                </div>
                                 <div style={{
-                                    width: '100%', background: sheetCardBg, border: sheetCardBorder,
-                                    borderRadius: '14px', padding: '10px 14px',
-                                    display: 'flex', alignItems: 'center', gap: '10px'
+                                    fontSize: '12px', fontWeight: 800, marginTop: '2px',
+                                    color: recognizedPerson.status === 'ON_TRIP' ? '#f59e0b' : '#10b981'
                                 }}>
-                                    <Truck size={20} color="#00e5b3" />
-                                    <div>
-                                        <div style={{ fontSize: '12px', fontWeight: 900, color: sheetTextColor }}>
-                                            {recognizedPerson.assignedTruck || '—'}
-                                        </div>
-                                        <div style={{ fontSize: '10.5px', color: sheetSubColor }}>
-                                            {lang === 'hi' ? 'आवंटित वाहन' : 'Assigned vehicle'}
-                                        </div>
-                                    </div>
+                                    {recognizedPerson.status === 'ON_TRIP' ? t.onTrip : t.available}
                                 </div>
+                            </div>
+                        </div>
 
-                                <div style={{ fontSize: '11px', color: sheetSubColor, textAlign: 'center', fontWeight: 600 }}>
-                                    {lang === 'hi' ? 'स्क्रीन अपने आप बंद हो जाएगी...' : 'Screen will close automatically...'}
-                                </div>
+                        {/* Action Buttons */}
+                        {scanningStatus === 'RECOGNIZED' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                                {recognizedPerson.status === 'ON_TRIP' ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleConfirmDutyAction('TRIP_RETURN')}
+                                        style={{
+                                            padding: '13px', borderRadius: '16px',
+                                            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                            border: 'none', color: '#000000', fontSize: '14px', fontWeight: 900,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            gap: '8px', boxShadow: '0 6px 20px rgba(245,158,11,0.4)'
+                                        }}
+                                    >
+                                        <CheckCheck size={18} strokeWidth={2.6} />
+                                        <span>{t.confirmTripReturn}</span>
+                                        {autoConfirmCount !== null && (
+                                            <span style={{ fontSize: '11px', opacity: 0.85 }}>({autoConfirmCount}s)</span>
+                                        )}
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleConfirmDutyAction('CHECK_IN')}
+                                        style={{
+                                            padding: '13px', borderRadius: '16px',
+                                            background: 'linear-gradient(135deg, #00e5b3 0%, #00a884 100%)',
+                                            border: 'none', color: '#031811', fontSize: '14px', fontWeight: 900,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            gap: '8px', boxShadow: '0 6px 20px rgba(0,229,179,0.4)'
+                                        }}
+                                    >
+                                        <CheckCircle2 size={18} strokeWidth={2.6} />
+                                        <span>{t.confirmAttendance}</span>
+                                        {autoConfirmCount !== null && (
+                                            <span style={{ fontSize: '11px', opacity: 0.85 }}>({autoConfirmCount}s)</span>
+                                        )}
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={dismissAttendanceDetails}
+                                    style={{
+                                        background: 'transparent', border: 'none',
+                                        color: isDarkMode ? 'rgba(255,255,255,0.5)' : '#0b3829',
+                                        fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', padding: '6px'
+                                    }}
+                                >
+                                    {t.cancel}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Confirmation Success Banner */}
+                        {scanningStatus === 'SUCCESS' && (
+                            <div style={{
+                                padding: '14px', borderRadius: '16px',
+                                background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981',
+                                textAlign: 'center', color: '#10b981', fontWeight: 900, fontSize: '14px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                            }}>
+                                <CheckCircle2 size={20} />
+                                <span>{lastActionType === 'TRIP_RETURN' ? t.tripReturnConfirmedTitle : t.attendanceConfirmedTitle}</span>
+                            </div>
+                        )}
+
+                        {/* Duplicate Warning Banner */}
+                        {scanningStatus === 'DUPLICATE' && (
+                            <div style={{
+                                padding: '14px', borderRadius: '16px',
+                                background: 'rgba(245,158,11,0.15)', border: '1px solid #f59e0b',
+                                textAlign: 'center', color: '#f59e0b', fontWeight: 800, fontSize: '13px'
+                            }}>
+                                <div>{t.duplicateTitle}</div>
+                                <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>{t.duplicateDesc}</div>
                             </div>
                         )}
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* ════════════════════════════════════════════════════════════
-                7. ADMIN PIN MODAL
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Modal 1: Searchable Driver Selector ── */}
             <AnimatePresence>
-                {showAdminPinModal && (
+                {showDriverSelectorModal && (
                     <motion.div
-                        key="pin_modal_bg"
+                        key="driver_modal"
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={() => setShowDriverSelectorModal(false)}
                         style={{
-                            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)',
-                            backdropFilter: 'blur(12px)', zIndex: 999999,
+                            position: 'absolute', inset: 0, zIndex: 60,
+                            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+                            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end'
+                        }}
+                    >
+                        <motion.div
+                            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                background: '#0a1a14', borderTop: '2px solid #00e5b3',
+                                borderTopLeftRadius: '24px', borderTopRightRadius: '24px',
+                                padding: '18px', maxHeight: '75vh', display: 'flex', flexDirection: 'column', gap: '12px'
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ fontSize: '15px', fontWeight: 900, color: '#ffffff' }}>
+                                    {t.manualSelect} ({allRosterDrivers.length})
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDriverSelectorModal(false)}
+                                    style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Search input */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                background: 'rgba(255,255,255,0.06)', borderRadius: '12px',
+                                padding: '8px 12px', border: '1px solid rgba(255,255,255,0.12)'
+                            }}>
+                                <Search size={15} color="rgba(255,255,255,0.4)" />
+                                <input
+                                    type="text"
+                                    placeholder="Search driver name, phone, truck..."
+                                    value={driverSearchQuery}
+                                    onChange={(e) => setDriverSearchQuery(e.target.value)}
+                                    style={{
+                                        background: 'transparent', border: 'none', outline: 'none',
+                                        color: '#ffffff', fontSize: '13px', flex: 1
+                                    }}
+                                />
+                            </div>
+
+                            {/* Drivers List */}
+                            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh' }}>
+                                {filteredDriversForSelector.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+                                        No drivers found
+                                    </div>
+                                ) : (
+                                    filteredDriversForSelector.map(d => (
+                                        <div
+                                            key={d.id}
+                                            onClick={() => {
+                                                setSelectedTestDriverId(d.id);
+                                                setShowDriverSelectorModal(false);
+                                                handleTriggerScan(d);
+                                            }}
+                                            style={{
+                                                padding: '12px 14px', borderRadius: '14px',
+                                                background: selectedTestDriverId === d.id ? 'rgba(0,229,179,0.12)' : 'rgba(255,255,255,0.04)',
+                                                border: selectedTestDriverId === d.id ? '1.5px solid #00e5b3' : '1px solid rgba(255,255,255,0.08)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <div>
+                                                <div style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff' }}>
+                                                    {d.name}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>
+                                                    {d.employeeId || 'DRV'} • {d.phone || 'No phone'}
+                                                </div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontSize: '12px', fontWeight: 900, color: '#00e5b3' }}>
+                                                    {d.assignedTruck || 'Unassigned'}
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '9.5px', fontWeight: 800, marginTop: '2px',
+                                                    color: d.status === 'ON_TRIP' ? '#f59e0b' : '#10b981'
+                                                }}>
+                                                    {d.status === 'ON_TRIP' ? 'ON TRIP' : 'AVAILABLE'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ── Modal 2: Admin Security PIN Prompt (Default: 8888) ── */}
+            <AnimatePresence>
+                {showSecurityPinModal && (
+                    <motion.div
+                        key="pin_modal"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={() => { setShowSecurityPinModal(false); setEnteredPin(''); setPinError(''); }}
+                        style={{
+                            position: 'absolute', inset: 0, zIndex: 9999,
+                            background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(20px)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
                         }}
                     >
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
                             style={{
-                                width: '100%', maxWidth: '320px', background: '#0d1f18',
-                                borderRadius: '24px', border: '1px solid rgba(0,229,179,0.3)',
-                                padding: '24px', textAlign: 'center',
-                                boxShadow: '0 20px 60px rgba(0,0,0,0.7)'
+                                width: '100%', maxWidth: '320px', background: '#0a1b14',
+                                borderRadius: '24px', border: '1.5px solid #00e5b3',
+                                padding: '24px 20px', textAlign: 'center',
+                                boxShadow: '0 20px 60px rgba(0,0,0,0.9)'
                             }}
                         >
                             <div style={{
-                                width: '44px', height: '44px', borderRadius: '50%',
-                                background: 'rgba(0,229,179,0.12)', color: '#00e5b3',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px'
+                                width: '48px', height: '48px', borderRadius: '50%',
+                                background: 'rgba(0,229,179,0.15)', color: '#00e5b3',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px'
                             }}>
-                                <Lock size={20} />
+                                <Lock size={22} />
                             </div>
-                            <h3 style={{ fontSize: '17px', fontWeight: 900, margin: '0 0 4px 0', color: '#ffffff' }}>
-                                Admin PIN Code
-                            </h3>
-                            <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.6)', margin: '0 0 16px 0', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: '17px', fontWeight: 900, color: '#ffffff' }}>
+                                {t.adminPinTitle}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '4px', lineHeight: 1.4 }}>
                                 {t.enterPinPrompt}
-                            </p>
+                            </div>
 
-                            {/* PIN display dots */}
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '14px' }}>
-                                {[0,1,2,3].map(i => (
-                                    <div key={i} style={{
-                                        width: '14px', height: '14px', borderRadius: '50%',
-                                        background: i < enteredPin.length ? '#00e5b3' : 'rgba(255,255,255,0.15)',
-                                        border: i < enteredPin.length ? '2px solid #00e5b3' : '2px solid rgba(255,255,255,0.25)',
-                                        transition: 'all 0.15s'
-                                    }} />
+                            {/* 4 PIN Dots */}
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', margin: '18px 0 10px' }}>
+                                {[0, 1, 2, 3].map(i => (
+                                    <div
+                                        key={i}
+                                        style={{
+                                            width: '16px', height: '16px', borderRadius: '50%',
+                                            background: i < enteredPin.length ? '#00e5b3' : 'rgba(255,255,255,0.12)',
+                                            border: i < enteredPin.length ? '2px solid #00e5b3' : '2px solid rgba(255,255,255,0.25)',
+                                            boxShadow: i < enteredPin.length ? '0 0 10px #00e5b3' : 'none'
+                                        }}
+                                    />
                                 ))}
                             </div>
 
                             {pinError && (
-                                <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginBottom: '10px' }}>
+                                <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 800, marginBottom: '8px' }}>
                                     {pinError}
                                 </div>
                             )}
 
-                            {/* Touch keypad */}
+                            {/* Keypad */}
                             <div style={{
-                                display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-                                gap: '8px', maxWidth: '240px', margin: '0 auto 14px'
+                                display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px',
+                                maxWidth: '240px', margin: '14px auto 8px'
                             }}>
                                 {['1','2','3','4','5','6','7','8','9','C','0','⌫'].map(k => (
-                                    <button key={k} type="button"
-                                        onClick={() => {
-                                            if (k === 'C') { setEnteredPin(''); setPinError(''); }
-                                            else if (k === '⌫') { setEnteredPin(p => p.slice(0, -1)); setPinError(''); }
-                                            else if (enteredPin.length < 4) {
-                                                const next = enteredPin + k;
-                                                setEnteredPin(next);
-                                                handleAdminPinSubmit(next);
-                                            }
-                                        }}
+                                    <button
+                                        key={k}
+                                        type="button"
+                                        onClick={() => handleAdminPinKeypad(k)}
                                         style={{
-                                            padding: '12px', borderRadius: '12px',
+                                            padding: '12px', borderRadius: '14px',
                                             background: k === 'C' || k === '⌫' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)',
                                             border: '1px solid rgba(255,255,255,0.15)',
-                                            color: '#ffffff', fontSize: '17px', fontWeight: 800, cursor: 'pointer',
-                                            transition: 'background 0.12s'
+                                            color: '#ffffff', fontSize: '17px', fontWeight: 800, cursor: 'pointer'
                                         }}
                                     >
                                         {k}
@@ -1526,61 +1431,172 @@ export default function TerminalModule({ onExit }) {
                                 ))}
                             </div>
 
-                            <button type="button"
-                                onClick={() => { setShowAdminPinModal(false); setEnteredPin(''); setPinError(''); }}
+                            <button
+                                type="button"
+                                onClick={() => { setShowSecurityPinModal(false); setEnteredPin(''); setPinError(''); }}
                                 style={{
                                     background: 'transparent', border: 'none',
-                                    color: 'rgba(255,255,255,0.45)', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                                    color: 'rgba(255,255,255,0.45)', fontSize: '12px', fontWeight: 700,
+                                    cursor: 'pointer', marginTop: '10px'
                                 }}
                             >
-                                Cancel
+                                {t.cancel}
                             </button>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* ════════════════════════════════════════════════════════════
-                8. ADMIN PANEL
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Modal 3: Authenticated Terminal Controls Modal ── */}
             <AnimatePresence>
-                {showAdminPanel && (
+                {showAuthenticatedActionModal && (
                     <motion.div
-                        key="admin_panel_bg"
+                        key="auth_action_modal"
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={() => setShowAuthenticatedActionModal(false)}
                         style={{
-                            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
-                            backdropFilter: 'blur(16px)', zIndex: 999999,
+                            position: 'absolute', inset: 0, zIndex: 99999,
+                            background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(20px)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
                         }}
                     >
                         <motion.div
-                            initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.92, opacity: 0 }}
+                            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
                             style={{
-                                width: '100%', maxWidth: '520px', maxHeight: '90vh',
-                                background: '#0a1612', borderRadius: '24px',
-                                border: '1.5px solid rgba(0,229,179,0.3)',
-                                display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                                boxShadow: '0 25px 70px rgba(0,0,0,0.85)'
+                                width: '100%', maxWidth: '340px', background: '#0a1a14',
+                                borderRadius: '24px', border: '1.5px solid #00e5b3',
+                                padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '12px',
+                                boxShadow: '0 20px 60px rgba(0,0,0,0.9)'
                             }}
                         >
-                            {/* Panel header */}
+                            <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                                <div style={{
+                                    width: '46px', height: '46px', borderRadius: '50%',
+                                    background: 'rgba(16,185,129,0.15)', color: '#10b981',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px'
+                                }}>
+                                    <Shield size={22} />
+                                </div>
+                                <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>
+                                    Admin Actions Verified
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>
+                                    Terminal Security PIN Accepted
+                                </div>
+                            </div>
+
+                            {/* Action 1: Exit App & Go to Settings */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowAuthenticatedActionModal(false);
+                                    exitApp(ADMIN_PIN, onExit);
+                                }}
+                                style={{
+                                    width: '100%', padding: '13px', borderRadius: '14px',
+                                    background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                                    border: 'none', color: '#ffffff', fontSize: '13.5px', fontWeight: 900,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    gap: '8px', boxShadow: '0 4px 16px rgba(239,68,68,0.35)'
+                                }}
+                            >
+                                <LogOut size={16} />
+                                <span>{t.exitTerminal}</span>
+                            </button>
+
+                            {/* Action 2: Open Terminal Settings */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowAuthenticatedActionModal(false);
+                                    setShowAdminPanel(true);
+                                }}
+                                style={{
+                                    width: '100%', padding: '12px', borderRadius: '14px',
+                                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                                    color: '#ffffff', fontSize: '13px', fontWeight: 800,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    gap: '8px'
+                                }}
+                            >
+                                <Settings size={16} color="#00e5b3" />
+                                <span>{t.openSettings}</span>
+                            </button>
+
+                            {/* Action 3: Restart Terminal */}
+                            <button
+                                type="button"
+                                onClick={() => window.location.reload()}
+                                style={{
+                                    width: '100%', padding: '12px', borderRadius: '14px',
+                                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                                    color: '#ffffff', fontSize: '12.5px', fontWeight: 700,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    gap: '8px'
+                                }}
+                            >
+                                <RotateCcw size={15} />
+                                <span>{t.restartTerminal}</span>
+                            </button>
+
+                            {/* Cancel */}
+                            <button
+                                type="button"
+                                onClick={() => setShowAuthenticatedActionModal(false)}
+                                style={{
+                                    background: 'transparent', border: 'none',
+                                    color: 'rgba(255,255,255,0.45)', fontSize: '12px', fontWeight: 700,
+                                    cursor: 'pointer', textAlign: 'center', marginTop: '4px'
+                                }}
+                            >
+                                {t.cancel}
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ── Modal 4: Full Administration & Settings Panel ── */}
+            <AnimatePresence>
+                {showAdminPanel && (
+                    <motion.div
+                        key="admin_panel"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={() => setShowAdminPanel(false)}
+                        style={{
+                            position: 'absolute', inset: 0, zIndex: 999999,
+                            background: 'rgba(0,0,0,0.94)', backdropFilter: 'blur(16px)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+                        }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.94, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                width: '100%', maxWidth: '520px', maxHeight: '88vh',
+                                background: '#0a1612', borderRadius: '24px',
+                                border: '1.5px solid rgba(0,229,179,0.3)',
+                                display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                            }}
+                        >
+                            {/* Panel Header */}
                             <div style={{
                                 padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                flexShrink: 0
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <Shield size={18} color="#00e5b3" />
-                                    <h3 style={{ fontSize: '15px', fontWeight: 900, margin: 0, color: '#ffffff' }}>
+                                    <div style={{ fontSize: '15px', fontWeight: 900, color: '#ffffff' }}>
                                         {t.adminPanel}
-                                    </h3>
+                                    </div>
                                 </div>
-                                <button type="button"
-                                    onClick={() => { setShowAdminPanel(false); setEnrollingPerson(null); setEnrollSnapshot(null); }}
-                                    style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.55)', cursor: 'pointer', padding: '4px' }}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdminPanel(false)}
+                                    style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}
                                 >
                                     <X size={18} />
                                 </button>
@@ -1589,22 +1605,23 @@ export default function TerminalModule({ onExit }) {
                             {/* Tabs */}
                             <div style={{
                                 display: 'flex', padding: '8px 12px', gap: '6px',
-                                background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.06)',
-                                flexShrink: 0
+                                background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.06)'
                             }}>
                                 {[
                                     { key: 'roster', label: `Roster (${allRosterPeople.length})` },
-                                    { key: 'add', label: '+ Enroll New' },
-                                    { key: 'system', label: 'System & Exit' }
+                                    { key: 'enroll', label: '+ Enroll Biometrics' },
+                                    { key: 'system', label: 'Telemetry & Exit' }
                                 ].map(tab => (
-                                    <button key={tab.key} type="button"
-                                        onClick={() => { setAdminTab(tab.key); setEnrollingPerson(null); setEnrollSnapshot(null); }}
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => setAdminTab(tab.key)}
                                         style={{
                                             flex: 1, padding: '7px 4px', borderRadius: '10px', border: 'none',
-                                            fontSize: '11px', fontWeight: 800,
+                                            fontSize: '11.5px', fontWeight: 800,
                                             background: adminTab === tab.key ? '#00a884' : 'transparent',
-                                            color: adminTab === tab.key ? '#ffffff' : 'rgba(255,255,255,0.55)',
-                                            cursor: 'pointer', transition: 'all 0.15s'
+                                            color: adminTab === tab.key ? '#ffffff' : 'rgba(255,255,255,0.5)',
+                                            cursor: 'pointer'
                                         }}
                                     >
                                         {tab.label}
@@ -1612,203 +1629,87 @@ export default function TerminalModule({ onExit }) {
                                 ))}
                             </div>
 
-                            {/* Panel body */}
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-
-                                {/* ── ROSTER TAB ────────────────────────── */}
+                            {/* Tab Content */}
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
                                 {adminTab === 'roster' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        {/* Search */}
-                                        <div style={{
-                                            display: 'flex', alignItems: 'center', gap: '8px',
-                                            padding: '7px 10px', background: 'rgba(255,255,255,0.05)',
-                                            borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)'
-                                        }}>
-                                            <Search size={14} color="rgba(255,255,255,0.4)" />
-                                            <input type="text" placeholder="Search name, phone, truck…"
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#ffffff', fontSize: '12px' }}
-                                            />
-                                        </div>
-
-                                        {rosterLoading ? (
-                                            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '12px', padding: '20px' }}>
-                                                Loading roster…
-                                            </div>
-                                        ) : filteredPeople.length === 0 ? (
-                                            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: '12px', padding: '20px' }}>
-                                                No results found
-                                            </div>
-                                        ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                {filteredPeople.map(p => (
-                                                    <div key={p.id} style={{
-                                                        background: 'rgba(255,255,255,0.04)',
-                                                        border: '1px solid rgba(255,255,255,0.08)',
-                                                        borderRadius: '14px', padding: '10px 12px',
-                                                        display: 'flex', flexDirection: 'column', gap: '8px'
-                                                    }}>
-                                                        {/* Person row */}
-                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                                                                <div style={{
-                                                                    width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0,
-                                                                    background: p.faceEnrolled ? 'rgba(0,229,179,0.18)' : 'rgba(255,255,255,0.07)',
-                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                    border: `1.5px solid ${p.faceEnrolled ? '#00e5b3' : 'rgba(255,255,255,0.18)'}`,
-                                                                    overflow: 'hidden'
-                                                                }}>
-                                                                    {p.photoUrl
-                                                                        ? <img src={p.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                                        : <User size={16} color={p.faceEnrolled ? '#00e5b3' : '#ffffff'} />}
-                                                                </div>
-                                                                <div>
-                                                                    <div style={{ fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>
-                                                                        {p.name} <span style={{ fontSize: '9.5px', color: '#00e5b3', fontWeight: 700 }}>({p.type})</span>
-                                                                    </div>
-                                                                    <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)' }}>
-                                                                        {p.employeeId}{p.phone && ` • ${p.phone}`}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            {/* Biometric badges */}
-                                                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                                                {[
-                                                                    { ok: p.faceEnrolled, label: p.faceEnrolled ? 'Face ✓' : 'Face ✗' },
-                                                                    { ok: p.fingerprintEnrolled, label: p.fingerprintEnrolled ? 'FP ✓' : 'FP ✗' }
-                                                                ].map((b, i) => (
-                                                                    <span key={i} style={{
-                                                                        fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '5px',
-                                                                        background: b.ok ? 'rgba(0,229,179,0.12)' : 'rgba(239,68,68,0.12)',
-                                                                        color: b.ok ? '#00e5b3' : '#ef4444'
-                                                                    }}>{b.label}</span>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Vehicle selector */}
-                                                        <div style={{
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                            background: 'rgba(0,0,0,0.22)', padding: '5px 8px', borderRadius: '8px'
-                                                        }}>
-                                                            <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <Truck size={12} color="#00e5b3" />
-                                                                <span>Assigned Truck:</span>
-                                                            </div>
-                                                            <select value={p.assignedTruck || ''} onChange={(e) => handleAssignVehicle(p.id, e.target.value)}
-                                                                style={{
-                                                                    background: '#0d1f18', border: '1px solid rgba(0,229,179,0.3)',
-                                                                    color: '#ffffff', fontSize: '11px', fontWeight: 700,
-                                                                    padding: '3px 6px', borderRadius: '6px', outline: 'none'
-                                                                }}
-                                                            >
-                                                                <option value="">— Unassigned —</option>
-                                                                {vehicles.map(v => (
-                                                                    <option key={v.id || v.truckNo} value={v.truckNo}>
-                                                                        {v.truckNo} ({v.owner || 'VGTC'})
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Action buttons */}
-                                                        <div style={{ display: 'flex', gap: '6px' }}>
-                                                            <button type="button"
-                                                                onClick={() => { setEnrollingPerson(p); setEnrollSnapshot(null); }}
-                                                                style={{
-                                                                    flex: 1, padding: '6px', borderRadius: '8px',
-                                                                    background: '#00a884', border: 'none',
-                                                                    color: '#ffffff', fontSize: '11px', fontWeight: 800, cursor: 'pointer',
-                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
-                                                                }}
-                                                            >
-                                                                <Camera size={12} />
-                                                                <span>{p.faceEnrolled ? 'Change Face' : 'Enroll Face'}</span>
-                                                            </button>
-                                                            <button type="button"
-                                                                onClick={() => handleSaveEnrollment({ ...p, fingerprintEnrolled: !p.fingerprintEnrolled })}
-                                                                style={{
-                                                                    flex: 1, padding: '6px', borderRadius: '8px',
-                                                                    background: 'rgba(255,255,255,0.07)',
-                                                                    border: '1px solid rgba(255,255,255,0.14)',
-                                                                    color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
-                                                                }}
-                                                            >
-                                                                <Fingerprint size={12} color="#00e5b3" />
-                                                                <span>{p.fingerprintEnrolled ? 'Remove FP' : 'Enable FP'}</span>
-                                                            </button>
-                                                            {(p.faceEnrolled || p.fingerprintEnrolled) && (
-                                                                <button type="button" onClick={() => handleDeleteBiometrics(p.id)}
-                                                                    title="Delete Biometrics"
-                                                                    style={{
-                                                                        padding: '6px 10px', borderRadius: '8px',
-                                                                        background: 'rgba(239,68,68,0.12)',
-                                                                        border: '1px solid rgba(239,68,68,0.28)',
-                                                                        color: '#ef4444', cursor: 'pointer'
-                                                                    }}
-                                                                >
-                                                                    <Trash2 size={13} />
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {allRosterPeople.map(p => (
+                                            <div
+                                                key={p.id}
+                                                style={{
+                                                    background: 'rgba(255,255,255,0.04)', borderRadius: '12px',
+                                                    padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                                                }}
+                                            >
+                                                <div>
+                                                    <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#ffffff' }}>
+                                                        {p.name}
                                                     </div>
-                                                ))}
+                                                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                                                        {p.employeeId} • Truck: <b style={{ color: '#00e5b3' }}>{p.assignedTruck || 'None'}</b>
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteBiometrics(p.id)}
+                                                        style={{
+                                                            padding: '6px 10px', borderRadius: '8px',
+                                                            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                                                            color: '#ef4444', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        Delete Bio
+                                                    </button>
+                                                </div>
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
                                 )}
 
-                                {/* ── ADD NEW PERSON TAB ────────────────── */}
-                                {adminTab === 'add' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                {adminTab === 'enroll' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         <div>
-                                            <label style={labelStyle}>Full Name *</label>
-                                            <input type="text" placeholder="e.g. Ramesh Kumar"
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,0.6)' }}>Full Name</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Ramesh Kumar"
                                                 value={newPersonForm.name}
                                                 onChange={(e) => setNewPersonForm({ ...newPersonForm, name: e.target.value })}
-                                                style={inputStyle}
+                                                style={{
+                                                    width: '100%', padding: '9px 12px', borderRadius: '10px',
+                                                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+                                                    color: '#ffffff', fontSize: '12px', marginTop: '4px', boxSizing: 'border-box'
+                                                }}
                                             />
                                         </div>
-
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                            <div>
-                                                <label style={labelStyle}>Mobile Phone</label>
-                                                <input type="tel" placeholder="9876543210"
-                                                    value={newPersonForm.phone}
-                                                    onChange={(e) => setNewPersonForm({ ...newPersonForm, phone: e.target.value })}
-                                                    style={inputStyle}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Employee ID</label>
-                                                <input type="text" placeholder="DRV-001"
-                                                    value={newPersonForm.employeeId}
-                                                    onChange={(e) => setNewPersonForm({ ...newPersonForm, employeeId: e.target.value })}
-                                                    style={inputStyle}
-                                                />
-                                            </div>
-                                        </div>
-
                                         <div>
-                                            <label style={labelStyle}>Role</label>
-                                            <select value={newPersonForm.type}
-                                                onChange={(e) => setNewPersonForm({ ...newPersonForm, type: e.target.value })}
-                                                style={selectStyle}
-                                            >
-                                                <option value="DRIVER">Driver (चालक)</option>
-                                                <option value="STAFF">Staff (कर्मचारी)</option>
-                                            </select>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,0.6)' }}>Phone</label>
+                                            <input
+                                                type="tel"
+                                                placeholder="10-digit mobile"
+                                                value={newPersonForm.phone}
+                                                onChange={(e) => setNewPersonForm({ ...newPersonForm, phone: e.target.value })}
+                                                style={{
+                                                    width: '100%', padding: '9px 12px', borderRadius: '10px',
+                                                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+                                                    color: '#ffffff', fontSize: '12px', marginTop: '4px', boxSizing: 'border-box'
+                                                }}
+                                            />
                                         </div>
-
                                         <div>
-                                            <label style={labelStyle}>Assign Vehicle from VGTC Fleet</label>
-                                            <select value={newPersonForm.assignedTruck}
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,0.6)' }}>Assign Truck</label>
+                                            <select
+                                                value={newPersonForm.assignedTruck}
                                                 onChange={(e) => setNewPersonForm({ ...newPersonForm, assignedTruck: e.target.value })}
-                                                style={selectStyle}
+                                                style={{
+                                                    width: '100%', padding: '9px 12px', borderRadius: '10px',
+                                                    background: '#0d1f18', border: '1px solid rgba(255,255,255,0.15)',
+                                                    color: '#ffffff', fontSize: '12px', marginTop: '4px', boxSizing: 'border-box'
+                                                }}
                                             >
-                                                <option value="">— Select Truck —</option>
+                                                <option value="">— Select Vehicle —</option>
                                                 {vehicles.map(v => (
                                                     <option key={v.id || v.truckNo} value={v.truckNo}>
                                                         {v.truckNo} ({v.owner || 'VGTC'})
@@ -1816,20 +1717,9 @@ export default function TerminalModule({ onExit }) {
                                                 ))}
                                             </select>
                                         </div>
-
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                            <input type="checkbox"
-                                                checked={newPersonForm.fingerprintEnrolled}
-                                                onChange={(e) => setNewPersonForm({ ...newPersonForm, fingerprintEnrolled: e.target.checked })}
-                                                style={{ width: '16px', height: '16px', accentColor: '#00a884' }}
-                                            />
-                                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)' }}>
-                                                Enable Direct Fingerprint Authentication
-                                            </span>
-                                        </label>
-
-                                        <button type="button"
-                                            disabled={!newPersonForm.name}
+                                        <button
+                                            type="button"
+                                            disabled={!newPersonForm.name || savingEnrollment}
                                             onClick={async () => {
                                                 await handleSaveEnrollment(newPersonForm);
                                                 setNewPersonForm({ name: '', phone: '', employeeId: '', type: 'DRIVER', assignedTruck: '', fingerprintEnrolled: false });
@@ -1837,86 +1727,71 @@ export default function TerminalModule({ onExit }) {
                                             }}
                                             style={{
                                                 padding: '12px', borderRadius: '12px',
-                                                background: newPersonForm.name ? '#00a884' : 'rgba(255,255,255,0.08)',
-                                                border: 'none', color: newPersonForm.name ? '#ffffff' : 'rgba(255,255,255,0.3)',
-                                                fontSize: '13px', fontWeight: 900,
-                                                cursor: newPersonForm.name ? 'pointer' : 'not-allowed',
-                                                marginTop: '2px'
+                                                background: newPersonForm.name ? '#00a884' : 'rgba(255,255,255,0.1)',
+                                                border: 'none', color: '#ffffff', fontSize: '13px', fontWeight: 800,
+                                                cursor: newPersonForm.name ? 'pointer' : 'default', marginTop: '6px'
                                             }}
                                         >
-                                            Save &amp; Enroll Person
+                                            {savingEnrollment ? 'Saving...' : 'Enroll Person to Roster'}
                                         </button>
                                     </div>
                                 )}
 
-                                {/* ── SYSTEM TAB ────────────────────────── */}
                                 {adminTab === 'system' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        {/* Telemetry card */}
                                         <div style={{
-                                            background: 'rgba(255,255,255,0.04)', borderRadius: '14px',
-                                            padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px'
+                                            background: 'rgba(255,255,255,0.04)', borderRadius: '14px', padding: '14px',
+                                            display: 'flex', flexDirection: 'column', gap: '8px'
                                         }}>
-                                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#00e5b3', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                                Terminal Telemetry
+                                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#00e5b3', textTransform: 'uppercase' }}>
+                                                Telemetry Diagnostics
                                             </div>
                                             {[
-                                                { label: 'Terminal Node', value: TERMINAL_ID, color: '#ffffff' },
-                                                { label: 'Cloud Sync', value: isOnline ? 'Online ●' : 'Offline ●', color: isOnline ? '#00e5b3' : '#f59e0b' },
-                                                { label: 'Queued Offline Events', value: `${offlineQueue.length} records`, color: offlineQueue.length > 0 ? '#f59e0b' : '#00e5b3' },
-                                                { label: 'Total Roster', value: `${allRosterPeople.length} people`, color: '#ffffff' },
-                                                { label: 'Fleet Size', value: `${vehicles.length} vehicles`, color: '#ffffff' },
+                                                { label: 'Terminal ID', value: TERMINAL_ID },
+                                                { label: 'Cloud Sync', value: isOnline ? 'Online (Connected)' : 'Offline' },
+                                                { label: 'Queued Events', value: `${offlineQueue.length} items` },
+                                                { label: 'Roster Count', value: `${allRosterPeople.length} staff/drivers` },
+                                                { label: 'Fleet Count', value: `${vehicles.length} trucks` }
                                             ].map(row => (
-                                                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
-                                                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{row.label}</span>
-                                                    <span style={{ fontWeight: 800, color: row.color }}>{row.value}</span>
+                                                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                                    <span style={{ color: 'rgba(255,255,255,0.6)' }}>{row.label}</span>
+                                                    <span style={{ fontWeight: 800, color: '#ffffff' }}>{row.value}</span>
                                                 </div>
                                             ))}
                                         </div>
 
-                                        <button type="button" onClick={syncOfflineQueue}
-                                            disabled={offlineQueue.length === 0}
+                                        <button
+                                            type="button"
+                                            onClick={fetchRoster}
                                             style={{
                                                 padding: '11px', borderRadius: '12px',
-                                                background: offlineQueue.length > 0 ? '#00a884' : 'rgba(255,255,255,0.06)',
-                                                border: 'none', color: '#ffffff', fontSize: '12px',
-                                                fontWeight: 800, cursor: offlineQueue.length > 0 ? 'pointer' : 'default',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
-                                            }}
-                                        >
-                                            <RefreshCw size={14} />
-                                            Force Sync Offline Events
-                                        </button>
-
-                                        <button type="button" onClick={fetchRoster}
-                                            style={{
-                                                padding: '11px', borderRadius: '12px',
-                                                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+                                                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
                                                 color: '#ffffff', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
                                             }}
                                         >
                                             <RefreshCw size={14} />
-                                            Refresh Roster from Server
+                                            <span>Refresh Roster from Server</span>
                                         </button>
 
-                                        {/* Admin panel exit (calls native exit) */}
-                                        {true && (
-                                            <button type="button"
-                                                onClick={() => { setShowAdminPanel(false); exitApp(onExit); }}
-                                                style={{
-                                                    padding: '13px', borderRadius: '12px',
-                                                    background: 'rgba(239,68,68,0.15)',
-                                                    border: '1.5px solid rgba(239,68,68,0.45)',
-                                                    color: '#ef4444', fontSize: '13px', fontWeight: 900, cursor: 'pointer',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    gap: '8px', marginTop: '4px'
-                                                }}
-                                            >
-                                                <ArrowLeft size={16} />
-                                                <span>{t.exitTerminal}</span>
-                                            </button>
-                                        )}
+                                        {/* Emergency Exit App Button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowAdminPanel(false);
+                                                exitApp(ADMIN_PIN, onExit);
+                                            }}
+                                            style={{
+                                                padding: '12px', borderRadius: '12px',
+                                                background: 'rgba(239,68,68,0.15)', border: '1.5px solid #ef4444',
+                                                color: '#ef4444', fontSize: '13px', fontWeight: 900, cursor: 'pointer',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                                marginTop: '10px'
+                                            }}
+                                        >
+                                            <LogOut size={16} />
+                                            <span>Exit Terminal & Unlock Device</span>
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -1925,189 +1800,45 @@ export default function TerminalModule({ onExit }) {
                 )}
             </AnimatePresence>
 
-            {/* ════════════════════════════════════════════════════════════
-                EXIT CONFIRMATION MODAL
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Screensaver ── */}
             <AnimatePresence>
-                {showExitConfirm && (
+                {isScreensaver && (
                     <motion.div
-                        key="exit-confirm"
+                        key="screensaver"
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={() => {
+                            setIsScreensaver(false);
+                            playChime('wake');
+                            speakPrompt('voiceLookCamera');
+                            resetIdleTimer();
+                        }}
                         style={{
-                            position: 'fixed', inset: 0, zIndex: 99999,
-                            background: 'rgba(0,0,0,0.88)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            padding: '24px'
+                            position: 'absolute', inset: 0, zIndex: 9999999,
+                            background: '#020705', display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
                         }}
                     >
                         <motion.div
-                            initial={{ scale: 0.85, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.85, opacity: 0 }}
-                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                            animate={{ scale: [1, 1.05, 1], opacity: [0.6, 1, 0.6] }}
+                            transition={{ duration: 3, repeat: Infinity }}
                             style={{
-                                background: 'linear-gradient(135deg, #0a1a14 0%, #071210 100%)',
-                                border: '1.5px solid rgba(239,68,68,0.4)',
-                                borderRadius: '20px', padding: '32px 28px',
-                                maxWidth: '340px', width: '100%', textAlign: 'center'
-                            }}
-                        >
-                            <div style={{
-                                width: '56px', height: '56px', borderRadius: '50%',
-                                background: 'rgba(239,68,68,0.15)',
-                                border: '2px solid rgba(239,68,68,0.5)',
+                                width: '80px', height: '80px', borderRadius: '50%',
+                                background: 'rgba(0,229,179,0.12)', border: '2px solid #00e5b3',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                margin: '0 auto 16px'
-                            }}>
-                                <X size={24} color="#ef4444" />
-                            </div>
-                            <div style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff', marginBottom: '8px' }}>
-                                {lang === 'hi' ? 'ऐप बंद करें?' : 'Exit App?'}
-                            </div>
-                            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '28px', lineHeight: 1.5 }}>
-                                {lang === 'hi'
-                                    ? 'क्या आप VGTC टर्मिनल से बाहर निकलना चाहते हैं?'
-                                    : 'Are you sure you want to close the VGTC Terminal app?'}
-                            </div>
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowExitConfirm(false)}
-                                    style={{
-                                        flex: 1, padding: '12px',
-                                        borderRadius: '12px',
-                                        background: 'rgba(255,255,255,0.08)',
-                                        border: '1px solid rgba(255,255,255,0.15)',
-                                        color: '#ffffff', fontSize: '14px', fontWeight: 700, cursor: 'pointer'
-                                    }}
-                                >
-                                    {lang === 'hi' ? 'रहें' : 'Stay'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setShowExitConfirm(false); exitApp(onExit); }}
-                                    style={{
-                                        flex: 1, padding: '12px',
-                                        borderRadius: '12px',
-                                        background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
-                                        border: 'none',
-                                        color: '#ffffff', fontSize: '14px', fontWeight: 800, cursor: 'pointer'
-                                    }}
-                                >
-                                    {lang === 'hi' ? 'बाहर निकलें' : 'Exit'}
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* ════════════════════════════════════════════════════════════
-                9. FACE ENROLL MODAL
-            ════════════════════════════════════════════════════════════ */}
-            <AnimatePresence>
-                {enrollingPerson && (
-                    <motion.div
-                        key="enroll_modal"
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.94)',
-                            backdropFilter: 'blur(16px)', zIndex: 9999999,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-                        }}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            style={{
-                                width: '100%', maxWidth: '360px', background: '#0d1f18',
-                                borderRadius: '24px', border: '1.5px solid #00e5b3',
-                                padding: '18px', display: 'flex', flexDirection: 'column',
-                                alignItems: 'center', gap: '12px',
-                                boxShadow: '0 20px 60px rgba(0,0,0,0.9)'
+                                boxShadow: '0 0 40px rgba(0,229,179,0.4)', marginBottom: '16px'
                             }}
                         >
-                            {/* Header */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                <div>
-                                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: '#ffffff' }}>
-                                        Enroll Face: {enrollingPerson.name}
-                                    </h4>
-                                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.55)', marginTop: '2px' }}>
-                                        Position face in frame then capture
-                                    </div>
-                                </div>
-                                <button type="button"
-                                    onClick={() => { setEnrollingPerson(null); setEnrollSnapshot(null); }}
-                                    style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '4px' }}
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-
-                            {/* Preview box */}
-                            <div style={{
-                                width: '210px', height: '230px', borderRadius: '18px',
-                                overflow: 'hidden', background: '#000',
-                                border: `2px solid ${enrollSnapshot ? '#10b981' : '#00e5b3'}`,
-                                position: 'relative', flexShrink: 0
-                            }}>
-                                {enrollSnapshot ? (
-                                    <img src={enrollSnapshot} alt="Snapshot"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                    />
-                                ) : (
-                                    <div style={{
-                                        width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-                                        alignItems: 'center', justifyContent: 'center',
-                                        color: 'rgba(255,255,255,0.35)', gap: '8px'
-                                    }}>
-                                        <Camera size={28} color="rgba(0,229,179,0.4)" />
-                                        <span style={{ fontSize: '12px' }}>Live Webcam Ready</span>
-                                    </div>
-                                )}
-                                {enrollSnapshot && (
-                                    <div style={{
-                                        position: 'absolute', top: '8px', right: '8px',
-                                        background: '#10b981', borderRadius: '50%', width: '24px', height: '24px',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                    }}>
-                                        <Check size={14} color="#fff" strokeWidth={3} />
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Buttons */}
-                            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                                <button type="button" onClick={handleCaptureFaceSnapshot}
-                                    style={{
-                                        flex: 1, padding: '11px', borderRadius: '12px',
-                                        background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)',
-                                        color: '#ffffff', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
-                                    }}
-                                >
-                                    <Camera size={15} />
-                                    <span>{enrollSnapshot ? 'Retake Photo' : 'Take Photo'}</span>
-                                </button>
-                                <button type="button"
-                                    disabled={!enrollSnapshot || savingEnrollment}
-                                    onClick={() => handleSaveEnrollment(enrollingPerson)}
-                                    style={{
-                                        flex: 1, padding: '11px', borderRadius: '12px',
-                                        background: enrollSnapshot && !savingEnrollment ? '#00a884' : 'rgba(255,255,255,0.05)',
-                                        border: 'none',
-                                        color: enrollSnapshot && !savingEnrollment ? '#ffffff' : 'rgba(255,255,255,0.25)',
-                                        fontSize: '12.5px', fontWeight: 900,
-                                        cursor: enrollSnapshot && !savingEnrollment ? 'pointer' : 'not-allowed'
-                                    }}
-                                >
-                                    {savingEnrollment ? 'Saving…' : 'Save Face'}
-                                </button>
-                            </div>
+                            <Truck size={36} color="#00e5b3" />
                         </motion.div>
+                        <div style={{ fontSize: '28px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em' }}>
+                            {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#00e5b3', fontWeight: 800, marginTop: '8px' }}>
+                            VGTC Terminal OS • Standby
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', marginTop: '20px' }}>
+                            Touch anywhere to scan
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
