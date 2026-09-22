@@ -177,7 +177,7 @@ export default function TripProfitModule() {
   );
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       {/* Header — says plainly what is on screen, since it is no longer everything */}
       <div style={{ marginBottom: '16px' }}>
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '8px' }}>

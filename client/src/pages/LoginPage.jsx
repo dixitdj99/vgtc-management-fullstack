@@ -16,42 +16,24 @@ const LOCATIONS = [
     godown: '',
   },
   {
-    id: 'kosli',
-    label: 'Kosli Dump',
-    desc: 'Kosli LR · Bill · Balance · Stock',
-    color: '#1565c0',
-    glow: 'rgba(21,101,192,0.35)',
-    bg: 'rgba(21,101,192,0.08)',
-    border: 'rgba(21,101,192,0.35)',
+    id: 'dumps',
+    label: 'Loading Dumps (Kosli · Jhajjar · Bahadurgarh)',
+    desc: 'Kosli · Jhajjar · Bahadurgarh — LR, Bill, Balance & Stock',
+    color: '#6366f1',
+    glow: 'rgba(99,102,241,0.35)',
+    bg: 'rgba(99,102,241,0.08)',
+    border: 'rgba(99,102,241,0.35)',
     icon: Truck,
     plant: 'jksuper',
     godown: 'kosli',
   },
-  {
-    id: 'jhajjar',
-    label: 'Jajjhar Dump',
-    desc: 'Jhajjar LR · Bill · Balance · Stock',
-    color: '#00897b',
-    glow: 'rgba(0,137,123,0.35)',
-    bg: 'rgba(0,137,123,0.08)',
-    border: 'rgba(0,137,123,0.35)',
-    icon: Building2,
-    plant: 'jksuper',
-    godown: 'jhajjar',
-  },
-  {
-    id: 'bahadurgarh',
-    label: 'Bahadurgarh Dump',
-    desc: 'Bahadurgarh LR · Bill · Balance · Stock',
-    color: '#d97706',
-    glow: 'rgba(217,119,6,0.35)',
-    bg: 'rgba(217,119,6,0.08)',
-    border: 'rgba(217,119,6,0.35)',
-    icon: Building2,
-    plant: 'jksuper',
-    godown: 'bahadurgarh',
-  },
 ];
+
+const LEGACY_LOCATIONS = {
+  kosli: { id: 'dumps', plant: 'jksuper', godown: 'kosli', label: 'Kosli Dump' },
+  jhajjar: { id: 'dumps', plant: 'jksuper', godown: 'jhajjar', label: 'Jajjhar Dump' },
+  bahadurgarh: { id: 'dumps', plant: 'jksuper', godown: 'bahadurgarh', label: 'Bahadurgarh Dump' },
+};
 
 export default function LoginPage() {
   const { login, signup, forgotPassword, verifyOtp, resendOtp, resetPassword } = useAuth();
@@ -78,7 +60,8 @@ export default function LoginPage() {
   const [passwordFocus, setPasswordFocus] = useState(false);
   const [methodId, setMethodId] = useState('');
 
-  const selectedLocation = LOCATIONS.find(l => l.id === locationId);
+  const selectedLocation = LOCATIONS.find(l => l.id === locationId) ||
+    (LEGACY_LOCATIONS[locationId] ? LOCATIONS.find(l => l.id === 'dumps') : null);
   const accentColor = '#ff0000'; // Red accent like autoplant
 
   const handleSubmit = async e => {
@@ -117,7 +100,10 @@ export default function LoginPage() {
         if (!locationId) { setError('Please select a location first'); setLoading(false); return; }
         const loc = selectedLocation;
         const plant = loc?.plant || '';
-        const godown = loc?.godown || '';
+        const isJharli = plant === 'jklakshmi' || locationId === 'jharli';
+        const godown = isJharli
+          ? ''
+          : (LEGACY_LOCATIONS[locationId]?.godown || loc?.godown || 'kosli');
         if (otpMode) {
           await verifyOtp(userId, otp, plant, godown);
         } else {

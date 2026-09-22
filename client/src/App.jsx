@@ -120,7 +120,7 @@ const UPDATE_ITEMS = [
 ];
 
 function AppInner() {
-  const { user, logout, ready, plant, godown } = useAuth();
+  const { user, logout, ready, plant, godown, setGodown } = useAuth();
   const vp = useViewport();
   const [active, setActive] = useState(() => {
     if (window.location.pathname.startsWith('/admin') && window.location.pathname !== '/admin/login') return 'admin_settings';
@@ -425,7 +425,7 @@ function AppInner() {
     // ── JK Super ──
     { id: 'lr_dump', label: 'Loading Receipt', Icon: Receipt, color: '#6366f1', section: 'jksuper', permKey: 'lr_dump' },
     {
-      id: 'voucher_dump', label: 'Voucher', Icon: FileText, color: '#6366f1', section: 'jksuper', sub: [
+      id: 'voucher_dump', label: 'Bill', Icon: FileText, color: '#6366f1', section: 'jksuper', sub: [
         { id: 'Kosli_Bill', label: 'Kosli Bill', permKey: 'bill_kosli' },
         { id: 'Jajjhar_Bill', label: 'Jhajjar Bill', permKey: 'bill_jhajjar' },
         { id: 'Bahadurgarh_Bill', label: 'Bahadurgarh Bill', permKey: 'bill_bahadurgarh' },
@@ -501,7 +501,6 @@ function AppInner() {
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
-    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -742,7 +741,7 @@ function AppInner() {
       {(id === 'party_master_dump' || id === 'party_master_jharli') && <PartyMaster />}
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
-      {(id === 'attendance_dump' || id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
+      {(id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
       {(id === 'whatsapp_dump' || id === 'whatsapp_jkl' || id === 'whatsapp_jharli' || id === 'whatsapp_main') && <WhatsAppControlModule />}
       {(id === 'labour_dump' || id === 'labour_jharli' || id === 'labour_main') && <LabourAccount canEdit={user.role === 'admin' || user.permissions?.pay === 'edit'} />}
       {/* ── Generic (non-VGTC orgs) ── */}
@@ -795,17 +794,96 @@ function AppInner() {
           </div>}
         </div>
         <nav className="sidebar-nav">
-          {/* Location label header */}
+          {/* Location label & Switcher */}
           {!col && (() => {
-            let locLabel = 'Jharli Dump & Plant';
-            let locColor = '#f59e0b';
-            if (plant === 'jksuper' && godown === 'kosli') { locLabel = 'Kosli Dump'; locColor = '#6366f1'; }
-            else if (plant === 'jksuper' && godown === 'jhajjar') { locLabel = 'Jajjhar Dump'; locColor = '#14b8a6'; }
-            else if (plant === 'jksuper' && godown === 'bahadurgarh') { locLabel = 'Bahadurgarh Dump'; locColor = '#d97706'; }
+            const isJharli = plant === 'jklakshmi' || plant === 'jharli';
+            const isDumpPlant = !isJharli && (plant === 'jksuper' || DUMP_GODOWNS.has(godown));
+
+            if (isDumpPlant) {
+              // Check user permissions for each godown
+              const canAccess = (g) => {
+                if (user?.role === 'admin') return true;
+                if (!user?.permissions || Object.keys(user.permissions).length === 0) return true;
+                if (g === 'kosli') {
+                  return Boolean(user.permissions['stock_kosli'] || user.permissions['bill_kosli'] || user.permissions['balance_kosli'] || user.permissions['lr_kosli'] || user.permissions['lr_dump']);
+                }
+                if (g === 'jhajjar') {
+                  return Boolean(user.permissions['stock_jhajjar'] || user.permissions['bill_jhajjar'] || user.permissions['balance_jhajjar'] || user.permissions['lr_jhajjar'] || user.permissions['lr_dump']);
+                }
+                if (g === 'bahadurgarh') {
+                  return Boolean(user.permissions['stock_bahadurgarh'] || user.permissions['bill_bahadurgarh'] || user.permissions['balance_bahadurgarh'] || user.permissions['lr_bahadurgarh'] || user.permissions['lr_dump']);
+                }
+                return false;
+              };
+
+              const dumpSites = [
+                { id: 'kosli', label: 'Kosli', color: '#6366f1' },
+                { id: 'jhajjar', label: 'Jhajjar', color: '#14b8a6' },
+                { id: 'bahadurgarh', label: 'Bahadurgarh', color: '#d97706' },
+              ].filter(s => canAccess(s.id));
+
+              const handleGodownSwitch = (targetGodown) => {
+                if (godown === targetGodown) return;
+                setGodown(targetGodown);
+
+                // If currently viewing a godown-specific stock module, switch to the new godown's stock module
+                if (active === 'stock_kosli' || active === 'stock_jhajjar' || active === 'stock_bahadurgarh') {
+                  setActive(`stock_${targetGodown}`);
+                }
+              };
+
+              return (
+                <div style={{ padding: '8px 10px 6px' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Active Site / Godown</span>
+                    <span style={{ color: godown === 'jhajjar' ? '#14b8a6' : godown === 'bahadurgarh' ? '#d97706' : '#6366f1', fontWeight: 900 }}>
+                      ● {godown ? godown.toUpperCase() : 'KOSLI'}
+                    </span>
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${Math.max(1, dumpSites.length)}, 1fr)`,
+                    background: 'var(--bg-input)',
+                    padding: '3px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    gap: '2px'
+                  }}>
+                    {dumpSites.map(s => {
+                      const isActive = (godown || 'kosli') === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => handleGodownSwitch(s.id)}
+                          title={`Switch to ${s.label} Dump`}
+                          style={{
+                            padding: '5px 2px',
+                            fontSize: '10.5px',
+                            fontWeight: isActive ? 800 : 600,
+                            borderRadius: '6px',
+                            border: isActive ? `1.5px solid ${s.color}` : 'none',
+                            background: isActive ? `${s.color}18` : 'transparent',
+                            color: isActive ? s.color : 'var(--text-muted)',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
             return (
-              <div style={{ padding: '8px 14px 6px', fontSize: '9px', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: locColor, opacity: 0.85, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: locColor, display: 'inline-block' }} />
-                {locLabel}
+              <div style={{ padding: '8px 14px 6px', fontSize: '9px', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#f59e0b', opacity: 0.85, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+                Jharli Dump & Plant
               </div>
             );
           })()}

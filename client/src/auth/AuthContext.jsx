@@ -18,7 +18,11 @@ export function AuthProvider({ children }) {
   });
   const [token, setToken] = useState(() => localStorage.getItem('vgtc-token'));
   const [plant, setPlantState] = useState(() => localStorage.getItem('vgtc-plant') || '');
-  const [godown, setGodownState] = useState(() => localStorage.getItem('vgtc-godown') || '');
+  const [godown, setGodownState] = useState(() => {
+    const savedPlant = localStorage.getItem('vgtc-plant') || '';
+    if (savedPlant === 'jklakshmi' || savedPlant === 'jharli') return '';
+    return localStorage.getItem('vgtc-godown') || '';
+  });
   const [ready, setReady] = useState(false);
 
   const updateUser = (u) => {
@@ -50,6 +54,17 @@ export function AuthProvider({ children }) {
   const setPlant = (p, g = '') => {
     localStorage.setItem('vgtc-plant', p);
     setPlantState(p);
+    const targetGodown = (p === 'jklakshmi' || p === 'jharli') ? '' : g;
+    if (targetGodown) {
+      localStorage.setItem('vgtc-godown', targetGodown);
+      setGodownState(targetGodown);
+    } else {
+      localStorage.removeItem('vgtc-godown');
+      setGodownState('');
+    }
+  };
+
+  const setGodown = (g) => {
     if (g) {
       localStorage.setItem('vgtc-godown', g);
       setGodownState(g);
@@ -72,9 +87,10 @@ export function AuthProvider({ children }) {
     if (selectedPlant) {
       localStorage.setItem('vgtc-plant', selectedPlant);
       setPlantState(selectedPlant);
-      if (selectedGodown) {
-        localStorage.setItem('vgtc-godown', selectedGodown);
-        setGodownState(selectedGodown);
+      const targetGodown = (selectedPlant === 'jklakshmi' || selectedPlant === 'jharli') ? '' : selectedGodown;
+      if (targetGodown) {
+        localStorage.setItem('vgtc-godown', targetGodown);
+        setGodownState(targetGodown);
       } else {
         localStorage.removeItem('vgtc-godown');
         setGodownState('');
@@ -117,9 +133,10 @@ export function AuthProvider({ children }) {
     if (selectedPlant) {
       localStorage.setItem('vgtc-plant', selectedPlant);
       setPlantState(selectedPlant);
-      if (selectedGodown) {
-        localStorage.setItem('vgtc-godown', selectedGodown);
-        setGodownState(selectedGodown);
+      const targetGodown = (selectedPlant === 'jklakshmi' || selectedPlant === 'jharli') ? '' : selectedGodown;
+      if (targetGodown) {
+        localStorage.setItem('vgtc-godown', targetGodown);
+        setGodownState(targetGodown);
       } else {
         localStorage.removeItem('vgtc-godown');
         setGodownState('');
@@ -169,7 +186,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, login, signup, forgotPassword, resetPassword, verifyOtp, resendOtp, refreshUser, logout, ready, hasPermission }}>
+    <AuthContext.Provider value={{ user, token, plant, godown, setPlant, setGodown, login, signup, forgotPassword, resetPassword, verifyOtp, resendOtp, refreshUser, logout, ready, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

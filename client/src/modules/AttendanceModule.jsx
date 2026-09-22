@@ -429,7 +429,7 @@ export default function AttendanceModule() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', paddingBottom: '96px' }}>
+    <div style={{ width: '100%', paddingBottom: '96px' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>

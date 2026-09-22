@@ -123,7 +123,7 @@ const AdminModule = () => {
     const paginatedLogs = (logs || []).slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
-        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        <div style={{ width: '100%' }}>
             <div className="card" style={{ padding: '32px', border: '1px solid var(--border)', borderRadius: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                     <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

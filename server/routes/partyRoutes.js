@@ -55,11 +55,12 @@ router.post('/sync', async (req, res) => {
             ...lrCols.map(col => db.collection(col).where('orgId', '==', orgId).get()),
         ]);
 
-        // Collect unique normalised (UPPERCASE) party names
+        // Collect unique normalised (UPPERCASE) party names (excluding dummy/test names)
+        const isDummyPartyName = (n) => !n || /\b(TEST|DUMMY)\b/i.test(n) || n.includes('TEST') || n.includes('DUMMY');
         const uniqueNames = new Set();
         const addName = (raw) => {
             const n = (raw || '').trim().toUpperCase();
-            if (n) uniqueNames.add(n);
+            if (n && !isDummyPartyName(n)) uniqueNames.add(n);
         };
         vSnap.docs.forEach(d => addName(d.data().partyName));
         lrSnaps.forEach(snap => snap.docs.forEach(d => addName(d.data().partyName)));

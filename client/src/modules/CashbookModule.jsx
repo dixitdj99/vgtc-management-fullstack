@@ -351,7 +351,17 @@ const EntryForm = ({ type, apiCb, onSave, onCancel, drivers, staffList, vehicles
                 onOpenQuickModal={() => setShowQuickModal(true)}
               />
               <div style={{ fontSize: '11px', fontWeight: 700, color: '#0ea5e9', marginTop: '6px' }}>
-                Amount is posted as an Advance on this profile in Pay.
+                Physical cash given will be subtracted from cashbook and posted as an Advance on their Khata.
+              </div>
+              <div style={{ fontSize: '11px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', color: '#d97706', marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <span>💡 <strong>Cement / Goods adjustment?</strong> If the driver took cement bags, spares, or fines with <em>no physical cash given</em>, do not record here (it reduces cash-in-hand). Use <strong>Non-Cash Deduction</strong> in the Khata Book.</span>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('nav-module', { detail: { active: 'pay_dump' } }))}
+                  style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '3px 8px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  Go to Khata Book →
+                </button>
               </div>
             </div>
           )}

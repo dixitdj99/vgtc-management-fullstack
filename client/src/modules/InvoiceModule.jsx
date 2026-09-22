@@ -708,7 +708,7 @@ export default function InvoiceModule({ brand = 'dump' }) {
         {/* ═══ UPLOAD VIEW ═══ */}
         {view === 'upload' && (
           <motion.div key="upload" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ maxWidth: '1080px', width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
               {/* Step 1: Select Invoice Type */}
               <div className="card">

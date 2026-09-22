@@ -62,28 +62,32 @@ const calculateMileageSummary = async (orgId, req = {}) => {
             totalDiesel += amt;
         });
 
-        // Find vehicle data to get targetMileage and vehicleType
-        const vehicle = vehicles.find(v => v.truckNo.replace(/\s/g, '').toUpperCase() === truckNo);
-        let assumedMileage = 3.0; // Default for Trailer
+        // Find vehicle data to get targetMileage, vehicleType, and fuelType
+        const vehicle = vehicles.find(v => v.truckNo && v.truckNo.replace(/\s/g, '').toUpperCase() === truckNo);
+        const isCng = String(vehicle?.fuelType || '').toUpperCase() === 'CNG';
+        const fuelRate = isCng ? 75 : 90; // Default Rs 75/kg for CNG, Rs 90/L for Diesel
+        let assumedMileage = isCng ? 3.5 : 3.0; // Default for Trailer
         if (vehicle) {
             if (vehicle.targetMileage && parseFloat(vehicle.targetMileage) > 0) {
                 assumedMileage = parseFloat(vehicle.targetMileage);
             } else if (vehicle.vehicleType === 'Canter') {
-                assumedMileage = 4.7;
+                assumedMileage = isCng ? 5.5 : 4.7;
             }
         }
 
-        const totalVoucherLitres = totalDiesel / 90; // Assuming Rs 90/litre
-        const fuelConsumed = totalKm / assumedMileage;
-        const fuelBalance = totalVoucherLitres - fuelConsumed;
+        const totalFuelUnits = fuelRate > 0 ? (totalDiesel / fuelRate) : 0;
+        const fuelConsumed = assumedMileage > 0 ? (totalKm / assumedMileage) : 0;
+        const fuelBalance = totalFuelUnits - fuelConsumed;
 
-        const avg = totalVoucherLitres > 0 ? (totalKm / totalVoucherLitres).toFixed(2) : 0;
+        const avg = totalFuelUnits > 0 ? (totalKm / totalFuelUnits).toFixed(2) : 0;
         result[truckNo] = {
             totalKm,
             totalDiesel,
             avg: parseFloat(avg),
             fuelBalance: parseFloat(fuelBalance.toFixed(1)),
-            assumedMileage
+            assumedMileage,
+            fuelType: isCng ? 'CNG' : 'Diesel',
+            unit: isCng ? 'kg' : 'L'
         };
     });
 

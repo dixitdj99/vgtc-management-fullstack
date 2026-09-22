@@ -19,12 +19,14 @@ export const resolvePartyName = (value, existingNames = []) => {
   return match ? normalizePartyName(match) : normalized;
 };
 
+export const isDummyParty = (name) => !name || /\b(TEST|DUMMY)\b/i.test(name) || name.includes('MANUAL LR TEST');
+
 export const buildPartySuggestions = (...groups) => {
   const map = new Map();
 
   groups.flat(Infinity).forEach((name) => {
     const normalized = normalizePartyName(name);
-    if (!normalized) return;
+    if (!normalized || isDummyParty(normalized)) return;
 
     const key = getPartySimilarityKey(normalized);
     if (!key || map.has(key)) return;

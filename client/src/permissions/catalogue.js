@@ -48,7 +48,7 @@ export const LEVEL_VALUES = LEVELS.map(l => l.value);
  *   pay      — the freight batches a balance sheet reads, and Vehicle Credit
  *              & Debit, which is still shown
  */
-const DUMP_SHARED = ['pay', 'balance_all', 'vehicle', 'mileage', 'sell', 'attendance', 'loading_status'];
+const DUMP_SHARED = ['pay', 'balance_all', 'vehicle', 'mileage', 'sell'];
 
 export const LOCATIONS = [
   {
@@ -63,7 +63,7 @@ export const LOCATIONS = [
       // Cashbook and Diesel are offered here and nowhere else — they are hidden
       // at the three dump godowns. The rest of this row is company-wide and now
       // lives in SHARED_GROUPS instead of being repeated per location.
-      { id: 'jharli_shared', label: 'Cash & Fuel', modules: ['cashbook', 'pay', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance', 'loading_status'] },
+      { id: 'jharli_shared', label: 'Cash & Fuel', modules: ['cashbook', 'pay', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance'] },
     ],
   },
   {
@@ -147,8 +147,7 @@ export const MODULES = [
   { key: 'diesel', label: 'Diesel Control', hint: 'Fuel issues, pump ledgers and diesel rates' },
   { key: 'mileage', label: 'Mileage Tracker', hint: 'Odometer readings and kilometres per litre' },
   { key: 'sell', label: 'Sell', hint: 'Material sale entries and the buyer ledger' },
-  { key: 'attendance', label: 'Attendance', hint: 'Daily driver and staff roll-call' },
-  { key: 'loading_status', label: 'Loading Realtime', hint: 'Live loading board fed by the labour portal' },
+  { key: 'attendance', label: 'Attendance', hint: 'Daily driver and staff roll-call (Jharli Plant only)' },
 
   // Superseded by lr_dump when the three JK Super LR screens merged into one.
   // Still read as a fallback in App.jsx and for edit rights in LRModule.jsx,
@@ -201,7 +200,7 @@ export const locationsForKey = (key) =>
  */
 export const SHARED_GROUPS = [
   { id: 'shared_lr', label: 'Loading Receipts', modules: ['lr_dump'] },
-  { id: 'shared_fleet', label: 'Fleet & People', modules: ['vehicle', 'mileage', 'attendance', 'loading_status'] },
+  { id: 'shared_fleet', label: 'Fleet & People', modules: ['vehicle', 'mileage'] },
   { id: 'shared_money', label: 'Money & Trading', modules: ['pay', 'balance_all', 'sell'] },
 ];
 

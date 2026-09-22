@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Banknote, Truck, Calendar, CheckCircle2, AlertCircle, ChevronLeft, Search, Check, HandCoins, AlertTriangle, X, Merge, Loader2, History, User, BookOpen
+  Banknote, Truck, Calendar, CheckCircle2, AlertCircle, ChevronLeft, Search, Check, HandCoins, AlertTriangle, X, Merge, Loader2, History, User, BookOpen, FileText, FileSpreadsheet, Send, Share2
 } from 'lucide-react';
 import { allocateFreightPayment, allocateAcrossTrucks, outstandingOf } from '../utils/freightAllocation';
 import Confetti from 'react-confetti';
@@ -11,6 +11,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
 import VehicleCreditDebitModule from './VehicleCreditDebitModule';
 import LabourAccount from './LabourAccount';
+import StaffKhataBook from './StaffKhataBook';
 // A multi-drop voucher keeps its LR numbers on the drops; its own `lrNo` is a
 // leftover form field. Printing that showed a number the yard has never issued.
 import { lrLabelOf, explodeAll } from './BalanceSheet';
@@ -297,7 +298,7 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     } catch { setTruckAllVouchers([]); }
   };
   const [selectedLrs, setSelectedLrs] = useState(new Set());
-  const [view, setView] = useState(initialView || 'freight');
+  const [view, setView] = useState((initialView === 'vehicle_advances' && brand !== 'jkl') ? 'freight' : (initialView || 'freight'));
   // Vehicle balances sent here from the balance sheets. These, not the raw
   // voucher list, are what the freight worklist shows.
   const [batches, setBatches] = useState([]);
@@ -305,7 +306,11 @@ export default function PayModule({ brand, role, permissions, initialView }) {
   // Vehicle credit on this truck: apply on this payment, or leave it for next time.
   const [applyCredit, setApplyCredit] = useState('now');
 
-  useEffect(() => { if (initialView) setView(initialView); }, [initialView]);
+  useEffect(() => {
+    if (initialView) {
+      setView((initialView === 'vehicle_advances' && brand !== 'jkl') ? 'freight' : initialView);
+    }
+  }, [initialView, brand]);
   const [profiles, setProfiles] = useState([]);
   const [firmPayments, setFirmPayments] = useState([]);
   const [showLedger, setShowLedger] = useState(null);
@@ -359,6 +364,8 @@ export default function PayModule({ brand, role, permissions, initialView }) {
 
   const selVehicle = useMemo(() => vehicleFor(selTruck), [vehicleFor, selTruck]);
   const [receiptModal, setReceiptModal] = useState(null);
+  const [sendingWa, setSendingWa] = useState(false);
+  const [waNotice, setWaNotice] = useState(null);
 
   // Vehicle Advance states (synced with Balance Sheet)
   const [advances, setAdvances] = useState([]);
@@ -1010,13 +1017,22 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       setTimeout(() => setShowConfetti(false), 5000);
 
       const tv = singleTruckMode ? vehicleFor(selTruck) : null;
+      setWaNotice(null);
       setReceiptModal({
         truckNo: singleTruckMode
           ? selTruck
           : `${selOwner} · ${activeTrucks.length} truck${activeTrucks.length === 1 ? '' : 's'}`,
+        rawTruckNo: singleTruckMode ? selTruck : (activeTrucks[0] || ''),
         date: paymentDate,
         amount: netPayout,
+        paymentMethod,
         phone: tv?.ownerContact || '',
+        tripsCount: selRows.length,
+        grossFreight: selRows.reduce((s, v) => s + (parseFloat(v.freight) || (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0)), 0),
+        advances: selRows.reduce((s, v) => s + (parseFloat(v.advanceDiesel) || 0) + (parseFloat(v.advanceCash) || 0) + (parseFloat(v.advanceOnline) || 0), 0),
+        gpsRent: gpsAccrual?.amount || 0,
+        miscDeductions: miscDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0),
+        balanceRemaining: Math.max(0, selOutstanding - entered)
       });
 
       setSelectedLrs(new Set());
@@ -1045,7 +1061,67 @@ export default function PayModule({ brand, role, permissions, initialView }) {
     } catch { alert('Could not set the due date'); }
   };
 
+  const handleSendDirectWhatsApp = async () => {
+    if (!receiptModal) return;
+    const cleanP = (receiptModal.phone || '').replace(/[^0-9]/g, '');
+    if (cleanP.length < 10) {
+      alert('Please enter a valid 10-digit WhatsApp phone number.');
+      return;
+    }
+    setSendingWa(true);
+    setWaNotice(null);
+    try {
+      const res = await ax.post('/freight-batches/notify-payout', {
+        truckNo: receiptModal.rawTruckNo || receiptModal.truckNo,
+        paymentAmount: receiptModal.amount,
+        paymentMethod: receiptModal.paymentMethod || 'Bank Transfer',
+        paymentDate: receiptModal.date,
+        recipientPhone: cleanP,
+        tripsCount: receiptModal.tripsCount || 1,
+        grossFreight: receiptModal.grossFreight,
+        advances: receiptModal.advances,
+        gpsRent: receiptModal.gpsRent,
+        miscDeductions: receiptModal.miscDeductions,
+        balanceRemaining: receiptModal.balanceRemaining
+      });
+      if (res.data?.ok) {
+        setWaNotice(`✅ WhatsApp payment breakdown sent directly via Meta Cloud API to +91 ${cleanP.slice(-10)}!`);
+      } else {
+        setWaNotice(`WhatsApp alert dispatched to +91 ${cleanP.slice(-10)}`);
+      }
+    } catch (err) {
+      alert('Failed to send direct WhatsApp: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSendingWa(false);
+    }
+  };
 
+  const handleSendMonthlyReport = async (format = 'pdf') => {
+    if (!receiptModal) return;
+    const cleanP = (receiptModal.phone || '').replace(/[^0-9]/g, '');
+    if (cleanP.length < 10) {
+      alert('Please enter a valid 10-digit WhatsApp phone number.');
+      return;
+    }
+    setSendingWa(true);
+    setWaNotice(null);
+    try {
+      const res = await ax.post('/reports/send-whatsapp', {
+        truckNo: receiptModal.rawTruckNo || receiptModal.truckNo,
+        format,
+        phone: cleanP
+      });
+      if (res.data?.ok) {
+        setWaNotice(`✅ Vehicle Monthly History (${format.toUpperCase()}) sent via WhatsApp to +91 ${cleanP.slice(-10)}!`);
+      } else {
+        alert(res.data?.message || 'Failed to send report.');
+      }
+    } catch (err) {
+      alert('Failed to send report: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSendingWa(false);
+    }
+  };
 
   return (
     <div>
@@ -1054,60 +1130,90 @@ export default function PayModule({ brand, role, permissions, initialView }) {
       {/* WhatsApp Receipt Modal */}
       {receiptModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card" style={{ width: '400px', maxWidth: '90vw', overflow: 'hidden' }}>
-            <div style={{ background: '#10b981', color: 'white', padding: '20px', textAlign: 'center', position: 'relative' }}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card" style={{ width: '460px', maxWidth: '92vw', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: '#10b981', color: 'white', padding: '18px 20px', textAlign: 'center', position: 'relative' }}>
               <button 
-                onClick={() => setReceiptModal(null)}
+                onClick={() => { setReceiptModal(null); setWaNotice(null); }}
                 style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={16} />
               </button>
-              <CheckCircle2 size={48} style={{ margin: '0 auto 12px auto' }} />
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>Payment Successful!</h2>
-              <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '14px' }}>{fmtRs(receiptModal.amount)} settled for {receiptModal.truckNo}</p>
+              <CheckCircle2 size={42} style={{ margin: '0 auto 8px auto' }} />
+              <h2 style={{ margin: 0, fontSize: '19px', fontWeight: 'bold' }}>Payment Recorded Successfully!</h2>
+              <p style={{ margin: '4px 0 0 0', opacity: 0.95, fontSize: '13.5px' }}>{fmtRs(receiptModal.amount)} settled for {receiptModal.truckNo}</p>
             </div>
-            <div style={{ padding: '24px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text)', marginBottom: '12px', textAlign: 'center' }}>Send Receipt to Owner</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-sub)', textAlign: 'center', marginBottom: '20px' }}>
-                Share a detailed breakdown of this payment via WhatsApp.
-              </p>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>WhatsApp Number</label>
+
+            <div style={{ padding: '20px', overflowY: 'auto' }}>
+              {waNotice && (
+                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: '8px', padding: '10px 12px', fontSize: '12.5px', fontWeight: 600, marginBottom: '14px', textAlign: 'center' }}>
+                  {waNotice}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>Recipient WhatsApp Number</label>
                 <input 
                   type="text" 
                   className="fi" 
                   value={receiptModal.phone} 
                   onChange={e => setReceiptModal({ ...receiptModal, phone: e.target.value })}
                   placeholder="e.g. 9876543210" 
-                  style={{ fontSize: '16px', letterSpacing: '1px', textAlign: 'center', fontWeight: 'bold' }}
+                  style={{ fontSize: '15px', letterSpacing: '1px', textAlign: 'center', fontWeight: 'bold' }}
                 />
               </div>
 
+              {/* Action 1: Direct 1-Click Server WhatsApp via Meta Cloud API */}
               <button 
                 className="btn" 
-                style={{ width: '100%', padding: '14px', background: '#25D366', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                disabled={sendingWa}
+                style={{ width: '100%', padding: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}
+                onClick={handleSendDirectWhatsApp}
+              >
+                {sendingWa ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                Send WhatsApp Notification (Direct Meta API)
+              </button>
+
+              {/* Action 2: Vehicle Monthly History PDF / Excel via WhatsApp */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                <button 
+                  className="btn btn-g btn-sm"
+                  disabled={sendingWa}
+                  style={{ padding: '9px 10px', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => handleSendMonthlyReport('pdf')}
+                  title="Generate monthly PDF statement and send directly to owner on WhatsApp"
+                >
+                  <FileText size={14} color="#ef4444" /> Send PDF Report
+                </button>
+                <button 
+                  className="btn btn-g btn-sm"
+                  disabled={sendingWa}
+                  style={{ padding: '9px 10px', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => handleSendMonthlyReport('excel')}
+                  title="Generate monthly Excel statement and send directly to owner on WhatsApp"
+                >
+                  <FileSpreadsheet size={14} color="#10b981" /> Send Excel Report
+                </button>
+              </div>
+
+              {/* Action 3: Fallback Open WhatsApp Web Link */}
+              <button 
+                className="btn btn-g" 
+                style={{ width: '100%', padding: '10px', border: '1px solid #25D366', color: '#16a34a', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}
                 onClick={() => {
                   const num = receiptModal.phone.replace(/[^0-9]/g, '');
                   if (num.length < 10) { alert('Please enter a valid phone number.'); return; }
-                  
-                  // Construct Link
                   const baseUrl = window.location.origin;
                   const receiptLink = `${baseUrl}/receipt/${encodeURIComponent(receiptModal.truckNo)}/${encodeURIComponent(receiptModal.date)}`;
-                  
-                  const message = `Hello, your pending freight payment of ${fmtRs(receiptModal.amount)} for truck ${receiptModal.truckNo} has been cleared on ${fmtDate(receiptModal.date)}. \n\nView your full payment breakdown here: \n${receiptLink}`;
-                  
-                  // Open WhatsApp
+                  const message = `Hello, your freight payment of ${fmtRs(receiptModal.amount)} for truck ${receiptModal.truckNo} has been cleared on ${fmtDate(receiptModal.date)}. \n\nView details: ${receiptLink}`;
                   window.open(`https://wa.me/91${num}?text=${encodeURIComponent(message)}`, '_blank');
-                  setReceiptModal(null);
                 }}
               >
-                Send via WhatsApp
+                <Share2 size={14} /> Open in WhatsApp Web / App
               </button>
               
               <button 
                 className="btn btn-g" 
-                style={{ width: '100%', padding: '12px', marginTop: '12px', borderRadius: '8px' }}
-                onClick={() => setReceiptModal(null)}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px' }}
+                onClick={() => { setReceiptModal(null); setWaNotice(null); }}
               >
                 Close
               </button>
@@ -1125,8 +1231,8 @@ export default function PayModule({ brand, role, permissions, initialView }) {
           <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
             <button className={`btn btn-sm ${view === 'freight' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('freight')}>Freight Pay</button>
             <button className={`btn btn-sm ${view === 'online' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('online')}>Online Advances</button>
-            <button className={`btn btn-sm ${view === 'vehicle_advances' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('vehicle_advances')}>Vehicle Credit & Debit</button>
-            <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('staff')}>Profile Pay</button>
+            {brand === 'jkl' && <button className={`btn btn-sm ${view === 'vehicle_advances' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('vehicle_advances')}>Vehicle Credit & Debit</button>}
+            <button className={`btn btn-sm ${view === 'staff' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => setView('staff')}><BookOpen size={13} /> Staff & Driver Khata</button>
             <button className={`btn btn-sm ${view === 'labour' ? 'btn-p' : 'btn-g'}`} style={{ border: 'none' }} onClick={() => setView('labour')}>Labour</button>
           </div>
           {inDetail && view === 'freight' && <button className="btn btn-g btn-sm" onClick={() => {setSelTruck(null); setSelOwner(null); setSelBatchId(null); setSelectedLrs(new Set()); setPayAmount('');}}><ChevronLeft size={14} /> All Trucks</button>}
@@ -1312,272 +1418,18 @@ export default function PayModule({ brand, role, permissions, initialView }) {
           </div>
         );
       })() : view === 'staff' ? (
-        <div>
-          {/* Real Cashout History Modal */}
-          {cashoutModalProfile && (
-            <RealCashoutHistoryModal
-              profile={cashoutModalProfile}
-              cashouts={getProfileCashouts(cashoutModalProfile)}
-              onClose={() => setCashoutModalProfile(null)}
-            />
-          )}
-
-          {/* Profile Pay Header Controls */}
-          <div className="card" style={{ padding: '16px 20px', marginBottom: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <User size={20} color="var(--primary)" /> Profile Pay & Monthly Salary
-                </h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  View monthly salary, advance cashouts, and net payable balance monthwise
-                </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Month:</label>
-                  <input
-                    type="month"
-                    className="fi"
-                    style={{ height: '34px', fontSize: '12px', width: '150px', padding: '0 10px', fontWeight: 700 }}
-                    value={selectedMonth}
-                    onChange={e => setSelectedMonth(e.target.value)}
-                  />
-                </div>
-                <div style={{ position: 'relative', width: '220px' }}>
-                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                  <input className="fi" style={{ paddingLeft: '32px', height: '34px', fontSize: '12px' }} placeholder="Search profile..." value={profileSearch} onChange={e => setProfileSearch(e.target.value)} />
-                </div>
-              </div>
-            </div>
-
-            {/* Type & Status Filter Pills */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-row)' }}>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '4px' }}>Type:</span>
-                {['All', 'Driver', 'Office Staff', 'Labour', 'Vendor', 'Owner', 'Other'].map(type => (
-                  <button
-                    key={type}
-                    className={`btn btn-sm ${profileTypeFilter === type ? 'btn-p' : 'btn-g'}`}
-                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: 'none' }}
-                    onClick={() => setProfileTypeFilter(type)}
-                  >
-                    {type === 'All' ? 'All Types' : type}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '4px' }}>Status:</span>
-                {['All', 'Paid', 'Partial', 'Unpaid'].map(st => (
-                  <button
-                    key={st}
-                    className={`btn btn-sm ${salaryStatusFilter === st ? 'btn-p' : 'btn-g'}`}
-                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: 'none' }}
-                    onClick={() => setSalaryStatusFilter(st)}
-                  >
-                    {st === 'All' ? 'All Status' : st}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Profile Summary Cards */}
-          {(() => {
-            const filteredProfiles = profiles.filter(p => {
-              const pType = (p.type || '').toLowerCase();
-              const pDept = (p.department || '').toLowerCase();
-              const pName = (p.name || '').toLowerCase();
-
-              // Strictly exclude fuel pumps from the list
-              if (pType.includes('pump') || pDept.includes('pump') || pName.includes('pump')) {
-                return false;
-              }
-
-              if (profileTypeFilter !== 'All') {
-                if (profileTypeFilter === 'Vendor') {
-                  if (p.type !== 'Vendor') return false;
-                } else if (profileTypeFilter === 'Other') {
-                  if (['Driver', 'Office Staff', 'Labour', 'Vendor', 'Owner', 'Expense'].includes(p.type)) return false;
-                } else {
-                  if (p.type !== profileTypeFilter) return false;
-                }
-              }
-
-              const pCashouts = getProfileCashouts(p);
-              const monthCashouts = pCashouts.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
-              const monthAdvAmt = monthCashouts.reduce((s, item) => s + item.amount, 0);
-              const fixedSal = parseFloat(p.fixedSalary) || 0;
-              const netSal = fixedSal > 0 ? (fixedSal - monthAdvAmt) : 0;
-
-              let salStatus = 'N/A';
-              if (fixedSal > 0) {
-                if (netSal <= 0) salStatus = 'Paid';
-                else if (monthAdvAmt > 0) salStatus = 'Partial';
-                else salStatus = 'Unpaid';
-              }
-
-              if (salaryStatusFilter !== 'All') {
-                if (salStatus !== salaryStatusFilter) return false;
-              }
-
-              if (profileSearch) {
-                const q = profileSearch.toLowerCase();
-                const match = (p.name || '').toLowerCase().includes(q) || (p.department || '').toLowerCase().includes(q) || (p.type || '').toLowerCase().includes(q) || (p.phone || '').includes(q);
-                if (!match) return false;
-              }
-              return true;
-            });
-
-            const totalMonthlySalary = filteredProfiles.reduce((s, p) => s + (parseFloat(p.fixedSalary) || 0), 0);
-            
-            const totalMonthAdvance = filteredProfiles.reduce((s, p) => {
-              const list = getProfileCashouts(p);
-              const mList = list.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
-              return s + mList.reduce((sum, item) => sum + item.amount, 0);
-            }, 0);
-
-            const totalNetPayable = filteredProfiles.reduce((s, p) => {
-              const list = getProfileCashouts(p);
-              const mList = list.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
-              const mAdv = mList.reduce((sum, item) => sum + item.amount, 0);
-              const fixed = parseFloat(p.fixedSalary) || 0;
-              return s + Math.max(0, fixed - mAdv);
-            }, 0);
-
-            const monthLabel = selectedMonth ? new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '';
-
-            return (
-              <div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '18px' }}>
-                  {[
-                    { label: 'Profiles Count', val: filteredProfiles.length, fmt: v => v, color: '#6366f1' },
-                    { label: `Monthly Salary`, val: totalMonthlySalary, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#10b981' },
-                    { label: `Advance Cashouts (${monthLabel})`, val: totalMonthAdvance, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#0ea5e9' },
-                    { label: `Net Payable Salary (${monthLabel})`, val: totalNetPayable, fmt: v => `₹${v.toLocaleString('en-IN')}`, color: '#f59e0b' },
-                  ].map(c => (
-                    <div key={c.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{c.label}</div>
-                      <div style={{ fontSize: '20px', fontWeight: 900, color: c.color }}>{c.fmt(c.val)}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Profiles Table */}
-                <div className="card">
-                  <TableScroll>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                      <thead>
-                        <tr>
-                          <th style={TH}>Profile Name</th>
-                          <th style={TH}>Type</th>
-                          <th style={{ ...TH, textAlign: 'right' }}>Monthly Salary</th>
-                          <th style={{ ...TH, textAlign: 'center' }}>Advance Taken ({monthLabel})</th>
-                          <th style={{ ...TH, textAlign: 'right' }}>Net Salary ({monthLabel})</th>
-                          <th style={{ ...TH, textAlign: 'center' }}>Salary Status</th>
-                          <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredProfiles.map((p, i) => {
-                          const pCashouts = getProfileCashouts(p);
-                          const monthCashouts = pCashouts.filter(c => (c.date || '').slice(0, 7) === selectedMonth);
-                          const monthAdvAmt = monthCashouts.reduce((s, item) => s + item.amount, 0);
-                          const fixedSal = parseFloat(p.fixedSalary) || 0;
-                          const netSalary = fixedSal > 0 ? (fixedSal - monthAdvAmt) : 0;
-
-                          let salStatus = 'N/A';
-                          if (fixedSal > 0) {
-                            if (netSalary <= 0) salStatus = 'Paid';
-                            else if (monthAdvAmt > 0) salStatus = 'Partial';
-                            else salStatus = 'Unpaid';
-                          }
-
-                          const typeColors = {
-                            Driver: { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b' },
-                            'Office Staff': { bg: 'rgba(99,102,241,0.1)', color: '#6366f1' },
-                            Labour: { bg: 'rgba(14,165,233,0.1)', color: '#0ea5e9' },
-                            Vendor: { bg: 'rgba(168,85,247,0.1)', color: '#a855f7' },
-                            Owner: { bg: 'rgba(16,185,129,0.1)', color: '#10b981' },
-                            Expense: { bg: 'rgba(244,63,94,0.1)', color: '#f43f5e' }
-                          };
-                          const tc = typeColors[p.type] || { bg: 'var(--bg-input)', color: 'var(--text)' };
-
-                          return (
-                            <tr key={p.id} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
-                              <td style={TD}>
-                                <div style={{ fontWeight: 700, color: 'var(--text)' }}>{p.name}</div>
-                                {p.department && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{p.department}</div>}
-                              </td>
-                              <td style={TD}>
-                                <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: tc.bg, color: tc.color }}>
-                                  {p.type || 'Profile'}
-                                </span>
-                              </td>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{fixedSal ? `₹${fixedSal.toLocaleString('en-IN')}` : '—'}</td>
-                              <td style={{ ...TD, textAlign: 'center' }}>
-                                {monthAdvAmt > 0 ? (
-                                  <button
-                                    onClick={() => setCashoutModalProfile(p)}
-                                    title="Click to view cashout history"
-                                    style={{
-                                      display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                      padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
-                                      background: 'rgba(14,165,233,0.1)', color: '#0ea5e9',
-                                      border: '1px solid rgba(14,165,233,0.25)', cursor: 'pointer'
-                                    }}
-                                  >
-                                    <History size={12} /> ₹{monthAdvAmt.toLocaleString('en-IN')} ({monthCashouts.length})
-                                  </button>
-                                ) : (
-                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
-                                )}
-                              </td>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: 800, color: netSalary < fixedSal && fixedSal > 0 ? '#f59e0b' : 'var(--accent)' }}>
-                                {fixedSal > 0 ? `₹${netSalary.toLocaleString('en-IN')}` : '—'}
-                              </td>
-                              <td style={{ ...TD, textAlign: 'center' }}>
-                                {salStatus === 'Paid' ? (
-                                  <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <CheckCircle2 size={12} /> Paid
-                                  </span>
-                                ) : salStatus === 'Partial' ? (
-                                  <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <AlertCircle size={12} /> Partial
-                                  </span>
-                                ) : salStatus === 'Unpaid' ? (
-                                  <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <X size={12} /> Unpaid
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
-                                )}
-                              </td>
-                              <td style={{ ...TD, textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                  <button className="btn btn-g btn-sm" style={{ fontSize: '10px', padding: '4px 10px' }}
-                                    onClick={() => setShowLedger(p)}>Ledger</button>
-                                  <button className="btn btn-sm" style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)', cursor: 'pointer' }}
-                                    onClick={() => setCashoutModalProfile(p)}>
-                                    Cashout History
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {filteredProfiles.length === 0 && (
-                          <tr><td colSpan={7} style={{ ...TD, textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No profiles found matching search/filter</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </TableScroll>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
+        <StaffKhataBook
+          profiles={profiles}
+          firmPayments={firmPayments}
+          cashbookEntries={cashbookEntries}
+          onRefresh={() => {
+            fetchProfiles();
+            fetchFirmPayments();
+            fetchCashbookEntries();
+          }}
+          canEdit={canEdit}
+          brand={brand}
+        />
       ) : (
         <React.Fragment>
           {!inDetail ? (
@@ -2389,7 +2241,6 @@ export default function PayModule({ brand, role, permissions, initialView }) {
                                                 date: new Date(p.date),
                                                 desc: `${p.category}: ${p.remark}`,
                                                 category: p.category,
-                                                isCleared: p.isCleared,
                                                 cashbookEntryId: p.cashbookEntryId,
                                                 credit: 0,
                                                 debit: parseFloat(p.amount || 0)

@@ -39,7 +39,13 @@ function StatCard({ icon: Icon, label, value, sub, color, orgName }) {
 }
 
 /* ── Per-Vehicle Detail View ── */
-function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre = 90, cngPerKg = 75 }) {
+function VehicleDetail({ truckNo, vehicleType, fuelType = 'Diesel', targetMileage, onBack, orgName, dieselPerLitre = 90, cngPerKg = 75 }) {
+    const isCng = String(fuelType || '').toUpperCase() === 'CNG';
+    const fuelRate = isCng ? (parseFloat(cngPerKg) || 75) : (parseFloat(dieselPerLitre) || 90);
+    const fuelUnit = isCng ? 'kg' : 'L';
+    const mileageUnit = isCng ? 'km/kg' : 'km/L';
+    const fuelLabel = isCng ? 'CNG' : 'Diesel';
+
     const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -62,22 +68,23 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
         e.preventDefault();
         setSubmitting(true);
         try {
-            const litres = (parseFloat(fuelForm.amount) || 0) / dieselPerLitre;
+            const units = (parseFloat(fuelForm.amount) || 0) / fuelRate;
             await ax.post('/mileage/fuel', {
                 truckNo,
                 date: fuelForm.date,
                 endKm: fuelForm.endKm,
                 advanceDiesel: fuelForm.amount,
                 amount: fuelForm.amount,
-                litres,
-                pump: fuelForm.pump
+                litres: units,
+                fuelType: isCng ? 'CNG' : 'Diesel',
+                pump: fuelForm.pump || (isCng ? 'CNG Station' : '')
             });
             setShowFuelModal(false);
             setFuelForm({ date: new Date().toISOString().split('T')[0], endKm: '', amount: '', pump: '' });
             loadData();
         } catch (err) {
             console.error(err);
-            alert('Failed to add fuel entry');
+            alert(`Failed to add ${fuelLabel} entry`);
         } finally {
             setSubmitting(false);
         }
@@ -86,7 +93,9 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
     useEffect(() => { loadData(); }, [truckNo]);
 
     const processedTrips = useMemo(() => {
-        const ASSUMED_MILEAGE = vehicleType === 'Canter' ? 4.7 : 3.0;
+        const ASSUMED_MILEAGE = (targetMileage && parseFloat(targetMileage) > 0)
+            ? parseFloat(targetMileage)
+            : (vehicleType === 'Canter' ? (isCng ? 5.5 : 4.7) : (isCng ? 3.5 : 3.0));
 
         let sortedTrips = [...trips].sort((a, b) => {
             const aTime = a.createdAt?.seconds || 0;
@@ -110,10 +119,10 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
             }
             t.calculatedDistance = dist;
 
-            const dieselRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
-            const addedLitres = dieselRs / dieselPerLitre;
+            const fuelRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
+            const addedUnits = fuelRs / fuelRate;
             const consumed = (dist || 0) / ASSUMED_MILEAGE;
-            currentBalance = currentBalance + addedLitres - consumed;
+            currentBalance = currentBalance + addedUnits - consumed;
             tripBalances[t.id] = currentBalance;
         });
 
@@ -125,10 +134,13 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                 tankBalance: tripBalances[t.id]
             };
         });
-    }, [trips, vehicleType, dieselPerLitre]);
+    }, [trips, vehicleType, fuelRate, targetMileage, isCng]);
 
     const stats = useMemo(() => {
-        const ASSUMED_MILEAGE = vehicleType === 'Canter' ? 4.7 : 3.0;
+        const ASSUMED_MILEAGE = (targetMileage && parseFloat(targetMileage) > 0)
+            ? parseFloat(targetMileage)
+            : (vehicleType === 'Canter' ? (isCng ? 5.5 : 4.7) : (isCng ? 3.5 : 3.0));
+
         let totalKm = 0;
         let validTripsCount = 0;
         processedTrips.forEach(t => {
@@ -140,27 +152,27 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
             }
         });
 
-        const totalDieselRs = processedTrips.reduce((s, t) => {
+        const totalFuelRs = processedTrips.reduce((s, t) => {
             const d = parseFloat(t.advanceDiesel) || parseFloat(t.amount);
             return s + (isNaN(d) ? 0 : d);
         }, 0);
 
-        const totalVoucherLitres = totalDieselRs / dieselPerLitre;
-        const fuelConsumed = totalKm / ASSUMED_MILEAGE;
-        const fuelBalance = totalVoucherLitres - fuelConsumed;
-        const avgKmPerL = totalVoucherLitres > 0 ? (totalKm / totalVoucherLitres) : 0;
+        const totalVoucherUnits = fuelRate > 0 ? (totalFuelRs / fuelRate) : 0;
+        const fuelConsumed = ASSUMED_MILEAGE > 0 ? (totalKm / ASSUMED_MILEAGE) : 0;
+        const fuelBalance = totalVoucherUnits - fuelConsumed;
+        const avgMileage = totalVoucherUnits > 0 ? (totalKm / totalVoucherUnits) : 0;
 
         return {
             totalKm: totalKm.toFixed(0),
-            totalDieselRs,
-            avgKmPerL: avgKmPerL.toFixed(2),
+            totalFuelRs,
+            avgMileage: avgMileage.toFixed(2),
             mileageTripCount: validTripsCount,
-            totalVoucherLitres: totalVoucherLitres.toFixed(1),
+            totalVoucherUnits: totalVoucherUnits.toFixed(1),
             fuelConsumed: fuelConsumed.toFixed(1),
             fuelBalance: fuelBalance.toFixed(1),
             assumedMileage: ASSUMED_MILEAGE
         };
-    }, [processedTrips, vehicleType, dieselPerLitre]);
+    }, [processedTrips, vehicleType, fuelRate, targetMileage, isCng]);
 
     const paginatedTrips = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -191,7 +203,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                 </div>
                 <div style={{ marginLeft: 'auto' }}>
                     <button className="btn btn-primary btn-sm" onClick={() => setShowFuelModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Fuel size={14} /> Quick Diesel Entry
+                        <Fuel size={14} /> Quick {fuelLabel} Entry
                     </button>
                 </div>
             </div>
@@ -205,17 +217,17 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                             orgName={orgName}
                             icon={Droplets} 
                             label="Fuel Tank Balance" 
-                            value={`${stats.fuelBalance} L`} 
-                            sub={`Added: ${stats.totalVoucherLitres}L (Vou.) | Consumed (@${stats.assumedMileage}km/L): ${stats.fuelConsumed}L`} 
+                            value={`${stats.fuelBalance} ${fuelUnit}`} 
+                            sub={`Added: ${stats.totalVoucherUnits}${fuelUnit} (Vou.) | Consumed (@${stats.assumedMileage}${mileageUnit}): ${stats.fuelConsumed}${fuelUnit}`} 
                             color={parseFloat(stats.fuelBalance) < 0 ? '#f43f5e' : '#10b981'} 
                         />
                         <StatCard
                             orgName={orgName}
                             icon={Gauge}
                             label="Avg Mileage"
-                            value={`${stats.avgKmPerL} km/L`}
-                            sub={parseFloat(stats.avgKmPerL) >= 4 ? '✅ Good mileage' : parseFloat(stats.avgKmPerL) >= 2.5 ? '⚠️ Average mileage' : '🔴 Poor mileage'}
-                            color={getMileageColor(parseFloat(stats.avgKmPerL))}
+                            value={`${stats.avgMileage} ${mileageUnit}`}
+                            sub={parseFloat(stats.avgMileage) >= (isCng ? 5 : 4) ? '✅ Good mileage' : parseFloat(stats.avgMileage) >= (isCng ? 3 : 2.5) ? '⚠️ Average mileage' : '🔴 Poor mileage'}
+                            color={getMileageColor(parseFloat(stats.avgMileage))}
                         />
                     </div>
                 </>
@@ -233,8 +245,8 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                         <Globe size={20} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Live Diesel & GPS Telematics</div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px' }}>Connect OBD-II API to sync exact real-time engine diesel consumption.</div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Live {fuelLabel} & GPS Telematics</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px' }}>Connect OBD-II API to sync exact real-time engine {fuelLabel.toLowerCase()} consumption.</div>
                     </div>
                 </div>
                 <button className="btn btn-g btn-sm" onClick={() => alert('Live API Integration Module coming soon!')} style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
@@ -257,7 +269,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                         <thead>
                             <tr style={{ background: 'var(--bg-th)' }}>
-                                {['LR #', 'Date', 'Destination', 'Odometer', 'Distance', 'Diesel Adv (₹)', 'Pump', 'Mileage', 'Tank Bal.'].map(h => (
+                                {['LR #', 'Date', 'Destination', 'Odometer', 'Distance', `${fuelLabel} Adv (₹)`, 'Pump', `Mileage (${mileageUnit})`, `Tank Bal. (${fuelUnit})`].map(h => (
                                     <th key={h} style={{ padding: '9px 13px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                                 ))}
                             </tr>
@@ -267,10 +279,10 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                                 <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>No trips found</td></tr>
                             ) : paginatedTrips.map((t, i) => {
                                 const dist = t.calculatedDistance;
-                                const dieselRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
-                                const litres = dieselRs / dieselPerLitre;
-                                const kmPerL = (dist != null && dist > 0 && litres > 0) ? dist / litres : null;
-                                const mColor = getMileageColor(kmPerL);
+                                const fuelRs = parseFloat(t.advanceDiesel) || parseFloat(t.amount) || 0;
+                                const units = fuelRs / fuelRate;
+                                const kmPerUnit = (dist != null && dist > 0 && units > 0) ? dist / units : null;
+                                const mColor = getMileageColor(kmPerUnit);
                                 const tBal = t.tankBalance != null ? t.tankBalance.toFixed(1) : '—';
                                 const tBalColor = t.tankBalance < 0 ? '#f43f5e' : '#10b981';
                                 return (
@@ -289,18 +301,18 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                                             {dist != null ? `${dist.toFixed(0)} km` : '—'}
                                         </td>
                                         <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)' }}>
-                                            {dieselRs > 0 ? `₹${dieselRs.toLocaleString()}` : t.isFullTank ? 'FULL TANK' : '—'}
+                                            {fuelRs > 0 ? `₹${fuelRs.toLocaleString()}` : t.isFullTank ? 'FULL TANK' : '—'}
                                         </td>
-                                        <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)', fontSize: '11px' }}>{t.pump || '—'}</td>
+                                        <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', color: 'var(--text-sub)', fontSize: '11px' }}>{t.pump || (isCng ? 'CNG Station' : '—')}</td>
                                         <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)' }}>
-                                            {kmPerL != null ? (
+                                            {kmPerUnit != null ? (
                                                 <span style={{ fontWeight: 800, color: mColor, background: `${mColor}15`, padding: '2px 8px', borderRadius: '6px', fontSize: '11px' }}>
-                                                    {kmPerL.toFixed(2)} km/L
+                                                    {kmPerUnit.toFixed(2)} {mileageUnit}
                                                 </span>
                                             ) : '—'}
                                         </td>
                                         <td style={{ padding: '9px 13px', borderBottom: '1px solid var(--border-row)', fontWeight: 800, color: tBalColor }}>
-                                            {tBal} L
+                                            {tBal} {fuelUnit}
                                         </td>
                                     </tr>
                                 );
@@ -318,7 +330,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                 />
             </div>
 
-            {/* Quick Diesel Entry Modal */}
+            {/* Quick Fuel Entry Modal */}
             <AnimatePresence>
                 {showFuelModal && (
                     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -329,7 +341,7 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                             style={{ background: 'var(--bg)', borderRadius: '12px', width: '400px', maxWidth: '90%', border: '1px solid var(--border)', overflow: 'hidden' }}
                         >
                             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ fontWeight: 800 }}>Quick Diesel Entry</div>
+                                <div style={{ fontWeight: 800 }}>Quick {fuelLabel} Entry</div>
                                 <button className="btn" onClick={() => setShowFuelModal(false)} style={{ padding: '4px', background: 'transparent' }}>X</button>
                             </div>
                             <form onSubmit={handleFuelSubmit} style={{ padding: '20px' }}>
@@ -342,15 +354,15 @@ function VehicleDetail({ truckNo, vehicleType, onBack, orgName, dieselPerLitre =
                                     <input type="number" className="fi" placeholder="e.g. 45020" value={fuelForm.endKm} onChange={e => setFuelForm({ ...fuelForm, endKm: e.target.value })} />
                                 </div>
                                 <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>DIESEL AMOUNT (₹)</label>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>{fuelLabel.toUpperCase()} AMOUNT (₹)</label>
                                     <input type="number" className="fi" placeholder="e.g. 5000" value={fuelForm.amount} onChange={e => setFuelForm({ ...fuelForm, amount: e.target.value })} required />
                                 </div>
                                 <div style={{ marginBottom: '20px' }}>
-                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>PUMP NAME</label>
-                                    <input type="text" className="fi" placeholder="e.g. Reliance Jaipur" value={fuelForm.pump} onChange={e => setFuelForm({ ...fuelForm, pump: e.target.value })} />
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>PUMP / STATION NAME</label>
+                                    <input type="text" className="fi" placeholder={isCng ? 'e.g. CNG Station' : 'e.g. Reliance Jaipur'} value={fuelForm.pump} onChange={e => setFuelForm({ ...fuelForm, pump: e.target.value })} />
                                 </div>
                                 <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={submitting}>
-                                    {submitting ? 'Saving...' : 'Add Fuel Entry'}
+                                    {submitting ? 'Saving...' : `Add ${fuelLabel} Entry`}
                                 </button>
                             </form>
                         </motion.div>
@@ -461,6 +473,8 @@ export default function MileageModule() {
                 <VehicleDetail
                     truckNo={selected}
                     vehicleType={selectedVehicle?.vehicleType}
+                    fuelType={selectedVehicle?.fuelType}
+                    targetMileage={selectedVehicle?.targetMileage}
                     onBack={() => setSelected(null)}
                     orgName={orgName}
                     dieselPerLitre={dieselPerLitre}
@@ -475,8 +489,8 @@ export default function MileageModule() {
             {/* Header */}
             <div className="page-hd">
                 <div>
-                    <h1><Gauge size={20} color="#f59e0b" /> Diesel Mileage Tracker</h1>
-                    <p>Per-vehicle km/litre analytics — {orgName}</p>
+                    <h1><Gauge size={20} color="#f59e0b" /> Fleet Mileage Tracker</h1>
+                    <p>Per-vehicle km/litre and km/kg analytics — {orgName}</p>
                 </div>
                 <button className="btn btn-primary btn-sm" onClick={() => setShowSettingsModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     ⚙️ Fuel Rates
@@ -511,10 +525,15 @@ export default function MileageModule() {
                     <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
                         {filtered.map(v => {
                             const s = summaryMap[v.truckNo];
-                            const kmPerL = s && parseFloat(s.totalKm) > 0 && s.totalDieselRs > 0
-                                ? (parseFloat(s.totalKm) / (s.totalDieselRs / dieselPerLitre))
+                            const isCng = String(v.fuelType || '').toUpperCase() === 'CNG';
+                            const fuelRate = isCng ? (cngPerKg || 75) : (dieselPerLitre || 90);
+                            const fuelUnit = isCng ? 'kg' : 'L';
+                            const mileageUnit = isCng ? 'km/kg' : 'km/L';
+                            const totalFuelAmt = s ? (s.totalDiesel ?? s.totalDieselRs ?? 0) : 0;
+                            const kmPerUnit = s && parseFloat(s.totalKm) > 0 && totalFuelAmt > 0
+                                ? (parseFloat(s.totalKm) / (totalFuelAmt / fuelRate))
                                 : null;
-                            const mColor = getMileageColor(kmPerL);
+                            const mColor = getMileageColor(kmPerUnit);
                             return (
                                 <motion.div
                                     key={v.id}
@@ -535,6 +554,11 @@ export default function MileageModule() {
                                             <Truck size={14} />
                                         </div>
                                         <div style={{ fontSize: '16px', fontWeight: 900, fontFamily: 'monospace', color: 'var(--text)', flex: 1 }}>{v.truckNo}</div>
+                                        {isCng && (
+                                            <span style={{ fontSize: '9px', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
+                                                CNG
+                                            </span>
+                                        )}
                                         <ChevronRight size={14} color="var(--text-muted)" />
                                     </div>
 
@@ -560,13 +584,13 @@ export default function MileageModule() {
                                                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '4px', alignItems: 'center' }}>
                                                     <Droplets size={10} color={s.fuelBalance < 0 ? '#f43f5e' : '#3b82f6'} />
                                                     <span style={{ fontWeight: 800, color: s.fuelBalance < 0 ? '#f43f5e' : '#3b82f6' }}>
-                                                        {s.fuelBalance} L
+                                                        {s.fuelBalance} {fuelUnit}
                                                     </span>
                                                 </div>
                                             )}
-                                            {kmPerL != null && (
+                                            {kmPerUnit != null && (
                                                 <span style={{ fontSize: '11px', fontWeight: 800, color: mColor, background: `${mColor}15`, padding: '1px 7px', borderRadius: '5px' }}>
-                                                    {kmPerL.toFixed(1)} km/L avg
+                                                    {kmPerUnit.toFixed(1)} {mileageUnit} avg
                                                 </span>
                                             )}
                                         </div>

@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, Truck, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import StyledAutocomplete from '../components/StyledAutocomplete';
@@ -19,6 +19,7 @@ import { archiveName } from '../utils/archiveDoc';
 import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 import TableScroll from '../components/TableScroll';
 import { fmtDate } from '../utils/format';
+import { useToast } from '../components/Toast';
 
 const PAGE_SIZE = 20;
 
@@ -239,7 +240,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
     module: 'Loading Receipts', kind: 'Documents',
     plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
     name: archiveName('LR', lrNo, base.truckNo, base.date),
-    meta: { lrNo, truckNo: base.truckNo, date: base.date, partyName: base.partyName },
+    meta: { lrNo, truckNo: base.truckNo, date: base.date, partyName: base.partyName, docData: { ...base, lrNo, brand, driverName } },
   };
 
   if (brand === 'jkl') {
@@ -533,6 +534,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
           <div style="display: flex; flex-direction: column; gap: 3px; align-items: flex-start;">
             ${base.entryId ? `<div style="font-size: 13px; font-weight: 900; border: 1.5px solid #000; padding: 2px 8px; background: #fff;">ID #${base.entryId}</div>` : ''}
             <div class="lr-badge">LR # ${lrNo}</div>
+            <div style="font-size: 9.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 1px;">LOADING SITE: ${brand.toUpperCase()} DUMP</div>
           </div>
           <div class="lr-date" style="font-size: 11px; font-weight: 800; text-align: right; margin-top: 2px;"><strong>Date:</strong> ${fmtDate(base.date)}</div>
         </div>
@@ -829,6 +831,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               <label>Loading Type</label>
               <select className="fi" value={form.loadingType} onChange={e => S('loadingType', e.target.value)}>
                 <option value="From Godown">From Godown</option>
+                <option value="Transfer">Transfer</option>
                 <option value="Crossing">Crossing</option>
                 <option value="Direct">Direct (no labour)</option>
               </select>
@@ -912,15 +915,13 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
           <ChallanPopup
             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
             selectedChallans={form.usedChallans}
+            targetTruckNo={form.truckNo}
             onClose={() => setShowChalPopup(false)}
             onToggleSelect={(ch) => {
               const isSelected = form.usedChallans.find(c => c.challanNo === ch.challanNo);
               if (isSelected) {
                 setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== ch.challanNo) }));
               } else {
-                if (form.truckNo && ch.truckNo !== form.truckNo) {
-                  if (!window.confirm(`Warning: Challan is for vehicle ${ch.truckNo}, but LR is for ${form.truckNo}. Use anyway?`)) return;
-                }
                 setForm(f => ({ ...f, usedChallans: [...f.usedChallans, ch] }));
               }
             }}
@@ -933,19 +934,33 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [] }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [], targetTruckNo = '' }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
   const [challanSearch, setChallanSearch] = useState('');
 
+  const cleanTargetTruck = String(targetTruckNo || preFill?.truckNo || '').toUpperCase().replace(/\s+/g, '');
+  const [scope, setScope] = useState(cleanTargetTruck ? 'same' : 'all'); // 'same' | 'other' | 'all'
+
+  const sameTruckChallans = cleanTargetTruck
+    ? openChallans.filter(c => String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') === cleanTargetTruck)
+    : [];
+  const otherTruckChallans = cleanTargetTruck
+    ? openChallans.filter(c => String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') !== cleanTargetTruck)
+    : openChallans;
+
+  const currentPool = (cleanTargetTruck && scope === 'same')
+    ? sameTruckChallans
+    : ((cleanTargetTruck && scope === 'other') ? otherTruckChallans : openChallans);
+
   const filteredChallans = challanSearch
-    ? openChallans.filter(c => {
+    ? currentPool.filter(c => {
       const s = challanSearch.toLowerCase();
       return (c.challanNo || '').toLowerCase().includes(s) ||
         (c.truckNo || '').toLowerCase().includes(s) ||
         (c.partyName || '').toLowerCase().includes(s) ||
         (c.destination || '').toLowerCase().includes(s);
     })
-    : openChallans;
+    : currentPool;
 
   // For 'create' tab
   const [saving, setSaving] = useState(false);
@@ -962,7 +977,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
   else ENDPOINT = `${BASE_API}/stock/challans`;
 
   const [chalForm, setChalForm] = useState({
-    truckNo: preFill?.truckNo || '',
+    truckNo: cleanTargetTruck || preFill?.truckNo || '',
     date: preFill?.date || new Date().toISOString().split('T')[0],
     material: preFill?.material || MATERIALS[0],
     quantity: preFill?.quantity || '',
@@ -1013,6 +1028,22 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }
   };
 
+  const handleChallanClick = (c) => {
+    const isOtherTruck = cleanTargetTruck && String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') !== cleanTargetTruck;
+    if (isOtherTruck) {
+      const ok = window.confirm(
+        `Notice: Transfer Challan #${c.challanNo}?\n\n` +
+        `• Registered Vehicle: ${c.truckNo}\n` +
+        `• Loading Vehicle: ${cleanTargetTruck}\n\n` +
+        `This challan will be loaded by ${cleanTargetTruck}, and all freight will be credited to ${cleanTargetTruck}.\n` +
+        `WhatsApp alerts will be dispatched to both vehicle owners.\n\n` +
+        `Do you want to proceed with this transfer?`
+      );
+      if (!ok) return;
+    }
+    onToggleSelect(c);
+  };
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1020,7 +1051,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '560px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+        style={{ width: '94%', maxWidth: '580px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1029,7 +1060,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
             </div>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Select or Create Challan</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>Loading Receipt Attachment</div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>
+                {cleanTargetTruck ? `Vehicle: ${cleanTargetTruck}` : 'Loading Receipt Attachment'}
+              </div>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
@@ -1053,6 +1086,45 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
           <AnimatePresence mode="wait">
             {tab === 'select' && (
               <motion.div key="select" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+                {/* Same Vehicle vs Other Vehicles Switcher */}
+                {cleanTargetTruck && (
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setScope('same')}
+                      style={{
+                        flex: 1, padding: '9px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer',
+                        border: scope === 'same' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                        background: scope === 'same' ? 'rgba(99,102,241,0.08)' : 'var(--bg)',
+                        color: scope === 'same' ? 'var(--primary)' : 'var(--text-muted)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      <Truck size={14} /> This Vehicle: {cleanTargetTruck} ({sameTruckChallans.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScope('other')}
+                      style={{
+                        flex: 1, padding: '9px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer',
+                        border: scope === 'other' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                        background: scope === 'other' ? 'rgba(245,158,11,0.1)' : 'var(--bg)',
+                        color: scope === 'other' ? '#d97706' : 'var(--text-muted)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      🔄 Other Vehicles / Transfer ({otherTruckChallans.length})
+                    </button>
+                  </div>
+                )}
+
+                {/* Transfer Banner */}
+                {cleanTargetTruck && scope === 'other' && (
+                  <div style={{ padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '8px', marginBottom: '12px', fontSize: '11px', color: '#b45309', lineHeight: 1.4 }}>
+                    <strong>Transfer Notice:</strong> Selecting another vehicle's challan will attribute all freight to <strong>{cleanTargetTruck}</strong>. WhatsApp alerts will be sent to both vehicle owners.
+                  </div>
+                )}
+
                 {/* Search */}
                 <div style={{ position: 'relative', marginBottom: '12px' }}>
                   <input className="fi" type="text" placeholder="Search by challan no, truck, party..."
@@ -1061,24 +1133,49 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                   <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 </div>
 
-                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Open Challans ({filteredChallans.length})</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                  {scope === 'same' ? `Challans for ${cleanTargetTruck}` : (scope === 'other' ? 'Other Vehicle Challans' : 'All Open Challans')} ({filteredChallans.length})
+                </div>
 
                 {filteredChallans.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '13px' }}>No challans found.</div>
+                  <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    <div>No open challans found {scope === 'same' ? `for ${cleanTargetTruck}` : ''}.</div>
+                    {scope === 'same' && (
+                      <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                        <button type="button" onClick={() => setScope('other')} style={{ padding: '6px 12px', borderRadius: '6px', background: 'var(--bg-input)', border: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--text)' }}>
+                          🔄 Browse Other Vehicles
+                        </button>
+                        <button type="button" onClick={() => setTab('create')} style={{ padding: '6px 12px', borderRadius: '6px', background: 'var(--primary)', border: 'none', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                          + Create for {cleanTargetTruck}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {filteredChallans.map(c => {
                       const isSelected = selectedChallans.find(sc => sc.challanNo === c.challanNo);
+                      const isOther = cleanTargetTruck && String(c.truckNo || '').toUpperCase().replace(/\s+/g, '') !== cleanTargetTruck;
                       return (
                         <div
                           key={c.id}
-                          onClick={() => onToggleSelect(c)}
-                          style={{ padding: '12px', background: isSelected ? 'rgba(99,102,241,0.06)' : 'var(--bg)', border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s' }}
+                          onClick={() => handleChallanClick(c)}
+                          style={{
+                            padding: '12px',
+                            background: isSelected ? 'rgba(99,102,241,0.06)' : (isOther ? 'rgba(245,158,11,0.03)' : 'var(--bg)'),
+                            border: isSelected ? '2px solid var(--primary)' : (isOther ? '1px dashed #f59e0b' : '1px solid var(--border)'),
+                            borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s'
+                          }}
                         >
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                               <span style={{ fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{c.challanNo}</span>
                               <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 700 }}>{c.truckNo}</span>
+                              {isOther && (
+                                <span style={{ padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#d97706', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>
+                                  🔄 TRANSFER
+                                </span>
+                              )}
                               {isSelected && <span style={{ padding: '2px 6px', background: 'var(--primary)', color: 'white', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>SELECTED</span>}
                             </div>
                             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -1289,6 +1386,7 @@ function DeleteConfirm({ row, rows, apiUrl, onClose, onConfirm }) {
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
   // Whoever is logged in signs the receipts they print.
   const { user } = useAuth();
+  const { showToast } = useToast() || {};
   const signedBy = user?.name || user?.username || 'VGTC';
 
   // The module opens on the list. Most visits are to look a receipt up, and the
@@ -1318,6 +1416,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   }
   const API_CHAL = `${API_STOCK}/challans`;
 
+  const siteInfo = useMemo(() => {
+    if (brand === 'jkl') return { label: 'JK Lakshmi', code: 'JKL', color: '#e53935', bg: 'rgba(229,57,53,0.08)', border: 'rgba(229,57,53,0.3)' };
+    if (brand === 'jhajjar') return { label: 'Jhajjar Godown', code: 'JHAJJAR', color: '#14b8a6', bg: 'rgba(20,184,166,0.08)', border: 'rgba(20,184,166,0.3)' };
+    if (brand === 'bahadurgarh') return { label: 'Bahadurgarh Godown', code: 'BAHADURGARH', color: '#d97706', bg: 'rgba(217,119,6,0.08)', border: 'rgba(217,119,6,0.3)' };
+    return { label: 'Kosli Godown', code: 'KOSLI', color: '#6366f1', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.3)' };
+  }, [brand]);
+
   const [materialObjs, setMaterialObjs] = useState([]);
   const MATERIALS = materialObjs.length > 0 ? materialObjs.map(m => m.name) : (brand === 'jkl' ? MATS_JKL_FALLBACK : MATS_DUMP_FALLBACK);
 
@@ -1328,6 +1433,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [openChallans, setOpenChallans] = useState([]);
   const [allChallans, setAllChallans] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [rawVehicles, setRawVehicles] = useState([]);
   const [additions, setAdditions] = useState([]);
   const [destinationsList, setDestinationsList] = useState([]);
   useEffect(() => {
@@ -1380,7 +1486,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   };
   const [form, setForm] = useState({
     date: getSticky('lr.date', new Date().toISOString().split('T')[0]),
-    truckNo: '', partyName: '',
+    truckNo: '',
+    driverName: '',
+    driverContact: '',
+    ownerContact: '',
+    ownerName: '',
+    showContactOverride: false,
+    partyName: '',
     destination: '',
     note: '',
     voiceMessageBase64: '',
@@ -1557,12 +1669,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     try {
       const data = (await ax.get(`/vehicles`)).data;
       const list = Array.isArray(data) ? data : [];
+      setRawVehicles(list);
       const formatted = list.map(v => {
         const num = typeof v === 'string' ? v : (v.truckNo || '');
         return {
           label: num,
           value: num,
-          sublabel: typeof v === 'object' ? (v.ownerName || v.ownershipType || '') : ''
+          sublabel: typeof v === 'object' ? (v.ownerName || v.ownershipType || '') : '',
+          raw: v
         };
       }).filter(item => item.value);
       setVehicles(formatted);
@@ -1626,6 +1740,41 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     });
     return m;
   }, [additions, receipts, allChallans, MATERIALS]);
+
+  const matchedVehicle = useMemo(() => {
+    if (!form.truckNo) return null;
+    const clean = normTruck(form.truckNo);
+    return rawVehicles.find(v => normTruck(v.truckNo) === clean) || null;
+  }, [form.truckNo, rawVehicles]);
+
+  const handleTruckChange = (val) => {
+    const cleaned = cleanTruckNo(val);
+    const match = rawVehicles.find(v => normTruck(v.truckNo) === normTruck(cleaned));
+    setForm(f => ({
+      ...f,
+      truckNo: cleaned,
+      driverName: match?.driverName || '',
+      driverContact: match?.driverContact || '',
+      ownerContact: match?.ownerContact || '',
+      ownerName: match?.ownerName || '',
+      showContactOverride: false
+    }));
+  };
+
+  useEffect(() => {
+    const stickyTruck = getSticky('lr.truckNo', '');
+    if (stickyTruck && rawVehicles.length > 0) {
+      handleTruckChange(stickyTruck);
+      rememberSticky('lr.truckNo', '');
+    }
+  }, [rawVehicles]);
+
+  const isVehicleContactComplete = Boolean(
+    matchedVehicle &&
+    matchedVehicle.driverContact &&
+    matchedVehicle.ownerContact &&
+    matchedVehicle.driverName
+  );
 
   const updMat = (i, field, val) => {
     const m = [...form.materials]; m[i] = { ...m[i], [field]: val };
@@ -1704,6 +1853,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
       await ax.post(SYNC_API, {
         oldChallanNos: '',
@@ -1787,6 +1937,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
       else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
       else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
+      else if (brand === 'bahadurgarh') SYNC_API = `${BASE_API}/bahadurgarh/stock/sync-lr`;
       else SYNC_API = `${BASE_API}/stock/sync-lr`;
       for (const m of form.materials) {
         if (m.bags && m.billing && m.billing !== 'No') {
@@ -1799,10 +1950,25 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         }
       }
 
-      fetchLRData(); fetchChallans();
+      fetchLRData(); fetchChallans(); fetchVehicles();
       clearVoice();
       rememberSticky('lr.date', form.date);
-      setForm({ date: form.date, truckNo: '', partyName: '', destination: '', fuelStation: '', note: '', voiceMessageBase64: '', usedChallans: [], materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+      setForm({
+        date: form.date,
+        truckNo: '',
+        driverName: '',
+        driverContact: '',
+        ownerContact: '',
+        ownerName: '',
+        showContactOverride: false,
+        partyName: '',
+        destination: '',
+        fuelStation: '',
+        note: '',
+        voiceMessageBase64: '',
+        usedChallans: [],
+        materials: [{ type: 'PPC', loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }]
+      });
 
       // POST /lr answers with { lrNo, ids } — a receipt number and the document
       // ids it wrote, NOT the rows themselves. Handing that to the printer as if
@@ -1823,16 +1989,18 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         partyName: m.partyName,
       }));
       printReceipt(printedRows, res.data.lrNo, brand, signedBy, vehicles);
+      if (showToast) {
+        showToast(`✅ Loading Receipt #${res.data.lrNo} created & WhatsApp message sent successfully!`, 'success');
+      }
 
     } catch (e) {
       const errDetails = e.response?.data?.error || e.response?.data || e.message || String(e);
       console.error("LR Create error:", errDetails);
-      // A refused LR number is the clerk's to fix, and the server already says
-      // exactly what is wrong — showing that plainly beats a JSON dump.
-      if (e.response?.status === 409 || e.response?.status === 400) {
-        alert(typeof errDetails === 'string' ? errDetails : JSON.stringify(errDetails));
+      const errMsg = typeof errDetails === 'string' ? errDetails : (errDetails.message || JSON.stringify(errDetails));
+      if (showToast) {
+        showToast(`❌ LR creation / WhatsApp dispatch failed: ${errMsg}`, 'error');
       } else {
-        alert('Error creating receipt: ' + JSON.stringify(errDetails));
+        alert('Error creating receipt: ' + errMsg);
       }
     } finally { setLoading(false); }
   };
@@ -1878,8 +2046,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         isOpen={isConfirmingSave}
         onClose={() => setIsConfirmingSave(false)}
         onConfirm={executeSaveLR}
-        title="Create Loading Receipt"
-        message={`Are you sure you want to create a new LR for truck ${form.truckNo} ? `}
+        title={`Confirm Loading Receipt (${siteInfo.label})`}
+        message={`Are you sure you want to create a new LR in ${siteInfo.label.toUpperCase()} for truck ${form.truckNo}?`}
         isSaving={loading}
       />
 
@@ -1903,6 +2071,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             vehicles={vehicles.length ? vehicles.map(v => ({ ...v, brandMats: MATERIALS })) : [{ brandMats: MATERIALS }]}
             selectedChallans={form.usedChallans}
             preFill={chalPreFill}
+            targetTruckNo={linkingLrId ? receipts.find(r => r.id === linkingLrId)?.truckNo : form.truckNo}
             partySuggestions={partySuggestions}
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
@@ -1944,23 +2113,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                   const remainingNeeded = Math.max(0, parseInt(receipt.totalBags || 0) - alreadyCovered);
                   const toDeduct = Math.min(challanBags, remainingNeeded);
 
-                  const existingBilling = (receipt.billing && receipt.billing !== 'No') ? receipt.billing : '';
-                  const newBilling = existingBilling ? `${existingBilling}, ${ch.challanNo}` : ch.challanNo;
-
-                  // 1. Patch LR billing
-                  await ax.patch(`${API}/${linkingLrId}/billing`, { billing: newBilling });
-
-                  // 2. Sync stock (deduct challan bags from open challan)
-                  let SYNC_API;
-                  if (brand === 'jkl') SYNC_API = `${BASE_API}/jkl/stock/sync-lr`;
-                  else if (brand === 'kosli') SYNC_API = `${BASE_API}/kosli/stock/sync-lr`;
-                  else if (brand === 'jhajjar') SYNC_API = `${BASE_API}/jhajjar/stock/sync-lr`;
-                  else SYNC_API = `${BASE_API}/stock/sync-lr`;
-                  await ax.post(SYNC_API, {
-                    oldChallanNos: '',
-                    newChallanNos: ch.challanNo,
+                  // Call centralized link-challan endpoint (handles LR billing update, transfer record, stock sync, & dual WhatsApp alerts)
+                  await ax.post(`${API}/${linkingLrId}/link-challan`, {
+                    challanNo: ch.challanNo,
+                    quantity: toDeduct,
                     material: receipt.material,
-                    quantity: toDeduct  // only the bags the LR actually still needs
+                    brand
                   });
 
                   fetchLRData(); fetchChallans();
@@ -1977,10 +2135,6 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               if (isSelected) {
                 newUsed = form.usedChallans.filter(c => c.challanNo !== ch.challanNo);
               } else {
-                if (form.truckNo && ch.truckNo !== form.truckNo) {
-                  const ok = window.confirm(`Warning: This challan is for vehicle ${ch.truckNo}, but the LR is for ${form.truckNo}. \n\nDo you want to use this challan?`);
-                  if (!ok) return;
-                }
                 newUsed = [...form.usedChallans, ch];
               }
 
@@ -2037,8 +2191,14 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       <div>
         <div className="page-hd">
           <div>
-            <h1><Receipt size={20} color="#6366f1" /> {brand === 'jkl' ? 'JK Lakshmi Loading Receipt' : 'Loading Receipt'}</h1>
-            <p>Create and manage loading receipts</p>
+            <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <Receipt size={20} color={siteInfo.color} />
+              <span>{siteInfo.label} — Loading Receipt</span>
+              <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', background: siteInfo.bg, color: siteInfo.color, border: `1px solid ${siteInfo.border}` }}>
+                {siteInfo.code}
+              </span>
+            </h1>
+            <p>Create and manage loading receipts for <strong>{siteInfo.label}</strong></p>
           </div>
           <div className="page-hd-right" style={{ display: 'flex', gap: '8px' }}>
             {/* The list is what the module opens on now — this is how the form
@@ -2067,6 +2227,34 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             </div>
             <div className="card-body">
               <form onSubmit={handleFormRequest} ref={createFormRef}>
+                {/* Active Loading Site Notice to prevent cross-godown mistakes */}
+                <div style={{
+                  background: siteInfo.bg,
+                  border: `1.5px solid ${siteInfo.border}`,
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '16px' }}>📍</span>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: '13px', color: siteInfo.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        ACTIVE LOADING GODOWN: {siteInfo.label}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        This receipt will be generated and stock will be deducted from <strong>{siteInfo.label}</strong>.
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 900, padding: '3px 10px', borderRadius: '6px', background: siteInfo.color, color: '#fff' }}>
+                    {siteInfo.code} SITE
+                  </span>
+                </div>
+
                 <div className="fg fg-2">
                   {/*
                     The number normally comes from the counter, which also
@@ -2139,7 +2327,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     <label>Truck No. *</label>
                     <StyledAutocomplete
                       value={form.truckNo}
-                      onChange={val => setForm({ ...form, truckNo: cleanTruckNo(val) })}
+                      onChange={handleTruckChange}
                       options={vehicles}
                       uppercase
                       placeholder="ENTER TRUCK NUMBER E.G. HR47G1234"
@@ -2147,6 +2335,119 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     />
                     {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block' }}>Invalid format</span>}
                   </div>
+
+                  {/* Vehicle Contacts Section */}
+                  {form.truckNo && validateTruckNo(form.truckNo) && (
+                    isVehicleContactComplete && !form.showContactOverride ? (
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: 'rgba(16, 185, 129, 0.08)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                          <Check size={15} color="#10b981" />
+                          <span style={{ fontWeight: 700, color: 'var(--text)' }}>
+                            Vehicle Contacts on Record:
+                          </span>
+                          <span style={{ color: 'var(--text-sub)' }}>
+                            Driver: <strong style={{ color: 'var(--text)' }}>{matchedVehicle.driverName || '—'}</strong> ({matchedVehicle.driverContact})
+                          </span>
+                          <span style={{ color: 'var(--text-muted)' }}>•</span>
+                          <span style={{ color: 'var(--text-sub)' }}>
+                            Owner: <strong style={{ color: 'var(--text)' }}>{matchedVehicle.ownerName || '—'}</strong> ({matchedVehicle.ownerContact})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => ({ ...f, showContactOverride: true }))}
+                          style={{
+                            background: 'none',
+                            border: '1px solid rgba(16, 185, 129, 0.4)',
+                            borderRadius: '6px',
+                            color: '#10b981',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Edit Contacts
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        background: 'rgba(245, 158, 11, 0.06)',
+                        border: '1px solid rgba(245, 158, 11, 0.25)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#f59e0b' }}>
+                            <AlertTriangle size={14} color="#f59e0b" />
+                            <span>{matchedVehicle ? `Update Missing Contacts for ${form.truckNo}` : `New Vehicle Contacts (${form.truckNo})`}</span>
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            💾 Automatically saves to vehicle profile & dispatches WhatsApp slips
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                          <div className="field-h">
+                            <label style={{ fontSize: '11px' }}>Driver Name</label>
+                            <input
+                              className="fi"
+                              type="text"
+                              placeholder="e.g. Ramesh Kumar"
+                              value={form.driverName || ''}
+                              onChange={e => setForm(f => ({ ...f, driverName: e.target.value }))}
+                            />
+                          </div>
+                          <div className="field-h">
+                            <label style={{ fontSize: '11px' }}>Driver Mobile / WhatsApp</label>
+                            <input
+                              className="fi"
+                              type="tel"
+                              placeholder="10-digit mobile"
+                              value={form.driverContact || ''}
+                              onChange={e => setForm(f => ({ ...f, driverContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                            />
+                          </div>
+                          <div className="field-h">
+                            <label style={{ fontSize: '11px' }}>Owner Mobile / WhatsApp</label>
+                            <input
+                              className="fi"
+                              type="tel"
+                              placeholder="10-digit mobile"
+                              value={form.ownerContact || ''}
+                              onChange={e => setForm(f => ({ ...f, ownerContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                            />
+                          </div>
+                          {!matchedVehicle && (
+                            <div className="field-h">
+                              <label style={{ fontSize: '11px' }}>Owner Name</label>
+                              <input
+                                className="fi"
+                                type="text"
+                                placeholder="e.g. Suresh Transporter"
+                                value={form.ownerName || ''}
+                                onChange={e => setForm(f => ({ ...f, ownerName: e.target.value }))}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
                   <div className="field-h">
                     <label><User size={11} /> Party Name</label>
                     <StyledAutocomplete
@@ -2254,6 +2555,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <label>Loading</label>
                         <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
                           <option value="From Godown">From Godown</option>
+                          <option value="Transfer">Transfer</option>
                           <option value="Crossing">Crossing</option>
                           <option value="Direct">Direct (no labour)</option>
                         </select>
@@ -2407,7 +2709,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             </div>
 
             <TableScroll className="tbl-cards">
-              <table className="tbl" style={{ minWidth: '1200px' }}>
+              <table className="tbl" style={{ minWidth: '1550px' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-th)', position: 'sticky', top: 0, zIndex: 10 }}>
                     <th style={{ padding: '6px 8px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', width: '38px', textAlign: 'center' }}>
@@ -2418,42 +2720,36 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
                       />
                     </th>
-                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="ID" colKey="entryId" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Dest" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                      </div>
-                    </th>
-                    <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                        <ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} />
-                      </div>
-                    </th>
-                    <th className="c" style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                    <th className="c" style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Voucher Status</th>
-                    <th className="c" style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Trip Status</th>
-                    {role === 'admin' && <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Created By</th>}
-                    {role === 'admin' && <th style={{ padding: '8px 12px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)' }}>Updated By</th>}
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="ID" colKey="entryId" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="LR No." colKey="lrNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Date" colKey="date" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Vehicle" colKey="truckNo" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Party" colKey="partyName" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Destination" colKey="destination" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Material" colKey="material" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Weight (MT)" colKey="weight" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Bags" colKey="totalBags" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}>Voucher Status</th>
+                    <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Trip Status" colKey="status" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                    {role === 'admin' && <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Created By" colKey="createdBy" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
+                    {role === 'admin' && <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Updated By" colKey="updatedBy" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {tableLoading && filteredReceipts.length === 0 ? (
                     [1, 2, 3, 4, 5].map(i => (
                       <tr key={`sk-${i}`} className="skeleton-row">
-                        {Array.from({ length: role === 'admin' ? 8 : 6 }).map((_, j) => (
-                          <td key={j}><span className="skeleton skeleton-text" /></td>
+                        {Array.from({ length: role === 'admin' ? 16 : 14 }).map((_, j) => (
+                          <td key={j} style={{ padding: '7px 10px' }}><span className="skeleton skeleton-text" /></td>
                         ))}
                       </tr>
                     ))
-                  ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 8 : 6} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
+                  ) : filteredReceipts.length === 0 ? <tr><td colSpan={role === 'admin' ? 16 : 14} className="t-empty" style={{ textAlign: 'center', padding: '36px' }}>No receipts found</td></tr>
                     : paginatedReceipts.map(lr => (
                       <tr key={lr.id}>
-                        <td style={{ textAlign: 'center', padding: '6px 8px' }}>
+                        <td style={{ textAlign: 'center', padding: '6px 8px', verticalAlign: 'middle' }}>
                           <input
                             type="checkbox"
                             checked={selectedLrs.has(lr.id)}
@@ -2461,28 +2757,40 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: 'var(--primary)' }}
                           />
                         </td>
-                        <td data-label="ID">
-                          <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '5px', fontSize: '11.5px' }}>
+                        <td data-label="ID" style={{ padding: '7px 10px', verticalAlign: 'middle' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', whiteSpace: 'nowrap' }}>
                             #{lr.entryId || '—'}
                           </span>
                         </td>
-                        <td className="t-card-title"><span className="t-lr">#{lr.lrNo}</span></td>
-                        <td data-label="Vehicle / Party">
-                          <div>
-                            <div className="t-main">{lr.truckNo}</div>
-                            <div className="t-sub">{lr.partyName} · {lr.destination || '—'} · {lr.date}</div>
-                          </div>
+                        <td data-label="LR No." style={{ padding: '7px 10px', verticalAlign: 'middle' }}>
+                          <span className="t-lr" style={{ fontWeight: 800, fontSize: '12.5px', whiteSpace: 'nowrap' }}>#{lr.lrNo}</span>
                         </td>
-                        <td data-label="Material">
-                          <div>
-                            <span className="badge badge-tag">{lr.material}</span>
-                            <div className="t-sub">{lr.weight} MT · {lr.totalBags} bags</div>
-                            {lr.loadingType && <div className="t-sub" style={{ marginTop: '4px', fontWeight: 800, fontSize: '10px', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>{lr.loadingType}</div>}
-                          </div>
+                        <td data-label="Date" style={{ padding: '7px 10px', verticalAlign: 'middle', fontSize: '12px', fontWeight: 600, color: 'var(--text-sub)', whiteSpace: 'nowrap' }}>
+                          {fmtDate(lr.date)}
                         </td>
-                        <td className="c" data-label="Source Challan">
+                        <td data-label="Vehicle" style={{ padding: '7px 10px', verticalAlign: 'middle', fontWeight: 800, fontSize: '12.5px', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                          {lr.truckNo}
+                        </td>
+                        <td data-label="Party" style={{ padding: '7px 10px', verticalAlign: 'middle', fontSize: '12px', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                          {lr.partyName || '—'}
+                        </td>
+                        <td data-label="Destination" style={{ padding: '7px 10px', verticalAlign: 'middle', fontSize: '12px', color: 'var(--text-sub)', whiteSpace: 'nowrap' }}>
+                          {lr.destination || '—'}
+                        </td>
+                        <td data-label="Material" style={{ padding: '7px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <span className="badge badge-tag" style={{ fontSize: '10px', padding: '2px 7px' }}>{lr.material || '—'}</span>
+                        </td>
+                        <td data-label="Weight" style={{ padding: '7px 10px', verticalAlign: 'middle', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {parseFloat(lr.weight || 0).toFixed(2)} MT
+                        </td>
+                        <td data-label="Bags" style={{ padding: '7px 10px', verticalAlign: 'middle', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {lr.totalBags || 0}
+                        </td>
+                        <td data-label="Loading" style={{ padding: '7px 10px', verticalAlign: 'middle', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', color: lr.loadingType === 'Crossing' ? '#f59e0b' : '#10b981' }}>
+                          {lr.loadingType || '—'}
+                        </td>
+                        <td className="c" data-label="Source Challan" style={{ padding: '7px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                           {(() => {
-                            // Determine how many bags are not yet covered by any challan
                             const lrBags = parseInt(lr.totalBags || 0);
                             const hasBilling = lr.billing && lr.billing !== 'No';
                             let coveredBags = 0;
@@ -2501,62 +2809,47 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             }
                             const remainingBags = lrBags - coveredBags;
                             const isPartiallyCovered = hasBilling && remainingBags > 0;
-                            const isFullyCovered = hasBilling && remainingBags <= 0;
+
+                            if (hasBilling) {
+                              return (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                                  {lr.billing.split(',').map((cNo, idx) => (
+                                    <span key={idx} className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '10.5px', padding: '2px 6px' }}>
+                                      {cNo.trim()}
+                                    </span>
+                                  ))}
+                                  {isPartiallyCovered && (
+                                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#f43f5e', background: 'rgba(244,63,94,0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.25)' }}>
+                                      {remainingBags}b pend.
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
 
                             return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                {hasBilling && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                    {lr.billing.split(',').map((cNo, idx) => {
-                                      const ch = allChallans.find(c => c.challanNo === cNo.trim());
-                                      const hasMaterial = ch && ch.materials ? ch.materials.some(m => m.type === lr.material) : (ch && ch.material === lr.material);
-                                      if (!hasMaterial && lr.billing.includes(',')) return null;
-                                      return (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span className="badge badge-y" style={{ fontFamily: 'monospace', fontWeight: 800 }}>{cNo.trim()}</span>
-                                          {ch && ch.date && (
-                                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                              {fmtDate(ch.date)}
-                                            </span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                    {isPartiallyCovered && (
-                                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#f43f5e', background: 'rgba(244,63,94,0.1)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(244,63,94,0.25)' }}>
-                                        {remainingBags} bags ({(remainingBags * 0.05).toFixed(2)} MT) pending
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                                {(!hasBilling || isPartiallyCovered) && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                    {!hasBilling && <span className="badge badge-n">Pending Challan</span>}
-                                    <button
-                                      className="btn btn-a btn-sm"
-                                      onClick={() => {
-                                        setLinkingLrId(lr.id);
-                                        setChalPreFill({
-                                          truckNo: lr.truckNo,
-                                          material: lr.material,
-                                          quantity: isPartiallyCovered ? remainingBags : lr.totalBags,
-                                          partyName: lr.partyName,
-                                          destination: lr.destination,
-                                          date: lr.date
-                                        });
-                                        setShowChalPopup('create');
-                                      }}
-                                      style={{ fontSize: '9px', padding: '3px 8px', fontWeight: 800 }}
-                                    >
-                                      <Tag size={10} /> Challan Pending
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
+                              <button
+                                className="btn btn-a btn-sm"
+                                onClick={() => {
+                                  setLinkingLrId(lr.id);
+                                  setChalPreFill({
+                                    truckNo: lr.truckNo,
+                                    material: lr.material,
+                                    quantity: lr.totalBags,
+                                    partyName: lr.partyName,
+                                    destination: lr.destination,
+                                    date: lr.date
+                                  });
+                                  setShowChalPopup('create');
+                                }}
+                                style={{ fontSize: '10px', padding: '2px 8px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Tag size={10} /> Pending Challan
+                              </button>
                             );
                           })()}
                         </td>
-                        <td className="c" data-label="Voucher Status">
+                        <td className="c" data-label="Voucher Status" style={{ padding: '7px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                           {(() => {
                             const usedInVouchers = allVouchers.filter(v => {
                               const vLrs = [];
@@ -2570,33 +2863,38 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             });
 
                             if (usedInVouchers.length === 0) {
-                              return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)' }}>Unbilled</span>;
+                              return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)', fontSize: '10px', padding: '2px 6px', whiteSpace: 'nowrap' }}>Unbilled</span>;
                             }
 
                             return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                                 {usedInVouchers.map(v => (
-                                  <div key={v.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '3px 8px' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981' }}>{v.type ? v.type.replace('_', ' ') : 'Voucher'}</span>
-                                    {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>Bill: {v.billNo}</span>}
-                                  </div>
+                                  <span key={v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                                    <strong style={{ fontSize: '10px', color: '#10b981' }}>{v.type ? v.type.replace(/_/g, ' ') : 'Voucher'}</strong>
+                                    {v.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>#{v.billNo}</span>}
+                                  </span>
                                 ))}
                               </div>
                             );
                           })()}
                         </td>
-                        <td className="c" data-label="Trip Status">
+                        <td className="c" data-label="Trip Status" style={{ padding: '7px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                           {(() => {
                             const status = lr.status || 'Created';
                             const idx = LR_STATUS_FLOW.indexOf(status);
                             const nextStatus = idx < LR_STATUS_FLOW.length - 1 ? LR_STATUS_FLOW[idx + 1] : null;
                             const color = LR_STATUS_COLOR[status] || '#6366f1';
                             return (
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 8px', borderRadius: '6px', background: color + '1a', color, fontSize: '10px', fontWeight: 800, border: '1px solid ' + color + '33' }}>{status}</span>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: '4px', background: color + '1a', color, fontSize: '10px', fontWeight: 800, border: '1px solid ' + color + '33' }}>
+                                  {status}
+                                </span>
                                 {nextStatus && (
-                                  <button style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '5px', background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}
-                                    onClick={() => setStatusTarget({ lr, nextStatus })}>
+                                  <button
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}
+                                    onClick={() => setStatusTarget({ lr, nextStatus })}
+                                    title={`Mark as ${nextStatus}`}
+                                  >
                                     <ArrowRight size={9} /> {nextStatus}
                                   </button>
                                 )}
@@ -2604,8 +2902,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        {role === 'admin' && <td data-label="Created By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.createdBy || '—'}</td>}
-                        {role === 'admin' && <td data-label="Updated By" style={{ color: 'var(--text-sub)', fontSize: '12px' }}>{lr.updatedBy || '—'}</td>}
+                        {role === 'admin' && <td data-label="Created By" style={{ padding: '7px 10px', verticalAlign: 'middle', color: 'var(--text-sub)', fontSize: '11.5px', whiteSpace: 'nowrap' }}>{lr.createdBy || '—'}</td>}
+                        {role === 'admin' && <td data-label="Updated By" style={{ padding: '7px 10px', verticalAlign: 'middle', color: 'var(--text-sub)', fontSize: '11.5px', whiteSpace: 'nowrap' }}>{lr.updatedBy || '—'}</td>}
                       </tr>
                     ))}
                 </tbody>

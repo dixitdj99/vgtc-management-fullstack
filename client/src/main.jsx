@@ -106,6 +106,32 @@ window.triggerSWPrefetch = () => {
   });
 };
 
+// Disable mouse wheel value changes on all number inputs globally across all modules
+window.addEventListener('wheel', () => {
+  const active = document.activeElement;
+  if (active && active.tagName === 'INPUT' && active.type === 'number') {
+    active.blur();
+  }
+}, { passive: true });
+
+document.addEventListener('wheel', (e) => {
+  const target = e.target;
+  if (target && target.tagName === 'INPUT' && target.type === 'number') {
+    target.blur();
+  }
+}, { passive: true });
+
+document.addEventListener('focusin', (e) => {
+  if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
+    if (!e.target.__wheelBlocked) {
+      e.target.__wheelBlocked = true;
+      e.target.addEventListener('wheel', (we) => {
+        we.target.blur();
+      }, { passive: true });
+    }
+  }
+}, true);
+
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
         <ErrorBoundary>

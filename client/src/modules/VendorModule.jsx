@@ -296,7 +296,7 @@ export default function VendorModule() {
   );
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1300px', margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       <ConfirmDialog
         open={!!delTarget}
         title="Delete market vehicle?"
@@ -349,6 +349,8 @@ export default function VendorModule() {
           <div style={{ width: '150px' }}>
             <select className="fi" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
               <option value="all">All Vehicle Types</option>
+              <option value="Truck">Truck</option>
+              <option value="Tractor">Tractor</option>
               <option value="Trailer">Trailer</option>
               <option value="Canter">Canter</option>
               <option value="Dump Truck">Dump Truck</option>
@@ -574,6 +576,8 @@ export default function VendorModule() {
                   <div className="field">
                     <label>Vehicle Type</label>
                     <select className="fi" value={formData.vehicleType} onChange={e => setFormData(f => ({ ...f, vehicleType: e.target.value }))}>
+                      <option value="Truck">Truck</option>
+                      <option value="Tractor">Tractor</option>
                       <option value="Trailer">Trailer</option>
                       <option value="Dump Truck">Dump Truck</option>
                       <option value="Canter">Canter</option>

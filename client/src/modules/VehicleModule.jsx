@@ -22,6 +22,7 @@ const getEmptyForm = () => ({
     driverName: '',
     driverContact: '',
     vehicleType: 'Trailer',
+    fuelType: 'Diesel',
     ownershipType: 'self',
     make: 'Tata',
     model: '',
@@ -716,6 +717,26 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [err, setErr] = useState('');
 
+    // All people from Driver & Staff Profiles (excluding non-staff like pumps and firms)
+    const NON_STAFF_TYPES = ['pump', 'tyre', 'manual', 'firm'];
+    const staffProfiles = useMemo(() => {
+        return (profiles || []).filter(p => !NON_STAFF_TYPES.includes(String(p.type || '').toLowerCase().trim()));
+    }, [profiles]);
+
+    const driverProfiles = useMemo(() => {
+        return staffProfiles.filter(p => {
+            const t = String(p.type || '').toLowerCase().trim();
+            const d = String(p.department || '').toLowerCase().trim();
+            const r = String(p.role || '').toLowerCase().trim();
+            return t === 'driver' || d === 'driver' || r === 'driver';
+        });
+    }, [staffProfiles]);
+
+    const otherStaffProfiles = useMemo(() => {
+        const driverIds = new Set(driverProfiles.map(d => d.id));
+        return staffProfiles.filter(p => !driverIds.has(p.id));
+    }, [staffProfiles, driverProfiles]);
+
     const checkExpiry = (dateStr) => {
         if (!dateStr) return null;
         const expiry = new Date(dateStr);
@@ -748,6 +769,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         setForm({
             ...getEmptyForm(),
             ...v,
+            fuelType: v.fuelType || 'Diesel',
             bankDetails: v.bankDetails || getEmptyForm().bankDetails,
             emiDetails: v.emiDetails || getEmptyForm().emiDetails,
             docs: v.docs || getEmptyForm().docs
@@ -1139,6 +1161,13 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 </select>
                             </div>
                             <div className="field-h">
+                                <label>Fuel Type</label>
+                                <select className="fi" value={form.fuelType || 'Diesel'} onChange={e => setForm({ ...form, fuelType: e.target.value })}>
+                                    <option value="Diesel">Diesel</option>
+                                    <option value="CNG">CNG</option>
+                                </select>
+                            </div>
+                            <div className="field-h">
                                 <label>Ownership</label>
                                 <select className="fi" value={form.ownershipType} onChange={e => setForm({ ...form, ownershipType: e.target.value })}>
                                     <option value="market">Market Vehicle</option>
@@ -1184,7 +1213,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                 <input className="fi" type="date" value={form.nationalPermitDate} onChange={e => setForm({ ...form, nationalPermitDate: e.target.value })} />
                             </div>
                             <div className="field-h">
-                                <label>Target Average (KM/L)</label>
+                                <label>Target Average ({form.fuelType === 'CNG' ? 'KM/KG' : 'KM/L'})</label>
                                 <input className="fi" type="number" step="0.1" placeholder="e.g. 4.5" value={form.targetMileage} onChange={e => setForm({ ...form, targetMileage: e.target.value })} />
                             </div>
                         </div>
@@ -1265,9 +1294,40 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                         <div className="fg fg-2" style={{ marginTop: '20px' }}>
                             <div className="field-h">
                                 <label>Driver Name</label>
-                                <select className="fi" value={form.driverName} onChange={e => { const p = profiles.find(x => x.name === e.target.value); setForm({ ...form, driverName: e.target.value, driverContact: p?.mobileNumbers?.[0] || '' }); }}>
+                                <select
+                                    className="fi"
+                                    value={form.driverName}
+                                    onChange={e => {
+                                        const p = profiles.find(x => x.name === e.target.value);
+                                        setForm({
+                                            ...form,
+                                            driverName: e.target.value,
+                                            driverContact: p?.mobileNumbers?.[0] || (e.target.value === form.driverName ? form.driverContact : '')
+                                        });
+                                    }}
+                                >
                                     <option value="">Select Driver</option>
-                                    {profiles.filter(p => p.type === 'Driver').map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                                    {driverProfiles.length > 0 && (
+                                        <optgroup label="Drivers">
+                                            {driverProfiles.map(p => (
+                                                <option key={p.id} value={p.name}>
+                                                    {p.name}{p.mobileNumbers?.[0] ? ` (${p.mobileNumbers[0]})` : ''}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+                                    {otherStaffProfiles.length > 0 && (
+                                        <optgroup label="Other Staff & Labour">
+                                            {otherStaffProfiles.map(p => (
+                                                <option key={p.id} value={p.name}>
+                                                    {p.name} ({p.type || p.department || 'Staff'})
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+                                    {form.driverName && !staffProfiles.some(p => p.name === form.driverName) && (
+                                        <option value={form.driverName}>{form.driverName} (Assigned)</option>
+                                    )}
                                 </select>
                             </div>
                             {form.driverContact && (
@@ -1400,11 +1460,19 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                             <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: isSelf ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: isSelf ? '#10b981' : '#f59e0b' }}>
                                                                 {isSelf ? 'OWN' : 'MKT'}
                                                             </span>
+                                                            {String(v.fuelType || '').toUpperCase() === 'CNG' && (
+                                                                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
+                                                                    CNG
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </td>
                                                     {/* Type / Make */}
                                                     <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                                        <div style={{ fontSize: '12px', fontWeight: 700 }}>{v.vehicleType || '—'}</div>
+                                                        <div style={{ fontSize: '12px', fontWeight: 700 }}>
+                                                            {v.vehicleType || '—'}
+                                                            {String(v.fuelType || '').toUpperCase() === 'CNG' && <span style={{ color: '#06b6d4', fontWeight: 800 }}> · CNG</span>}
+                                                        </div>
                                                         <div style={{ fontSize: '11px' }}>{v.make}{v.model ? ` ${v.model}` : ''}</div>
                                                     </td>
                                                     {/* Owner */}

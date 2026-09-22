@@ -59,11 +59,11 @@ const sorted = (xs) => [...xs].sort();
   check('legacy keys stay out of the main sections', legacyLeak, []);
 }
 
-// ── The eight known company-wide keys ───────────────────────────────────────
+// ── The six known company-wide keys ───────────────────────────────────────
 {
   check('the company-wide set is what the plants actually share',
     sorted(SHARED_KEYS),
-    sorted(['lr_dump', 'vehicle', 'mileage', 'attendance', 'loading_status', 'pay', 'balance_all', 'sell']));
+    sorted(['lr_dump', 'vehicle', 'mileage', 'pay', 'balance_all', 'sell']));
 
   check('lr_dump covers the three JK Super dumps',
     sorted(locationsForKey('lr_dump')),
@@ -71,6 +71,8 @@ const sorted = (xs) => [...xs].sort();
 
   check('cashbook stays with Jharli only', locationsForKey('cashbook'), ['Jharli Dump & Plant']);
   check('cashbook is not treated as shared', isSharedKey('cashbook'), false);
+  check('attendance stays with Jharli only', locationsForKey('attendance'), ['Jharli Dump & Plant']);
+  check('attendance is not treated as shared', isSharedKey('attendance'), false);
   check('pay is treated as shared', isSharedKey('pay'), true);
 }
 
@@ -82,13 +84,13 @@ const sorted = (xs) => [...xs].sort();
     sorted(['bill_kosli', 'balance_kosli', 'stock_kosli']));
 
   const jharli = LOCATION_SECTIONS.find(l => l.id === 'jharli');
-  check('Jharli keeps its plant modules plus cash and fuel',
+  check('Jharli keeps its plant modules plus cash, fuel and attendance',
     sorted(locationOwnKeys(jharli)),
     sorted([
       'voucher_jkl_dump', 'balance_jkl_dump', 'stock_jkl',
       'lr_jkl', 'voucher_jkl', 'balance_jkl',
       'voucher_jksuper', 'balance_jksuper',
-      'cashbook', 'diesel',
+      'cashbook', 'diesel', 'attendance',
     ]));
 
   // Generate Invoice is shelved — no nav entry, so no grant either.
