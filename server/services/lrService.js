@@ -1,5 +1,5 @@
 const localStore = require('../utils/localStore');
-const { normalizePartyName } = require('../utils/partyNameUtils');
+const { normalizePartyName, isDummyPartyName } = require('../utils/partyNameUtils');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
@@ -36,7 +36,7 @@ const groupOfLrCollection = (col = '') => {
  * a party trades somewhere, never that it stopped trading elsewhere.
  */
 const syncParty = async (orgId, partyName, group = null) => {
-    if (!partyName) return null;
+    if (!partyName || isDummyPartyName(partyName)) return null;
     try {
         const parties = await partyService.getAllParties(orgId);
         let party = parties.find(p => p.name === partyName.toUpperCase());

@@ -1,9 +1,13 @@
 const localStore = require('../utils/localStore');
 const { db, admin, isAvailable } = require('../firebase');
 const { cleanBrands } = require('../utils/partyBrands');
+const { getCol, getEnvCol } = require('../utils/collectionUtils');
+const { isProduction } = require('../utils/envConfig');
+const { isDummyPartyName } = require('../utils/partyNameUtils');
+
 const firebaseAvailable = () => isAvailable();
 
-const COLLECTION_PARTIES = 'parties';
+const getPartyCol = (req) => (req ? getCol('parties', req) : getEnvCol('parties'));
 
 const normalizePayload = (data = {}) => ({
     ...data,
@@ -26,8 +30,9 @@ const normalizePayload = (data = {}) => ({
 
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
-const firestoreCreate = async (orgId, data) => {
-    const ref = db.collection(COLLECTION_PARTIES).doc();
+const firestoreCreate = async (orgId, data, req = null) => {
+    const col = getPartyCol(req);
+    const ref = db.collection(col).doc();
     const payload = {
         ...data,
         orgId,
@@ -37,60 +42,72 @@ const firestoreCreate = async (orgId, data) => {
     return { id: ref.id, ...data };
 };
 
-const firestoreGetAll = async (orgId) => {
-    const snapshot = await db.collection(COLLECTION_PARTIES)
+const firestoreGetAll = async (orgId, req = null) => {
+    const col = getPartyCol(req);
+    const snapshot = await db.collection(col)
         .where('orgId', '==', orgId)
         .get();
     const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     return docs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 };
 
-const firestoreUpdate = async (id, data) => {
-    await db.collection(COLLECTION_PARTIES).doc(id).update({
+const firestoreUpdate = async (id, data, req = null) => {
+    const col = getPartyCol(req);
+    await db.collection(col).doc(id).update({
         ...data,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 };
 
-const firestoreDelete = async (id) => {
-    await db.collection(COLLECTION_PARTIES).doc(id).delete();
+const firestoreDelete = async (id, req = null) => {
+    const col = getPartyCol(req);
+    await db.collection(col).doc(id).delete();
 };
 
 // ── Local store helpers ────────────────────────────────────────────────────────
 
-const localCreate = (data) => {
-    const doc = localStore.insert(COLLECTION_PARTIES, data);
+const localCreate = (data, req = null) => {
+    const col = getPartyCol(req);
+    const doc = localStore.insert(col, data);
     return doc;
 };
 
-const localGetAll = (orgId) => {
-    return localStore.getAll(COLLECTION_PARTIES)
+const localGetAll = (orgId, req = null) => {
+    const col = getPartyCol(req);
+    return localStore.getAll(col)
         .filter(p => p.orgId === orgId)
         .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-const createParty = async (orgId, data) => {
+const createParty = async (orgId, data, req = null) => {
     const payload = normalizePayload(data);
     if (!payload.name) throw new Error('Party name is required');
 
+    // Guard: Prevent test or dummy party creation in production
+    if (isDummyPartyName(payload.name)) {
+        if (isProduction()) {
+            throw new Error(`Cannot create test party "${payload.name}" in production`);
+        }
+    }
+
     // Check for duplicates
-    const all = await getAllParties(orgId);
+    const all = await getAllParties(orgId, req);
     if (all.some(p => p.name === payload.name)) {
         throw new Error(`Party with name "${payload.name}" already exists`);
     }
 
-    if (firebaseAvailable()) return await firestoreCreate(orgId, payload);
-    return localCreate({ ...payload, orgId });
+    if (firebaseAvailable()) return await firestoreCreate(orgId, payload, req);
+    return localCreate({ ...payload, orgId }, req);
 };
 
-const getAllParties = async (orgId) => {
-    if (firebaseAvailable()) return await firestoreGetAll(orgId);
-    return localGetAll(orgId);
+const getAllParties = async (orgId, req = null) => {
+    if (firebaseAvailable()) return await firestoreGetAll(orgId, req);
+    return localGetAll(orgId, req);
 };
 
-const updateParty = async (id, data) => {
+const updateParty = async (id, data, req = null) => {
     const patch = {};
     const allowedFields = ['name', 'type', 'contactPerson', 'phone', 'email', 'address', 'gstin', 'pan', 'bankDetails', 'openingBalance', 'balanceType', 'isActive', 'brands'];
 
@@ -106,17 +123,17 @@ const updateParty = async (id, data) => {
     if (patch.pan) patch.pan = patch.pan.trim().toUpperCase();
 
     if (firebaseAvailable()) {
-        await firestoreUpdate(id, patch);
+        await firestoreUpdate(id, patch, req);
     } else {
-        localStore.update(COLLECTION_PARTIES, id, patch);
+        localStore.update(getPartyCol(req), id, patch);
     }
 };
 
-const deleteParty = async (id) => {
+const deleteParty = async (id, req = null) => {
     if (firebaseAvailable()) {
-        await firestoreDelete(id);
+        await firestoreDelete(id, req);
     } else {
-        localStore.delete(COLLECTION_PARTIES, id);
+        localStore.delete(getPartyCol(req), id);
     }
 };
 
@@ -126,3 +143,4 @@ module.exports = {
     updateParty,
     deleteParty
 };
+

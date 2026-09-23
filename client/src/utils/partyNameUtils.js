@@ -19,7 +19,16 @@ export const resolvePartyName = (value, existingNames = []) => {
   return match ? normalizePartyName(match) : normalized;
 };
 
-export const isDummyParty = (name) => !name || /\b(TEST|DUMMY)\b/i.test(name) || name.includes('MANUAL LR TEST');
+export const isDummyParty = (name) => {
+  if (!name) return true;
+  const n = normalizePartyName(name);
+  if (!n) return true;
+  if (/\b(TEST|DUMMY|SAMPLE|MOCK)\b/i.test(n)) return true;
+  if (n.includes('AUTO LR TEST') || n.includes('MANUAL LR TEST') || n.includes('BAD LR TEST') || n.includes('VOUCHER FIRST TEST') || n.includes('TEST OWNER') || n.includes('API TEST PARTY')) {
+    return true;
+  }
+  return false;
+};
 
 export const buildPartySuggestions = (...groups) => {
   const map = new Map();

@@ -2,6 +2,7 @@ const localStore = require('../utils/localStore');
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
+const { isDummyPartyName } = require('../utils/partyNameUtils');
 
 const COLLECTION_VEHICLES = 'vehicles';
 const normalizeTruckNo = (value) => String(value || '').toUpperCase().replace(/\s/g, '');
@@ -115,7 +116,7 @@ const findVehicleByTruckNo = async (orgId, truckNo, col = COLLECTION_VEHICLES) =
 
 // ── Party Sync Helper ──────────────────────────────────────────────────────────
 const syncParty = async (orgId, ownerName, ownerContact, bankDetails) => {
-    if (!ownerName || ownerName.toLowerCase() === 'vikas transport (self)') return null;
+    if (!ownerName || ownerName.toLowerCase() === 'vikas transport (self)' || isDummyPartyName(ownerName)) return null;
     try {
         const parties = await partyService.getAllParties(orgId);
         let party = parties.find(p => p.name === ownerName.toUpperCase());

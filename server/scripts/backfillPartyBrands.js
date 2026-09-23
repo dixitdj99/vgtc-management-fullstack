@@ -83,11 +83,8 @@ async function readAll(name) {
     });
     console.log(`read ${String(vouchers.length).padStart(5)} rows from ${col('vouchers')}\n`);
 
-    // NOTE: partyService reads/writes the parties collection UNPREFIXED (it
-    // never went through getCol), so this must match or it tags a collection
-    // nothing reads. If partyService is ever fixed to use the env prefix,
-    // change this line with it.
-    const partiesSnap = await db.collection('parties').get();
+    // partyService now uses getCol/getEnvCol with environment prefixes.
+    const partiesSnap = await db.collection(col('parties')).get();
     const updates = [];
     const untouched = [];
     const noHistory = [];

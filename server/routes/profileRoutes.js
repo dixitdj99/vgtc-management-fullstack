@@ -2,7 +2,16 @@ const express = require('express');
 const router = express.Router();
 const { db, isAvailable } = require('../firebase');
 const { getCol } = require('../utils/collectionUtils');
+const { isProduction } = require('../utils/envConfig');
 const localStore = require('../utils/localStore');
+
+const isDummyProfileName = (name) => {
+    if (!name) return false;
+    const n = String(name).trim().toUpperCase();
+    if (/\b(TEST|DUMMY|SAMPLE|MOCK)\b/i.test(n)) return true;
+    if (n === 'PREM' || n === 'PAREM' || n === 'EKBAL KHAN' || n === 'IQBAL KHAN') return true;
+    return false;
+};
 
 // Collection Name
 const PROFILE_COL = 'profiles';
@@ -55,6 +64,10 @@ router.post('/', async (req, res) => {
         const photoError = validatePhoto(req.body.photo);
         if (photoError) return res.status(400).json({ error: photoError });
 
+        if (isProduction() && isDummyProfileName(req.body.name)) {
+            return res.status(400).json({ error: `Cannot create test profile "${req.body.name}" in production` });
+        }
+
         const payload = {
             ...req.body,
             createdAt: new Date().toISOString()
@@ -81,6 +94,10 @@ router.put('/:id', async (req, res) => {
     try {
         const photoError = validatePhoto(req.body.photo);
         if (photoError) return res.status(400).json({ error: photoError });
+
+        if (isProduction() && req.body.name && isDummyProfileName(req.body.name)) {
+            return res.status(400).json({ error: `Cannot set test profile name "${req.body.name}" in production` });
+        }
 
         const payload = { ...req.body, updatedAt: new Date().toISOString() };
         

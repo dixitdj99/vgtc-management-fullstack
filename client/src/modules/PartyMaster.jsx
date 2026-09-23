@@ -4,6 +4,7 @@ import ax from '../api';
 import { Building2, Plus, Search, Phone, FileText, CheckCircle2, XCircle, BookOpen, Loader2, X as XIcon, RefreshCw, Edit3, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PARTY_BRANDS } from '../utils/partyBrands';
+import { isDummyParty } from '../utils/partyNameUtils';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TruckLoader from '../components/TruckLoader';
 
@@ -133,6 +134,7 @@ export default function PartyMaster() {
   const brandsOf = p => (Array.isArray(p.brands) ? p.brands : []);
 
   const filteredParties = parties.filter(p => {
+    if (isDummyParty(p.name)) return false;
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (p.gstin && p.gstin.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesType = filterType === 'all' || p.type === filterType;
@@ -141,7 +143,7 @@ export default function PartyMaster() {
     return matchesSearch && matchesType && matchesBrand;
   });
 
-  const untaggedCount = parties.filter(p => brandsOf(p).length === 0).length;
+  const untaggedCount = parties.filter(p => !isDummyParty(p.name) && brandsOf(p).length === 0).length;
 
   if (loading) {
     return (

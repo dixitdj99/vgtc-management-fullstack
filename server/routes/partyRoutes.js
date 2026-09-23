@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const partyService = require('../services/partyService');
+const { isDummyPartyName } = require('../utils/partyNameUtils');
 
 const { requireAuth } = require('../middleware/auth');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
@@ -9,7 +10,7 @@ router.use(requireAuth, tenancyMiddleware);
 // GET /api/parties
 router.get('/', async (req, res) => {
     try {
-        const parties = await partyService.getAllParties(req.orgId);
+        const parties = await partyService.getAllParties(req.orgId, req);
         res.json(parties);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -19,7 +20,7 @@ router.get('/', async (req, res) => {
 // POST /api/parties
 router.post('/', async (req, res) => {
     try {
-        const party = await partyService.createParty(req.orgId, req.body);
+        const party = await partyService.createParty(req.orgId, req.body, req);
         res.status(201).json(party);
     } catch (e) {
         res.status(400).json({ error: e.message });
@@ -56,7 +57,6 @@ router.post('/sync', async (req, res) => {
         ]);
 
         // Collect unique normalised (UPPERCASE) party names (excluding dummy/test names)
-        const isDummyPartyName = (n) => !n || /\b(TEST|DUMMY)\b/i.test(n) || n.includes('TEST') || n.includes('DUMMY');
         const uniqueNames = new Set();
         const addName = (raw) => {
             const n = (raw || '').trim().toUpperCase();
@@ -66,7 +66,7 @@ router.post('/sync', async (req, res) => {
         lrSnaps.forEach(snap => snap.docs.forEach(d => addName(d.data().partyName)));
 
         // Skip names that already have a party record
-        const existingParties = await partyService.getAllParties(orgId);
+        const existingParties = await partyService.getAllParties(orgId, req);
         const existingNames = new Set(existingParties.map(p => (p.name || '').toUpperCase().trim()));
 
         const toCreate = [...uniqueNames].filter(n => !existingNames.has(n));
@@ -82,7 +82,7 @@ router.post('/sync', async (req, res) => {
                     isActive: true,
                     openingBalance: 0,
                     balanceType: 'credit',
-                });
+                }, req);
                 created++;
                 createdNames.push(name);
             } catch (err) {
@@ -101,7 +101,7 @@ router.post('/sync', async (req, res) => {
 // PATCH /api/parties/:id
 router.patch('/:id', async (req, res) => {
     try {
-        await partyService.updateParty(req.params.id, req.body);
+        await partyService.updateParty(req.params.id, req.body, req);
         res.json({ message: 'Party updated successfully' });
     } catch (e) {
         res.status(400).json({ error: e.message });
@@ -162,7 +162,7 @@ router.delete('/bulk', async (req, res) => {
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ error: 'ids array is required' });
         }
-        await Promise.all(ids.map(id => partyService.deleteParty(id)));
+        await Promise.all(ids.map(id => partyService.deleteParty(id, req)));
         res.json({ message: `${ids.length} parties deleted` });
     } catch (e) {
         res.status(400).json({ error: e.message });
@@ -172,7 +172,7 @@ router.delete('/bulk', async (req, res) => {
 // DELETE /api/parties/:id
 router.delete('/:id', async (req, res) => {
     try {
-        await partyService.deleteParty(req.params.id);
+        await partyService.deleteParty(req.params.id, req);
         res.json({ message: 'Party deleted successfully' });
     } catch (e) {
         res.status(400).json({ error: e.message });
