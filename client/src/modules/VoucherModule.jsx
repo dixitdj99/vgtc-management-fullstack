@@ -74,10 +74,10 @@ const getCalc = (w, r, hasComm, type, bags) => {
     const munshi = isDumpBill ? 0 : (wt > 0 ? (wt < 18 ? 50 : 100) : 0);
     let commission = 0;
     if (hasComm) {
+        const b = parseFloat(bags) || (wt * 20);
         if (isDumpBill) {
-            commission = parseFloat((wt * 1.5).toFixed(2));
+            commission = parseFloat((b * 1.5).toFixed(2));
         } else {
-            const b = parseFloat(bags) || (wt * 20);
             commission = Math.round(b * 1);
         }
     }
@@ -864,12 +864,15 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         const totalWeight = isMultiLr
             ? form.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
             : form.weight;
+        const totalBags = isMultiLr
+            ? form.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
+            : form.bags;
         const calc = isMultiLr
             ? {
-                ...getCalc(totalWeight, 0, form.hasCommission, v.type, form.bags),
+                ...getCalc(totalWeight, 0, form.hasCommission, v.type, totalBags),
                 total: String(Math.round(deliveriesGross)),
                 weight: String(totalWeight),
-                bags: String(form.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)),
+                bags: String(totalBags),
             }
             : getCalc(form.weight, form.rate, form.hasCommission, v.type, form.bags);
         try {
@@ -1126,7 +1129,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         <div style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
                             <input type="checkbox" id="ec" checked={form.hasCommission} onChange={e => S('hasCommission', e.target.checked)} style={{ marginRight: '8px' }} />
                             <label htmlFor="ec" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>
-                                {isBillVoucherType(v?.type) ? 'Rs.1.5/Ton' : 'Rs.1/Bag'}
+                                {isBillVoucherType(v?.type) ? 'Rs.1.5/Bag' : 'Rs.1/Bag'}
                             </label>
                         </div>
                     </div>
@@ -2252,7 +2255,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     <div style={{ display: 'flex', alignItems: 'center', height: '38px' }}>
                                                         <input type="checkbox" id="comm" checked={form.hasCommission} onChange={e => set('hasCommission', e.target.checked)} style={{ marginRight: '8px' }} />
                                                         <label htmlFor="comm" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>
-                                                            {isBill ? 'Rs.1.5/Ton' : 'Rs.1/Bag'}
+                                                            {isBill ? 'Rs.1.5/Bag' : 'Rs.1/Bag'}
                                                         </label>
                                                     </div>
                                                 </div>
