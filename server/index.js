@@ -356,6 +356,9 @@ app.listen(PORT, '0.0.0.0', () => {
     // Daily Own Fleet document expiry alerts (30d, 15d, 5d, 0d, monthly overdue): every day at 09:00
     cron.schedule('0 9 * * *', () => jobs.checkVehicleDocExpiry(), { timezone: CRON_TZ });
 
+    // Daily Own Fleet EMI auto-debit sync (marks elapsed installments as paid on deduction date): every day at 09:00
+    cron.schedule('0 9 * * *', () => jobs.syncVehicleEmis(), { timezone: CRON_TZ });
+
     console.log(`[Cron] In-process schedules registered (timezone: ${CRON_TZ}).`);
 });
 

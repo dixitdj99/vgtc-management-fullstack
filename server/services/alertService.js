@@ -97,39 +97,66 @@ const buildVehicleSection = async (v, mileageStats, orgId) => {
         }
     }
 
-    // ── EMI — only if dueDate is set in vehicle profile ──────────
+    // ── EMI — checks dynamic upcoming installment ────────────────
     let emiHtml = '';
     try {
         const emi = JSON.parse(v.emiDetails || '{}');
-        // Only alert if dueDate is explicitly scheduled in vehicle profile
-        if (emi.loanNo && emi.dueDate) {
-            const r = checkExpiry(emi.dueDate);
-            const amount = emi.due ? `₹${parseFloat(emi.due).toLocaleString('en-IN')}` : 'Amount TBD';
-            const paidCount = (emi.paidEmis || []).length;
-            const totalTenure = parseInt(emi.tenure) || 0;
-            const pendingEmis = totalTenure > 0 ? totalTenure - paidCount : '—';
+        if (emi.loanNo || parseFloat(emi.due) > 0) {
+            const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+            const schedule = Array.isArray(emi.schedule) ? emi.schedule : [];
+            let nextUpcoming = null;
 
-            if (r && (r.status === 'expired' || r.status === 'near')) {
-                const urgency = r.status === 'expired'
-                    ? `OVERDUE by ${r.days} day(s)`
-                    : `due in ${r.days} day(s)`;
-                issues.push(`💰 EMI Payment ${urgency}: <b>${amount}</b> (${emi.bankName || 'Bank'}, Loan: ${emi.loanNo})`);
-                emiHtml = `
-                    <div style="margin-top:10px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px">
-                        <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:6px">💰 EMI Alert</div>
-                        <div style="font-size:13px;color:#78350f">
-                            <b>${amount}/month</b> — ${emi.bankName || 'Bank'} · Loan: <span style="font-family:monospace">${emi.loanNo}</span>
-                        </div>
-                        <div style="font-size:11px;color:#92400e;margin-top:4px">
-                            Due Date: <b>${emi.dueDate}</b> · Paid: ${paidCount} / Pending: ${pendingEmis}
-                            ${emi.pending ? ` · Outstanding: ₹${parseFloat(emi.pending).toLocaleString('en-IN')}` : ''}
-                        </div>
-                    </div>`;
-            } else if (r && r.status === 'ok') {
-                emiHtml = `
-                    <div style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#166534">
-                        ✅ EMI ${amount}/month · ${emi.bankName || 'Bank'} · Due: ${emi.dueDate} (${r.days}d away) · Paid: ${paidCount}/${totalTenure || '?'}
-                    </div>`;
+            if (schedule.length > 0) {
+                // Find next installment that is unpaid and in the future
+                nextUpcoming = schedule.find(item => item.dueDate > todayStr && item.status !== 'paid');
+            } else if (emi.startDate && parseFloat(emi.due) > 0) {
+                // Compute next upcoming installment date
+                const start = new Date(emi.startDate);
+                const today = new Date(todayStr);
+                const emiDay = parseInt(emi.emiDay, 10) || 5;
+                const tenure = parseInt(emi.tenure, 10) || 0;
+                let monthsElapsed = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
+                if (today.getDate() < emiDay) monthsElapsed--;
+                const nextIdx = monthsElapsed + 1;
+                if (tenure === 0 || nextIdx <= tenure) {
+                    const nextDate = new Date(start.getFullYear(), start.getMonth() + nextIdx, emiDay);
+                    nextUpcoming = {
+                        dueDate: nextDate.toISOString().slice(0, 10),
+                        amount: emi.due
+                    };
+                }
+            } else if (emi.dueDate && emi.dueDate > todayStr) {
+                nextUpcoming = { dueDate: emi.dueDate, amount: emi.due };
+            }
+
+            if (nextUpcoming && nextUpcoming.dueDate) {
+                const r = checkExpiry(nextUpcoming.dueDate);
+                const amount = nextUpcoming.amount ? `₹${parseFloat(nextUpcoming.amount).toLocaleString('en-IN')}` : (emi.due ? `₹${parseFloat(emi.due).toLocaleString('en-IN')}` : 'Amount TBD');
+                const totalTenure = parseInt(emi.tenure) || 0;
+                const paidCount = schedule.length > 0
+                    ? schedule.filter(it => it.status === 'paid' || it.dueDate <= todayStr).length
+                    : (emi.paidEmis || []).length;
+                const pendingEmis = totalTenure > 0 ? Math.max(0, totalTenure - paidCount) : '—';
+
+                if (r && r.status === 'near') {
+                    issues.push(`💰 EMI Payment due in ${r.days} day(s): <b>${amount}</b> (${emi.bankName || 'Bank'}, Loan: ${emi.loanNo || '—'})`);
+                    emiHtml = `
+                        <div style="margin-top:10px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px">
+                            <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:6px">💰 EMI Upcoming Alert</div>
+                            <div style="font-size:13px;color:#78350f">
+                                <b>${amount}/month</b> — ${emi.bankName || 'Bank'} · Loan: <span style="font-family:monospace">${emi.loanNo || '—'}</span>
+                            </div>
+                            <div style="font-size:11px;color:#92400e;margin-top:4px">
+                                Next Due Date: <b>${nextUpcoming.dueDate}</b> (${r.days}d left) · Paid: ${paidCount} / Pending: ${pendingEmis}
+                                ${emi.pending ? ` · Outstanding: ₹${parseFloat(emi.pending).toLocaleString('en-IN')}` : ''}
+                            </div>
+                        </div>`;
+                } else if (r && r.status === 'ok') {
+                    emiHtml = `
+                        <div style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#166534">
+                            ✅ EMI ${amount}/month · ${emi.bankName || 'Bank'} · Next Due: ${nextUpcoming.dueDate} (${r.days}d away) · Paid: ${paidCount}/${totalTenure || '?'}
+                        </div>`;
+                }
             }
         }
     } catch {}

@@ -79,6 +79,20 @@ router.get('/alerts/vehicle/:id', async (req, res) => {
     }
 });
 
+// Trigger vehicle EMI auto-deduct sync on-demand
+router.post('/emi/sync', requirePermission('vehicle', 'edit'), async (req, res) => {
+    try {
+        const vehicleEmiService = require('../services/vehicleEmiService');
+        const result = await vehicleEmiService.autoSyncAllVehicleEmis({
+            orgId: req.orgId,
+            req
+        });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Delete full owner with all their vehicles
 router.delete('/owners', requirePermission('vehicle', 'delete'), async (req, res) => {
     try {

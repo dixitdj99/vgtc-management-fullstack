@@ -165,6 +165,16 @@ function checkVehicleDocExpiry(options = {}) {
     });
 }
 
+/**
+ * Automatically mark elapsed vehicle loan EMIs as paid on due date.
+ */
+function syncVehicleEmis(options = {}) {
+    return runExclusive('vehicle-emi-sync', async () => {
+        const vehicleEmiService = require('./services/vehicleEmiService');
+        return await vehicleEmiService.autoSyncAllVehicleEmis(options);
+    });
+}
+
 const JOBS = {
     'weekly-backup': weeklyBackup,
     'weekly-lists': weeklyLists,
@@ -172,6 +182,7 @@ const JOBS = {
     'eway-sync': ewaySync,
     'pending-advances': checkPendingOnlineAdvances,
     'vehicle-doc-expiry': checkVehicleDocExpiry,
+    'vehicle-emi-sync': syncVehicleEmis,
 };
 
 module.exports = {
@@ -181,6 +192,7 @@ module.exports = {
     dailyAlerts,
     ewaySync,
     checkPendingOnlineAdvances,
-    checkVehicleDocExpiry
+    checkVehicleDocExpiry,
+    syncVehicleEmis
 };
 

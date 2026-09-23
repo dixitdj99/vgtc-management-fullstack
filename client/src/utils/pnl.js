@@ -359,7 +359,7 @@ export function buildPnlRecords(data = {}) {
       schedule.forEach(it => {
         const fallen = it.status === 'paid' || (it.dueDate && it.dueDate <= today);
         if (!fallen) return;
-        const isPaid = it.status === 'paid';
+        const isPaid = it.status === 'paid' || (it.dueDate && it.dueDate <= today);
         push({ ...base, id: `emi-${veh.id || i}-${it.installmentNo}`,
           date: it.paymentDate || it.dueDate,
           category: isPaid ? 'Vehicle loan EMI (Paid)' : 'Vehicle loan EMI (Pending)',
@@ -385,8 +385,8 @@ export function buildPnlRecords(data = {}) {
           if (!paidSet.has(emiMonth)) {
             push({ ...base, id: `emi-${veh.id || i}-auto-pending-${k}`,
               date: emiDate,
-              category: 'Vehicle loan EMI (Pending)',
-              description: `EMI on ${truck} to ${bank} — unpaid`,
+              category: 'Vehicle loan EMI (Paid)',
+              description: `EMI on ${truck} to ${bank} (Auto-debited)`,
               amount: due });
           }
         }

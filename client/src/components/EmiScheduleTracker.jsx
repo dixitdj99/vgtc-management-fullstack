@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, Banknote, CheckCircle, AlertCircle, RefreshCw, CreditCard, ShieldCheck, Info, ChevronRight } from 'lucide-react';
+import { X, Calendar, Banknote, CheckCircle, AlertCircle, RefreshCw, CreditCard, ShieldCheck, Info, ChevronRight, Zap } from 'lucide-react';
 import ax from '../api';
 import { fmtRs } from '../utils/format';
 
@@ -95,7 +95,8 @@ export default function EmiScheduleTracker({ vehicle, onClose, onUpdate }) {
         const dueDate = new Date(start.getFullYear(), start.getMonth() + i, emiDay);
         const dateStr = dueDate.toISOString().slice(0, 10);
         const monthStr = dateStr.slice(0, 7); // YYYY-MM
-        const isPaid = existingPaid.includes(monthStr);
+        const isPastOrToday = dateStr <= todayStr;
+        const isPaid = isPastOrToday || existingPaid.includes(monthStr);
 
         generated.push({
           installmentNo: i,
@@ -103,17 +104,18 @@ export default function EmiScheduleTracker({ vehicle, onClose, onUpdate }) {
           amount: amount,
           status: isPaid ? 'paid' : 'unpaid',
           paymentDate: isPaid ? dateStr : '',
-          paymentMethod: 'Bank Transfer',
+          paymentMethod: isPastOrToday ? 'Bank Auto-Debit' : 'Bank Transfer',
           refNo: '',
           bankName: isPaid ? (emiDetails.bankName || '') : '',
-          remarks: isPaid ? 'Migrated from simple tracking' : ''
+          remarks: isPastOrToday ? 'Auto-deducted on due date' : (isPaid ? 'Migrated from simple tracking' : '')
         });
       }
 
       const updatedDetails = {
         ...emiDetails,
         emiDay,
-        schedule: generated
+        schedule: generated,
+        paidEmis: generated.filter(item => item.status === 'paid').map(item => item.dueDate.slice(0, 7))
       };
 
       await ax.patch(`/vehicles/${vehicle.id}`, {
@@ -311,6 +313,30 @@ export default function EmiScheduleTracker({ vehicle, onClose, onUpdate }) {
         {/* Modal Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           
+          {/* Zero-Touch Auto-Debit Banner */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.08))',
+            border: '1px solid rgba(16,185,129,0.25)',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <div style={{ background: '#10b981', color: 'white', borderRadius: '50%', padding: '7px', display: 'flex' }}>
+              <Zap size={16} />
+            </div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
+                Zero-Touch Bank Auto-Debit Active
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.4 }}>
+                Installments on or before their due date are automatically recorded as <strong>PAID</strong> via Bank Auto-Debit. No manual verification required.
+              </div>
+            </div>
+          </div>
+
           {/* Quick Stats Grid */}
           <div style={{ 
             display: 'grid', 
@@ -413,85 +439,99 @@ export default function EmiScheduleTracker({ vehicle, onClose, onUpdate }) {
                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Due Date</th>
                         <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Amount</th>
                         <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Status</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Payment details</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Payment Details</th>
                         <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {schedule.map((item) => (
-                        <tr 
-                          key={item.installmentNo} 
-                          style={{ 
-                            borderBottom: '1px solid var(--border-row)',
-                            background: item.status === 'paid' ? 'rgba(16,185,129,0.02)' : 'transparent'
-                          }}
-                        >
-                          <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                            #{item.installmentNo}
-                          </td>
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>
-                            {new Date(item.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800 }}>
-                            {fmtRs(item.amount)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            <span style={{ 
-                              display: 'inline-block',
-                              fontSize: '9px',
-                              fontWeight: 800,
-                              padding: '2px 8px',
-                              borderRadius: '20px',
-                              background: (item.status === 'paid' || item.dueDate <= todayStr) ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                              color: (item.status === 'paid' || item.dueDate <= todayStr) ? '#10b981' : '#ef4444',
-                              border: `1px solid ${(item.status === 'paid' || item.dueDate <= todayStr) ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`
-                            }}>
-                              {(item.status === 'paid' || item.dueDate <= todayStr) ? 'PAID' : 'PENDING'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: '11px' }}>
-                            {item.status === 'paid' ? (
-                              <div>
-                                <div>Paid on: {item.paymentDate ? new Date(item.paymentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}</div>
-                                {item.refNo && <div style={{ fontSize: '9px', fontFamily: 'monospace' }}>Ref: {item.refNo}</div>}
-                                {item.bankName && <div style={{ fontSize: '9px' }}>Via: {item.bankName} ({item.paymentMethod})</div>}
-                              </div>
-                            ) : item.dueDate <= todayStr ? (
-                              <span style={{ fontStyle: 'italic', color: '#10b981' }}>Auto-paid (Elapsed)</span>
-                            ) : (
-                              <span style={{ fontStyle: 'italic' }}>Not paid yet</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            {item.status === 'paid' ? (
-                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                      {schedule.map((item) => {
+                        const isAutoPaid = item.status === 'paid' || item.dueDate <= todayStr;
+                        const dueDateObj = new Date(item.dueDate);
+
+                        return (
+                          <tr 
+                            key={item.installmentNo} 
+                            style={{ 
+                              borderBottom: '1px solid var(--border-row)',
+                              background: isAutoPaid ? 'rgba(16,185,129,0.02)' : 'transparent'
+                            }}
+                          >
+                            <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                              #{item.installmentNo}
+                            </td>
+                            <td style={{ padding: '10px 14px', fontWeight: 600 }}>
+                              {dueDateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800 }}>
+                              {fmtRs(item.amount)}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                              <span style={{ 
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '9px',
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: '20px',
+                                background: isAutoPaid ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)',
+                                color: isAutoPaid ? '#10b981' : '#3b82f6',
+                                border: `1px solid ${isAutoPaid ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)'}`
+                              }}>
+                                {isAutoPaid ? '✓ PAID' : 'UPCOMING'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                              {item.status === 'paid' && item.refNo ? (
+                                <div>
+                                  <div>Paid on: {item.paymentDate ? new Date(item.paymentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}</div>
+                                  {item.refNo && <div style={{ fontSize: '9px', fontFamily: 'monospace' }}>Ref: {item.refNo}</div>}
+                                  {item.bankName && <div style={{ fontSize: '9px' }}>Via: {item.bankName} ({item.paymentMethod || 'Bank'})</div>}
+                                </div>
+                              ) : isAutoPaid ? (
+                                <div>
+                                  <div style={{ color: '#10b981', fontWeight: 700 }}>Auto-Debited on Due Date</div>
+                                  <div style={{ fontSize: '9px' }}>Via: {item.bankName || emiDetails.bankName || 'Bank'} (Bank Auto-Debit)</div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div style={{ color: 'var(--text-muted)' }}>Auto-debit on {dueDateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>
+                                  <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Scheduled automatic deduction</div>
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                              {isAutoPaid ? (
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                  <button 
+                                    onClick={() => setPayingInstallment(item)}
+                                    className="btn btn-sm"
+                                    title="Edit Reference / Bank Note"
+                                    style={{ padding: '3px 8px', fontSize: '10px', background: 'var(--bg-th)', border: '1px solid var(--border)' }}
+                                  >
+                                    Edit Info
+                                  </button>
+                                  <button 
+                                    onClick={() => handleMarkUnpaid(item.installmentNo)}
+                                    className="btn btn-sm btn-d"
+                                    style={{ padding: '3px 8px', fontSize: '10px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none' }}
+                                  >
+                                    Unpay
+                                  </button>
+                                </div>
+                              ) : (
                                 <button 
                                   onClick={() => setPayingInstallment(item)}
                                   className="btn btn-sm"
-                                  style={{ padding: '2px 8px', fontSize: '10px', background: 'var(--bg-th)', border: '1px solid var(--border)' }}
+                                  style={{ padding: '4px 10px', fontSize: '10px', background: 'var(--bg-th)', border: '1px solid var(--border)', color: 'var(--text)' }}
                                 >
-                                  Edit Info
+                                  Pay Early
                                 </button>
-                                <button 
-                                  onClick={() => handleMarkUnpaid(item.installmentNo)}
-                                  className="btn btn-sm btn-d"
-                                  style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none' }}
-                                >
-                                  Unpay
-                                </button>
-                              </div>
-                            ) : (
-                              <button 
-                                onClick={() => setPayingInstallment(item)}
-                                className="btn btn-sm btn-p"
-                                style={{ padding: '4px 10px', fontSize: '10px', background: '#10b981', color: 'white', border: 'none' }}
-                              >
-                                Mark Paid
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

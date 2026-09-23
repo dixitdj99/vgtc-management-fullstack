@@ -1260,9 +1260,12 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
 
                         {form.ownershipType === 'self' && (
                             <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(59,130,246,0.05)', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.1)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                    <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Banknote size={16} color="#3b82f6" /> EMI Loan Calculator & Tracking</h4>
-                                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '4px 10px', borderRadius: '20px' }}>AUTO CALCULATE ENABLED</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Banknote size={16} color="#3b82f6" /> EMI Loan Calculator & Auto-Debit</h4>
+                                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', padding: '4px 10px', borderRadius: '20px' }}>⚡ ZERO-TOUCH AUTO-PAID ON DUE DATE</div>
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '14px', lineHeight: 1.4 }}>
+                                    ℹ️ No manual verification needed. On the monthly EMI due date, installments are automatically marked as <strong>PAID</strong>.
                                 </div>
                                 <div className="fg fg-3">
                                     <div className="field-h"><label>Financing Bank</label><input className="fi" type="text" placeholder="e.g. HDFC, SBI" value={parseJson(form.emiDetails).bankName || ''} onChange={e => { const d = parseJson(form.emiDetails); d.bankName = e.target.value; setForm({ ...form, emiDetails: JSON.stringify(d) }); }} /></div>
@@ -1512,7 +1515,9 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                                                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                                             <button onClick={() => handleEdit(v)} title="Edit" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}><Edit3 size={11} /> Edit</button>
                                                             {isSelf && <button onClick={() => setMaintenanceTarget(v)} title="Maintenance" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}><Wrench size={11} /></button>}
-                                                            {isSelf && parseJson(v.emiDetails).loanNo && <button onClick={() => setEmiTrackerTarget(v)} title="EMI Schedule" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}>EMI</button>}
+                                                            {isSelf && (parseJson(v.emiDetails).loanNo || parseFloat(parseJson(v.emiDetails).due) > 0 || parseJson(v.emiDetails).startDate) && (
+                                                                <button onClick={() => setEmiTrackerTarget(v)} title="EMI Schedule" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}>EMI</button>
+                                                            )}
                                                             <button onClick={() => openTyreLog(v.truckNo)} title="Tyre & Expense Log" style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#10b981', fontSize: '11px', fontWeight: 700 }}>🛞</button>
                                                             <button onClick={() => setDeleteTarget(v)} title="Delete" style={{ background: 'none', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#f43f5e', display: 'flex', alignItems: 'center' }}><Trash2 size={11} /></button>
                                                         </div>
