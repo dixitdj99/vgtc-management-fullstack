@@ -39,8 +39,8 @@ router.post('/', async (req, res) => {
                 const diesel     = parseFloat(vData.advanceDiesel) || 0;
                 const cash       = parseFloat(vData.advanceCash) || 0;
                 const online     = parseFloat(vData.advanceOnline) || 0;
-                const weight     = parseFloat(vData.weight) || 0;
-                const munshi     = parseFloat(vData.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+                const isBill     = vData.type === 'Kosli_Bill' || vData.type === 'Jajjhar_Bill' || vData.type === 'Bahadurgarh_Bill';
+                const munshi     = isBill ? 0 : (parseFloat(vData.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
                 const commission = parseFloat(vData.commission) || 0;
                 const net        = gross - diesel - cash - online - munshi - commission;
 

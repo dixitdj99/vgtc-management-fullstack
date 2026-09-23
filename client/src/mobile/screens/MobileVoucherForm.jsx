@@ -33,7 +33,7 @@ export default function MobileVoucherForm({ plant, cfg, defaultType, onDone }) {
 
     const isBill = form.type === 'Kosli_Bill' || form.type === 'Jajjhar_Bill' || form.type === 'Bahadurgarh_Bill';
     const wt = parseFloat(form.weight) || 0;
-    const munshi = wt > 0 ? (wt < 18 ? 50 : 100) : 0;
+    const munshi = isBill ? 0 : (wt > 0 ? (wt < 18 ? 50 : 100) : 0);
     const gross = wt * (parseFloat(form.rate) || 0);
     const net = gross - (parseFloat(form.advanceDiesel) || 0) - (parseFloat(form.advanceCash) || 0) - (parseFloat(form.advanceOnline) || 0) - munshi;
 

@@ -122,8 +122,8 @@ function buildVoucherBillDoc(v, doc) {
     const diesel   = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
     const cash     = parseFloat(v.advanceCash) || 0;
     const online   = parseFloat(v.advanceOnline) || 0;
-    const weight   = parseFloat(v.weight) || 0;
-    const munshi   = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+    const isBill   = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+    const munshi   = isBill ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
     const shortage  = parseFloat(v.shortage) || 0;
     const commission = parseFloat(v.commission) || 0;
     const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
@@ -291,8 +291,8 @@ function buildNonBillVoucherDoc(v, doc) {
     const cash     = parseFloat(v.advanceCash) || 0;
     const online   = parseFloat(v.advanceOnline) || 0;
     const weight   = parseFloat(v.weight) || (hasDeliveries ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0) : 0);
-    const bags     = parseInt(v.bags) || (hasDeliveries ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0) : 0);
-    const munshi   = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+    const isBill   = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+    const munshi   = isBill ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
     const shortage = parseFloat(v.shortage) || 0;
     const commission = parseFloat(v.commission) || 0;
     const tyrePuncture = parseFloat(v.tyrePuncture) || 0;

@@ -150,6 +150,18 @@ check('weight = 0 → no auto munshi',
     calcNet(v({ weight: '0', rate: '500', munshi: '0' })),
     0);
 
+check('Kosli_Bill type → no munshi fee deducted even with weight >= 18',
+    calcNet(v({ weight: '25', rate: '500', type: 'Kosli_Bill' })),
+    25 * 500); // munshi = 0
+
+check('Jajjhar_Bill type → no munshi fee deducted',
+    calcNet(v({ weight: '20', rate: '500', type: 'Jajjhar_Bill' })),
+    20 * 500); // munshi = 0
+
+check('Bahadurgarh_Bill type → no munshi fee deducted',
+    calcNet(v({ weight: '20', rate: '500', type: 'Bahadurgarh_Bill' })),
+    20 * 500); // munshi = 0
+
 // ── Commission, shortage, tyre costs ────────────────────────────────────────
 
 check('commission deducted',

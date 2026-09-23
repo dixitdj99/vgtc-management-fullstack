@@ -35,8 +35,9 @@ export function calcNet(v, vehicle) {
   // Munshi defaults from the weight when none was entered. `_noDeductions` is
   // set on the second and later legs of a split voucher, where the whole
   // munshi already sits on the first — without it the fallback would quietly
-  // charge it again per leg.
-  const munshi = v._noDeductions ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
+  // charge it again per leg. For dump bills (Kosli, Jhajjar, Bahadurgarh), no munshi fee is charged.
+  const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+  const munshi = isBill || v._noDeductions ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
   const commission = parseFloat(v.commission) || 0;
   const shortage = parseFloat(v.shortage) || 0;
   const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
@@ -230,7 +231,12 @@ function doPrintMonthlyPL(ym, rows, tabName, orgName, vehicle) {
     diesel: rows.reduce((s, v) => s + (v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel) || 0)), 0),
     cash: rows.reduce((s, v) => s + (parseFloat(v.advanceCash) || 0), 0),
     online: rows.reduce((s, v) => s + (parseFloat(v.advanceOnline) || 0), 0),
-    munshi: rows.reduce((s, v) => { const w = parseFloat(v.weight)||0; return s + (parseFloat(v.munshi)||(w>0?(w<18?50:100):0)); }, 0),
+    munshi: rows.reduce((s, v) => {
+      const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+      if (isBill) return s;
+      const w = parseFloat(v.weight)||0;
+      return s + (parseFloat(v.munshi)||(w>0?(w<18?50:100):0));
+    }, 0),
     shortage: rows.reduce((s, v) => s + (parseFloat(v.shortage) || 0), 0),
     commission: rows.reduce((s, v) => s + (parseFloat(v.commission) || 0), 0),
     tyres: rows.reduce((s, v) => s + (parseFloat(v.tyrePuncture)||0) + (parseFloat(v.tyreGreasingAir)||0) + (parseFloat(v.tyreGreasing)||0) + (parseFloat(v.tyreAir)||0) + (parseFloat(v.extraCash)||0), 0),
@@ -318,7 +324,7 @@ function doPrint(rows, truckNo, label, tabName, orgName, vehicle) {
       <td style="text-align:right;color:#c00">${v.advanceDiesel === 'FULL' ? '4000(F)' : (v.advanceDiesel || '—')}</td>
       <td style="text-align:right;color:#c00">${v.advanceCash || '—'}</td>
       <td style="text-align:right;color:#c00">${v.advanceOnline || '—'}</td>
-      <td style="text-align:right">${v.munshi || '—'}</td>
+      <td style="text-align:right">${isBillType ? '' : (v.munshi || '—')}</td>
       <td style="text-align:right">${v.shortage || '—'}</td>
       <td style="text-align:right;font-weight:800;color:${n >= 0 ? '#16a34a' : '#dc2626'}">Rs.${Math.round(n).toLocaleString()}</td>
       <td style="text-align:right">${p ? 'Rs.' + Math.round(p).toLocaleString() : '—'}</td>
@@ -538,7 +544,7 @@ export function VoucherEditModal({ v, vehicle, onClose, onSaved }) {
 
           <SectionLabel>Deductions</SectionLabel>
           <div className="fg fg-2" style={{ gap: '12px' }}>
-            <Field label="Munshi" k="munshi" />
+            {!isBillType && <Field label="Munshi" k="munshi" />}
             <Field label="Shortage" k="shortage" />
             <Field label="Commission" k="commission" />
             <Field label="Tyre Puncture" k="tyrePuncture" />

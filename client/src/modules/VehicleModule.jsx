@@ -953,7 +953,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             const cash = parseFloat(voucher.advanceCash) || 0;
             const online = parseFloat(voucher.advanceOnline) || 0;
             const weight = parseFloat(voucher.weight) || 0;
-            const munshi = parseFloat(voucher.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+            const isBill = voucher.type === 'Kosli_Bill' || voucher.type === 'Jajjhar_Bill' || voucher.type === 'Bahadurgarh_Bill';
+            const munshi = isBill ? 0 : (parseFloat(voucher.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
             const commission = parseFloat(voucher.commission) || 0;
             const shortage = parseFloat(voucher.shortage) || 0;
             const tyres = (parseFloat(voucher.tyrePuncture) || 0) + (parseFloat(voucher.tyreGreasingAir) || 0) + (parseFloat(voucher.tyreGreasing) || 0) + (parseFloat(voucher.tyreAir) || 0) + (parseFloat(voucher.extraCash) || 0);

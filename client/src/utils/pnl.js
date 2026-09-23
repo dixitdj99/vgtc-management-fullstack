@@ -84,6 +84,8 @@ export function voucherDiesel(v = {}) {
 
 /** Munshi, defaulting from the weight when none was entered — as calcNet does. */
 export function voucherMunshi(v = {}) {
+  const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+  if (isBill) return 0;
   const weight = num(v.weight);
   return num(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
 }

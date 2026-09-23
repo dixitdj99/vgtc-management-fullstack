@@ -68,10 +68,19 @@ const dieselPumpProblem = (advanceDiesel, isFullTank, pump, pumpOptions = [], is
 };
 const isBillVoucherType = (type) => type === 'Kosli_Bill' || type === 'Jajjhar_Bill' || type === 'Bahadurgarh_Bill';
 
-const getCalc = (w, r, hasComm) => {
+const getCalc = (w, r, hasComm, type, bags) => {
     const wt = parseFloat(w) || 0, rt = parseFloat(r) || 0;
-    const munshi = wt > 0 ? (wt < 18 ? 50 : 100) : 0;
-    const commission = hasComm ? wt * 20 : 0;
+    const isDumpBill = isBillVoucherType(type);
+    const munshi = isDumpBill ? 0 : (wt > 0 ? (wt < 18 ? 50 : 100) : 0);
+    let commission = 0;
+    if (hasComm) {
+        if (isDumpBill) {
+            commission = parseFloat((wt * 1.5).toFixed(2));
+        } else {
+            const b = parseFloat(bags) || (wt * 20);
+            commission = Math.round(b * 1);
+        }
+    }
     return { munshi, commission, total: rt * wt };
 };
 
@@ -82,7 +91,8 @@ const getNet = (v) => {
     const diesel = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
     const cash = parseFloat(v.advanceCash) || 0;
     const online = parseFloat(v.advanceOnline) || 0;
-    const munshi = parseFloat(v.munshi) || 0;
+    const isDumpBill = isBillVoucherType(v?.type);
+    const munshi = isDumpBill ? 0 : (parseFloat(v?.munshi) || 0);
     const commission = parseFloat(v.commission) || 0;
     const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
     const tyreGreasingAir = (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0) + (parseFloat(v.tyreGreasingAir) || 0);
@@ -856,12 +866,12 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
             : form.weight;
         const calc = isMultiLr
             ? {
-                ...getCalc(totalWeight, 0, form.hasCommission),
+                ...getCalc(totalWeight, 0, form.hasCommission, v.type, form.bags),
                 total: String(Math.round(deliveriesGross)),
                 weight: String(totalWeight),
                 bags: String(form.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)),
             }
-            : getCalc(form.weight, form.rate, form.hasCommission);
+            : getCalc(form.weight, form.rate, form.hasCommission, v.type, form.bags);
         try {
             await ax.patch(API_V + '/' + v.id, {
                 ...form,
@@ -1115,7 +1125,9 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                         <label>Commission</label>
                         <div style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
                             <input type="checkbox" id="ec" checked={form.hasCommission} onChange={e => S('hasCommission', e.target.checked)} style={{ marginRight: '8px' }} />
-                            <label htmlFor="ec" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>Rs.20/MT</label>
+                            <label htmlFor="ec" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>
+                                {isBillVoucherType(v?.type) ? 'Rs.1.5/Ton' : 'Rs.1/Bag'}
+                            </label>
                         </div>
                     </div>
                     {isSelf && (
@@ -1697,7 +1709,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         const hasMultiDelivery = validDeliveries.length > 0;
         const totalW = hasMultiDelivery ? deliveryTotals.totalWeight : parseFloat(form.weight) || 0;
         const totalB = hasMultiDelivery ? deliveryTotals.totalBags : parseInt(form.bags) || 0;
-        const calc = getCalc(totalW, validDeliveries[0]?.rate || form.rate, form.hasCommission);
+        const calc = getCalc(totalW, validDeliveries[0]?.rate || form.rate, form.hasCommission, vType, totalB);
         const isCng = isCngTruck(form.truckNo);
         const payload = {
             ...form,
@@ -2239,7 +2251,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     <label>Commission</label>
                                                     <div style={{ display: 'flex', alignItems: 'center', height: '38px' }}>
                                                         <input type="checkbox" id="comm" checked={form.hasCommission} onChange={e => set('hasCommission', e.target.checked)} style={{ marginRight: '8px' }} />
-                                                        <label htmlFor="comm" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>Rs.20/MT</label>
+                                                        <label htmlFor="comm" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-sub)', textTransform: 'none', width: 'auto' }}>
+                                                            {isBill ? 'Rs.1.5/Ton' : 'Rs.1/Bag'}
+                                                        </label>
                                                     </div>
                                                 </div>
 
@@ -2589,7 +2603,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 <td data-label="Online Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
                                             </>
                                         )}
-                                        <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>{v.munshi || 0}</td>
+                                        <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>
+                                            {isBill || isBillVoucherType(v?.type) ? '' : (v.munshi || 0)}
+                                        </td>
                                         <td data-label="Extra Cash" style={{ ...TD, textAlign: 'right' }}>
                                             {(() => {
                                                 const extraVal = parseFloat(v.extraCash) || 0;
@@ -2619,7 +2635,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         )}
                                                         {!n.dieselPending && n.totalDeductions > 0 && (
                                                             <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 600 }}
-                                                                title={`Deductions: Diesel Rs.${n.diesel} + Cash Rs.${n.cash} + Online Rs.${n.online} + Munshi Rs.${n.munshi}${n.commission > 0 ? ' + Comm Rs.' + n.commission : ''}`}>
+                                                                title={`Deductions: Diesel Rs.${n.diesel} + Cash Rs.${n.cash} + Online Rs.${n.online}${n.munshi > 0 ? ' + Munshi Rs.' + n.munshi : ''}${n.commission > 0 ? ' + Comm Rs.' + n.commission : ''}`}>
                                                                 − Rs.{Math.round(n.totalDeductions).toLocaleString()}
                                                             </span>
                                                         )}

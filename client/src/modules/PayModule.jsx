@@ -235,7 +235,9 @@ function calcNet(v, vehicle) {
   const weight = parseFloat(v.weight) || 0;
   // _noDeductions is set on legs 2+ of a split voucher so munshi is not
   // double-counted; respect it here the same way BalanceSheet does.
-  const munshi = v._noDeductions ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
+  // Dump bills (Kosli, Jhajjar, Bahadurgarh) have no munshi fee.
+  const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+  const munshi = isBill || v._noDeductions ? 0 : (parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
   const shortage = parseFloat(v.shortage) || 0;
   const commission = parseFloat(v.commission) || 0;
   const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
