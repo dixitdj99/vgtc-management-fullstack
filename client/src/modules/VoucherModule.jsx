@@ -798,7 +798,7 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         bags: v.bags ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)) : '') ?? '',
         rate: v.rate, pump: isCng ? (v.pump || 'CNG') : getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
-        advanceOnline: v.advanceOnline || '', hasCommission: !!v.hasCommission,
+        advanceOnline: v.advanceOnline || '', hasCommission: v.hasCommission !== undefined ? !!v.hasCommission : (parseFloat(v.commission) > 0 || v.commission === undefined),
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
         startKm: v.startKm || '', endKm: v.endKm || '',
         deliveries: (v.deliveries || []).map(d => ({
@@ -1281,7 +1281,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         driverId: '', driverName: '',
         truckNo: '', destination: '', partyName: '', weight: '', bags: '',
         rate: '', pump: NONE_PUMP, advanceDiesel: '', advanceCash: '', advanceOnline: '',
-        hasCommission: false, isFullTank: false,
+        hasCommission: true, isFullTank: false,
         startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '',
         materials: [],
         tyrePuncture: '', tyreGreasingAir: '', extras: [],
@@ -1753,7 +1753,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
             fetchVouchers(); setLrMaterials([]); setLrAlreadyUsed(false); setLastKmInfo(null);
             const newVoucher = res.data;
-            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [], remark: '' }));
+            setForm(f => ({ ...f, lrNo: '', truckNo: '', driverId: '', driverName: '', weight: '', bags: '', rate: '', pump: NONE_PUMP, destination: '', partyName: '', advanceDiesel: '', advanceCash: '', advanceOnline: '', isFullTank: false, hasCommission: true, startKm: '', endKm: '', billNo: '', partyCode: '', materialName: '', materials: [], tyrePuncture: '', tyreGreasingAir: '', extras: [], remark: '' }));
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
 

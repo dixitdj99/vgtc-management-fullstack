@@ -17,6 +17,7 @@ export default function MobileVoucherForm({ plant, cfg, defaultType, onDone }) {
         weight: '', bags: '', rate: '',
         advanceDiesel: '', advanceCash: '', advanceOnline: '',
         billNo: '',
+        hasCommission: true,
     });
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState('');
@@ -34,8 +35,10 @@ export default function MobileVoucherForm({ plant, cfg, defaultType, onDone }) {
     const isBill = form.type === 'Kosli_Bill' || form.type === 'Jajjhar_Bill' || form.type === 'Bahadurgarh_Bill';
     const wt = parseFloat(form.weight) || 0;
     const munshi = isBill ? 0 : (wt > 0 ? (wt < 18 ? 50 : 100) : 0);
+    const bags = parseFloat(form.bags) || (wt * 20);
+    const commission = form.hasCommission ? (isBill ? parseFloat((bags * 1.5).toFixed(2)) : Math.round(bags * 1)) : 0;
     const gross = wt * (parseFloat(form.rate) || 0);
-    const net = gross - (parseFloat(form.advanceDiesel) || 0) - (parseFloat(form.advanceCash) || 0) - (parseFloat(form.advanceOnline) || 0) - munshi;
+    const net = gross - (parseFloat(form.advanceDiesel) || 0) - (parseFloat(form.advanceCash) || 0) - (parseFloat(form.advanceOnline) || 0) - munshi - commission;
 
     const submit = async () => {
         setErr('');
@@ -54,7 +57,7 @@ export default function MobileVoucherForm({ plant, cfg, defaultType, onDone }) {
                 partyName: form.partyName.trim(),
                 weight: form.weight, bags: form.bags, rate: form.rate,
                 advanceDiesel: form.advanceDiesel, advanceCash: form.advanceCash, advanceOnline: form.advanceOnline,
-                munshi, billNo: form.billNo.trim(),
+                munshi, commission, hasCommission: form.hasCommission, billNo: form.billNo.trim(),
                 pump: 'None', deliveries: [],
             });
             rememberSticky('voucher.date', form.date);
@@ -84,6 +87,24 @@ export default function MobileVoucherForm({ plant, cfg, defaultType, onDone }) {
                 <TextField label="Diesel" type="number" value={form.advanceDiesel} onChange={v => S('advanceDiesel', v)} />
                 <TextField label="Cash" type="number" value={form.advanceCash} onChange={v => S('advanceCash', v)} />
                 <TextField label="Online" type="number" value={form.advanceOnline} onChange={v => S('advanceOnline', v)} />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 14px', padding: '0 2px' }}>
+                <input
+                    type="checkbox"
+                    id="m-comm"
+                    checked={form.hasCommission}
+                    onChange={e => S('hasCommission', e.target.checked)}
+                    style={{ width: 18, height: 18, accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                <label htmlFor="m-comm" style={{ fontSize: 13, fontWeight: 700, cursor: 'pointer', color: 'var(--text)' }}>
+                    Commission ({isBill ? '₹1.5/Bag' : '₹1/Bag'})
+                </label>
+                {form.hasCommission && commission > 0 && (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                        − {fmtRs(commission)}
+                    </span>
+                )}
             </div>
 
             <div className="m-card" style={{ margin: '4px 0 14px', background: 'var(--bg-th)' }}>
