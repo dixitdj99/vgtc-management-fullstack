@@ -1,12 +1,26 @@
 import axios from 'axios';
 import { enqueue, count } from './utils/offlineQueue';
 
-const API_BASE = '/api';
+// When running inside a Capacitor Android APK, relative URLs like '/api'
+// have no meaning — the page is loaded from local file storage, not a web server.
+// We detect the Capacitor WebView and use the configured server IP instead.
+// Set VITE_API_URL in .env.local (e.g. http://192.168.1.109:5000) for Android builds.
+const isCapacitor = typeof window !== 'undefined' &&
+    !!(window.Capacitor || window.__capacitor__ || (window.location.protocol === 'capacitor:'));
+const API_BASE = isCapacitor
+    ? `${import.meta.env.VITE_API_URL || 'http://192.168.1.109:5000'}/api`
+    : '/api';
 
 const ax = axios.create({
     baseURL: API_BASE,
     headers: { 'Content-Type': 'application/json' }
 });
+
+// Synchronously initialize token header from localStorage if available
+const initToken = typeof window !== 'undefined' && (localStorage.getItem('vgtc-token') || localStorage.getItem('token'));
+if (initToken) {
+    ax.defaults.headers.common['Authorization'] = `Bearer ${initToken}`;
+}
 
 export const setAuthToken = (token) => {
     if (token) ax.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -77,6 +91,15 @@ function emitLoading() {
 
 // ── Request interceptor ───────────────────────────────────────────────────
 ax.interceptors.request.use(async (config) => {
+    // Ensure Authorization header is populated from localStorage if missing
+    if (!config.headers['Authorization'] && !ax.defaults.headers.common['Authorization']) {
+        const token = typeof window !== 'undefined' && (localStorage.getItem('vgtc-token') || localStorage.getItem('token'));
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
+            ax.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+    }
+
     // Inject org ID
     if (currentUser?.orgId) config.headers['x-org-id'] = currentUser.orgId;
 

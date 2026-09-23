@@ -304,22 +304,16 @@ ${body}
      * The slip is pinned to its own width on screen, so a wider window changes
      * nothing about the receipt or the height it is measured at.
      */
-    const scr = window.screen || {};
-    const availW = scr.availWidth || 1040;
-    const availH = scr.availHeight || 880;
-    const winW = Math.min(1040, availW - 60);
-    const winH = Math.min(880, availH - 60);
-    const left = Math.max(0, Math.round((availW - winW) / 2));
-    const top = Math.max(0, Math.round((availH - winH) / 2));
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const blobUrl = URL.createObjectURL(blob);
-    const w = window.open(blobUrl, '_blank', `width=${winW},height=${winH},left=${left},top=${top}`);
+    const w = window.open(blobUrl, '_blank');
     if (!w) {
         alert('Allow pop-ups for this site to print the receipt.');
         return null;
     }
+    try { w.opener = null; } catch (_) {}
     w.focus();
-    setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 15000);
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 20000);
 
     // File the identical HTML. After the window opens, so a slow or unreachable
     // Drive cannot delay the slip appearing.
@@ -358,13 +352,14 @@ export function fileCopy(html, archive) {
 export function printHtml(html, { width = 1000, height = 700, archive = null } = {}) {
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const blobUrl = URL.createObjectURL(blob);
-    const w = window.open(blobUrl, '_blank', `width=${width},height=${height}`);
+    const w = window.open(blobUrl, '_blank');
     if (!w) {
         alert('Allow pop-ups for this site to print.');
         return null;
     }
+    try { w.opener = null; } catch (_) {}
     w.focus();
-    setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 15000);
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 20000);
     if (archive) fileCopy(html, archive);
     return w;
 }

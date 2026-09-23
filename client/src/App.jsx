@@ -48,6 +48,9 @@ import VendorModule from './modules/VendorModule';
 import TripProfitModule from './modules/TripProfitModule';
 import AttendanceModule from './modules/AttendanceModule';
 import VehicleCreditDebitModule from './modules/VehicleCreditDebitModule';
+import { playNotificationSound } from './utils/soundUtils';
+import NotificationToast from './components/NotificationToast';
+import NotificationDetailModal from './components/NotificationDetailModal';
 
 const THEMES = [
   { id: 'light', label: 'Light', Icon: Sun },
@@ -404,6 +407,68 @@ function AppInner() {
     };
   }, [notifOpen]);
   const [unreadNotif, setUnreadNotif] = useState(true);
+  const [portalNotifications, setPortalNotifications] = useState([]);
+  const knownNotifIdsRef = useRef(new Set());
+  const isInitialFetchRef = useRef(true);
+  const [activeToastNotif, setActiveToastNotif] = useState(null);
+  const [selectedNotifForDetail, setSelectedNotifForDetail] = useState(null);
+
+  const fetchPortalNotifications = async () => {
+    try {
+      const res = await ax.get('/notifications?limit=50');
+      if (Array.isArray(res.data)) {
+        setPortalNotifications(res.data);
+
+        if (!isInitialFetchRef.current) {
+          const freshNotifs = res.data.filter(n => !n.read && !knownNotifIdsRef.current.has(n.id));
+          if (freshNotifs.length > 0) {
+            playNotificationSound();
+            setActiveToastNotif(freshNotifs[0]);
+          }
+        } else {
+          isInitialFetchRef.current = false;
+        }
+
+        res.data.forEach(n => knownNotifIdsRef.current.add(n.id));
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    fetchPortalNotifications();
+    const interval = setInterval(fetchPortalNotifications, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const markPortalNotifRead = async (id) => {
+    try {
+      await ax.patch(`/notifications/${id}/read`);
+      setPortalNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    } catch (_) {}
+  };
+
+  const clearPortalNotif = async (id) => {
+    try {
+      await ax.delete(`/notifications/${id}`);
+      setPortalNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (_) {}
+  };
+
+  const markAllPortalNotifsRead = async () => {
+    try {
+      await ax.patch('/notifications/mark-all-read');
+      setPortalNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (_) {}
+  };
+
+  const clearAllPortalNotifs = async () => {
+    try {
+      await ax.delete('/notifications');
+      setPortalNotifications([]);
+    } catch (_) {}
+  };
+
+  const unreadPortalCount = portalNotifications.filter(n => !n.read).length;
     useEffect(() => {
         const handler = (e) => {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -1084,14 +1149,14 @@ function AppInner() {
                 }}
               >
                 <Bell size={16} />
-                {(unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 || unreadNotif) && (
-                  unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 ? (
+                {(unreadPortalCount + unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 || unreadNotif) && (
+                  unreadPortalCount + unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 ? (
                     <span style={{
                       position: 'absolute', top: '2px', right: '2px', minWidth: '15px', height: '15px',
                       padding: '0 3px', borderRadius: '8px', background: '#EF4444', color: '#fff',
                       fontSize: '9px', fontWeight: 900, display: 'flex', alignItems: 'center',
                       justifyContent: 'center', boxShadow: '0 0 6px #EF4444',
-                    }}>{unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState)}</span>
+                    }}>{unreadPortalCount + unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState)}</span>
                   ) : (
                   <span style={{
                     position: 'absolute',
@@ -1143,10 +1208,9 @@ function AppInner() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
                         <Sparkles size={15} color="#6366f1" /> Notifications
                       </div>
-                      {/* Acts on everything in the panel — clearing only the weather
-                          would leave it looking just as full. */}
                       <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto', marginRight: '10px' }}>
                         <button onClick={() => {
+                            markAllPortalNotifsRead();
                             setWxAlerts([...markAllRead(wxAlerts)]);
                             setUpdateState({ ...markAllUpdatesRead(updateState, UPDATE_ITEMS) });
                           }}
@@ -1154,6 +1218,7 @@ function AppInner() {
                           Mark all read
                         </button>
                         <button onClick={() => {
+                            clearAllPortalNotifs();
                             setWxAlerts([...clearAll(wxAlerts)]);
                             setUpdateState({ ...clearAllUpdates(updateState, UPDATE_ITEMS) });
                           }}
@@ -1171,6 +1236,141 @@ function AppInner() {
 
                     {/* Notification List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
+
+                      {/* Loading & Vehicle Alerts */}
+                      {portalNotifications.length > 0 && (
+                        <div style={{ borderBottom: '1px solid var(--border)' }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '8px 14px',
+                            background: 'rgba(16,185,129,0.08)',
+                            borderBottom: '1px solid rgba(16,185,129,0.15)'
+                          }}>
+                            <span style={{ fontSize: '10.5px', fontWeight: 900, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Truck size={13} /> Vehicle & Loading Alerts ({portalNotifications.length})
+                            </span>
+                            {unreadPortalCount > 0 && (
+                              <button
+                                onClick={markAllPortalNotifsRead}
+                                style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10px', fontWeight: 700 }}
+                              >
+                                Mark read
+                              </button>
+                            )}
+                          </div>
+
+                          {portalNotifications.map(n => {
+                            const isLoaded = n.type === 'vehicle_loaded' || n.status === 'Loaded';
+                            const tone = isLoaded ? '#10b981' : '#6366f1';
+                            const timeStr = n.createdAt ? new Date(n.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+
+                            return (
+                              <div
+                                key={n.id}
+                                onClick={() => {
+                                  markPortalNotifRead(n.id);
+                                  setSelectedNotifForDetail(n);
+                                  setNotifOpen(false);
+                                }}
+                                style={{
+                                  padding: '11px 14px',
+                                  borderBottom: '1px solid var(--border-row)',
+                                  display: 'flex',
+                                  gap: '10px',
+                                  alignItems: 'flex-start',
+                                  background: n.read ? 'transparent' : 'rgba(16,185,129,0.05)',
+                                  cursor: 'pointer',
+                                  transition: 'background 0.15s ease'
+                                }}
+                              >
+                                <div style={{
+                                  width: '30px',
+                                  height: '30px',
+                                  borderRadius: '8px',
+                                  background: `${tone}18`,
+                                  color: tone,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                  marginTop: '1px'
+                                }}>
+                                  <Truck size={15} />
+                                </div>
+
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '2px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                      {!n.read && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: tone, flexShrink: 0 }} />}
+                                      <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {n.title}
+                                      </span>
+                                    </div>
+                                    {n.loadingNo && (
+                                      <span style={{
+                                        fontSize: '9px',
+                                        fontWeight: 900,
+                                        padding: '1px 6px',
+                                        borderRadius: '10px',
+                                        background: 'rgba(16,185,129,0.12)',
+                                        color: '#10b981',
+                                        border: '1px solid rgba(16,185,129,0.25)',
+                                        flexShrink: 0
+                                      }}>
+                                        Token #{n.loadingNo}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                                    {n.message}
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '5px' }}>
+                                    <span style={{ fontSize: '10px', color: tone, fontWeight: 700 }}>
+                                      {timeStr}
+                                    </span>
+                                    <div style={{ display: 'flex', gap: '10px' }} onClick={e => e.stopPropagation()}>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedNotifForDetail(n);
+                                          setNotifOpen(false);
+                                        }}
+                                        style={{ border: 'none', background: 'none', color: '#6366f1', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}
+                                      >
+                                        View Details
+                                      </button>
+                                      {!n.read && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            markPortalNotifRead(n.id);
+                                          }}
+                                          style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}
+                                        >
+                                          Mark as read
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          clearPortalNotif(n.id);
+                                        }}
+                                        style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10.5px', fontWeight: 700, padding: 0 }}
+                                      >
+                                        Clear
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* Weather status, always shown. With no warnings there was
                           nothing in the panel to say the watch was even running —
@@ -1297,9 +1497,9 @@ function AppInner() {
                         );
                       })}
 
-                      {wxAlerts.length === 0 && visibleUpdates(UPDATE_ITEMS, updateState).length === 0 && (
+                      {portalNotifications.length === 0 && wxAlerts.length === 0 && visibleUpdates(UPDATE_ITEMS, updateState).length === 0 && (
                         <div style={{ padding: '26px 20px', textAlign: 'center', fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                          Nothing left here. New weather warnings will still arrive.
+                          Nothing left here. New loading alerts and system updates will arrive automatically.
                         </div>
                       )}
                     </div>
@@ -1558,6 +1758,26 @@ function AppInner() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Floating Notification Toast Banner */}
+      {activeToastNotif && (
+        <NotificationToast
+          notification={activeToastNotif}
+          onClose={() => setActiveToastNotif(null)}
+          onDetail={(notif) => {
+            setSelectedNotifForDetail(notif);
+            setActiveToastNotif(null);
+          }}
+        />
+      )}
+
+      {/* Detailed Notification Popup Modal with Redirect Button */}
+      {selectedNotifForDetail && (
+        <NotificationDetailModal
+          notification={selectedNotifForDetail}
+          onClose={() => setSelectedNotifForDetail(null)}
+        />
+      )}
     </div>
   );
 }

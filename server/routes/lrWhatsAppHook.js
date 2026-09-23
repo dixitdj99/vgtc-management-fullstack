@@ -137,4 +137,93 @@ async function dispatchLrNotification(lrData, req) {
     }
 }
 
-module.exports = { dispatchLrNotification };
+/**
+ * Shared handler for linking a challan to an existing LR record (delayed linking).
+ * Handles:
+ * - Updating LR billing field
+ * - Updating Challan transfer record (loadedByVehicle, transferredTo, lrNo)
+ * - Syncing stock bag deduction
+ * - Dispatching WhatsApp notifications (to loading vehicle owner, and to original vehicle owner if transferred)
+ */
+async function linkChallanToLr({ lrId, challanNo, quantity, material, lrCollection, brand, orgId, req }) {
+    const lrService = require('../services/lrService');
+    const stockService = require('../utils/stockService');
+    const {
+        updateChallanTransferRecord,
+        dispatchChallanTransferNotification,
+        dispatchChallanLinkedNotification
+    } = require('../utils/challanNotificationService');
+
+    const all = await lrService.getAllLoadingReceipts(orgId, lrCollection);
+    const receipt = all.find(r => r.id === lrId);
+    if (!receipt) throw new Error('Loading receipt not found');
+
+    const cleanCNo = String(challanNo).trim();
+    const existingBilling = (receipt.billing && receipt.billing !== 'No' && receipt.billing !== '—') ? receipt.billing : '';
+    const newBilling = existingBilling ? `${existingBilling}, ${cleanCNo}` : cleanCNo;
+
+    // 1. Update LR billing
+    await lrService.updateBillingStatus(lrId, newBilling, lrCollection);
+
+    // 2. Update Challan transfer record
+    const rec = await updateChallanTransferRecord(cleanCNo, receipt.truckNo, receipt.lrNo, receipt.date, req);
+
+    // 3. Sync stock bags deduction
+    const cCol = brand === 'jkl' ? 'jkl_challans' : (brand === 'kosli' ? 'kosli_challans' : (brand === 'jhajjar' ? 'jhajjar_challans' : 'challans'));
+    const deductQty = parseInt(quantity) || parseInt(receipt.totalBags) || 0;
+    if (deductQty > 0) {
+        await stockService.syncLRWithChallans(orgId, '', cleanCNo, material || receipt.material, deductQty, cCol);
+    }
+
+    // 4. Send notifications safely
+    const chBags = deductQty;
+    const chWeight = (chBags * 0.05).toFixed(2);
+    const isTransfer = rec ? rec.isTransfer : false;
+    const origTruck = rec ? rec.originalTruck : receipt.truckNo;
+
+    try {
+        if (isTransfer) {
+            if (typeof dispatchChallanTransferNotification === 'function') {
+                await dispatchChallanTransferNotification({
+                    challanNo: cleanCNo,
+                    originalTruck: origTruck,
+                    loadingTruck: receipt.truckNo,
+                    lrNo: receipt.lrNo,
+                    date: receipt.date || new Date().toISOString().slice(0, 10),
+                    totalBags: chBags,
+                    totalWeight: chWeight
+                }, req);
+            }
+
+            if (typeof dispatchChallanLinkedNotification === 'function') {
+                await dispatchChallanLinkedNotification({
+                    challanNo: cleanCNo,
+                    truckNo: receipt.truckNo,
+                    lrNo: receipt.lrNo,
+                    date: receipt.date,
+                    materialsText: `Transferred from ${origTruck} — ${chBags} Bags (${chWeight} MT)`
+                }, req);
+            }
+        } else {
+            if (typeof dispatchChallanLinkedNotification === 'function') {
+                await dispatchChallanLinkedNotification({
+                    challanNo: cleanCNo,
+                    truckNo: receipt.truckNo,
+                    lrNo: receipt.lrNo,
+                    date: receipt.date,
+                    materialsText: `${chBags} Bags (${chWeight} MT)`
+                }, req);
+            }
+        }
+    } catch (notifErr) {
+        console.error('[WA-Hook] Challan link notification error (suppressed):', notifErr.message);
+    }
+
+    return { ok: true, billing: newBilling, isTransfer, originalTruck: origTruck };
+}
+
+module.exports = {
+    dispatchLrNotification,
+    linkChallanToLr
+};
+

@@ -4,9 +4,31 @@ export default function GlobalLoader() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const handle = (e) => setLoading(e.detail?.loading || false);
+    let timer = null;
+    const handle = (e) => {
+      const isLoading = Boolean(e.detail?.loading);
+      setLoading(isLoading);
+      clearTimeout(timer);
+      if (isLoading) {
+        // Safety timeout: if requests hang or tab was unfocused during print, dismiss after 8s
+        timer = setTimeout(() => setLoading(false), 8000);
+      }
+    };
+
+    const handleFocus = () => {
+      // When regaining focus (e.g. returning from print tab), clear stuck loaders after brief settle
+      setTimeout(() => {
+        setLoading(false);
+      }, 500);
+    };
+
     window.addEventListener('api-loading', handle);
-    return () => window.removeEventListener('api-loading', handle);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('api-loading', handle);
+      window.removeEventListener('focus', handleFocus);
+      clearTimeout(timer);
+    };
   }, []);
 
   if (!loading) return null;

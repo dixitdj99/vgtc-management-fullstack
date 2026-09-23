@@ -234,21 +234,55 @@ const deleteOwnerWithVehicles = async (orgId, owner = {}, col = COLLECTION_VEHIC
 };
 
 const ensureVehicleByTruckNo = async (orgId, truckNo, col = COLLECTION_VEHICLES) => {
-    const normalizedTruckNo = normalizeTruckNo(truckNo);
-    if (!normalizedTruckNo) return null;
+    return ensureOrUpdateVehicleContacts(orgId, { truckNo, source: 'voucher_auto' }, col);
+};
 
-    const existing = await findVehicleByTruckNo(orgId, normalizedTruckNo, col);
-    if (existing) return existing;
+const ensureOrUpdateVehicleContacts = async (orgId, data = {}, col = COLLECTION_VEHICLES) => {
+    const truckNo = normalizeTruckNo(data.truckNo);
+    if (!truckNo) return null;
 
+    const existing = await findVehicleByTruckNo(orgId, truckNo, col);
+    if (existing) {
+        const patch = {};
+        const driverName = String(data.driverName || '').trim();
+        const driverContact = String(data.driverContact || '').trim();
+        const ownerContact = String(data.ownerContact || '').trim();
+        const ownerName = String(data.ownerName || '').trim();
+
+        if (driverName && driverName !== (existing.driverName || '')) {
+            patch.driverName = driverName;
+        }
+        if (driverContact && driverContact !== (existing.driverContact || '')) {
+            patch.driverContact = driverContact;
+        }
+        if (ownerContact && ownerContact !== (existing.ownerContact || '')) {
+            patch.ownerContact = ownerContact;
+        }
+        if (ownerName && !existing.ownerName) {
+            patch.ownerName = ownerName;
+        }
+
+        if (Object.keys(patch).length > 0) {
+            if (firebaseAvailable()) {
+                await firestoreUpdate(existing.id, patch, col);
+            } else {
+                localStore.update(col, existing.id, patch);
+            }
+            return { ...existing, ...patch };
+        }
+        return existing;
+    }
+
+    // If vehicle does not exist at all, auto-create
     const payload = normalizeVehiclePayload({
-        truckNo: normalizedTruckNo,
-        ownerName: '',
-        ownerContact: '',
-        driverName: '',
-        driverContact: '',
+        truckNo,
+        ownerName: data.ownerName || '',
+        ownerContact: data.ownerContact || '',
+        driverName: data.driverName || '',
+        driverContact: data.driverContact || '',
         vehicleType: 'Trailer',
         bankDetails: '',
-        source: 'voucher_auto'
+        source: data.source || 'lr_auto'
     });
 
     if (firebaseAvailable()) return await firestoreCreate(orgId, payload, col);
@@ -261,5 +295,7 @@ module.exports = {
     updateVehicle,
     deleteVehicle,
     deleteOwnerWithVehicles,
-    ensureVehicleByTruckNo
+    ensureVehicleByTruckNo,
+    ensureOrUpdateVehicleContacts
 };
+

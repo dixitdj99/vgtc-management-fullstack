@@ -6,7 +6,15 @@ const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
 const { db, isAvailable } = require('../firebase');
 const advanceService = require('../services/vehicleAdvanceService');
-const { sendEventNotification, getWhatsAppConfig } = require('../utils/whatsappService');
+const {
+    sendEventNotification,
+    sendWhatsAppButtons,
+    sendWhatsAppMessage,
+    broadcastToAdmins,
+    getWhatsAppConfig,
+    lookupVehicleInfo,
+    lookupProfilePhone
+} = require('../utils/whatsappService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -15,6 +23,85 @@ const PAYMENTS_COL = 'profile_payments';
 const ADVANCES_COL = 'vehicle_advances';
 
 const sheetsService = require('../utils/sheetsService');
+
+// Helper to calculate current running cashbook balance
+async function getCashbookRunningBalance(orgId, req) {
+    try {
+        const all = await svc.getAll(orgId, getCol(BASE_COL, req));
+        let bal = 0;
+        for (const item of all) {
+            const amt = parseFloat(item.amount) || 0;
+            if (item.type === 'deposit') bal += amt;
+            else if (item.type === 'cash_out') bal -= amt;
+        }
+        return bal;
+    } catch (_) {
+        return 0;
+    }
+}
+
+// Helper to get staff monthly salary and remaining balance
+async function getStaffBalanceInfo(profileIdOrName, orgId, req) {
+    let profile = null;
+    let totalAdvances = 0;
+    let monthlySalary = 0;
+
+    try {
+        const pCol = getCol('profiles', req);
+        let profiles = [];
+        if (!isAvailable()) {
+            profiles = localStore.getAll('profiles').filter(d => d.orgId === orgId);
+        } else {
+            const snap = await db.collection(pCol).where('orgId', '==', orgId).get();
+            profiles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+        const searchStr = String(profileIdOrName || '').trim().toUpperCase();
+        profile = profiles.find(p => String(p.id || '').trim().toUpperCase() === searchStr || String(p.name || p.profileName || '').trim().toUpperCase() === searchStr);
+        if (profile) {
+            monthlySalary = parseFloat(profile.salary || profile.monthlySalary || profile.baseSalary || 0);
+        }
+
+        const payCol = getCol(PAYMENTS_COL, req);
+        let payments = [];
+        if (!isAvailable()) {
+            payments = localStore.getAll(PAYMENTS_COL).filter(d => d.orgId === orgId);
+        } else {
+            const snap = await db.collection(payCol).where('orgId', '==', orgId).get();
+            payments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+        const staffPays = payments.filter(p => (profile && p.profileId === profile.id) || String(p.profileName || '').trim().toUpperCase() === searchStr);
+        for (const p of staffPays) {
+            totalAdvances += parseFloat(p.amount) || 0;
+        }
+    } catch (_) {}
+
+    const remainingPay = Math.max(0, monthlySalary - totalAdvances);
+    return {
+        profile,
+        monthlySalary,
+        totalAdvances,
+        remainingPay
+    };
+}
+
+// Helper to resolve notification recipients for cashout
+async function getCashoutPhones(req, entityType, entityId, entityName) {
+    const waCfg = await getWhatsAppConfig(req);
+    const phones = [...(waCfg.adminPhones || [waCfg.adminPhone || '8708032492'])];
+
+    // Look up profile contact number by ID or Name
+    let profilePhone = null;
+    if (entityId) profilePhone = await lookupProfilePhone(entityId, req);
+    if (!profilePhone && entityName) profilePhone = await lookupProfilePhone(entityName, req);
+    if (profilePhone) phones.push(profilePhone);
+
+    if (entityType === 'vehicle' && entityId) {
+        const vInfo = await lookupVehicleInfo(entityId, req);
+        if (vInfo?.ownerContact) phones.push(vInfo.ownerContact);
+        if (vInfo?.driverContact) phones.push(vInfo.driverContact);
+    }
+    return Array.from(new Set(phones.filter(Boolean)));
+}
 
 // GET  /api/cashbook
 router.get('/', async (req, res) => {
@@ -61,25 +148,34 @@ router.get('/', async (req, res) => {
 router.post('/deposit', async (req, res) => {
     const { amount, remark, date } = req.body;
     try {
+        const numAmt = parseFloat(amount || 0);
         const doc = await svc.addEntry(req.orgId, 'deposit', amount, remark, date, getCol(BASE_COL, req));
         sheetsService.upsertCashbook(doc, 'jksuper').catch(err => console.error('[Backup Hook] Cashbook upsert failed:', err.message));
 
         res.status(201).json(doc);
 
-        // WhatsApp — notify admin of deposit
+        // WhatsApp — broadcast deposit with balance to all Admins
         ;(async () => {
             try {
-                const waCfg = await getWhatsAppConfig(req);
-                const phones = [waCfg.adminPhone].filter(Boolean);
-                await sendEventNotification('deposit', {
-                    amount: parseFloat(amount || 0).toLocaleString('en-IN'),
-                    remark: remark || '—',
-                    date: date || new Date().toLocaleDateString('en-IN'),
-                }, phones, req);
+                const newBal = await getCashbookRunningBalance(req.orgId, req);
+                const prevBal = newBal - numAmt;
+                const depositMsg = [
+                    `*VIKAS GOODS TRANSPORT CO.* 💰`,
+                    `*Deposit Received in Cashbook*`,
+                    ``,
+                    `• *Amount:* Rs.${numAmt.toLocaleString('en-IN')}`,
+                    `• *Date:* ${date || new Date().toLocaleDateString('en-IN')}`,
+                    `• *Remark:* ${remark || '—'}`,
+                    `• *Previous Balance:* Rs.${Math.round(prevBal).toLocaleString('en-IN')}`,
+                    `• *New Cashbook Balance:* *Rs.${Math.round(newBal).toLocaleString('en-IN')}*`
+                ].join('\n');
+
+                await broadcastToAdmins('DEPOSIT ALERT', depositMsg, null, req);
+                console.log(`[WA-Hook] Deposit broadcast sent to admins (New Balance: Rs.${newBal})`);
             } catch (e) { console.error('[WA-Hook] deposit notify FAILED:', e.message); }
         })();
     } catch (e) { res.status(400).json({ error: e.message }); }
-});;
+});
 
 // POST /api/cashbook/cash-out
 router.post('/cash-out', async (req, res) => {
@@ -96,29 +192,42 @@ router.post('/cash-out', async (req, res) => {
 
         res.status(201).json(doc);
 
-        // WhatsApp — notify admin of cashout
+        // WhatsApp — notify admin and recipient, check low balance
         ;(async () => {
             try {
-                const waCfg = await getWhatsAppConfig(req);
-                const phones = [waCfg.adminPhone].filter(Boolean);
-                await sendEventNotification('cashout', {
+                const numAmt = parseFloat(amount || 0);
+                const newBal = await getCashbookRunningBalance(req.orgId, req);
+
+                // 1. Low Balance alert if balance drops below Rs.5000
+                if (newBal < 5000) {
+                    const lowBalMsg = [
+                        `*VIKAS GOODS TRANSPORT CO.* ⚠️`,
+                        `*LOW CASHBOOK BALANCE ALERT*`,
+                        ``,
+                        `Current Cashbook balance is *Rs.${Math.round(newBal).toLocaleString('en-IN')}* (Below Rs.5,000 threshold).`,
+                        `👉 Please deposit funds to maintain operational cash balance.`
+                    ].join('\n');
+                    await broadcastToAdmins('LOW BALANCE ALERT', lowBalMsg, null, req);
+                }
+
+                const phones = await getCashoutPhones(req, entityType, entityId, entityName);
+                const tplData = {
                     entityName: entityName || 'Office Spend',
                     entityType: entityType || 'Expense',
-                    amount: parseFloat(amount || 0).toLocaleString('en-IN'),
+                    amount: numAmt.toLocaleString('en-IN'),
                     remark: remark || '—',
                     date: date || new Date().toLocaleDateString('en-IN'),
-                }, phones, req);
+                };
+                await sendEventNotification('cashout', tplData, phones, req);
+                console.log(`[WA-Hook] Cashout notification dispatched for ${tplData.entityName} (Rs.${tplData.amount})`);
             } catch (e) { console.error('[WA-Hook] cashout notify FAILED:', e.message); }
         })();
     } catch (e) { res.status(400).json({ error: e.message }); }
-});;
+});
 
 // POST /api/cashbook/cash-out-linked — cash out with entity linking
 router.post('/cash-out-linked', async (req, res) => {
     const { amount, remark, date, entityType, entityId, entityName } = req.body;
-    // A `custom` entity is someone not on the roster — a labourer, a mechanic —
-    // so it carries a name and no id. Everything else must still be a real
-    // record, or the cash-out links to nothing.
     if (!entityType) return res.status(400).json({ error: 'Entity required' });
     if (entityType === 'custom') {
         if (!String(entityName || '').trim()) return res.status(400).json({ error: 'Name required' });
@@ -163,18 +272,68 @@ router.post('/cash-out-linked', async (req, res) => {
 
         res.status(201).json(doc);
 
-        // WhatsApp — notify admin of linked cashout
+        // WhatsApp — notify admins & send interactive confirmation to staff
         ;(async () => {
             try {
-                const waCfg = await getWhatsAppConfig(req);
-                const phones = [waCfg.adminPhone].filter(Boolean);
-                await sendEventNotification('cashout', {
-                    entityName: entityName || 'N/A',
-                    entityType: entityType || 'N/A',
-                    amount: parseFloat(amount || 0).toLocaleString('en-IN'),
-                    remark: remark || '—',
-                    date: date || new Date().toLocaleDateString('en-IN'),
-                }, phones, req);
+                const numAmt = parseFloat(amount || 0);
+                const newBal = await getCashbookRunningBalance(req.orgId, req);
+
+                // 1. Low Balance Alert if balance < Rs.5000
+                if (newBal < 5000) {
+                    const lowBalMsg = [
+                        `*VIKAS GOODS TRANSPORT CO.* ⚠️`,
+                        `*LOW CASHBOOK BALANCE ALERT*`,
+                        ``,
+                        `Current Cashbook balance is *Rs.${Math.round(newBal).toLocaleString('en-IN')}* (Below Rs.5,000 threshold).`,
+                        `👉 Please deposit funds to maintain operational cash balance.`
+                    ].join('\n');
+                    await broadcastToAdmins('LOW BALANCE ALERT', lowBalMsg, null, req);
+                }
+
+                // 2. If entityType is staff, send interactive prompt to staff phone with confirm/decline buttons
+                if (entityType === 'staff') {
+                    const staffPhone = await lookupProfilePhone(entityId || entityName, req);
+                    if (staffPhone) {
+                        const staffBal = await getStaffBalanceInfo(entityId || entityName, req.orgId, req);
+                        const staffPromptText = [
+                            `*VIKAS GOODS TRANSPORT CO.* 💸`,
+                            `*Cash Advance / Cashout Issued*`,
+                            ``,
+                            `Dear *${entityName || 'Staff'}*,`,
+                            `An amount of *Rs.${numAmt.toLocaleString('en-IN')}* has been issued to you from Cashbook.`,
+                            ``,
+                            `• *Date:* ${date || new Date().toLocaleDateString('en-IN')}`,
+                            `• *Remark:* ${remark || 'Cash Advance'}`,
+                            `• *Advance Deducted:* Rs.${numAmt.toLocaleString('en-IN')}`,
+                            `• *Total Advances Taken:* Rs.${Math.round(staffBal.totalAdvances).toLocaleString('en-IN')}`,
+                            `• *Remaining Net Pay:* *Rs.${Math.round(staffBal.remainingPay).toLocaleString('en-IN')}*`,
+                            ``,
+                            `_Please confirm whether you received this cash advance:_`
+                        ].join('\n');
+
+                        const staffButtons = [
+                            { id: `STAFF_CONFIRM_CASHOUT_${doc.id}`, text: '✅ Confirm Cashout' },
+                            { id: `STAFF_DECLINE_CASHOUT_${doc.id}`, text: '❌ Decline / Dispute' }
+                        ];
+
+                        await sendWhatsAppButtons(staffPhone, 'ACTION REQUIRED', staffPromptText, staffButtons, req);
+                        console.log(`[WA-Hook] Interactive staff cashout prompt sent to ${staffPhone}`);
+                    }
+                }
+
+                // 3. Notify Admins of the cashout
+                const adminMsg = [
+                    `*VIKAS GOODS TRANSPORT CO.* 💸`,
+                    `*Cashout Issued from Cashbook*`,
+                    ``,
+                    `• *Recipient:* ${entityName || 'N/A'} (${entityType || 'N/A'})`,
+                    `• *Amount:* Rs.${numAmt.toLocaleString('en-IN')}`,
+                    `• *Date:* ${date || new Date().toLocaleDateString('en-IN')}`,
+                    `• *Remark:* ${remark || '—'}`,
+                    `• *Remaining Cashbook Balance:* Rs.${Math.round(newBal).toLocaleString('en-IN')}`
+                ].join('\n');
+                await broadcastToAdmins('CASHOUT ALERT', adminMsg, null, req);
+
             } catch (e) { console.error('[WA-Hook] cashout-linked notify FAILED:', e.message); }
         })();
     } catch (e) { res.status(400).json({ error: e.message }); }

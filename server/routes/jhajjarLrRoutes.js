@@ -5,7 +5,7 @@ const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
-const { dispatchLrNotification } = require('./lrWhatsAppHook');
+const { dispatchLrNotification, linkChallanToLr } = require('./lrWhatsAppHook');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -20,59 +20,47 @@ mountLrVoucherCheck(router, BASE_COL);
 // Create
 router.post('/', async (req, res) => {
     try {
-        const result = await lrService.createLoadingReceipt(
-            req.orgId,
-            req.body, 
-            getCol(BASE_COL, req), 
-            getCol(META_COL, req)
-        );
+        const lrData = req.body;
+        const bodyWithMeta = {
+            ...lrData,
+            brand: 'jksuper',
+            source: 'Jhajjar'
+        };
+        const result = await lrService.createLoadingReceipt(req.orgId, bodyWithMeta, getCol(BASE_COL, req), getCol(META_COL, req));
 
-        // Real-time backup — runs whenever Google Drive is authorized
         if (await driveService.isAuthorized()) {
-            (async () => {
-                try {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const { generateLoadingReceiptPDF } = require('../utils/pdfService');
-
-                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
-                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-
-                    const fullData = { ...req.body, ...result };
-                    const dateStr = (fullData.date || new Date().toLocaleDateString('en-IN')).replace(/\//g, '-');
-                    const fileName = `LR_${result.lrNo}_${dateStr}.pdf`;
-                    const localPath = path.join(TEMP_DIR, fileName);
-
-                    console.log(`[Backup-Hook] Generating LR PDF: ${fileName}`);
-                    await generateLoadingReceiptPDF(fullData, localPath);
-
-                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    const brand = req.body.brand === 'jklakshmi' ? 'JK_Lakshmi' : 'JK_Super';
-                    const plantFolder = await driveService.getOrCreateFolder(brand, rootId);
-                    const lrFolder = await driveService.getOrCreateFolder('Loading Receipts', plantFolder);
-                    const monthStr = new Date(fullData.date || Date.now()).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }).replace(/ /g, '_');
-                    const finalFolder = await driveService.getOrCreateFolder(monthStr, lrFolder);
-                    await driveService.uploadFile(localPath, fileName, finalFolder);
-                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-                    const sheetsService = require('../utils/sheetsService');
-                    await sheetsService.upsertLrRow(fullData, req.body.brand === 'jklakshmi' ? 'jklakshmi' : 'jksuper');
-
-                    await driveService.logActivity('LR_Create', 'success', `Backed up: ${fileName}`);
-                    console.log(`[Backup-Hook] LR backed up successfully: ${fileName}`);
-                } catch (e) {
-                    console.error('[Backup-Hook] LR create FAILED:', e.message, e.stack);
-                    await driveService.logActivity('LR_Create', 'error', 'Backup failed', e);
-                }
-            })();
-        } else {
-            console.log('[Backup-Hook] Skipping LR backup — Drive not authorized');
+            const sheetsService = require('../utils/sheetsService');
+            await sheetsService.upsertLrRow({ ...bodyWithMeta, ...result }, 'jksuper').catch(()=>{});
         }
+
+        const { backupLoadingReceipt } = require('../utils/realtimeBackup');
+        backupLoadingReceipt({ ...bodyWithMeta, ...result }, { brand: 'jksuper', plant: 'Jhajjar' });
 
         res.status(201).json(result);
 
         // WhatsApp Notification — fire and forget, never blocks response
-        dispatchLrNotification({ ...req.body, ...result }, req);
+        dispatchLrNotification({ ...bodyWithMeta, ...result }, req);
+
+    } catch (error) {
+        res.status(error.status || 500).json({ error: error.message });
+    }
+});
+
+// Link challan to an existing LR (Delayed Linking)
+router.post('/:id/link-challan', async (req, res) => {
+    try {
+        const { challanNo, quantity, material } = req.body;
+        const result = await linkChallanToLr({
+            lrId: req.params.id,
+            challanNo,
+            quantity,
+            material,
+            lrCollection: getCol(BASE_COL, req),
+            brand: 'jhajjar',
+            orgId: req.orgId,
+            req
+        });
+        res.json(result);
     } catch (error) {
         res.status(error.status || 500).json({ error: error.message });
     }
@@ -165,24 +153,24 @@ router.post('/invoice/generate', async (req, res) => {
         const { generateInvoicePDF } = require('../utils/pdfService');
         const pdfBuffer = await generateInvoicePDF({ plantKey, billNo: invoiceNumber, billDate: invoiceDate, items }, null);
 
-        // Background backup to Google Drive
-        if (await driveService.isAuthorized()) {
+        if (await driveService.isAuthorized().catch(() => false)) {
             (async () => {
                 try {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const TEMP_DIR = path.join(require('os').tmpdir(), 'vgtc_backups');
-                    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
-                    const safeInvoiceNo = (invoiceNumber || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-');
-                    const fileName = `Invoice_${safeInvoiceNo}_${Date.now()}.pdf`;
-                    const localPath = path.join(TEMP_DIR, fileName);
-                    require('fs').writeFileSync(localPath, pdfBuffer);
-                    const rootId = await driveService.getOrCreateFolder('VGTC_Backups');
-                    const plantFolder = await driveService.getOrCreateFolder('Jhajjar_Dump', rootId);
-                    const finalFolder = await driveService.getOrCreateFolder('Invoices', plantFolder);
-                    await driveService.uploadFile(localPath, fileName, finalFolder);
-                    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-                    console.log(`[Backup-Hook] Jhajjar Invoice backed up: ${fileName}`);
+                    const backupPathUtils = require('../utils/backupPathUtils');
+                    const segments = backupPathUtils.resolveBackupFolderSegments({
+                        module: 'Invoices',
+                        date: invoiceDate,
+                    });
+                    const fileName = backupPathUtils.resolveBackupFileName({
+                        module: 'Invoices',
+                        id: invoiceNumber,
+                        date: invoiceDate,
+                    });
+
+                    const folderId = await driveService.ensurePath(segments);
+                    await driveService.upsertBuffer(pdfBuffer, fileName, folderId, 'application/pdf');
+                    await driveService.logActivity('Invoice_Backup', 'success', `Backed up: ${fileName} in ${segments.join('/')}`);
+                    console.log(`[Backup-Hook] Jhajjar Invoice backed up: ${fileName} in ${segments.join('/')}`);
                 } catch (e) {
                     console.error('[Backup-Hook] Jhajjar Invoice backup FAILED:', e.message);
                 }

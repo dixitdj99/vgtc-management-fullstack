@@ -42,6 +42,18 @@ router.delete('/additions/:id', async (req, res) => {
     catch (e) { res.status(404).json({ error: e.message }); }
 });
 
+const { dispatchChallanCreatedNotification, getVehicleChallanBalances } = require('../utils/challanNotificationService');
+
+/* ── Challan Balances ── */
+router.get('/challans/balances', async (req, res) => {
+    try {
+        const data = await getVehicleChallanBalances(req.orgId, req.query.truckNo);
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /* ── Challans ── */
 router.get('/challans', async (req, res) => {
     try { res.json(await svc.getAllChallans(req.orgId, getCol(CCOL, req))); }
@@ -52,9 +64,10 @@ router.post('/challans', async (req, res) => {
         const doc = await svc.createChallan(req.orgId, req.body, getCol(CCOL, req), getCol(MCOL, req));
         sheetsService.upsertStockChallan(doc, 'jksuper').catch(err => console.error('[Backup Hook] Challan upsert failed:', err.message));
 
-
-
         res.status(201).json(doc);
+
+        // WhatsApp notification to vehicle owner
+        dispatchChallanCreatedNotification(doc, req);
     }
     catch (e) { res.status(400).json({ error: e.message }); }
 });

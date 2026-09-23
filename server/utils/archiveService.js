@@ -13,6 +13,8 @@
  */
 
 const driveService = require('./driveService');
+const { backupCustomDocument } = require('./realtimeBackup');
+const backupPathUtils = require('./backupPathUtils');
 
 /** Top-level folders. Anything not listed is filed under Other. */
 const MODULES = new Set([
@@ -23,60 +25,36 @@ const MODULES = new Set([
 /** Subfolders within a module. */
 const KINDS = new Set(['Documents', 'Statements', 'Exports', 'Weekly Lists']);
 
-const MAX_HTML_BYTES = 2 * 1024 * 1024;
+const MAX_HTML_BYTES = 4 * 1024 * 1024;
 
-/** Drive rejects these outright, and a slash would silently nest a folder. */
-const safeName = (s) => String(s || '')
-    .replace(/[\\/:*?"<>|]+/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 120);
-
-/** YYYY-MM, the folder a document is filed under. */
-const monthOf = (d = new Date()) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const safeName = backupPathUtils.safeName;
+const monthOf = backupPathUtils.formatMonthFolder;
 
 /**
- * The folder a document belongs in.
- * Exported so the tests can assert the tree without touching Drive.
- * @returns {string[]} path segments below VGTC_Backups
+ * The canonical folder path segments below VGTC_Backups.
  */
 function folderPath({ module, kind = 'Documents', plant, when = new Date() }) {
-    return [
-        MODULES.has(module) ? module : 'Other',
-        KINDS.has(kind) ? kind : 'Documents',
-        plant ? safeName(plant) : null,
-        monthOf(when),
-    ].filter(Boolean);
+    return backupPathUtils.resolveBackupFolderSegments({
+        module,
+        plant,
+        date: when,
+    });
 }
 
 /**
+ * Archives a document to Google Drive in professional PDF format.
+ * 
  * @param {object} doc module, kind, name, html, plant, meta
  * @returns {Promise<{archived: boolean, reason?: string, id?: string, replaced?: boolean}>}
  */
 async function archive({ module, kind, name, html, plant, meta }) {
-    if (!name || !html) return { archived: false, reason: 'name and html are required' };
-    if (Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) {
+    if (!name && !html) return { archived: false, reason: 'name or html is required' };
+    if (html && Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES) {
         return { archived: false, reason: 'document is too large to archive' };
     }
 
-    // Unauthorized is the ordinary state until someone connects Drive, so it is
-    // reported rather than raised — the caller carries on either way.
-    if (!(await driveService.isAuthorized().catch(() => false))) {
-        return { archived: false, reason: 'Google Drive is not connected' };
-    }
-
-    const folderId = await driveService.ensurePath(folderPath({ module, kind, plant }));
-    const fileName = `${safeName(name)}.html`;
-    const res = await driveService.upsertBuffer(
-        Buffer.from(html, 'utf8'), fileName, folderId, 'text/html',
-    );
-
-    await driveService.logActivity(
-        `Archive_${module || 'Other'}`, 'success',
-        `${res.replaced ? 'Replaced' : 'Filed'} ${fileName}${meta?.lrNo ? ` (LR ${meta.lrNo})` : ''}`,
-    );
-    return { archived: true, id: res.id, replaced: res.replaced };
+    return await backupCustomDocument({ module, kind, name, html, plant, meta });
 }
 
 module.exports = { archive, folderPath, safeName, monthOf, MODULES, KINDS, MAX_HTML_BYTES };
+

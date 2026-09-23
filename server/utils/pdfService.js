@@ -109,10 +109,11 @@ async function generateReceiptPDF(title, data, outputPath) {
  * Generates a voucher PDF that exactly matches the browser print slip from VoucherModule.jsx.
  * Used for individual per-creation backups.
  */
-async function generateVoucherPDF(v, outputPath) {
-    const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+function buildVoucherBillDoc(v, doc) {
+    const PW = 595.28;
+    const PH = 419.53;
+    const M = 15;
 
-    // Support multi-delivery vouchers (deliveries array)
     const gross = v.deliveries?.length > 0
         ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
         : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
@@ -131,397 +132,477 @@ async function generateVoucherPDF(v, outputPath) {
     const totalDeductions = diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash;
     const net = gross - totalDeductions;
 
-    // Match exact same deduction list as browser printVoucher function
-    const deductions = [
-        { label: 'Diesel Advance',    value: diesel,    isPending: dieselPending },
-        { label: 'Cash Advance',      value: cash },
-        { label: 'Online Advance',    value: online },
-        { label: 'Munshi',            value: munshi },
-        { label: 'Shortage',          value: shortage },
-        { label: 'Commission',        value: commission },
-        { label: 'Tyre Puncture',     value: tyrePuncture },
-        { label: 'Tyre Greasing & Air', value: tyreGreasing },
-    ].filter(d => d.value > 0 || d.isPending)
-        // One row per extra, remark carried as a note. Folded into the label it
-        // ran under the amount, which is printed at the same y.
-        .concat(printableExtras(v).map(e => ({ label: 'Extra Cash', note: e.remark, value: e.amount })));
+    doc.rect(M, M, PW - M * 2, PH - M * 2).strokeColor('#000').lineWidth(1).stroke();
+    
+    let y = M + 5;
+    doc.fontSize(16).font('Helvetica-Bold').fillColor('#000').text('M/S. VIKAS GOODS TRANSPORT CO.', M, y, { align: 'center' });
+    y += 20;
+    
+    doc.rect(M + (PW - M * 2) / 2 - 100, y, 200, 14).fillAndStroke('#000', '#000');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff').text('Authorised Transport for : J.K. Super Cement Ltd.', M, y + 3, { align: 'center' });
+    y += 18;
+    
+    doc.fillColor('#000').fontSize(8).font('Helvetica-Bold').text('Near Gaushala, Rewari Road, Jhajjar (Hr.)', M, y, { align: 'center' });
+    y += 10;
+    doc.text('Mob. : 9416319445, 9728954901, 9728284849', M, y, { align: 'center' });
+    y += 10;
+    doc.fontSize(7).font('Helvetica').text('Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari', M, y, { align: 'center' });
+    doc.fontSize(7).font('Helvetica-Bold').text('GSTIN : 06ARIPK9021C2Z2', PW - M - 120, M + 10);
+    
+    y += 12;
+    doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1).stroke();
+    
+    // Info grid
+    const col1 = M + 100;
+    const col2 = M + 300;
+    doc.moveTo(col1, y).lineTo(col1, y + 45).stroke();
+    doc.moveTo(col2, y).lineTo(col2, y + 45).stroke();
+    
+    doc.fontSize(8).font('Helvetica-Bold').text('Consignor', M + 5, y + 5);
+    doc.moveTo(M, y + 15).lineTo(col1, y + 15).stroke();
+    doc.text('J.K. Super Cement Ltd.', M + 5, y + 20);
+    doc.moveTo(M, y + 30).lineTo(col1, y + 30).stroke();
+    const consignorBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
+    doc.text(consignorBranch, M + 5, y + 35, { align: 'center', width: col1 - M });
+    
+    const pName = v.partyName ? v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '') : '';
+    doc.text(`M/s.  ${pName}`, col1 + 5, y + 5, { width: 190 });
+    doc.moveTo(col1, y + 15).lineTo(col2, y + 15).stroke();
+    
+    if (v.partyCode) {
+        doc.fontSize(7).text(`Party Code:  ${v.partyCode}`, col1 + 5, y + 18);
+    }
+    doc.moveTo(col1, y + 30).lineTo(col2, y + 30).stroke();
+    doc.fontSize(8);
+    doc.text('S.T.L. No.', col1 + 5, y + 35);
+    doc.text('C.S.T. No.', col1 + 100, y + 35);
+    
+    doc.text(`Truck No.  ${v.truckNo || ''}`, col2 + 5, y + 5);
+    doc.moveTo(col2, y + 15).lineTo(PW - M, y + 15).stroke();
+    const fromBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
+    doc.text(`From : ${fromBranch}`, col2 + 5, y + 18);
+    doc.moveTo(col2, y + 30).lineTo(PW - M, y + 30).stroke();
+    doc.text(`To  ${v.destination || ''}`, col2 + 50, y + 18);
+    doc.text(`LR No. ${v.lrNo || ''}`, col2 + 5, y + 35);
+    doc.font('Helvetica').text(`Date: ${v.date || ''}`, col2 + 100, y + 35);
+    
+    y += 45;
+    doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+    
+    const cw1 = 40, cw2 = 120, cw3 = 60, cw4 = 40, cw5 = 60, cw6 = 60, cw7 = 60;
+    let cwX = [M + cw1, M + cw1 + cw2, M + cw1 + cw2 + cw3, M + cw1 + cw2 + cw3 + cw4, M + cw1 + cw2 + cw3 + cw4 + cw5, M + cw1 + cw2 + cw3 + cw4 + cw5 + cw6, M + cw1 + cw2 + cw3 + cw4 + cw5 + cw6 + cw7];
+    
+    cwX.forEach((x, i) => { if (i < cwX.length - 1) doc.moveTo(x, y).lineTo(x, PH - M - 40).stroke(); });
+    
+    doc.fontSize(8).font('Helvetica-Bold');
+    doc.text('No. of Bags', M + 5, y + 5, { width: cw1 - 10, align: 'center' });
+    doc.text('Description said to contain', cwX[0] + 5, y + 5, { width: cw2 - 10, align: 'center' });
+    doc.text('Actual Weight', cwX[1] + 5, y + 2, { width: cw3 - 10, align: 'center' });
+    doc.moveTo(cwX[1], y + 12).lineTo(cwX[2], y + 12).stroke();
+    doc.text('Qn.', cwX[1] + 2, y + 15);
+    doc.moveTo(cwX[1] + cw3/2, y + 12).lineTo(cwX[1] + cw3/2, PH - M - 40).stroke();
+    doc.text('Kg.', cwX[1] + cw3/2 + 2, y + 15);
+    doc.text('Rate', cwX[2] + 5, y + 5, { width: cw4 - 10, align: 'center' });
+    
+    ['FRIEGHT', 'Paid', 'To Pay'].forEach((lbl, i) => {
+        const bx = cwX[3 + i];
+        doc.text(lbl, bx + 5, y + 2, { width: cw5 - 10, align: 'center' });
+        doc.moveTo(bx, y + 12).lineTo(bx + cw5, y + 12).stroke();
+        doc.text('Rs.', bx + 5, y + 15);
+        doc.moveTo(bx + cw5 - 15, y + 12).lineTo(bx + cw5 - 15, PH - M - 40).stroke();
+        doc.text('P.', bx + cw5 - 12, y + 15);
+    });
+    
+    doc.text('Remark', cwX[6] + 5, y + 5, { width: PW - M - cwX[6] - 10, align: 'center' });
+    
+    y += 25;
+    doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+    
+    doc.fontSize(9).font('Helvetica').text(v.bags || '', M + 5, y + 10, { width: cw1 - 10, align: 'center' });
+    const descY = y + 5;
+    
+    doc.fontSize(8).font('Helvetica-Bold').text('CEMENT', cwX[0] + 5, descY, { align: 'center', width: cw2 - 10 });
+    doc.moveTo(cwX[0], descY + 12).lineTo(cwX[1], descY + 12).stroke();
+    
+    if (v.materials && v.materials.length > 0) {
+        let matY = descY + 15;
+        v.materials.forEach(m => {
+            doc.fontSize(7).font('Helvetica').text(m.type || m.material, cwX[0] + 5, matY);
+            doc.text(m.bags + ' Bags', cwX[0] + 60, matY);
+            matY += 10;
+        });
+    } else {
+        doc.fontSize(7).font('Helvetica').text('Grade:\nJ.K. Super Cement / PPC / 43 / 53', cwX[0] + 5, descY + 15);
+    }
+    
+    doc.text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 10, { width: cw3 - 10, align: 'center' });
+    doc.text(v.rate ? `Rs.${v.rate}` : '', cwX[2] + 5, y + 10, { width: cw4 - 10, align: 'center' });
+    doc.text(`Rs.${Math.round(gross).toLocaleString()}`, cwX[3] + 5, y + 10, { width: cw5 - 10, align: 'center' });
+    
+    // Bottom calculation box
+    y = PH - M - 95;
+    doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+    
+    doc.fontSize(8).font('Helvetica-Bold').text('Advance Details:', M + 5, y + 4);
+    let advY = y + 15;
+    doc.fontSize(7).font('Helvetica');
+    if (diesel > 0 || dieselPending) {
+        doc.text(`Diesel: ${dieselPending ? 'Pending' : 'Rs.' + diesel.toLocaleString()} (${v.pump || 'Pump'})`, M + 5, advY);
+        advY += 10;
+    }
+    if (cash > 0) { doc.text(`Cash: Rs.${cash.toLocaleString()}`, M + 5, advY); advY += 10; }
+    if (online > 0) { doc.text(`Online: Rs.${online.toLocaleString()}`, M + 5, advY); advY += 10; }
+    if (munshi > 0) { doc.text(`Munshi: Rs.${munshi.toLocaleString()}`, M + 5, advY); advY += 10; }
+    
+    // Totals line
+    y = PH - M - 40;
+    doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('TOTAL', M + 5, y + 3, { width: cw1 - 10, align: 'center' });
+    doc.text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 3, { width: cw3 - 10, align: 'center' });
+    doc.text(`Gross: Rs.${Math.round(gross).toLocaleString()}`, cwX[3] + 5, y + 3, { width: cw5 * 3 - 10, align: 'center' });
+    
+    y += 15;
+    doc.moveTo(M, y).lineTo(PW - M, y).stroke();
+    
+    doc.fontSize(6).font('Helvetica').text('*I/We declare that we have not taken credit of Excise Duty paid on inputs... All Disputes arising out of it shall have the Jurisdiction for Jhajjar', M + 5, y + 2);
+    doc.font('Helvetica-Bold').text('Service Tax to be paid by Consignor', M + 5, y + 10, { align: 'center', width: PW - M * 2 });
+    
+    y += 20;
+    doc.fontSize(8);
+    doc.text('Sign. of Driver', M + cw1 + 20, y);
+    doc.text('Sign. of Clerk for VIKAS GOODS TRANSPORT', PW - M - 200, y, { align: 'right', width: 190 });
+}
 
-    return new Promise((resolve, reject) => {
-        if (isBill) {
-            const doc = new PDFDocument({ margin: 20, size: 'A5', layout: 'landscape' });
-            const stream = fs.createWriteStream(outputPath);
-            doc.pipe(stream);
+function buildNonBillVoucherDoc(v, doc) {
+    const PW = doc.page.width, PH = doc.page.height, M = 24, CW = PW - M * 2;
+    let y = M;
 
-            // A5 landscape: width = 595.28, height = 419.53
-            const PW = 595.28;
-            const PH = 419.53;
-            const M = 15;
+    // Outer border
+    doc.rect(M, M, CW, PH - M * 2).strokeColor('#000').lineWidth(1.2).stroke();
 
-            doc.rect(M, M, PW - M * 2, PH - M * 2).strokeColor('#000').lineWidth(1).stroke();
-            
-            let y = M + 5;
-            doc.fontSize(16).font('Helvetica-Bold').fillColor('#000').text('M/S. VIKAS GOODS TRANSPORT CO.', M, y, { align: 'center' });
-            y += 20;
-            
-            doc.rect(M + (PW - M * 2) / 2 - 100, y, 200, 14).fillAndStroke('#000', '#000');
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff').text('Authorised Transport for : J.K. Super Cement Ltd.', M, y + 3, { align: 'center' });
-            y += 18;
-            
-            doc.fillColor('#000').fontSize(8).font('Helvetica-Bold').text('Near Gaushala, Rewari Road, Jhajjar (Hr.)', M, y, { align: 'center' });
-            y += 10;
-            doc.text('Mob. : 9416319445, 9728954901, 9728284849', M, y, { align: 'center' });
-            y += 10;
-            doc.fontSize(7).font('Helvetica').text('Head Office : Near Rao Gopal Dev Chowk, Narnaul Road, Rewari', M, y, { align: 'center' });
-            doc.fontSize(7).font('Helvetica-Bold').text('GSTIN : 06ARIPK9021C2Z2', PW - M - 100, M + 10);
-            
-            y += 12;
-            doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1).stroke();
-            
-            // Info grid
-            const col1 = M + 100;
-            const col2 = M + 300;
-            doc.moveTo(col1, y).lineTo(col1, y + 45).stroke();
-            doc.moveTo(col2, y).lineTo(col2, y + 45).stroke();
-            
-            doc.fontSize(8).font('Helvetica-Bold').text('Consignor', M + 5, y + 5);
-            doc.moveTo(M, y + 15).lineTo(col1, y + 15).stroke();
-            doc.text('J.K. Super Cement Ltd.', M + 5, y + 20);
-            doc.moveTo(M, y + 30).lineTo(col1, y + 30).stroke();
-            const consignorBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
-            doc.text(consignorBranch, M + 5, y + 35, { align: 'center', width: col1 - M });
-            
-            const pName = v.partyName ? v.partyName.replace(/^m\/s\.?\s*/i, '').replace(/[\.\-_\s]+$/, '') : '';
-            doc.text(`M/s.  ${pName}`, col1 + 5, y + 5, { width: 190 });
-            doc.moveTo(col1, y + 15).lineTo(col2, y + 15).stroke();
-            
-            if (v.partyCode) {
-                doc.fontSize(7).text(`Party Code:  ${v.partyCode}`, col1 + 5, y + 18);
-            }
-            doc.moveTo(col1, y + 30).lineTo(col2, y + 30).stroke();
-            doc.fontSize(8);
-            doc.text('S.T.L. No.', col1 + 5, y + 35);
-            doc.text('C.S.T. No.', col1 + 100, y + 35);
-            
-            doc.text(`Truck No.  ${v.truckNo || ''}`, col2 + 5, y + 5);
-            doc.moveTo(col2, y + 15).lineTo(PW - M, y + 15).stroke();
-            const fromBranch = v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh');
-            doc.text(`From : ${fromBranch}`, col2 + 5, y + 18);
-            doc.moveTo(col2, y + 30).lineTo(PW - M, y + 30).stroke();
-            doc.text(`To  ${v.destination || ''}`, col2 + 50, y + 18);
-            doc.text(`LR No. ${v.lrNo || ''}`, col2 + 5, y + 35);
-            doc.font('Helvetica').text(`Date: ${v.date}`, col2 + 100, y + 35);
-            
-            y += 45;
-            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
-            
-            const cw1 = 40, cw2 = 120, cw3 = 60, cw4 = 40, cw5 = 60, cw6 = 60, cw7 = 60;
-            let cwX = [M + cw1, M + cw1 + cw2, M + cw1 + cw2 + cw3, M + cw1 + cw2 + cw3 + cw4, M + cw1 + cw2 + cw3 + cw4 + cw5, M + cw1 + cw2 + cw3 + cw4 + cw5 + cw6, M + cw1 + cw2 + cw3 + cw4 + cw5 + cw6 + cw7];
-            
-            cwX.forEach((x, i) => { if (i < cwX.length - 1) doc.moveTo(x, y).lineTo(x, PH - M - 40).stroke(); });
-            
-            doc.fontSize(8).font('Helvetica-Bold');
-            doc.text('No. of Bags', M + 5, y + 5, { width: cw1 - 10, align: 'center' });
-            doc.text('Description said to contain', cwX[0] + 5, y + 5, { width: cw2 - 10, align: 'center' });
-            doc.text('Actual Weight', cwX[1] + 5, y + 2, { width: cw3 - 10, align: 'center' });
-            doc.moveTo(cwX[1], y + 12).lineTo(cwX[2], y + 12).stroke();
-            doc.text('Qn.', cwX[1] + 2, y + 15);
-            doc.moveTo(cwX[1] + cw3/2, y + 12).lineTo(cwX[1] + cw3/2, PH - M - 40).stroke();
-            doc.text('Kg.', cwX[1] + cw3/2 + 2, y + 15);
-            doc.text('Rate', cwX[2] + 5, y + 5, { width: cw4 - 10, align: 'center' });
-            
-            ['FRIEGHT', 'Paid', 'To Pay'].forEach((lbl, i) => {
-                const bx = cwX[3 + i];
-                doc.text(lbl, bx + 5, y + 2, { width: cw5 - 10, align: 'center' });
-                doc.moveTo(bx, y + 12).lineTo(bx + cw5, y + 12).stroke();
-                doc.text('Rs.', bx + 5, y + 15);
-                doc.moveTo(bx + cw5 - 15, y + 12).lineTo(bx + cw5 - 15, PH - M - 40).stroke();
-                doc.text('P.', bx + cw5 - 12, y + 15);
-            });
-            
-            doc.text('Remark', cwX[6] + 5, y + 5, { width: PW - M - cwX[6] - 10, align: 'center' });
-            
-            y += 25;
-            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
-            
-            doc.fontSize(9).font('Helvetica').text(v.bags || '', M + 5, y + 10, { width: cw1 - 10, align: 'center' });
-            const descY = y + 5;
-            
-            doc.fontSize(8).font('Helvetica-Bold').text('CEMENT', cwX[0] + 5, descY, { align: 'center', width: cw2 - 10 });
-            doc.moveTo(cwX[0], descY + 12).lineTo(cwX[1], descY + 12).stroke();
-            
-            if (v.materials && v.materials.length > 0) {
-                let matY = descY + 15;
-                v.materials.forEach(m => {
-                    doc.fontSize(7).font('Helvetica').text(m.type || m.material, cwX[0] + 5, matY);
-                    doc.text(m.bags + ' Bags', cwX[0] + 60, matY);
-                    matY += 10;
-                });
-            } else {
-                doc.fontSize(7).font('Helvetica').text('Grade:\nJ.K. Super Cement / PPC / 43 / 53', cwX[0] + 5, descY + 15);
-            }
-            
-            doc.moveTo(cwX[0], descY + 45).lineTo(cwX[1], descY + 45).stroke();
-            doc.fontSize(7).text(`Bill No. : ${v.billNo || 'N/A'}`, cwX[0] + 5, descY + 50);
-            doc.text('Value of Goods:', cwX[0] + 5, descY + 60);
-            doc.text('Shipment No. :', cwX[0] + 5, descY + 70);
-            doc.text('D.I. No.', cwX[0] + 5, descY + 80);
-            
-            doc.fontSize(9).text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 10, { width: cw3 - 10, align: 'center' });
-            doc.fontSize(8).text(v.rate || '', cwX[2] + 5, y + 10, { width: cw4 - 10, align: 'center' });
-            
-            doc.fontSize(8).font('Helvetica-Bold').text(`Advance = \n${dieselPending ? 'FULL (Pending)' : (!totalDeductions ? '—' : 'Rs.' + Math.round(totalDeductions).toLocaleString())}`, cwX[3] + 5, y + 30, { width: cw5*2 - 10, align: 'center' });
-            doc.fontSize(10).text(`To be Billed\n\n${dieselPending ? '—' : 'Rs.' + Math.round(net).toLocaleString()}`, cwX[5] + 5, y + 20, { width: cw7 - 10, align: 'center' });
-            doc.fontSize(7).font('Helvetica').text(`Driver Name\nD.L. No.\nOwner Permit No.\nPermit No.\nAddress\n\n${getPumpDisplay(v.pump) !== '—' ? 'Pump: ' + getPumpDisplay(v.pump) : ''}`, cwX[6] + 5, y + 5);
-            
-            y = PH - M - 40;
-            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
-            doc.fontSize(9).font('Helvetica-Bold');
-            doc.text('Total', M + 5, y + 3, { width: cw1 + cw2 - 10, align: 'center' });
-            doc.text(v.weight ? v.weight + ' MT' : '', cwX[1] + 5, y + 3, { width: cw3 - 10, align: 'center' });
-            doc.text(`Gross: Rs.${Math.round(gross).toLocaleString()}`, cwX[3] + 5, y + 3, { width: cw5 * 3 - 10, align: 'center' });
-            
-            y += 15;
-            doc.moveTo(M, y).lineTo(PW - M, y).stroke();
-            
-            doc.fontSize(6).font('Helvetica').text('*I/We declare that we have not taken credit of Excise Duty paid on inputs... All Disputes arising out of it shall have the Jurisdiction for Jhajjar', M + 5, y + 2);
-            doc.font('Helvetica-Bold').text('Service Tax to be paid by Consignor', M + 5, y + 10, { align: 'center', width: PW - M * 2 });
-            
-            y += 20;
-            doc.fontSize(8);
-            doc.text('Sign. of Driver', M + cw1 + 20, y);
-            doc.text('Sign. of Clerk for VIKAS GOODS TRANSPORT', PW - M - 200, y, { align: 'right', width: 190 });
-            
-            doc.end();
-            stream.on('finish', () => resolve(outputPath));
-            stream.on('error', reject);
-            return;
+    const hasDeliveries = v.deliveries && v.deliveries.length > 0;
+    const gross = hasDeliveries
+        ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
+        : (parseFloat(v.weight) || 0) * (parseFloat(v.rate) || 0);
+
+    const dieselPending = !!v.advanceDiesel && isNaN(parseFloat(v.advanceDiesel));
+    const diesel   = dieselPending ? 0 : (parseFloat(v.advanceDiesel) || 0);
+    const cash     = parseFloat(v.advanceCash) || 0;
+    const online   = parseFloat(v.advanceOnline) || 0;
+    const weight   = parseFloat(v.weight) || (hasDeliveries ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0) : 0);
+    const bags     = parseInt(v.bags) || (hasDeliveries ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0) : 0);
+    const munshi   = parseFloat(v.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
+    const shortage = parseFloat(v.shortage) || 0;
+    const commission = parseFloat(v.commission) || 0;
+    const tyrePuncture = parseFloat(v.tyrePuncture) || 0;
+    const tyreGreasing = (parseFloat(v.tyreGreasingAir) || 0) + (parseFloat(v.tyreGreasing) || 0) + (parseFloat(v.tyreAir) || 0);
+    const extraCash  = parseFloat(v.extraCash) || 0;
+    const totalDeductions = diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash;
+    const net = gross - totalDeductions;
+
+    // Header
+    y += 10;
+    doc.fontSize(15).font('Helvetica-Bold').fillColor('#000').text('VIKAS GOODS TRANSPORT CO.', M, y, { align: 'center', width: CW });
+    y += 18;
+    const sub = v.type ? v.type.replace(/_/g, ' ').toUpperCase() : 'FREIGHT ADVANCE VOUCHER';
+    doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e293b').text(`FREIGHT ADVANCE VOUCHER (${sub})`, M, y, { align: 'center', width: CW });
+    y += 13;
+    doc.fontSize(7.5).font('Helvetica').fillColor('#475569').text('Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar | Mob: 9416319445 | GSTIN: 06ARIPK9021C2Z2', M, y, { align: 'center', width: CW });
+    y += 12;
+    doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1).stroke();
+    y += 8;
+
+    // Badges Row: Voucher No & LR No
+    const lrDisplay = hasDeliveries
+        ? v.deliveries.map(d => d.lrNo).filter(Boolean).map(n => `#${n}`).join(', ') || (v.lrNo ? `#${v.lrNo}` : 'AUTO')
+        : (v.lrNo ? `#${v.lrNo}` : 'AUTO');
+    const vNo = v.voucherNo || v.entryId || v.id || '—';
+
+    doc.rect(M + 10, y, (CW - 30) / 2, 20).fillAndStroke('#0f172a', '#0f172a');
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#fff').text(`VOUCHER # ${vNo}`, M + 10, y + 5, { align: 'center', width: (CW - 30) / 2 });
+
+    doc.rect(M + 20 + (CW - 30) / 2, y, (CW - 30) / 2, 20).strokeColor('#0f172a').lineWidth(1).stroke();
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(`LR(s): ${lrDisplay}`, M + 20 + (CW - 30) / 2, y + 5, { align: 'center', width: (CW - 30) / 2 });
+    y += 28;
+
+    // Info Grid
+    const drawRow = (lbl1, val1, lbl2, val2) => {
+        const colW = CW / 2;
+        doc.rect(M, y, colW, 20).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+        doc.rect(M + colW, y, colW, 20).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text(lbl1.toUpperCase(), M + 8, y + 3);
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(String(val1 || '—'), M + 8, y + 10, { width: colW - 16, ellipsis: true });
+
+        if (lbl2) {
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text(lbl2.toUpperCase(), M + colW + 8, y + 3);
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(String(val2 || '—'), M + colW + 8, y + 10, { width: colW - 16, ellipsis: true });
         }
+        y += 20;
+    };
 
-        const doc = new PDFDocument({ margin: 30, size: 'A6' });
+    drawRow('Date', v.date || new Date().toLocaleDateString('en-IN'), 'Truck Number', (v.truckNo || '—').toUpperCase());
+    drawRow('Party / Consignee', v.partyName || '—', 'Destination', v.destination || '—');
+    drawRow('Driver Name', v.driverName || '—', 'Fuel Pump', v.pump && v.pump !== 'None' ? v.pump : 'None');
+    y += 8;
+
+    // Metrics Row
+    const cardW = (CW - 18) / 4;
+    const cards = [
+        { label: 'WEIGHT', val: `${weight.toFixed(2)} MT` },
+        { label: 'BAGS', val: `${bags} Bags` },
+        { label: 'RATE', val: v.rate ? `Rs.${v.rate}/MT` : '—' },
+        { label: 'GROSS FREIGHT', val: `Rs.${Math.round(gross).toLocaleString('en-IN')}` }
+    ];
+    cards.forEach((c, i) => {
+        const cx = M + i * (cardW + 6);
+        doc.rect(cx, y, cardW, 26).fillAndStroke('#f8fafc', '#cbd5e1');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text(c.label, cx + 4, y + 3, { align: 'center', width: cardW - 8 });
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(c.val, cx + 4, y + 13, { align: 'center', width: cardW - 8 });
+    });
+    y += 34;
+
+    // Deductions Table
+    doc.rect(M, y, CW, 18).fill('#1e293b');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff').text('DEDUCTION / ADVANCE PARTICULARS', M + 8, y + 5);
+    doc.text('AMOUNT (RS)', M + 8, y + 5, { width: CW - 16, align: 'right' });
+    y += 18;
+
+    const deductionLines = [
+        { label: 'Diesel Advance' + (v.pump && v.pump !== 'None' ? ` (${v.pump})` : ''), val: diesel, pending: dieselPending },
+        { label: 'Cash Advance', val: cash },
+        { label: 'Online Advance', val: online },
+        { label: 'Munshi', val: munshi },
+        { label: 'Shortage', val: shortage },
+        { label: 'Commission', val: commission },
+        { label: 'Tyre Puncture', val: tyrePuncture },
+        { label: 'Tyre Greasing & Air', val: tyreGreasing },
+        { label: 'Extra Cash' + (v.extraCashRemark ? ` (${v.extraCashRemark})` : ''), val: extraCash },
+    ].filter(d => d.val > 0 || d.pending);
+
+    if (!deductionLines.length) {
+        doc.rect(M, y, CW, 18).fillAndStroke('#fff', '#cbd5e1');
+        doc.fontSize(8).font('Helvetica').fillColor('#64748b').text('No advance deductions recorded for this trip.', M + 8, y + 5);
+        y += 18;
+    } else {
+        deductionLines.forEach((d, idx) => {
+            const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+            doc.rect(M, y, CW, 18).fillAndStroke(bg, '#cbd5e1');
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e293b').text(d.label, M + 8, y + 5);
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000').text(
+                d.pending ? 'FULL (Pending)' : `- Rs. ${Math.round(d.val).toLocaleString('en-IN')}`,
+                M + 8, y + 5, { width: CW - 16, align: 'right' }
+            );
+            y += 18;
+        });
+    }
+
+    // Total deductions
+    doc.rect(M, y, CW, 18).fillAndStroke('#f1f5f9', '#94a3b8');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text('TOTAL DEDUCTIONS:', M + 8, y + 5);
+    doc.text(`- Rs. ${Math.round(totalDeductions).toLocaleString('en-IN')}`, M + 8, y + 5, { width: CW - 16, align: 'right' });
+    y += 24;
+
+    // Net Payable Highlight Banner
+    doc.rect(M, y, CW, 24).fillAndStroke('#0f172a', '#0f172a');
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET BALANCE PAYABLE:', M + 10, y + 6);
+    doc.text(`Rs. ${Math.round(net).toLocaleString('en-IN')}`, M + 10, y + 6, { width: CW - 20, align: 'right' });
+    y += 32;
+
+    // Payment Status Stamp
+    const isPaid = (v.paymentStatus || '').toLowerCase() === 'paid';
+    doc.rect(M + 8, y, 120, 20).lineWidth(1.5).strokeColor(isPaid ? '#10b981' : '#f59e0b').stroke();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor(isPaid ? '#10b981' : '#d97706').text(
+        isPaid ? '✔ PAID IN FULL' : '⏳ BALANCE PENDING',
+        M + 8, y + 5, { width: 120, align: 'center' }
+    );
+
+    // Signatures
+    const sigY = PH - M - 60;
+    const sigW = (CW - 20) / 3;
+    const sigs = ['Driver Signature', 'Munshi / Manager', 'Authorized Signatory (VGTC)'];
+    sigs.forEach((lbl, i) => {
+        const sx = M + i * (sigW + 10);
+        doc.rect(sx, sigY, sigW, 42).strokeColor('#94a3b8').lineWidth(0.5).stroke();
+        doc.moveTo(sx + 8, sigY + 28).lineTo(sx + sigW - 8, sigY + 28).strokeColor('#cbd5e1').stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#334155').text(lbl, sx, sigY + 31, { width: sigW, align: 'center' });
+    });
+
+    // Footer
+    doc.fontSize(7).font('Helvetica').fillColor('#94a3b8').text(`VGTC Smart Logistics Portal • Backed up on ${new Date().toLocaleString('en-IN')}`, M, PH - M - 12, { align: 'center', width: CW });
+}
+
+async function generateVoucherPDF(v, outputPath) {
+    return new Promise((resolve, reject) => {
+        const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+        const doc = new PDFDocument(isBill ? { margin: 20, size: 'A5', layout: 'landscape' } : { margin: 24, size: 'A5' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
-        const PW = doc.page.width, M = 30, CW = PW - M * 2;
-        let y = M;
-
-        // Header — matches browser print
-        doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
-        y += 16;
-        doc.fontSize(10).font('Helvetica-Bold').text('Voucher', M, y, { align: 'center', width: CW });
-        y += 12;
-        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar', M, y, { align: 'center', width: CW });
-        y += 12;
-        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
-        y += 10;
-
-        // LR badge — show all delivery LRs if multi-delivery
-        const hasDeliveries = v.deliveries && v.deliveries.length > 0;
-        const lrDisplay = hasDeliveries
-            ? `LRs: ${v.deliveries.map(d => d.lrNo).filter(Boolean).join(', ')}`
-            : `LR # ${v.lrNo}`;
-        const bw = Math.min(doc.widthOfString(lrDisplay) + 20, CW);
-        doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
-        doc.fontSize(hasDeliveries ? 8 : 12).font('Helvetica-Bold').text(lrDisplay, M, y + (hasDeliveries ? 5 : 4), { align: 'center', width: CW });
-        y += 22;
-        doc.fontSize(8).font('Helvetica').fillColor('#000').text(v.type ? v.type.replace(/_/g, ' ') : '', M, y, { align: 'center', width: CW });
-        y += 14;
-
-        // Info rows
-        const drawInfoRow = (label, value) => {
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), M, y);
-            doc.font('Helvetica').text(String(value || '—'), M + CW * 0.4, y, { width: CW * 0.6, align: 'right' });
-            y += 14;
-            doc.moveTo(M, y - 2).lineTo(PW - M, y - 2).strokeColor('#000').lineWidth(0.3).stroke();
-        };
-        drawInfoRow('Date', v.date);
-        drawInfoRow('Truck No.', v.truckNo);
-
-        if (hasDeliveries) {
-            // Multi-delivery: show each destination inline
-            v.deliveries.forEach(d => {
-                drawInfoRow(`${d.lrNo ? '#'+d.lrNo+' ' : ''}Dest`, `${d.destination || '—'} ${d.partyName ? '('+d.partyName+')' : ''}`);
-            });
-        } else {
-            drawInfoRow('Destination', v.destination || '—');
-        }
-        y += 4;
-
-        // Data grid — show totals
-        const totalWeight = hasDeliveries
-            ? v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)
-            : (parseFloat(v.weight) || 0);
-        const totalBags = hasDeliveries
-            ? v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)
-            : (parseInt(v.bags) || 0);
-
-        const CELLW = (CW - 4) / 2, CELLH = 28;
-        const drawCell = (label, value, cx, cy) => {
-            doc.rect(cx, cy, CELLW, CELLH).strokeColor('#000').lineWidth(0.5).stroke();
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), cx + 6, cy + 4);
-            doc.fontSize(11).font('Helvetica-Bold').text(String(value || '—'), cx + 6, cy + 14);
-        };
-        drawCell('Weight', `${totalWeight.toFixed(2)} MT`, M, y);
-        drawCell('Bags', String(totalBags), M + CELLW + 4, y);
-        y += CELLH + 4;
-        if (!hasDeliveries) {
-            drawCell('Rate', `Rs.${v.rate}/MT`, M, y);
-            drawCell('Pump', getPumpDisplay(v.pump), M + CELLW + 4, y);
-            y += CELLH + 8;
-        } else {
-            drawCell('Pump', getPumpDisplay(v.pump), M, y);
-            drawCell('Gross', `Rs.${Math.round(gross).toLocaleString()}`, M + CELLW + 4, y);
-            y += CELLH + 8;
-        }
-
-        // Calc box
-        doc.rect(M, y, CW, 16).fill('#e8e8e8');
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000').text('PAYMENT CALCULATION', M + 6, y + 4);
-        y += 18;
-
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Gross Total', M + 6, y);
-        doc.text(`Rs.${Math.round(gross).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
-        y += 14;
-        const grossDetail = hasDeliveries
-            ? `${v.deliveries.length} destinations`
-            : `${v.weight} MT x Rs.${v.rate}/MT`;
-        doc.fontSize(7).font('Helvetica').text(grossDetail, M + 6, y);
-        y += 12;
-
-        deductions.forEach(d => {
-            doc.fontSize(9).font('Helvetica').fillColor('#000').text(d.label, M + 6, y);
-            doc.font('Helvetica-Bold').text(d.isPending ? 'FULL (Pending)' : `- Rs.${d.value.toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
-            y += 13;
-            if (d.note) {
-                // Half the column, so a long remark wraps instead of running into
-                // the amount printed above it.
-                doc.fontSize(7).font('Helvetica').fillColor('#000').text(d.note, M + 10, y - 2, { width: (CW - 20) / 2 });
-                y += Math.max(9, doc.heightOfString(d.note, { width: (CW - 20) / 2 })) + 1;
-            }
-        });
-
-        if (deductions.length > 0 && !dieselPending) {
-            doc.moveTo(M + 6, y).lineTo(PW - M - 6, y).strokeColor('#000').lineWidth(0.5).stroke();
-            y += 4;
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text('Total Deductions', M + 6, y);
-            doc.text(`- Rs.${Math.round(totalDeductions).toLocaleString()}`, M + 6, y, { width: CW - 12, align: 'right' });
-            y += 14;
-        }
-
-        // NET PAYABLE
-        y += 4;
-        if (dieselPending) {
-            doc.rect(M, y, CW, 24).fill('#000');
-            doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 8, y + 6);
-            doc.fontSize(9).text('DIESEL PENDING', M + 8, y + 7, { width: CW - 16, align: 'right' });
-            y += 30;
-        } else {
-            doc.rect(M, y, CW, 24).fill('#000');
-            doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text('NET PAYABLE', M + 8, y + 6);
-            doc.text(`Rs.${Math.round(net).toLocaleString()}`, M + 8, y + 6, { width: CW - 16, align: 'right' });
-            y += 30;
-        }
-
-        // Signatures
-        y = Math.max(y + 10, doc.page.height - 50);
-        const sigW = CW / 3;
-        ['Driver Sign', 'Accountant', 'Authorised Sign'].forEach((lbl, i) => {
-            const sx = M + i * sigW;
-            doc.moveTo(sx + 5, y).lineTo(sx + sigW - 5, y).strokeColor('#000').lineWidth(0.5).stroke();
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(lbl, sx, y + 4, { width: sigW, align: 'center' });
-        });
-
+        if (isBill) buildVoucherBillDoc(v, doc);
+        else buildNonBillVoucherDoc(v, doc);
         doc.end();
         stream.on('finish', () => resolve(outputPath));
         stream.on('error', reject);
     });
 }
 
-/**
- * Generates a loading receipt PDF that exactly matches the browser print from LRModule.jsx.
- */
-async function generateLoadingReceiptPDF(data, outputPath) {
+async function generateVoucherPDFBuffer(v) {
+    return new Promise((resolve, reject) => {
+        const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
+        const doc = new PDFDocument(isBill ? { margin: 20, size: 'A5', layout: 'landscape' } : { margin: 24, size: 'A5' });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+        if (isBill) buildVoucherBillDoc(v, doc);
+        else buildNonBillVoucherDoc(v, doc);
+        doc.end();
+    });
+}
+
+function buildLoadingReceiptPdf(data, doc) {
     const materials = data.materials && data.materials.length > 0
         ? data.materials
-        : [{ type: data.material, bags: data.totalBags, weight: data.weight }];
+        : [{ type: data.material || 'Cement', bags: data.totalBags || data.bags || 0, weight: data.weight || 0, loadingType: data.loadingType || 'From Godown' }];
 
     const totalBags = materials.reduce((s, m) => s + (parseInt(m.bags || m.totalBags) || 0), 0);
     const totalWeight = materials.reduce((s, m) => s + (parseFloat(m.weight) || 0), 0);
 
+    const PW = doc.page.width, PH = doc.page.height, M = 24, CW = PW - M * 2;
+    let y = M;
+
+    // Outer border
+    doc.rect(M, M, CW, PH - M * 2).strokeColor('#000').lineWidth(1.2).stroke();
+
+    // Determine plant title
+    const b = String(data.brand || '').toLowerCase();
+    const src = String(data.source || data.loadingPoint || '').toLowerCase();
+    let plantSubtitle = 'JK SUPER PLANT LOADING RECEIPT (JHARLI)';
+    if (b.includes('jkl') || b.includes('lakshmi') || src.includes('lakshmi')) {
+        plantSubtitle = 'JK LAKSHMI PLANT LOADING RECEIPT (JHARLI)';
+    } else if (b === 'kosli' || src.includes('kosli')) {
+        plantSubtitle = 'JK SUPER CEMENT DEPO — KOSLI';
+    } else if (b === 'jhajjar' || src.includes('jhajjar')) {
+        plantSubtitle = 'JK SUPER CEMENT DEPO — JHAJJAR';
+    } else if (b === 'bahadurgarh' || src.includes('bahadurgarh')) {
+        plantSubtitle = 'JK SUPER CEMENT DEPO — BAHADURGARH';
+    }
+
+    // Header
+    y += 10;
+    doc.fontSize(15).font('Helvetica-Bold').fillColor('#000').text('VIKAS GOODS TRANSPORT CO.', M, y, { align: 'center', width: CW });
+    y += 18;
+    doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e293b').text(plantSubtitle, M, y, { align: 'center', width: CW });
+    y += 13;
+    doc.fontSize(7.5).font('Helvetica').fillColor('#475569').text('Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar | Mob: 9416319445, 9728954901 | GSTIN: 06ARIPK9021C2Z2', M, y, { align: 'center', width: CW });
+    y += 12;
+    doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1).stroke();
+    y += 8;
+
+    // LR Badge
+    const lrBadge = `LOADING RECEIPT # ${data.lrNo || '—'}`;
+    const badgeW = Math.min(doc.widthOfString(lrBadge) + 24, CW - 40);
+    doc.rect((PW - badgeW) / 2, y, badgeW, 20).fillAndStroke('#000', '#000');
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#fff').text(lrBadge, M, y + 4.5, { align: 'center', width: CW });
+    y += 28;
+
+    // Info Grid
+    const drawRow = (lbl1, val1, lbl2, val2) => {
+        const colW = CW / 2;
+        doc.rect(M, y, colW, 20).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+        doc.rect(M + colW, y, colW, 20).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text(lbl1.toUpperCase(), M + 8, y + 3);
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(String(val1 || '—'), M + 8, y + 10, { width: colW - 16, ellipsis: true });
+
+        if (lbl2) {
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text(lbl2.toUpperCase(), M + colW + 8, y + 3);
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(String(val2 || '—'), M + colW + 8, y + 10, { width: colW - 16, ellipsis: true });
+        }
+        y += 20;
+    };
+
+    drawRow('Date', data.date || new Date().toLocaleDateString('en-IN'), 'Truck Number', (data.truckNo || '—').toUpperCase());
+    drawRow('Party / Consignee', data.partyName || '—', 'Destination', data.destination || '—');
+    drawRow('Driver Name', data.driverName || '—', 'Challan Nos.', data.billing && data.billing !== 'No' ? data.billing : '—');
+    y += 10;
+
+    // Material Table
+    const colW1 = CW * 0.36; // Material
+    const colW2 = CW * 0.24; // Type
+    const colW3 = CW * 0.18; // Bags
+    const colW4 = CW * 0.22; // Weight
+    const x0 = M, x1 = x0 + colW1, x2 = x1 + colW2, x3 = x2 + colW3, x4 = x3 + colW4;
+
+    // Table Header
+    doc.rect(M, y, CW, 18).fill('#1e293b');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff');
+    doc.text('MATERIAL', x0 + 6, y + 5);
+    doc.text('LOADING TYPE', x1 + 6, y + 5);
+    doc.text('BAGS', x2 + 6, y + 5, { width: colW3 - 12, align: 'right' });
+    doc.text('WEIGHT (MT)', x3 + 6, y + 5, { width: colW4 - 12, align: 'right' });
+    y += 18;
+
+    // Table Rows
+    materials.forEach((m, idx) => {
+        const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+        doc.rect(M, y, CW, 20).fillAndStroke(bg, '#cbd5e1');
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000').text(m.type || m.material || 'Cement', x0 + 6, y + 5);
+        doc.fontSize(8).font('Helvetica').fillColor('#334155').text(m.loadingType || data.loadingType || 'From Godown', x1 + 6, y + 5);
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000').text(String(m.bags || m.totalBags || 0), x2 + 6, y + 5, { width: colW3 - 12, align: 'right' });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000').text(`${parseFloat(m.weight || 0).toFixed(2)} MT`, x3 + 6, y + 5, { width: colW4 - 12, align: 'right' });
+        y += 20;
+    });
+
+    // Total Row
+    doc.rect(M, y, CW, 22).fillAndStroke('#0f172a', '#0f172a');
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#fff');
+    doc.text('TOTAL QUANTITY:', x0 + 6, y + 6);
+    doc.text(`${totalBags} Bags`, x2 + 6, y + 6, { width: colW3 - 12, align: 'right' });
+    doc.text(`${totalWeight.toFixed(2)} MT`, x3 + 6, y + 6, { width: colW4 - 12, align: 'right' });
+    y += 32;
+
+    // Terms / declaration
+    doc.fontSize(7).font('Helvetica').fillColor('#64748b').text('• Material received in sound condition. Subject to Jhajjar jurisdiction only.', M + 8, y);
+    y += 18;
+
+    // Signatures
+    const sigY = PH - M - 60;
+    const sigW = (CW - 20) / 3;
+    const sigs = ['Driver Signature', 'Receiver / Munshi', 'Authorized Signatory (VGTC)'];
+    sigs.forEach((lbl, i) => {
+        const sx = M + i * (sigW + 10);
+        doc.rect(sx, sigY, sigW, 42).strokeColor('#94a3b8').lineWidth(0.5).stroke();
+        doc.moveTo(sx + 8, sigY + 28).lineTo(sx + sigW - 8, sigY + 28).strokeColor('#cbd5e1').stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#334155').text(lbl, sx, sigY + 31, { width: sigW, align: 'center' });
+    });
+
+    // Footer
+    doc.fontSize(7).font('Helvetica').fillColor('#94a3b8').text(`VGTC Smart Logistics Portal • Backed up on ${new Date().toLocaleString('en-IN')}`, M, PH - M - 12, { align: 'center', width: CW });
+}
+
+async function generateLoadingReceiptPDF(data, outputPath) {
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 30, size: 'A6' });
+        const doc = new PDFDocument({ margin: 24, size: 'A5' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
-        const PW = doc.page.width, M = 30, CW = PW - M * 2;
-        let y = M;
-
-        // Header — matches browser print
-        doc.fontSize(14).font('Helvetica-Bold').fillColor('#000').text('JK Lakshmi Depo Loading Receipt', M, y, { align: 'center', width: CW });
-        y += 16;
-        doc.fontSize(12).font('Helvetica-Bold').text('Vikas Goods Transport Company', M, y, { align: 'center', width: CW });
-        y += 14;
-        doc.fontSize(8).font('Helvetica').text('VGTC, Metro Market, Behind SBI Bank, Jhamri Mod, Jharli, Jhajjar | Mob: 9416319445, 9728954901, 9728284849', M, y, { align: 'center', width: CW });
-        y += 12;
-        doc.moveTo(M, y).lineTo(PW - M, y).strokeColor('#000').lineWidth(1.5).stroke();
-        y += 10;
-
-        // LR badge
-        const badge = `LR # ${data.lrNo}`;
-        const bw = doc.widthOfString(badge) + 20;
-        doc.rect((PW - bw) / 2, y, bw, 18).strokeColor('#000').lineWidth(1.5).stroke();
-        doc.fontSize(12).font('Helvetica-Bold').text(badge, M, y + 4, { align: 'center', width: CW });
-        y += 26;
-
-        // Info rows
-        const drawInfoRow = (label, value) => {
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000').text(label.toUpperCase(), M, y);
-            doc.font('Helvetica').text(String(value || '—'), M + CW * 0.4, y, { width: CW * 0.6, align: 'right' });
-            y += 14;
-            doc.moveTo(M, y - 2).lineTo(PW - M, y - 2).strokeColor('#ccc').lineWidth(0.5).stroke();
-        };
-        drawInfoRow('Date', data.date);
-        drawInfoRow('Truck No.', data.truckNo);
-        drawInfoRow('Party Name', data.partyName);
-        if (data.billing && data.billing !== 'No') drawInfoRow('Challans', data.billing);
-        y += 6;
-
-        // Table
-        const cols = [M, M + CW * 0.35, M + CW * 0.6, M + CW * 0.8];
-        doc.rect(M, y, CW, 16).fill('#e8e8e8');
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000');
-        doc.text('MATERIAL', cols[0] + 4, y + 4);
-        doc.text('TYPE', cols[1] + 4, y + 4);
-        doc.text('BAGS', cols[2] + 4, y + 4);
-        doc.text('WT (MT)', cols[3] + 4, y + 4);
-        y += 16;
-
-        materials.forEach(m => {
-            doc.rect(M, y, CW, 16).strokeColor('#000').lineWidth(0.5).stroke();
-            doc.fontSize(9).font('Helvetica').fillColor('#000');
-            doc.text(m.type || m.material || '—', cols[0] + 4, y + 4);
-            doc.font('Helvetica-Bold').text(m.loadingType || data.loadingType || 'Godown', cols[1] + 4, y + 4);
-            doc.font('Helvetica').text(String(m.bags || m.totalBags || 0), cols[2] + 4, y + 4);
-            doc.text(`${parseFloat(m.weight || 0).toFixed(2)}`, cols[3] + 4, y + 4);
-            y += 16;
-        });
-
-        doc.rect(M, y, CW, 16).fill('#e8e8e8').strokeColor('#000').lineWidth(1).stroke();
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
-        doc.text('TOTAL', cols[0] + 4, y + 4, { width: cols[2] - cols[0] - 8, align: 'right' });
-        doc.text(String(totalBags), cols[2] + 4, y + 4);
-        doc.text(`${totalWeight.toFixed(2)} MT`, cols[3] + 4, y + 4);
-        y += 24;
-
-        // Signatures
-        y = Math.max(y, doc.page.height - 50);
-        const sigW = CW / 3;
-        ['Driver Sign', 'Receiver Sign', 'Authorised Sign'].forEach((lbl, i) => {
-            const sx = M + i * sigW;
-            doc.moveTo(sx + 5, y).lineTo(sx + sigW - 5, y).strokeColor('#000').lineWidth(0.5).stroke();
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#000').text(lbl, sx, y + 4, { width: sigW, align: 'center' });
-        });
-
+        buildLoadingReceiptPdf(data, doc);
         doc.end();
         stream.on('finish', () => resolve(outputPath));
         stream.on('error', reject);
+    });
+}
+
+async function generateLoadingReceiptPDFBuffer(data) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 24, size: 'A5' });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+        buildLoadingReceiptPdf(data, doc);
+        doc.end();
     });
 }
 
@@ -959,6 +1040,52 @@ async function generateInvoicePDF(invoiceData, outputPath) {
     });
 }
 
+function buildSaleDoc(s, doc) {
+    const PW = doc.page.width;
+    const M = 40;
+
+    // Header
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text('VIKAS GOODS TRANSPORT CO.', M, M, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').fillColor('#64748b').text('Cement Sales Receipt / Voucher', M, M + 22, { align: 'center' });
+    doc.moveDown(1);
+    doc.moveTo(M, doc.y).lineTo(PW - M, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
+    doc.moveDown(1);
+
+    const drawRow = (label, value) => {
+        const currentY = doc.y;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(label.toUpperCase(), M, currentY);
+        doc.fontSize(11).font('Helvetica').fillColor('#1e293b').text(String(value || '—'), M + 120, currentY);
+        doc.moveDown(0.8);
+        doc.moveTo(M, doc.y).lineTo(PW - M, doc.y).strokeColor('#f1f5f9').lineWidth(0.5).stroke();
+        doc.moveDown(0.5);
+    };
+
+    drawRow('Date', s.date || new Date().toLocaleDateString('en-IN'));
+    drawRow('Customer', s.customerName || 'Walk-in');
+    drawRow('Material', s.material || '—');
+    drawRow('Quantity', `${s.quantity} Bags (${(s.quantity * 0.05).toFixed(2)} MT)`);
+    drawRow('Rate', `Rs. ${s.rate || 0}`);
+    drawRow('Payment', s.paymentStatus === 'pending' ? 'Not Paid (Pending)' : (s.paymentType || 'CASH').toUpperCase());
+
+    doc.moveDown(1);
+    doc.rect(M, doc.y, PW - M * 2, 40).fill('#f8fafc');
+    doc.fillColor('#1e293b').fontSize(14).font('Helvetica-Bold').text('TOTAL AMOUNT', M + 10, doc.y + 13);
+    doc.text(`Rs. ${(s.totalAmount || 0).toLocaleString('en-IN')}`, M, doc.y - 14, { align: 'right', width: PW - M * 2 - 10 });
+    
+    doc.moveDown(2);
+    
+    // Status Stamp
+    const isPending = s.paymentStatus === 'pending';
+    doc.save();
+    doc.rotate(-5, { origin: [PW - M - 60, doc.y + 10] });
+    doc.rect(PW - M - 140, doc.y, 140, 25).lineWidth(2).strokeColor(isPending ? '#f43f5e' : '#10b981').stroke();
+    doc.fontSize(10).font('Helvetica-Bold').fillColor(isPending ? '#f43f5e' : '#10b981')
+        .text(isPending ? 'NOT PAID' : `PAID - ${(s.paymentType || 'CASH').toUpperCase()}`, PW - M - 140, doc.y + 7, { width: 140, align: 'center' });
+    doc.restore();
+
+    doc.fontSize(8).fillColor('#94a3b8').text(`Generated on ${new Date().toLocaleString('en-IN')} • VGTC Portal`, M, doc.page.height - 50, { align: 'center' });
+}
+
 /**
  * Generates a Sale Receipt PDF that mimics the SellModule print format.
  */
@@ -967,54 +1094,25 @@ async function generateSalePDF(s, outputPath) {
         const doc = new PDFDocument({ margin: 40, size: 'A5' });
         const stream = fs.createWriteStream(outputPath);
         doc.pipe(stream);
-
-        const PW = doc.page.width;
-        const M = 40;
-
-        // Header
-        doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text('VIKAS GOODS', M, M, { align: 'center' });
-        doc.fontSize(10).font('Helvetica').fillColor('#64748b').text('Cement Sales Receipt', M, M + 22, { align: 'center' });
-        doc.moveDown(1);
-        doc.moveTo(M, doc.y).lineTo(PW - M, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
-        doc.moveDown(1);
-
-        const drawRow = (label, value) => {
-            const currentY = doc.y;
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text(label.toUpperCase(), M, currentY);
-            doc.fontSize(11).font('Helvetica').fillColor('#1e293b').text(String(value || '—'), M + 120, currentY);
-            doc.moveDown(0.8);
-            doc.moveTo(M, doc.y).lineTo(PW - M, doc.y).strokeColor('#f1f5f9').lineWidth(0.5).stroke();
-            doc.moveDown(0.5);
-        };
-
-        drawRow('Date', s.date || new Date().toLocaleDateString('en-IN'));
-        drawRow('Customer', s.customerName || 'Walk-in');
-        drawRow('Material', s.material || '—');
-        drawRow('Quantity', `${s.quantity} Bags (${(s.quantity * 0.05).toFixed(2)} MT)`);
-        drawRow('Rate', `Rs. ${s.rate || 0}`);
-        drawRow('Payment', s.paymentStatus === 'pending' ? 'Not Paid (Pending)' : s.paymentType.toUpperCase());
-
-        doc.moveDown(1);
-        doc.rect(M, doc.y, PW - M * 2, 40).fill('#f8fafc');
-        doc.fillColor('#1e293b').fontSize(14).font('Helvetica-Bold').text('TOTAL AMOUNT', M + 10, doc.y + 13);
-        doc.text(`Rs. ${s.totalAmount.toLocaleString('en-IN')}`, M, doc.y - 14, { align: 'right', width: PW - M * 2 - 10 });
-        
-        doc.moveDown(2);
-        
-        // Status Stamp
-        const isPending = s.paymentStatus === 'pending';
-        doc.save();
-        doc.rotate(-5, { origin: [PW - M - 60, doc.y + 10] });
-        doc.rect(PW - M - 140, doc.y, 140, 25).lineWidth(2).strokeColor(isPending ? '#f43f5e' : '#10b981').stroke();
-        doc.fontSize(10).font('Helvetica-Bold').fillColor(isPending ? '#f43f5e' : '#10b981')
-            .text(isPending ? 'NOT PAID' : `PAID - ${s.paymentType.toUpperCase()}`, PW - M - 140, doc.y + 7, { width: 140, align: 'center' });
-        doc.restore();
-
-        doc.fontSize(8).fillColor('#94a3b8').text(`Generated on ${new Date().toLocaleString('en-IN')}`, M, doc.page.height - 50, { align: 'center' });
-
+        buildSaleDoc(s, doc);
         doc.end();
         stream.on('finish', () => resolve(outputPath));
         stream.on('error', reject);
+    });
+}
+
+/**
+ * Generates a Sale Receipt PDF Buffer in-memory.
+ */
+async function generateSalePDFBuffer(s) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 40, size: 'A5' });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+        buildSaleDoc(s, doc);
+        doc.end();
     });
 }
 
@@ -1022,8 +1120,11 @@ module.exports = {
     generateModuleReport,
     generateReceiptPDF,
     generateVoucherPDF,
+    generateVoucherPDFBuffer,
     generateLoadingReceiptPDF,
+    generateLoadingReceiptPDFBuffer,
     generateVoucherListPDF,
     generateInvoicePDF,
     generateSalePDF,
+    generateSalePDFBuffer,
 };

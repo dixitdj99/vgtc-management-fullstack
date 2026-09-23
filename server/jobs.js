@@ -145,11 +145,42 @@ function weeklyLists() {
     });
 }
 
+/**
+ * Check for unpaid online advances created on or before yesterday and remind clerk.
+ */
+function checkPendingOnlineAdvances(options = {}) {
+    return runExclusive('pending-online-advances', async () => {
+        const reminderService = require('./services/onlineAdvanceReminderService');
+        return await reminderService.checkAndSendPendingOnlineAdvanceReminders(options);
+    });
+}
+
+/**
+ * Check Own Fleet vehicle documents expiring in 30d, 15d, 5d, 0d or monthly overdue.
+ */
+function checkVehicleDocExpiry(options = {}) {
+    return runExclusive('vehicle-doc-expiry', async () => {
+        const docExpiryService = require('./services/vehicleDocExpiryReminderService');
+        return await docExpiryService.checkAndSendVehicleDocExpiryReminders(options);
+    });
+}
+
 const JOBS = {
     'weekly-backup': weeklyBackup,
     'weekly-lists': weeklyLists,
     'daily-alerts': dailyAlerts,
     'eway-sync': ewaySync,
+    'pending-advances': checkPendingOnlineAdvances,
+    'vehicle-doc-expiry': checkVehicleDocExpiry,
 };
 
-module.exports = { JOBS, weeklyBackup, weeklyLists, dailyAlerts, ewaySync };
+module.exports = {
+    JOBS,
+    weeklyBackup,
+    weeklyLists,
+    dailyAlerts,
+    ewaySync,
+    checkPendingOnlineAdvances,
+    checkVehicleDocExpiry
+};
+

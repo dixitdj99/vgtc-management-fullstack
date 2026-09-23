@@ -43,6 +43,7 @@ const { requireAuth } = require('./middleware/auth');
 const { gate } = require('./middleware/permissionGate');
 const auditRoutes = require('./routes/auditRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 // Run migrations on startup.
 stockService.init();
@@ -171,6 +172,7 @@ app.use('/api/jkl/cashbook', requireAuth, gate('cashbook'), jklCashbookRoutes);
 app.use('/api/vehicles', requireAuth, gate(['vehicle', 'voucher_jkl', 'voucher_jkl_dump', 'voucher_jksuper', 'voucher_kosli', 'voucher_jhajjar', 'voucher_bahadurgarh', 'lr_jkl', 'lr_dump', 'lr_kosli', 'lr_jhajjar', 'lr_bahadurgarh', 'cashbook', 'pay', 'balance_all']), vehicleRoutes);
 app.use('/api/vehicle-advances', requireAuth, gate(['pay','vehicle']), vehicleAdvanceRoutes);
 app.use('/api/freight-batches', requireAuth, gate('pay'), freightBatchRoutes);
+app.use('/api/reports', requireAuth, reportRoutes);
 // Reads the loading receipts and MIGO entries of all five plants to price the
 // labour's work, so it is gated on `pay` rather than on ten separate lr_*/stock_* keys.
 app.use('/api/labour-account', requireAuth, gate('pay'), require('./routes/labourAccountRoutes'));
@@ -200,6 +202,7 @@ app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
 // Must be mounted BEFORE the requireAuth whatsapp routes so OpenWA's call is not rejected.
 app.use('/api/whatsapp/webhook', require('./routes/whatsappWebhookRoute'));
 app.use('/api/whatsapp', requireAuth, require('./routes/whatsappRoutes'));
+app.use('/api/notifications', requireAuth, require('./routes/notificationRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret
 
 // Liveness/readiness probe. Reports 503 when Firestore is not connected so a
@@ -335,6 +338,9 @@ app.listen(PORT, '0.0.0.0', () => {
 
     // Daily fleet alerts: every day at 09:00
     cron.schedule('0 9 * * *', () => jobs.dailyAlerts(), { timezone: CRON_TZ });
+
+    // Daily Own Fleet document expiry alerts (30d, 15d, 5d, 0d, monthly overdue): every day at 09:00
+    cron.schedule('0 9 * * *', () => jobs.checkVehicleDocExpiry(), { timezone: CRON_TZ });
 
     console.log(`[Cron] In-process schedules registered (timezone: ${CRON_TZ}).`);
 });

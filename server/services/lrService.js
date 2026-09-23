@@ -141,8 +141,37 @@ const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METAD
     });
 };
 
+function getTodayDateString(dateVal) {
+    if (dateVal) {
+        try {
+            const d = new Date(dateVal);
+            if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+        } catch (_) {}
+    }
+    return new Date().toISOString().slice(0, 10);
+}
+
+async function getNextDailyLoadingNo(orgId, lrCollection, dateVal) {
+    const todayStr = getTodayDateString(dateVal);
+    const counterDocId = `daily_loading_${todayStr}`;
+    
+    if (firebaseAvailable()) {
+        const ref = db.collection('metadata').doc(`${orgId}_${lrCollection}_${counterDocId}`);
+        return await db.runTransaction(async (transaction) => {
+            const doc = await transaction.get(ref);
+            const current = (doc.exists && doc.data().count) || 0;
+            const next = current + 1;
+            transaction.set(ref, { count: next, date: todayStr, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            return next;
+        });
+    } else {
+        const counterKey = `${orgId}_${lrCollection}_${counterDocId}`;
+        return localStore.getCounter(counterKey);
+    }
+}
+
 const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
-    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
+    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId, createdBy, createdByName, source } = data;
     const group = groupOfLrCollection(lrCollection);
     const normalizedPartyName = normalizePartyName(partyName || '');
     const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
@@ -152,6 +181,7 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
         { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
     }
     const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection, requestedNo);
+    const loadingNo = await getNextDailyLoadingNo(orgId, lrCollection, date);
     const batch = db.batch();
     const createdIds = [];
     
@@ -164,10 +194,15 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
             entryId,
-            lrNo, date: date || new Date().toISOString(), truckNo,
+            lrNo,
+            loadingNo,
+            dailyTokenNo: loadingNo,
+            date: date || new Date().toISOString(),
+            truckNo,
+            source: source || data.loadingPoint || '',
             destination: destination || '',
             material: mat.type, 
-            loadingType: mat.loadingType || 'From Godown',
+            loadingType: mat.loadingType || data.loadingType || 'From Godown',
             weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
@@ -177,12 +212,14 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || '',
             orgId,
+            createdBy: createdBy || '',
+            createdByName: createdByName || '',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         createdIds.push(ref.id);
     }
     await batch.commit();
-    return { lrNo, ids: createdIds };
+    return { lrNo, loadingNo, ids: createdIds };
 };
 
 const firestoreGetAll = async (orgId, lrCollection = COLLECTION_LR) => {
@@ -210,7 +247,7 @@ const localGetNextLrNo = (orgId, collectionName = 'lr_no', requested = null) => 
 };
 
 const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
-    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId } = data;
+    const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId, createdBy, createdByName, source } = data;
     const group = groupOfLrCollection(lrCollection);
     const normalizedPartyName = normalizePartyName(partyName || '');
     const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
@@ -220,6 +257,7 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
         { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
     }
     const lrNo = localGetNextLrNo(orgId, counterCollection, requestedNo);
+    const loadingNo = await getNextDailyLoadingNo(orgId, lrCollection, date);
     const createdIds = [];
 
     const entryId = await getNextEntryId(orgId, lrCollection);
@@ -229,10 +267,15 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
 
         const doc = localStore.insert(lrCollection, {
             entryId,
-            lrNo, date: date || new Date().toISOString().split('T')[0], truckNo,
+            lrNo,
+            loadingNo,
+            dailyTokenNo: loadingNo,
+            date: date || new Date().toISOString().split('T')[0],
+            truckNo,
+            source: source || data.loadingPoint || '',
             destination: destination || '',
             material: mat.type,
-            loadingType: mat.loadingType || 'From Godown',
+            loadingType: mat.loadingType || data.loadingType || 'From Godown',
             weight: parseFloat(mat.weight) || 0,
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
@@ -241,11 +284,13 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
             status: 'Created',
             note: note || '',
             voiceMessageBase64: voiceMessageBase64 || '',
-            orgId
+            orgId,
+            createdBy: createdBy || '',
+            createdByName: createdByName || ''
         });
         createdIds.push(doc.id);
     }
-    return { lrNo, ids: createdIds };
+    return { lrNo, loadingNo, ids: createdIds };
 };
 
 const localGetAll = (orgId, lrCollection = COLLECTION_LR) => {
@@ -257,6 +302,20 @@ const localGetAll = (orgId, lrCollection = COLLECTION_LR) => {
 // ── Public API — auto-selects Firebase or local ────────────────────────────────
 
 const createLoadingReceipt = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = COLLECTION_METADATA) => {
+    if (data && data.truckNo) {
+        try {
+            const vehicleService = require('./vehicleService');
+            await vehicleService.ensureOrUpdateVehicleContacts(orgId, {
+                truckNo: data.truckNo,
+                driverName: data.driverName,
+                driverContact: data.driverContact,
+                ownerName: data.ownerName,
+                ownerContact: data.ownerContact
+            });
+        } catch (vehErr) {
+            console.error('Error auto-updating vehicle contacts from LR create:', vehErr.message);
+        }
+    }
     if (data && data.destination) {
         try {
             const destinationService = require('./destinationService');
@@ -441,4 +500,5 @@ module.exports = {
     updateLoadingReceipt,
     deleteLoadingReceipt,
     generateBulkInvoice,
+    getNextDailyLoadingNo,
 };
