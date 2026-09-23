@@ -32,28 +32,8 @@ router.post('/', async (req, res) => {
         const doc = await svc.addSale(req.orgId, req.body, getCol(BASE_COL, req));
         
         // Backup Hook
-        if (await driveService.isAuthorized()) {
-            try {
-                // 1. Spreadsheet sync
-                await sheetsService.upsertSaleRow(doc, brand).catch(e => console.error('Sheet sync failed:', e));
-
-                // 2. Individual PDF Backup
-                const plantFolder = await driveService.getOrCreateFolder(brand === 'jkl' ? 'JK_Lakshmi' : 'JK_Super_Dump');
-                const backupFolder = await driveService.getOrCreateFolder('Sales Receipts', plantFolder);
-                const fileName = `Sale_${doc.customerName}_${doc.id}.pdf`.replace(/\s+/g, '_');
-                const localPath = path.join(__dirname, '../temp', fileName);
-                
-                if (!fs.existsSync(path.join(__dirname, '../temp'))) fs.mkdirSync(path.join(__dirname, '../temp'));
-                
-                await pdfService.generateSalePDF(doc, localPath);
-                await driveService.uploadFile(localPath, fileName, backupFolder);
-                if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-                
-                console.log(`[Backup] Sale receipt backed up: ${fileName}`);
-            } catch (backupErr) {
-                console.error('[Backup Error]', backupErr);
-            }
-        }
+        const { backupSale } = require('../utils/realtimeBackup');
+        backupSale(doc, { brand });
 
         res.status(201).json(doc);
     } catch (e) { res.status(400).json({ error: e.message }); }
