@@ -75,6 +75,16 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 // look like vgtc-management--<hash>.<region>.hosted.app.
 const APP_HOSTING_BACKEND = process.env.APP_HOSTING_BACKEND || 'vgtc-management';
 
+const isPrivateHost = (host) => (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '[::1]' ||
+    host.endsWith('.local') ||
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)
+);
+
 const isAllowedOrigin = (origin) => {
     if (ALLOWED_ORIGINS.includes(origin)) return true;
 
@@ -84,7 +94,11 @@ const isAllowedOrigin = (origin) => {
     } catch {
         return false; // unparseable Origin header
     }
-    if (protocol !== 'https:') return false; // plain-http origins only via ALLOWED_ORIGINS
+
+    // Allow local and LAN network device access (e.g. mobile/tablet testing on Wi-Fi)
+    if (isPrivateHost(host)) return true;
+
+    if (protocol !== 'https:') return false; // plain-http origins only via ALLOWED_ORIGINS or private LAN
 
     // Own domain and its subdomains. The leading dot matters: it anchors the
     // match to a label boundary, so "notvgtc.site" cannot pass.
