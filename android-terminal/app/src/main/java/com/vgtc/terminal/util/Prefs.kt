@@ -33,5 +33,13 @@ class Prefs(context: Context) {
         get() = sp.getString("auth_token", "") ?: ""
         set(value) = sp.edit().putString("auth_token", value).apply()
 
+    var enrolledFingerprintProfileId: String
+        get() = sp.getString("enrolled_fp_id", "") ?: ""
+        set(value) = sp.edit().putString("enrolled_fp_id", value).apply()
+
+    var enrolledFingerprintProfileName: String
+        get() = sp.getString("enrolled_fp_name", "") ?: ""
+        set(value) = sp.edit().putString("enrolled_fp_name", value).apply()
+
     fun clear() = sp.edit().clear().apply()
 }

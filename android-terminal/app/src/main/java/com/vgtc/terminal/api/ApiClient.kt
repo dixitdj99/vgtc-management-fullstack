@@ -161,6 +161,44 @@ class ApiClient(context: Context) {
     }
 
     // ──────────────────────────────────────────────────
+    // PUT /api/profiles/:id — enroll face photo
+    // ──────────────────────────────────────────────────
+    fun updateProfilePhoto(profileId: String, photoBase64: String, callback: (ApiResult<Boolean>) -> Unit) {
+        ensureToken { tokenOk ->
+            if (!tokenOk) {
+                callback(Result.failure(Exception("Not authenticated")))
+                return@ensureToken
+            }
+            val payload = mapOf("photo" to photoBase64)
+            val body = gson.toJson(payload)
+            val request = Request.Builder()
+                .url("${baseUrl()}/api/profiles/$profileId")
+                .put(body.toRequestBody(JSON_MEDIA_TYPE))
+                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+                .build()
+
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    callback(Result.failure(Exception("Network error: ${e.message}")))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (response.isSuccessful) {
+                        callback(Result.success(true))
+                    } else {
+                        val errBody = response.body?.string() ?: ""
+                        val error = try {
+                            gson.fromJson(errBody, Map::class.java)["error"] as? String
+                                ?: "Photo update failed (${response.code})"
+                        } catch (_: Exception) { "Photo update failed (${response.code})" }
+                        callback(Result.failure(Exception(error)))
+                    }
+                }
+            })
+        }
+    }
+
+    // ──────────────────────────────────────────────────
     // GET /api/auth/status  — quick connectivity check
     // ──────────────────────────────────────────────────
     fun checkConnection(callback: (Boolean) -> Unit) {

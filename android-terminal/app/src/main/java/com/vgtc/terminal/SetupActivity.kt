@@ -28,7 +28,7 @@ class SetupActivity : AppCompatActivity() {
         binding.etOrgId.setText(prefs.orgId)
 
         binding.btnSave.setOnClickListener {
-            val url = binding.etServerUrl.text.toString().trim().trimEnd('/')
+            var url = binding.etServerUrl.text.toString().trim().trimEnd('/')
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
@@ -36,6 +36,11 @@ class SetupActivity : AppCompatActivity() {
             if (url.isEmpty() || username.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, "Please fill all required fields", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
+            }
+
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                url = "http://$url"
+                binding.etServerUrl.setText(url)
             }
 
             binding.btnSave.isEnabled = false
@@ -67,7 +72,7 @@ class SetupActivity : AppCompatActivity() {
             if (prefs.serverUrl.isNotBlank() && prefs.authToken.isNotBlank()) {
                 finish()
             } else {
-                Toast.makeText(this, "Please configure server settings first", Toast.LENGTH_SHORT).show()
+                finishAffinity()
             }
         }
     }
