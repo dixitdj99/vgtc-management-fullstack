@@ -24,8 +24,8 @@
 
             <ImageView
                 android:id="@+id/ivAvatar"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
                 android:src="@drawable/ic_person_placeholder"
                 android:contentDescription="Photo" />
 
@@ -89,6 +89,26 @@
                         android:paddingVertical="2dp" />
                 </LinearLayout>
             </LinearLayout>
+
+            <!-- Edit Button -->
+            <ImageButton
+                android:id="@+id/btnEdit"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:src="@drawable/ic_edit"
+                android:tint="@color/primary"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Edit" />
+
+            <!-- Delete Button -->
+            <ImageButton
+                android:id="@+id/btnDelete"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:src="@drawable/ic_delete"
+                android:tint="#EF4444"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Delete" />
         </LinearLayout>
 
         <View
@@ -97,7 +117,7 @@
             android:background="@color/divider"
             android:layout_marginVertical="10dp" />
 
-        <!-- Action buttons: Enroll Face & Enroll Fingerprint -->
+        <!-- Action buttons: Re-enroll Face & Fingerprint -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -109,7 +129,7 @@
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
-                android:text="Enroll Face"
+                android:text="Face Scan"
                 android:textSize="12sp"
                 app:icon="@drawable/ic_face_scan"
                 app:iconSize="18dp"
@@ -120,7 +140,7 @@
                 android:id="@+id/btnEnrollFingerprint"
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
-                android:text="Enroll Fingerprint"
+                android:text="Fingerprint"
                 android:textSize="12sp"
                 app:icon="@drawable/ic_fingerprint"
                 app:iconSize="18dp"

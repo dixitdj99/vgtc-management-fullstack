@@ -12,6 +12,8 @@ import com.vgtc.terminal.util.Prefs
 class EnrollListAdapter(
     private var profiles: List<Profile>,
     private val prefs: Prefs,
+    private val onEdit: (Profile) -> Unit,
+    private val onDelete: (Profile) -> Unit,
     private val onEnrollFace: (Profile) -> Unit,
     private val onEnrollFingerprint: (Profile) -> Unit
 ) : RecyclerView.Adapter<EnrollListAdapter.ViewHolder>() {
@@ -45,6 +47,14 @@ class EnrollListAdapter(
                 .into(holder.binding.ivAvatar)
         } else {
             holder.binding.ivAvatar.setImageResource(R.drawable.ic_person_placeholder)
+        }
+
+        holder.binding.btnEdit.setOnClickListener {
+            onEdit(profile)
+        }
+
+        holder.binding.btnDelete.setOnClickListener {
+            onDelete(profile)
         }
 
         holder.binding.btnEnrollFace.setOnClickListener {

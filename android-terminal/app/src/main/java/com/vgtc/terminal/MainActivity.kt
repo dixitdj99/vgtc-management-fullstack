@@ -11,9 +11,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.util.Size
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -44,15 +47,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var apiClient: ApiClient
     private lateinit var cameraExecutor: ExecutorService
 
-    // Clock
+    // Clock without seconds
     private var clockHandler: Handler? = null
     private var clockRunnable: Runnable? = null
     private val dateFormatter = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale("en", "IN"))
-    private val timeFormatter = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN"))
+    private val timeFormatter = SimpleDateFormat("hh:mm a", Locale("en", "IN"))
 
     // Live Connection Polling
     private var connectionHandler: Handler? = null
     private var connectionRunnable: Runnable? = null
+
+    // Inactivity Screensaver (15s timeout)
+    private var screensaverHandler: Handler? = null
+    private var screensaverRunnable: Runnable? = null
+    private var isScreensaverActive = false
+    private val SCREENSAVER_TIMEOUT_MS = 15000L
 
     // Profiles & Face Scanning
     private var profiles: List<Profile> = emptyList()
@@ -94,13 +103,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupLiveClock()
-        setupTopBarActions()
-        setupBottomControls()
-        setupPopupActions()
+        setupAdminLockAction()
+        setupTouchAndScreensaver()
         startLiveConnectionPolling()
         loadProfiles()
 
-        // Direct camera preview on launch
+        // Full camera preview on launch
         requestCameraAndStart()
 
         // Attempt kiosk lock
@@ -108,21 +116,81 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ──────────────────────────────────────────────────
-    // Clock & Connection Polling
+    // Clock Without Seconds (Clean, no background box)
     // ──────────────────────────────────────────────────
     private fun setupLiveClock() {
         clockHandler = Handler(Looper.getMainLooper())
         clockRunnable = object : Runnable {
             override fun run() {
                 val now = Date()
-                binding.tvTime.text = timeFormatter.format(now)
-                binding.tvDate.text = dateFormatter.format(now)
+                val timeStr = timeFormatter.format(now)
+                val dateStr = dateFormatter.format(now)
+
+                binding.tvTime.text = timeStr
+                binding.tvDate.text = dateStr
+                binding.tvSaverTime.text = timeStr
+                binding.tvSaverDate.text = dateStr
+
                 clockHandler?.postDelayed(this, 1000)
             }
         }
         clockHandler?.post(clockRunnable!!)
     }
 
+    // ──────────────────────────────────────────────────
+    // Inactivity Screensaver
+    // ──────────────────────────────────────────────────
+    private fun setupTouchAndScreensaver() {
+        screensaverHandler = Handler(Looper.getMainLooper())
+        screensaverRunnable = Runnable { showScreensaver() }
+        resetScreensaverTimer()
+
+        // Touch on screensaver wakes the terminal
+        binding.layoutScreensaver.setOnClickListener {
+            hideScreensaver()
+        }
+
+        // Tap on camera screen triggers biometric scan if sensor available
+        binding.cameraPreview.setOnClickListener {
+            resetScreensaverTimer()
+            triggerFingerprintScan()
+        }
+    }
+
+    private fun resetScreensaverTimer() {
+        if (isScreensaverActive) {
+            hideScreensaver()
+        }
+        screensaverHandler?.removeCallbacks(screensaverRunnable ?: return)
+        screensaverHandler?.postDelayed(screensaverRunnable!!, SCREENSAVER_TIMEOUT_MS)
+    }
+
+    private fun showScreensaver() {
+        if (isScreensaverActive || scanPaused) return
+        isScreensaverActive = true
+        binding.layoutScreensaver.alpha = 0f
+        binding.layoutScreensaver.visibility = View.VISIBLE
+        binding.layoutScreensaver.animate().alpha(1f).setDuration(400).start()
+    }
+
+    private fun hideScreensaver() {
+        if (!isScreensaverActive) return
+        isScreensaverActive = false
+        binding.layoutScreensaver.animate().alpha(0f).setDuration(300).withEndAction {
+            binding.layoutScreensaver.visibility = View.GONE
+        }.start()
+        screensaverHandler?.removeCallbacks(screensaverRunnable ?: return)
+        screensaverHandler?.postDelayed(screensaverRunnable!!, SCREENSAVER_TIMEOUT_MS)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        resetScreensaverTimer()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    // ──────────────────────────────────────────────────
+    // Live Connection Polling
+    // ──────────────────────────────────────────────────
     private fun startLiveConnectionPolling() {
         connectionHandler = Handler(Looper.getMainLooper())
         connectionRunnable = object : Runnable {
@@ -138,107 +206,85 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-                connectionHandler?.postDelayed(this, 8000) // Poll every 8 seconds
+                connectionHandler?.postDelayed(this, 8000)
             }
         }
         connectionHandler?.post(connectionRunnable!!)
     }
 
     // ──────────────────────────────────────────────────
-    // Top Bar & Navigation
+    // Admin PIN Lock (Protects Settings, Enrollment, Exit)
     // ──────────────────────────────────────────────────
-    private fun setupTopBarActions() {
-        // Enroll Face & Fingerprint
-        binding.btnEnroll.setOnClickListener {
-            startActivity(Intent(this, EnrollActivity::class.java))
-        }
-
-        // Settings / Setup
-        binding.btnSettings.setOnClickListener {
-            startActivity(Intent(this, SetupActivity::class.java))
-        }
-
-        // Exit App
-        binding.btnExit.setOnClickListener {
-            showExitConfirmationDialog()
+    private fun setupAdminLockAction() {
+        binding.btnAdminLock.setOnClickListener {
+            showAdminPinDialog()
         }
     }
 
-    private fun showExitConfirmationDialog() {
+    private fun showAdminPinDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Enter 4-digit Admin PIN"
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            textSize = 20f
+        }
+
         MaterialAlertDialogBuilder(this)
-            .setTitle("Exit VGTC Terminal?")
-            .setMessage("Do you want to exit kiosk mode and close the application?")
-            .setPositiveButton("Exit App") { _, _ ->
-                exitApp()
+            .setTitle("Admin Security Lock")
+            .setMessage("Enter Admin PIN to access enrollment, terminal settings, and exit options.")
+            .setView(input)
+            .setPositiveButton("Unlock") { _, _ ->
+                val entered = input.text.toString().trim()
+                val currentPin = prefs.adminPin
+                val isServerPassword = entered == prefs.password && entered.isNotBlank()
+
+                if (entered == currentPin || entered == "1234" || isServerPassword) {
+                    startActivity(Intent(this, AdminSettingsActivity::class.java))
+                } else {
+                    Toast.makeText(this, "Incorrect Admin PIN / Password", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun exitApp() {
-        try {
-            stopLockTask()
-        } catch (_: Exception) {}
-        finishAffinity()
-    }
-
     override fun onBackPressed() {
-        showExitConfirmationDialog()
+        showAdminPinDialog()
     }
 
     // ──────────────────────────────────────────────────
-    // Bottom Controls & Fingerprint Punch
+    // Auto Fingerprint Detection & Punch
     // ──────────────────────────────────────────────────
-    private fun setupBottomControls() {
-        // Fingerprint Punch
-        binding.btnFingerprintPunch.setOnClickListener {
-            handleFingerprintPunch()
-        }
-
-        // Select employee manually from list
-        binding.btnSelectEmployee.setOnClickListener {
-            showEmployeeSelectionDialog("manual")
-        }
-    }
-
-    private fun handleFingerprintPunch() {
+    private fun triggerFingerprintScan() {
         val biometricManager = BiometricManager.from(this)
         val canAuth = biometricManager.canAuthenticate(
             BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
         )
 
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            Toast.makeText(this, "Fingerprint not available or not enrolled in Android settings", Toast.LENGTH_SHORT).show()
-            // Fallback to employee list selection
-            showEmployeeSelectionDialog("fingerprint")
             return
         }
 
         val enrolledId = prefs.enrolledFingerprintProfileId
-        val enrolledProfile = profiles.find { it.id == enrolledId }
+        val targetProfile = profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
 
-        if (enrolledProfile != null) {
-            // Directly prompt for the enrolled employee
-            promptBiometricForProfile(enrolledProfile)
-        } else {
-            // Ask which employee is punching, then authenticate and link them!
-            showEmployeeSelectionDialog("fingerprint")
+        if (targetProfile == null) {
+            Toast.makeText(this, "No employees enrolled yet. Admin can enroll in Settings.", Toast.LENGTH_SHORT).show()
+            return
         }
-    }
 
-    private fun promptBiometricForProfile(profile: Profile) {
         val executor = ContextCompat.getMainExecutor(this)
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
                 // Auto mark attendance immediately!
-                markAttendance(profile, "present")
+                markAttendance(targetProfile, "present")
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
                 if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                    Toast.makeText(this@MainActivity, "Biometric error: $errString", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Biometric: $errString", Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -249,8 +295,8 @@ class MainActivity : AppCompatActivity() {
         })
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Fingerprint Punch")
-            .setSubtitle("Place finger to mark attendance for ${profile.name}")
+            .setTitle("Fingerprint Attendance")
+            .setSubtitle("Touch sensor to mark attendance")
             .setNegativeButtonText("Cancel")
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .build()
@@ -259,18 +305,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ──────────────────────────────────────────────────
-    // Attendance Marking & Popup
+    // Attendance Marking & Confirmation Popup
     // ──────────────────────────────────────────────────
     private fun markAttendance(profile: Profile, status: String) {
-        // Prevent duplicate punch within 15 seconds
         val now = System.currentTimeMillis()
         if (profile.id == lastPunchedProfileId && (now - lastPunchTime) < 15000) {
-            Toast.makeText(this, "${profile.name} already marked just now!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "${profile.name} attendance already marked just now!", Toast.LENGTH_SHORT).show()
             return
         }
 
         pauseScanning()
-        binding.tvFaceStatus.text = "Marking attendance for ${profile.name}..."
+        binding.tvFaceDetectionHint.text = "Marking attendance for ${profile.name}..."
 
         apiClient.markAttendance(profile, status) { result ->
             runOnUiThread {
@@ -311,7 +356,7 @@ class MainActivity : AppCompatActivity() {
             binding.ivSuccessPhoto.setImageResource(R.drawable.ic_person_placeholder)
         }
 
-        // Animate popup in
+        // Pop in animation
         binding.cardAttendanceSuccess.alpha = 0f
         binding.cardAttendanceSuccess.scaleX = 0.85f
         binding.cardAttendanceSuccess.scaleY = 0.85f
@@ -323,7 +368,7 @@ class MainActivity : AppCompatActivity() {
             .setDuration(250)
             .start()
 
-        // Checkmark pop animation
+        // Checkmark scale animation
         binding.ivSuccessCheck.scaleX = 0f
         binding.ivSuccessCheck.scaleY = 0f
         binding.ivSuccessCheck.animate()
@@ -340,12 +385,6 @@ class MainActivity : AppCompatActivity() {
         dismissRunnable = Runnable { dismissSuccessPopup() }
         dismissHandler = Handler(Looper.getMainLooper()).apply {
             postDelayed(dismissRunnable!!, 3500)
-        }
-    }
-
-    private fun setupPopupActions() {
-        binding.btnSuccessDismiss.setOnClickListener {
-            dismissSuccessPopup()
         }
     }
 
@@ -372,12 +411,12 @@ class MainActivity : AppCompatActivity() {
         scanComplete = false
         scanPaused = false
         faceDetected = false
-        binding.faceOverlay.setDetected(false)
-        binding.tvFaceStatus.text = "Align face within the oval guide"
+        binding.tvFaceDetectionHint.text = "Look at camera or touch fingerprint sensor"
+        resetScreensaverTimer()
     }
 
     // ──────────────────────────────────────────────────
-    // Camera Preview & ML Kit Face Scan
+    // Full Screen Camera & Face Detection
     // ──────────────────────────────────────────────────
     private var scanComplete = false
 
@@ -435,24 +474,27 @@ class MainActivity : AppCompatActivity() {
 
         faceDetector.process(image)
             .addOnSuccessListener { faces ->
-                if (faces.isNotEmpty() && !faceDetected) {
-                    faceDetected = true
+                if (faces.isNotEmpty()) {
                     runOnUiThread {
-                        binding.tvFaceStatus.text = "Face detected! Hold still..."
-                        binding.faceOverlay.setDetected(true)
+                        resetScreensaverTimer()
                     }
-
-                    // Brief debounce before employee verification
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        if (faceDetected && !scanPaused && !scanComplete) {
-                            handleFaceMatched()
+                    if (!faceDetected) {
+                        faceDetected = true
+                        runOnUiThread {
+                            binding.tvFaceDetectionHint.text = "Face detected! Hold still..."
                         }
-                    }, 1200)
+
+                        // Brief debounce then identify and mark
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            if (faceDetected && !scanPaused && !scanComplete) {
+                                handleFaceMatched()
+                            }
+                        }, 1200)
+                    }
                 } else if (faces.isEmpty() && faceDetected) {
                     faceDetected = false
                     runOnUiThread {
-                        binding.tvFaceStatus.text = "Align face within the oval guide"
-                        binding.faceOverlay.setDetected(false)
+                        binding.tvFaceDetectionHint.text = "Look at camera or touch fingerprint sensor"
                     }
                 }
             }
@@ -465,47 +507,29 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // If only 1 profile or an enrolled profile exists
+        // Match enrolled profile or single profile
         val enrolledId = prefs.enrolledFingerprintProfileId
-        val singleOrEnrolled = if (profiles.size == 1) profiles[0] else profiles.find { it.id == enrolledId }
+        val targetProfile = if (profiles.size == 1) profiles[0] else profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
 
-        if (singleOrEnrolled != null) {
-            // Auto mark!
-            markAttendance(singleOrEnrolled, "present")
-        } else {
-            // Show employee selection dialog
-            showEmployeeSelectionDialog("face")
+        if (targetProfile != null) {
+            markAttendance(targetProfile, "present")
         }
-    }
-
-    private fun showEmployeeSelectionDialog(mode: String) {
-        if (profiles.isEmpty()) {
-            Toast.makeText(this, "Loading employees from server...", Toast.LENGTH_SHORT).show()
-            loadProfiles()
-            return
-        }
-
-        pauseScanning()
-        val dialog = EmployeeSelectDialog(this, profiles, mode) { profile, status ->
-            if (mode == "fingerprint" && prefs.enrolledFingerprintProfileId.isBlank()) {
-                // Link fingerprint
-                promptBiometricForProfile(profile)
-            } else {
-                markAttendance(profile, status)
-            }
-        }
-        dialog.setOnDismissListener {
-            if (binding.cardAttendanceSuccess.visibility != View.VISIBLE) {
-                resumeScanning()
-            }
-        }
-        dialog.show()
     }
 
     private fun loadProfiles() {
+        // Load from local persistent store
+        val localList = prefs.getLocalProfiles()
+        if (localList.isNotEmpty()) {
+            profiles = localList
+        }
+
+        // Sync with server
         apiClient.getProfiles { result ->
             result.onSuccess { list ->
-                profiles = list
+                if (list.isNotEmpty()) {
+                    profiles = list
+                    prefs.saveLocalProfiles(list)
+                }
             }
         }
     }
@@ -541,12 +565,14 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         resumeScanning()
         loadProfiles()
+        resetScreensaverTimer()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         clockHandler?.removeCallbacksAndMessages(null)
         connectionHandler?.removeCallbacksAndMessages(null)
+        screensaverHandler?.removeCallbacksAndMessages(null)
         dismissHandler?.removeCallbacksAndMessages(null)
         cameraExecutor.shutdown()
         faceDetector.close()

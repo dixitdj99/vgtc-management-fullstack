@@ -199,6 +199,107 @@ class ApiClient(context: Context) {
     }
 
     // ──────────────────────────────────────────────────
+    // POST /api/profiles — create profile
+    // ──────────────────────────────────────────────────
+    fun createProfile(profile: Profile, callback: (ApiResult<Profile>) -> Unit) {
+        ensureToken { tokenOk ->
+            if (!tokenOk) {
+                callback(Result.failure(Exception("Not authenticated")))
+                return@ensureToken
+            }
+            val body = gson.toJson(profile)
+            val request = Request.Builder()
+                .url("${baseUrl()}/api/profiles")
+                .post(body.toRequestBody(JSON_MEDIA_TYPE))
+                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+                .build()
+
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    callback(Result.failure(Exception("Network error: ${e.message}")))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    val respBody = response.body?.string() ?: ""
+                    if (response.isSuccessful) {
+                        try {
+                            val created = gson.fromJson(respBody, Profile::class.java)
+                            callback(Result.success(created))
+                        } catch (e: Exception) {
+                            callback(Result.success(profile))
+                        }
+                    } else {
+                        callback(Result.failure(Exception("Create failed (${response.code})")))
+                    }
+                }
+            })
+        }
+    }
+
+    // ──────────────────────────────────────────────────
+    // PUT /api/profiles/:id — update profile
+    // ──────────────────────────────────────────────────
+    fun updateProfile(profile: Profile, callback: (ApiResult<Boolean>) -> Unit) {
+        ensureToken { tokenOk ->
+            if (!tokenOk) {
+                callback(Result.failure(Exception("Not authenticated")))
+                return@ensureToken
+            }
+            val body = gson.toJson(profile)
+            val request = Request.Builder()
+                .url("${baseUrl()}/api/profiles/${profile.id}")
+                .put(body.toRequestBody(JSON_MEDIA_TYPE))
+                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+                .build()
+
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    callback(Result.failure(Exception("Network error: ${e.message}")))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (response.isSuccessful) {
+                        callback(Result.success(true))
+                    } else {
+                        callback(Result.failure(Exception("Update failed (${response.code})")))
+                    }
+                }
+            })
+        }
+    }
+
+    // ──────────────────────────────────────────────────
+    // DELETE /api/profiles/:id — delete profile
+    // ──────────────────────────────────────────────────
+    fun deleteProfile(profileId: String, callback: (ApiResult<Boolean>) -> Unit) {
+        ensureToken { tokenOk ->
+            if (!tokenOk) {
+                callback(Result.failure(Exception("Not authenticated")))
+                return@ensureToken
+            }
+            val request = Request.Builder()
+                .url("${baseUrl()}/api/profiles/$profileId")
+                .delete()
+                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+                .build()
+
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    callback(Result.failure(Exception("Network error: ${e.message}")))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (response.isSuccessful) {
+                        callback(Result.success(true))
+                    } else {
+                        callback(Result.failure(Exception("Delete failed (${response.code})")))
+                    }
+                }
+            })
+        }
+    }
+
+    // ──────────────────────────────────────────────────
     // GET /api/auth/status  — quick connectivity check
     // ──────────────────────────────────────────────────
     fun checkConnection(callback: (Boolean) -> Unit) {

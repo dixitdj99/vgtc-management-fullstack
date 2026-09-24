@@ -3,11 +3,12 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- 1. Live Camera Preview (Direct when app opens) -->
+    <!-- 1. FULL SCREEN CAMERA PREVIEW (No oval mask, full width & height) -->
     <androidx.camera.view.PreviewView
         android:id="@+id/cameraPreview"
         android:layout_width="0dp"
@@ -17,17 +18,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 2. Face Guide Oval Overlay -->
-    <com.vgtc.terminal.FaceScanOverlayView
-        android:id="@+id/faceOverlay"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- 3. Top Header Bar (Glassmorphic dark card) -->
+    <!-- 2. Clean Top Bar -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
@@ -35,24 +26,26 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
-        android:background="#B3000000"
+        android:paddingTop="12dp"
+        android:paddingBottom="8dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
+        <!-- Proper VGTC Official Logo -->
         <ImageView
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:src="@drawable/ic_vgtc_logo"
-            android:contentDescription="VGTC Logo"
+            android:id="@+id/ivLogo"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/vgtc_logo"
+            android:contentDescription="VGTC Official Logo"
             android:scaleType="fitCenter" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="12dp"
             android:orientation="vertical">
 
             <TextView
@@ -60,8 +53,10 @@
                 android:layout_height="wrap_content"
                 android:text="VGTC Terminal"
                 android:textColor="@color/white"
-                android:textSize="17sp"
+                android:textSize="18sp"
                 android:textStyle="bold"
+                android:shadowColor="#B3000000"
+                android:shadowRadius="8"
                 android:fontFamily="sans-serif-medium" />
 
             <!-- Live Connection Status -->
@@ -72,54 +67,30 @@
                 android:text="● Connecting..."
                 android:textSize="12sp"
                 android:textColor="@color/grey_status"
+                android:shadowColor="#B3000000"
+                android:shadowRadius="6"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Enroll Button -->
+        <!-- Admin Lock / Settings Icon (Protected by PIN) -->
         <ImageButton
-            android:id="@+id/btnEnroll"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_person_add"
+            android:id="@+id/btnAdminLock"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_lock"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Enroll Face or Fingerprint"
-            android:tint="@color/white"
-            android:layout_marginEnd="6dp" />
-
-        <!-- Settings Button -->
-        <ImageButton
-            android:id="@+id/btnSettings"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_settings"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Settings"
-            android:tint="@color/white"
-            android:layout_marginEnd="6dp" />
-
-        <!-- Exit App Button -->
-        <ImageButton
-            android:id="@+id/btnExit"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_exit"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Exit App"
-            android:tint="#EF4444" />
+            android:contentDescription="Admin Settings"
+            android:tint="@color/white" />
     </LinearLayout>
 
-    <!-- 4. Floating Live Digital Clock & Date -->
+    <!-- 3. Minimalist Time & Date (NO seconds, NO background box) -->
     <LinearLayout
-        android:id="@+id/clockCard"
+        android:id="@+id/clockSection"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
-        android:background="@drawable/chip_rounded"
-        android:backgroundTint="#80000000"
-        android:paddingHorizontal="20dp"
-        android:paddingVertical="8dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@+id/topBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -128,100 +99,59 @@
             android:id="@+id/tvTime"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="12:00:00 PM"
-            android:textSize="26sp"
+            android:text="12:00 PM"
+            android:textSize="38sp"
             android:textStyle="bold"
             android:fontFamily="sans-serif-medium"
             android:textColor="@color/white"
-            android:letterSpacing="0.02" />
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="2"
+            android:shadowRadius="10" />
 
         <TextView
             android:id="@+id/tvDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Thursday, 24 September 2026"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:fontFamily="sans-serif"
-            android:textColor="#D1D5DB" />
+            android:textColor="#F3F4F6"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="2"
+            android:shadowRadius="8"
+            android:layout_marginTop="2dp" />
     </LinearLayout>
 
-    <!-- 5. Face Scan Status Hint -->
+    <!-- 4. Subtle Face Detection Indicator (HUD Pill) -->
     <TextView
-        android:id="@+id/tvFaceStatus"
+        android:id="@+id/tvFaceDetectionHint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Align face within the oval guide"
+        android:text="Look at camera or touch fingerprint sensor"
         android:textColor="@color/white"
-        android:textSize="14sp"
-        android:textStyle="bold"
+        android:textSize="13sp"
         android:background="@drawable/chip_rounded"
-        android:backgroundTint="#99000000"
+        android:backgroundTint="#80000000"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="8dp"
-        android:layout_marginBottom="16dp"
-        app:layout_constraintBottom_toTopOf="@+id/bottomControls"
+        android:paddingVertical="7dp"
+        android:layout_marginBottom="28dp"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 6. Bottom Controls Bar -->
-    <LinearLayout
-        android:id="@+id/bottomControls"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:paddingHorizontal="20dp"
-        android:paddingBottom="24dp"
-        android:paddingTop="12dp"
-        android:background="#CC000000"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <!-- Fingerprint Punch Button -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnFingerprintPunch"
-            android:layout_width="match_parent"
-            android:layout_height="62dp"
-            android:text="Fingerprint Punch"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            android:fontFamily="sans-serif-medium"
-            app:icon="@drawable/ic_fingerprint"
-            app:iconGravity="textStart"
-            app:iconPadding="10dp"
-            app:iconSize="28dp"
-            app:cornerRadius="14dp"
-            app:backgroundTint="@color/primary"
-            android:textColor="@color/white"
-            android:elevation="4dp" />
-
-        <!-- Manual Select Employee Option -->
-        <TextView
-            android:id="@+id/btnSelectEmployee"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Select Employee from List"
-            android:textColor="#60A5FA"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:padding="10dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackground" />
-    </LinearLayout>
-
-    <!-- 7. ATTENDANCE MARKED CONFIRMATION POPUP (Overlay Modal) -->
+    <!-- 5. ATTENDANCE MARKED CONFIRMATION POPUP -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cardAttendanceSuccess"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="28dp"
         app:cardCornerRadius="20dp"
-        app:cardElevation="12dp"
+        app:cardElevation="16dp"
         app:cardBackgroundColor="@color/white"
         android:visibility="gone"
-        tools:visibility="visible"
+        tools:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -234,11 +164,10 @@
             android:gravity="center_horizontal"
             android:padding="24dp">
 
-            <!-- Checkmark circle -->
             <ImageView
                 android:id="@+id/ivSuccessCheck"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="68dp"
+                android:layout_height="68dp"
                 android:src="@drawable/ic_check_circle"
                 android:tint="@color/green_online"
                 android:contentDescription="Success" />
@@ -252,16 +181,14 @@
                 android:textColor="@color/text_primary"
                 android:layout_marginTop="10dp" />
 
-            <!-- Employee Photo / Avatar -->
             <ImageView
                 android:id="@+id/ivSuccessPhoto"
                 android:layout_width="72dp"
                 android:layout_height="72dp"
                 android:src="@drawable/ic_person_placeholder"
                 android:contentDescription="Employee Photo"
-                android:layout_marginTop="14dp" />
+                android:layout_marginTop="12dp" />
 
-            <!-- Employee Name -->
             <TextView
                 android:id="@+id/tvSuccessName"
                 android:layout_width="wrap_content"
@@ -272,7 +199,6 @@
                 android:textColor="@color/text_primary"
                 android:layout_marginTop="8dp" />
 
-            <!-- Employee Type -->
             <TextView
                 android:id="@+id/tvSuccessType"
                 android:layout_width="wrap_content"
@@ -282,7 +208,6 @@
                 android:textColor="@color/text_secondary"
                 android:layout_marginTop="2dp" />
 
-            <!-- Status & Time Badge -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -312,7 +237,6 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <!-- Auto-dismiss hint -->
             <TextView
                 android:id="@+id/tvAutoDismiss"
                 android:layout_width="wrap_content"
@@ -320,20 +244,85 @@
                 android:text="Auto-closing in 3 seconds..."
                 android:textColor="@color/text_hint"
                 android:textSize="12sp"
-                android:layout_marginTop="14dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSuccessDismiss"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="Done"
-                android:textSize="14sp"
-                android:fontFamily="sans-serif-medium"
-                app:cornerRadius="10dp"
-                app:backgroundTint="@color/primary"
-                android:textColor="@color/white"
                 android:layout_marginTop="12dp" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
+
+    <!-- 6. AMBIENT SCREENSAVER (Activates after 15s inactivity) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layoutScreensaver"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/black"
+        android:visibility="gone"
+        tools:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- Big VGTC Official Logo in Screensaver -->
+            <ImageView
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:src="@drawable/vgtc_logo"
+                android:contentDescription="VGTC Logo"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VGTC Logistics"
+                android:textColor="@color/white"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginTop="12dp" />
+
+            <!-- Screensaver Time (No seconds) -->
+            <TextView
+                android:id="@+id/tvSaverTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12:00 PM"
+                android:textSize="64sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-light"
+                android:textColor="@color/white"
+                android:letterSpacing="0.02"
+                android:layout_marginTop="16dp" />
+
+            <!-- Screensaver Date -->
+            <TextView
+                android:id="@+id/tvSaverDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Thursday, 24 September 2026"
+                android:textSize="16sp"
+                android:fontFamily="sans-serif"
+                android:textColor="#9CA3AF"
+                android:layout_marginTop="4dp" />
+
+            <!-- Pulsing hint -->
+            <TextView
+                android:id="@+id/tvSaverHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Step in front of camera or touch screen to punch"
+                android:textColor="#6B7280"
+                android:textSize="13sp"
+                android:layout_marginTop="32dp" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

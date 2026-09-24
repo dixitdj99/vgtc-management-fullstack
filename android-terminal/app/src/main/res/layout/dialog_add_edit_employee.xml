@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@drawable/chip_rounded"
+    android:backgroundTint="@color/surface_card">
+
+    <TextView
+        android:id="@+id/tvDialogTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Enroll Employee"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_primary" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Enter employee details and capture biometric data"
+        android:textSize="12sp"
+        android:textColor="@color/text_secondary"
+        android:layout_marginTop="2dp" />
+
+    <!-- Name input -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="Full Name *"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etEmployeeName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textPersonName|textCapWords"
+            android:textSize="14sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Role / Type input -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:hint="Role / Department (Staff, Driver, Helper, Labour)"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etEmployeeRole"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Staff"
+            android:inputType="textCapWords"
+            android:textSize="14sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Biometric capture actions -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDialogScanFace"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Scan Face"
+            android:textSize="13sp"
+            app:icon="@drawable/ic_face_scan"
+            app:iconSize="18dp"
+            app:cornerRadius="10dp"
+            android:layout_marginEnd="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDialogScanFingerprint"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Scan Fingerprint"
+            android:textSize="13sp"
+            app:icon="@drawable/ic_fingerprint"
+            app:iconSize="18dp"
+            app:cornerRadius="10dp" />
+    </LinearLayout>
+
+    <!-- Status text of biometric captures -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <TextView
+            android:id="@+id/tvFaceStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Face: Not captured"
+            android:textSize="11sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/tvFingerprintStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Fingerprint: Not linked"
+            android:textSize="11sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <!-- Action Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginTop="20dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDialogCancel"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="Cancel"
+            android:textColor="@color/text_secondary"
+            android:layout_marginEnd="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDialogSave"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="Save &amp; Enroll"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"
+            app:cornerRadius="10dp"
+            app:backgroundTint="@color/primary"
+            android:textColor="@color/white" />
+    </LinearLayout>
+</LinearLayout>

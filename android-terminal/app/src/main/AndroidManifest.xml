@@ -82,6 +82,12 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <!-- Admin Control Hub -->
+        <activity
+            android:name=".AdminSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- Device Admin receiver for kiosk lock -->
         <receiver
             android:name=".TerminalAdminReceiver"
