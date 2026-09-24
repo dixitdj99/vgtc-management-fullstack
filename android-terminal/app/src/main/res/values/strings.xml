@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VGTC Terminal</string>
+    <string name="face_scan">Face Scan</string>
+    <string name="fingerprint">Fingerprint</string>
+    <string name="mark_present">Mark Present</string>
+    <string name="mark_absent">Mark Absent</string>
+    <string name="half_day">Half Day</string>
+    <string name="scanning">Scanning for face…</string>
+    <string name="face_detected">Face detected! Hold still…</string>
+</resources>

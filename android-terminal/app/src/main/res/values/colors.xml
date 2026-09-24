@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="primary">#1A56DB</color>
+    <color name="primary_dark">#1A3A6E</color>
+    <color name="primary_light">#E8F0FE</color>
+
+    <!-- Backgrounds -->
+    <color name="bg_main">#F8F9FA</color>
+    <color name="surface_card">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#111827</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="text_hint">#9CA3AF</color>
+
+    <!-- Status -->
+    <color name="green_online">#10B981</color>
+    <color name="red_offline">#EF4444</color>
+    <color name="orange_halfday">#F59E0B</color>
+    <color name="grey_status">#9CA3AF</color>
+
+    <!-- UI -->
+    <color name="divider">#E5E7EB</color>
+</resources>
