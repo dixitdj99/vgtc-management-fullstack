@@ -253,23 +253,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ──────────────────────────────────────────────────
-    // Auto Fingerprint Detection & Punch
+    // Auto Fingerprint Detection & Punch (OTG USB + Biometric)
     // ──────────────────────────────────────────────────
     private fun triggerFingerprintScan() {
+        val enrolledId = prefs.enrolledFingerprintProfileId
+        val targetProfile = profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
+
+        if (targetProfile == null) {
+            Toast.makeText(this, "No employees enrolled yet. Admin can enroll in Settings.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 1. Try USB OTG Scanner if connected
+        if (com.vgtc.terminal.util.OtgFingerprintHelper.isOtgDeviceConnected(this)) {
+            val started = com.vgtc.terminal.util.OtgFingerprintHelper.startOtgCapture(this)
+            if (started) {
+                Toast.makeText(this, "Place finger on USB OTG scanner...", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        // 2. Try phone biometric sensor
         val biometricManager = BiometricManager.from(this)
         val canAuth = biometricManager.canAuthenticate(
             BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
         )
 
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            return
-        }
-
-        val enrolledId = prefs.enrolledFingerprintProfileId
-        val targetProfile = profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
-
-        if (targetProfile == null) {
-            Toast.makeText(this, "No employees enrolled yet. Admin can enroll in Settings.", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -302,6 +312,23 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         prompt.authenticate(promptInfo)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == com.vgtc.terminal.util.OtgFingerprintHelper.OTG_FP_CAPTURE_REQUEST) {
+            if (com.vgtc.terminal.util.OtgFingerprintHelper.isCaptureSuccessful(data) || resultCode == RESULT_OK) {
+                val enrolledId = prefs.enrolledFingerprintProfileId
+                val targetProfile = profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
+                if (targetProfile != null) {
+                    markAttendance(targetProfile, "present")
+                } else {
+                    Toast.makeText(this, "Attendance captured via OTG scanner!", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "OTG capture incomplete, please place finger firmly", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     // ──────────────────────────────────────────────────

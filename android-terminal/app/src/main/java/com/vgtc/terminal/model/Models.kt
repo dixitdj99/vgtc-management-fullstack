@@ -5,8 +5,10 @@ data class Profile(
     val name: String = "",
     val profileType: String? = "Staff",
     val photo: String? = null,
+    val photos: List<String>? = null,
     val role: String? = null,
     val phone: String? = null,
+    val fingerprintEnrolled: Boolean = false,
     val createdAt: String? = null
 )
 

@@ -46,9 +46,10 @@
                 android:textColor="@color/text_primary" />
 
             <TextView
+                android:id="@+id/tvOtgStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Enroll face and fingerprint for employees"
+                android:text="Face (5-angle) &amp; Fingerprint (OTG / Sensor)"
                 android:textSize="12sp"
                 android:textColor="@color/text_secondary" />
         </LinearLayout>
@@ -126,7 +127,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Tap the '+' button below to add and enroll face or fingerprint for an employee."
+            android:text="Tap the 'Enroll Employee' button below to add and enroll face or fingerprint."
             android:textSize="13sp"
             android:textColor="@color/text_secondary"
             android:gravity="center"
@@ -168,15 +169,19 @@
         app:iconTint="@color/white"
         app:backgroundTint="@color/primary"
         android:layout_margin="24dp"
+        android:elevation="6dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Full screen Face Capture Overlay Dialog -->
+    <!-- 5-IMAGE FACE CAPTURE OVERLAY (Elevated, hides FAB when active) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/layoutFaceCapture"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/black"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true"
         android:visibility="gone"
         tools:visibility="gone">
 
@@ -189,41 +194,91 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- Title of person being enrolled -->
-        <TextView
-            android:id="@+id/tvCaptureTarget"
-            android:layout_width="wrap_content"
+        <!-- Title Header Card -->
+        <LinearLayout
+            android:id="@+id/captureHeader"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Enrolling Face for Rahul"
-            android:textColor="@color/white"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:background="@drawable/chip_rounded"
-            android:backgroundTint="#B3000000"
-            android:paddingHorizontal="20dp"
-            android:paddingVertical="10dp"
-            android:layout_marginTop="24dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="16dp"
+            android:background="#B3000000"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintEnd_toEndOf="parent">
 
-        <TextView
-            android:id="@+id/tvCaptureHint"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Look directly into camera and tap Capture"
-            android:textColor="@color/white"
-            android:textSize="14sp"
-            android:background="@drawable/chip_rounded"
-            android:backgroundTint="#99000000"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp"
-            android:layout_marginBottom="24dp"
-            app:layout_constraintBottom_toTopOf="@+id/captureControls"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            <TextView
+                android:id="@+id/tvCaptureTarget"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Enrolling Face for Rahul"
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
-        <!-- Capture & Cancel Buttons -->
+            <!-- Step indicator for 5 images -->
+            <TextView
+                android:id="@+id/tvStepIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Step 1 of 5: Look straight at camera"
+                android:textColor="#34D399"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp" />
+
+            <!-- Progress dots for 5 images -->
+            <LinearLayout
+                android:id="@+id/dotsContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/dot1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1: Front ○ "
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/dot2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="2: Right ○ "
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/dot3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="3: Left ○ "
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/dot4"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="4: Up ○ "
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/dot5"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="5: Smile ○"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Capture & Cancel Controls at bottom (No overlap) -->
         <LinearLayout
             android:id="@+id/captureControls"
             android:layout_width="match_parent"
@@ -231,7 +286,7 @@
             android:orientation="horizontal"
             android:gravity="center"
             android:padding="20dp"
-            android:background="#CC000000"
+            android:background="#D9000000"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
@@ -251,10 +306,10 @@
                 android:id="@+id/btnDoCapture"
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
-                android:text="Capture &amp; Save Face"
+                android:text="📸 Take Shot (1/5)"
                 android:textSize="15sp"
                 android:textStyle="bold"
-                app:backgroundTint="@color/green_online"
+                app:backgroundTint="@color/primary"
                 android:textColor="@color/white"
                 app:cornerRadius="12dp" />
         </LinearLayout>

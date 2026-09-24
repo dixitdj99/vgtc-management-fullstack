@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Shield, LayoutDashboard, Users, Cloud, LogOut, ChevronLeft, Menu, X,
-  Fuel, UserCircle, TrendingUp, Briefcase, MapPin, ChevronRight, Mail,
+  Fuel, UserCircle, TrendingUp, Briefcase, MapPin, ChevronRight, Mail, ScanFace,
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import useViewport from '../../hooks/useViewport';
@@ -16,6 +16,7 @@ import SystemSettings from './SystemSettings';
 import AdminModule from '../../modules/AdminModule';
 import PartyMaster from '../../modules/PartyMaster';
 import StaffProfileModule from '../../modules/StaffProfileModule';
+import TerminalBiometricsManager from './TerminalBiometricsManager';
 import './admin.css';
 
 const STORAGE_KEY = 'vgtc-admin-active';
@@ -36,6 +37,7 @@ const NAV_GROUPS = [
     items: [
       { id: 'users', label: 'User Management', Icon: Users },
       { id: 'profiles', label: 'Staff Profiles', Icon: UserCircle },
+      { id: 'biometrics', label: 'Terminal & Biometrics', Icon: ScanFace },
     ],
   },
   {
@@ -351,6 +353,7 @@ export default function AdminLayout() {
               {active === 'pl_sheet' && <ProfitLossSheet />}
               {active === 'users' && <AdminUserManagement />}
               {active === 'profiles' && <StaffProfileModule role="admin" />}
+              {active === 'biometrics' && <TerminalBiometricsManager />}
               {active === 'parties' && <PartyMaster />}
               {active === 'destinations' && <DestinationManager />}
               {active === 'firms' && <FirmManager />}

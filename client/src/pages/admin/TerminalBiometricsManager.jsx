@@ -1,0 +1,771 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  ScanFace, Fingerprint, Calendar, Search, Filter, Download,
+  CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, User,
+  Eye, Image as ImageIcon, Shield, Smartphone, HardHat, Truck
+} from 'lucide-react';
+import ax from '../../api';
+import TableScroll from '../../components/TableScroll';
+import * as XLSX from 'xlsx';
+
+export default function TerminalBiometricsManager() {
+  const [activeTab, setActiveTab] = useState('logs'); // 'logs' | 'enrolled'
+  const [loading, setLoading] = useState(false);
+
+  // Logs state
+  const [logs, setLogs] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('terminal'); // 'terminal' | 'all'
+
+  // Enrolled employees state
+  const [profiles, setProfiles] = useState([]);
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [enrolledSearch, setEnrolledSearch] = useState('');
+  const [viewingPhotoModal, setViewingPhotoModal] = useState(null); // profile object
+
+  // Fetch Attendance Logs
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      // Fetch attendance range around selectedDate
+      const res = await ax.get(`attendance?from=${selectedDate}&to=${selectedDate}`);
+      const rawRecords = Array.isArray(res.data) ? res.data : [];
+      setLogs(rawRecords);
+    } catch (err) {
+      console.error('Failed to load attendance logs:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Enrolled Profiles
+  const fetchProfiles = async () => {
+    try {
+      const res = await ax.get('profiles');
+      setProfiles(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to load profiles:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    fetchProfiles();
+  }, [selectedDate]);
+
+  // Filtered Logs
+  const filteredLogs = useMemo(() => {
+    return logs.filter(log => {
+      if (sourceFilter === 'terminal' && log.source !== 'terminal') return false;
+      if (statusFilter !== 'all' && log.status !== statusFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const name = (log.profileName || '').toLowerCase();
+        const role = (log.profileType || '').toLowerCase();
+        if (!name.includes(q) && !role.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [logs, sourceFilter, statusFilter, searchQuery]);
+
+  // Filtered Enrolled Profiles
+  const filteredProfiles = useMemo(() => {
+    return profiles.filter(p => {
+      if (roleFilter !== 'all' && (p.profileType || 'Staff') !== roleFilter) return false;
+      if (enrolledSearch.trim()) {
+        const q = enrolledSearch.toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        const role = (p.profileType || '').toLowerCase();
+        if (!name.includes(q) && !role.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [profiles, roleFilter, enrolledSearch]);
+
+  // Stats calculation
+  const stats = useMemo(() => {
+    const presentCount = filteredLogs.filter(l => l.status === 'present').length;
+    const halfDayCount = filteredLogs.filter(l => l.status === 'half_day').length;
+    const absentCount = filteredLogs.filter(l => l.status === 'absent').length;
+    const terminalCount = filteredLogs.filter(l => l.source === 'terminal').length;
+
+    const totalEnrolled = profiles.length;
+    const faceEnrolledCount = profiles.filter(p => p.photo || (p.photos && p.photos.length > 0)).length;
+    const fpEnrolledCount = profiles.filter(p => p.fingerprintEnrolled).length;
+
+    return {
+      presentCount,
+      halfDayCount,
+      absentCount,
+      terminalCount,
+      totalEnrolled,
+      faceEnrolledCount,
+      fpEnrolledCount,
+    };
+  }, [filteredLogs, profiles]);
+
+  // Export to Excel
+  const handleExportExcel = () => {
+    if (activeTab === 'logs') {
+      const exportData = filteredLogs.map((r, i) => ({
+        'S.No': i + 1,
+        'Date': r.date || selectedDate,
+        'Employee Name': r.profileName || 'Unknown',
+        'Role/Department': r.profileType || 'Staff',
+        'Status': (r.status || '').toUpperCase(),
+        'Punch Source': r.source === 'terminal' ? 'VGTC Terminal Kiosk' : 'Web Manual',
+        'Marked At': r.createdAt ? new Date(r.createdAt).toLocaleTimeString('en-IN') : '-',
+        'Note': r.note || '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Attendance_${selectedDate}`);
+      XLSX.writeFile(wb, `VGTC_Terminal_Attendance_${selectedDate}.xlsx`);
+    } else {
+      const exportData = filteredProfiles.map((p, i) => ({
+        'S.No': i + 1,
+        'Employee Name': p.name,
+        'Department': p.profileType || 'Staff',
+        'Face Enrolled': p.photo ? 'Yes (Photo Saved)' : 'No',
+        'Photos Count': p.photos ? p.photos.length : (p.photo ? 1 : 0),
+        'Fingerprint Enrolled': p.fingerprintEnrolled ? 'Yes (Linked)' : 'No',
+        'Phone': p.phone || '-',
+      }));
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Enrolled_Biometrics');
+      XLSX.writeFile(wb, 'VGTC_Biometric_Enrollment_List.xlsx');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Top Banner with Title and Action Tabs */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))',
+        border: '1px solid rgba(148, 163, 184, 0.2)',
+        borderRadius: 14,
+        padding: '20px 24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, #6366f1, #3b82f6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)',
+          }}>
+            <ScanFace size={26} />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.01em' }}>
+              Attendance Terminal &amp; Biometrics Hub
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94a3b8' }}>
+              Real-time kiosk punch logs, OTG fingerprint events, and enrolled face profiles
+            </p>
+          </div>
+        </div>
+
+        {/* Tab switchers */}
+        <div style={{ display: 'flex', gap: 8, background: '#0b1220', padding: 4, borderRadius: 10 }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('logs')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 700,
+              background: activeTab === 'logs' ? '#6366f1' : 'transparent',
+              color: activeTab === 'logs' ? '#ffffff' : '#94a3b8',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Clock size={16} />
+            Terminal Punch Logs ({filteredLogs.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('enrolled')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 700,
+              background: activeTab === 'enrolled' ? '#6366f1' : 'transparent',
+              color: activeTab === 'enrolled' ? '#ffffff' : '#94a3b8',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Fingerprint size={16} />
+            Enrolled Biometrics ({profiles.length})
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 14,
+      }}>
+        {activeTab === 'logs' ? (
+          <>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #6366f1' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Terminal Punches Today
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginTop: 6 }}>
+                {stats.terminalCount}
+              </div>
+            </div>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #10b981' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Present Marked
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981', marginTop: 6 }}>
+                {stats.presentCount}
+              </div>
+            </div>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #f59e0b' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Half Day Marked
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#f59e0b', marginTop: 6 }}>
+                {stats.halfDayCount}
+              </div>
+            </div>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #ef4444' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Absent / Leave
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#ef4444', marginTop: 6 }}>
+                {stats.absentCount}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #6366f1' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Total Enrolled Staff
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginTop: 6 }}>
+                {stats.totalEnrolled}
+              </div>
+            </div>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #10b981' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Face Enrolled
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981', marginTop: 6 }}>
+                {stats.faceEnrolledCount} / {stats.totalEnrolled}
+              </div>
+            </div>
+            <div className="adm-card" style={{ padding: '16px 20px', borderLeft: '4px solid #3b82f6' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Fingerprint Linked (OTG)
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#3b82f6', marginTop: 6 }}>
+                {stats.fpEnrolledCount}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* FILTER BAR & ACTIONS */}
+      <div style={{
+        background: '#1e293b',
+        borderRadius: 12,
+        padding: '14px 18px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+        border: '1px solid rgba(148, 163, 184, 0.15)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {activeTab === 'logs' ? (
+            <>
+              {/* Date picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Calendar size={16} color="#94a3b8" />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  style={{
+                    background: '#0f172a',
+                    border: '1px solid rgba(148, 163, 184, 0.25)',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    color: '#f8fafc',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              {/* Status Filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{
+                  background: '#0f172a',
+                  border: '1px solid rgba(148, 163, 184, 0.25)',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  color: '#f8fafc',
+                  fontSize: 13,
+                }}
+              >
+                <option value="all">All Statuses</option>
+                <option value="present">Present Only</option>
+                <option value="half_day">Half Day Only</option>
+                <option value="absent">Absent Only</option>
+              </select>
+
+              {/* Source Filter */}
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                style={{
+                  background: '#0f172a',
+                  border: '1px solid rgba(148, 163, 184, 0.25)',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  color: '#f8fafc',
+                  fontSize: 13,
+                }}
+              >
+                <option value="terminal">Kiosk Terminal Only</option>
+                <option value="all">All Sources (Manual + Kiosk)</option>
+              </select>
+
+              {/* Search */}
+              <div style={{ position: 'relative' }}>
+                <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 10, top: 9 }} />
+                <input
+                  type="text"
+                  placeholder="Search employee..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    background: '#0f172a',
+                    border: '1px solid rgba(148, 163, 184, 0.25)',
+                    borderRadius: 8,
+                    padding: '6px 12px 6px 32px',
+                    color: '#f8fafc',
+                    fontSize: 13,
+                    width: 180,
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Role filter */}
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                style={{
+                  background: '#0f172a',
+                  border: '1px solid rgba(148, 163, 184, 0.25)',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  color: '#f8fafc',
+                  fontSize: 13,
+                }}
+              >
+                <option value="all">All Roles</option>
+                <option value="Staff">Staff</option>
+                <option value="Driver">Driver</option>
+                <option value="Labour">Labour</option>
+                <option value="Helper">Helper</option>
+                <option value="Manager">Manager</option>
+              </select>
+
+              {/* Search */}
+              <div style={{ position: 'relative' }}>
+                <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 10, top: 9 }} />
+                <input
+                  type="text"
+                  placeholder="Search enrolled staff..."
+                  value={enrolledSearch}
+                  onChange={(e) => setEnrolledSearch(e.target.value)}
+                  style={{
+                    background: '#0f172a',
+                    border: '1px solid rgba(148, 163, 184, 0.25)',
+                    borderRadius: 8,
+                    padding: '6px 12px 6px 32px',
+                    color: '#f8fafc',
+                    fontSize: 13,
+                    width: 220,
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            className="adm-btn adm-btn--ghost adm-btn--sm"
+            onClick={activeTab === 'logs' ? fetchLogs : fetchProfiles}
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="adm-btn adm-btn--primary adm-btn--sm"
+            onClick={handleExportExcel}
+          >
+            <Download size={14} />
+            Export to Excel
+          </button>
+        </div>
+      </div>
+
+      {/* CONTENT AREA */}
+      {activeTab === 'logs' ? (
+        <div className="adm-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <TableScroll maxHeight="65vh">
+            <table className="adm-table">
+              <thead>
+                <tr>
+                  <th>Punch Time</th>
+                  <th>Employee Name</th>
+                  <th>Role / Dept</th>
+                  <th>Status</th>
+                  <th>Punch Source</th>
+                  <th>Punch Method</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '36px 0', color: '#94a3b8' }}>
+                      <Clock size={36} color="#64748b" style={{ margin: '0 auto 8px', display: 'block' }} />
+                      No terminal punch logs recorded for {selectedDate}.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLogs.map((log, idx) => {
+                    const statusColor =
+                      log.status === 'present' ? '#10b981' :
+                      log.status === 'half_day' ? '#f59e0b' : '#ef4444';
+
+                    const punchTime = log.createdAt
+                      ? new Date(log.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                      : 'Logged';
+
+                    return (
+                      <tr key={log.id || idx}>
+                        <td style={{ fontWeight: 700, color: '#f8fafc' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Clock size={13} color="#94a3b8" />
+                            {punchTime}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: '50%',
+                              background: 'rgba(99, 102, 241, 0.15)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 700,
+                              color: '#818cf8',
+                              fontSize: 12,
+                            }}>
+                              {(log.profileName || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <span style={{ fontWeight: 700, color: '#f1f5f9' }}>{log.profileName}</span>
+                          </div>
+                        </td>
+                        <td style={{ color: '#cbd5e1' }}>
+                          {log.profileType || 'Staff'}
+                        </td>
+                        <td>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '3px 10px',
+                            borderRadius: 12,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: `${statusColor}1A`,
+                            color: statusColor,
+                            border: `1px solid ${statusColor}4D`,
+                          }}>
+                            {log.status === 'present' ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                            {(log.status || 'present').toUpperCase()}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '3px 10px',
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            background: log.source === 'terminal' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+                            color: log.source === 'terminal' ? '#60a5fa' : '#94a3b8',
+                          }}>
+                            <Smartphone size={12} />
+                            {log.source === 'terminal' ? 'VGTC Terminal Kiosk' : 'Web Manual'}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12, color: '#94a3b8' }}>
+                          Face / OTG Sensor
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </TableScroll>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: 16,
+        }}>
+          {filteredProfiles.length === 0 ? (
+            <div style={{
+              gridColumn: '1 / -1',
+              textAlign: 'center',
+              padding: '60px 20px',
+              background: '#1e293b',
+              borderRadius: 14,
+              color: '#94a3b8',
+            }}>
+              <Fingerprint size={48} color="#64748b" style={{ margin: '0 auto 12px', display: 'block' }} />
+              <h3 style={{ margin: 0, color: '#f8fafc', fontSize: 17 }}>No Enrolled Employees Found</h3>
+              <p style={{ margin: '6px 0 0', fontSize: 13 }}>
+                Use the VGTC Android Terminal app to enroll face photos and OTG fingerprints.
+              </p>
+            </div>
+          ) : (
+            filteredProfiles.map(p => {
+              const hasFace = !!(p.photo || (p.photos && p.photos.length > 0));
+              const photoCount = p.photos ? p.photos.length : (p.photo ? 1 : 0);
+              const hasFp = !!p.fingerprintEnrolled;
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    background: '#1e293b',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                    borderRadius: 14,
+                    padding: 18,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    {p.photo ? (
+                      <img
+                        src={p.photo}
+                        alt={p.name}
+                        style={{
+                          width: 52,
+                          height: 52,
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          border: '2px solid #6366f1',
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: '50%',
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#818cf8',
+                        fontSize: 20,
+                        fontWeight: 700,
+                      }}>
+                        {p.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.name}
+                      </div>
+                      <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
+                        {p.profileType || 'Staff'} {p.phone ? `• ${p.phone}` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status Badges */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      padding: '4px 10px',
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background: hasFace ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                      color: hasFace ? '#10b981' : '#f87171',
+                      border: `1px solid ${hasFace ? '#10b98140' : '#ef444440'}`,
+                    }}>
+                      <ScanFace size={13} />
+                      {hasFace ? `Face Enrolled (${photoCount} ${photoCount > 1 ? 'angles' : 'photo'})` : 'No Face'}
+                    </span>
+
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      padding: '4px 10px',
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background: hasFp ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.1)',
+                      color: hasFp ? '#60a5fa' : '#94a3b8',
+                      border: `1px solid ${hasFp ? '#3b82f640' : 'rgba(148, 163, 184, 0.2)'}`,
+                    }}>
+                      <Fingerprint size={13} />
+                      {hasFp ? 'OTG Fingerprint Linked' : 'No Fingerprint'}
+                    </span>
+                  </div>
+
+                  {/* View photos button */}
+                  {hasFace && (
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn--ghost adm-btn--sm"
+                      style={{ marginTop: 4, width: '100%', justifyContent: 'center' }}
+                      onClick={() => setViewingPhotoModal(p)}
+                    >
+                      <Eye size={14} />
+                      View Enrolled Face Angles ({photoCount})
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* PHOTO PREVIEW MODAL */}
+      {viewingPhotoModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 20,
+        }}>
+          <div style={{
+            background: '#1e293b',
+            border: '1px solid rgba(148, 163, 184, 0.2)',
+            borderRadius: 16,
+            maxWidth: 600,
+            width: '100%',
+            padding: 24,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 18,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>
+                  {viewingPhotoModal.name} — Enrolled Face Photos
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: '#94a3b8' }}>
+                  {viewingPhotoModal.photos?.length || 1} angles captured for biometric recognition
+                </p>
+              </div>
+              <button
+                type="button"
+                className="adm-btn adm-btn--ghost adm-btn--sm"
+                onClick={() => setViewingPhotoModal(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Gallery */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+              gap: 12,
+            }}>
+              {(viewingPhotoModal.photos && viewingPhotoModal.photos.length > 0
+                ? viewingPhotoModal.photos
+                : [viewingPhotoModal.photo]
+              ).map((imgSrc, i) => (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <img
+                    src={imgSrc}
+                    alt={`Angle ${i + 1}`}
+                    style={{
+                      width: '100%',
+                      height: 140,
+                      objectFit: 'cover',
+                      borderRadius: 10,
+                      border: '1px solid rgba(148, 163, 184, 0.3)',
+                    }}
+                  />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 6 }}>
+                    Angle {i + 1}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
