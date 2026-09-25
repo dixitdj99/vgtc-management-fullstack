@@ -24,3 +24,25 @@ firebase-debug.log
 
 
 OpenWA/
+
+# Server sensitive data — never commit local DB or production dumps
+server/data/
+server/cashbook_test_out.json
+server/vouchers_dump_test.json
+server/online_adv_out.json
+
+# Environment files — all variants
+.env.*
+!.env.example
+!.env.beta.example
+
+# Operational scripts (contain schema/prod details)
+server/matches.txt
+
+# Android build artifacts
+android-terminal/.gradle/
+android-terminal/build/
+android-terminal/*/build/
+android-terminal/local.properties
+android-terminal/nul
+

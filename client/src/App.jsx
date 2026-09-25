@@ -18,7 +18,7 @@ import DieselModule from './modules/DieselModule';
 import PublicLoadingStatus from './modules/PublicLoadingStatus';
 import AdminLoadingStatus from './modules/AdminLoadingStatus';
 import SellModule from './modules/SellModule';
-import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard, HardHat, MessageSquare } from 'lucide-react';
+import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard, HardHat, MessageSquare, ScanFace } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import StaffProfileModule from './modules/StaffProfileModule';
 import CinematicWeather from './components/CinematicWeather';
@@ -29,6 +29,7 @@ import LabourLoadingStatus from './modules/LabourLoadingStatus';
 import LabourAccount from './modules/LabourAccount';
 import PartyMaster from './modules/PartyMaster';
 import AdminLayout from './pages/admin/AdminLayout';
+import TerminalBiometricsManager from './pages/admin/TerminalBiometricsManager';
 import {
   detectWeatherAlert, loadAlerts, addAlert, markRead, markAllRead,
   clearAlert, clearAll, unreadCount, playAlertChime,
@@ -567,6 +568,8 @@ function AppInner() {
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
+    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance' },
+    { id: 'terminal_biometrics_dump', label: 'Terminal & Biometrics', Icon: ScanFace, color: '#06b6d4', section: 'jksuper', permKey: 'attendance' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
     { id: 'lr_jharli', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jharli', permKey: 'lr_jkl' },
@@ -621,6 +624,7 @@ function AppInner() {
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
     { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance' },
+    { id: 'terminal_biometrics_jharli', label: 'Terminal & Biometrics', Icon: ScanFace, color: '#06b6d4', section: 'jharli', permKey: 'attendance' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -738,7 +742,7 @@ function AppInner() {
 
 
   // Admin portal route handling
-  if (path.startsWith('/admin') && path !== '/admin' && path !== '/admin/login') return <AdminLayout />;
+  if (path.startsWith('/admin') && path !== '/admin/login') return <AdminLayout />;
 
   if (!ready && !user) return null;
 
@@ -806,7 +810,8 @@ function AppInner() {
       {(id === 'party_master_dump' || id === 'party_master_jharli') && <PartyMaster />}
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
-      {(id === 'attendance_jharli' || id === 'attendance_main') && <AttendanceModule />}
+      {(id === 'attendance_jharli' || id === 'attendance_main' || id === 'attendance_dump') && <AttendanceModule />}
+      {(id === 'terminal_biometrics' || id === 'terminal_biometrics_dump' || id === 'terminal_biometrics_jharli') && <TerminalBiometricsManager />}
       {(id === 'whatsapp_dump' || id === 'whatsapp_jkl' || id === 'whatsapp_jharli' || id === 'whatsapp_main') && <WhatsAppControlModule />}
       {(id === 'labour_dump' || id === 'labour_jharli' || id === 'labour_main') && <LabourAccount canEdit={user.role === 'admin' || user.permissions?.pay === 'edit'} />}
       {/* ── Generic (non-VGTC orgs) ── */}

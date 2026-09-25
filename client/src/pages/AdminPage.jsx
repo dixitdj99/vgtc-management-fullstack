@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Shield, Users, Fuel, Settings, Mail, Building2, TrendingUp, Cloud,
-  LayoutDashboard, UserCircle, Briefcase, MessageSquare,
+  LayoutDashboard, UserCircle, Briefcase, MessageSquare, ScanFace,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import AdminDashboard from './admin/AdminDashboard';
@@ -12,6 +12,7 @@ import FuelStationManager from './admin/FuelStationManager';
 import FirmManager from './admin/FirmManager';
 import DestinationManager from './admin/DestinationManager';
 import SystemSettings from './admin/SystemSettings';
+import TerminalBiometricsManager from './admin/TerminalBiometricsManager';
 import AdminModule from '../modules/AdminModule';
 import StaffProfileModule from '../modules/StaffProfileModule';
 import PartyMaster from '../modules/PartyMaster';
@@ -27,10 +28,11 @@ const TAB_STORAGE_KEY = 'vgtc-adminpage-tab';
 const TAB_GROUPS = [
   {
     id: 'people',
-    label: 'People',
+    label: 'People & Access',
     tabs: [
       { id: 'users', label: 'Users & Permissions', Icon: Users },
       { id: 'profiles', label: 'Driver & Staff Profiles', Icon: UserCircle },
+      { id: 'biometrics', label: 'Terminal & Biometrics', Icon: ScanFace },
     ],
   },
   {
@@ -156,6 +158,7 @@ export default function AdminPage() {
             >
               {activeTab === 'users' && <AdminUserManagement />}
               {activeTab === 'profiles' && <StaffProfileModule role="admin" />}
+              {activeTab === 'biometrics' && <TerminalBiometricsManager />}
               {activeTab === 'parties' && <PartyMaster />}
               {activeTab === 'destinations' && <DestinationManager />}
               {activeTab === 'firms' && <FirmManager />}

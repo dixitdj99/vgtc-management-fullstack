@@ -37,7 +37,7 @@ const stockTransferRoutes = require('./routes/stockTransferRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, requireAdmin } = require('./middleware/auth');
 // Permissions are enforced here, at the mounts, so the whole mapping reads in
 // one place. See middleware/permissionGate.js.
 const { gate } = require('./middleware/permissionGate');
@@ -47,6 +47,17 @@ const reportRoutes = require('./routes/reportRoutes');
 
 // Run migrations on startup.
 stockService.init();
+
+// Startup security check — fail early if JWT_SECRET is absent or is the
+// known-bad placeholder. auth.js also checks at require-time, but doing it
+// here makes the intent explicit at the server entry point.
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'vgtc-dev-secret-change-in-prod') {
+    console.error('[SECURITY] JWT_SECRET is missing or is the default placeholder. Set a real secret.');
+    process.exit(1);
+}
+
+// Trusted origin for postMessage calls — set APP_ORIGIN in .env for non-default deployments.
+const trustedOrigin = process.env.APP_ORIGIN || 'https://vgtc.site';
 
 const helmet = require('helmet');
 const app = express();
@@ -144,6 +155,9 @@ app.use('/api/kosli/lr', requireAuth, gate(['lr_dump','bill_kosli']), kosliLrRou
 app.use('/api/jhajjar/lr', requireAuth, gate(['lr_dump','bill_jhajjar']), jhajjarLrRoutes);
 app.use('/api/bahadurgarh/lr', requireAuth, gate(['lr_dump','bill_bahadurgarh']), bahadurgarhLrRoutes);
 app.use('/api/vouchers', requireAuth, gate(['voucher_jkl_dump','voucher_jkl','voucher_jksuper','balance_kosli','balance_jhajjar','balance_bahadurgarh','balance_jksuper','balance_jkl_dump','balance_jkl']), voucherRoutes);
+// TODO: audit GET /api/auth/status — it should return only { status: 'ok' } to
+// unauthenticated callers. Move env/infra details to a separate authenticated
+// admin endpoint. See routes/authRoutes.js.
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/cashbook', requireAuth, gate('cashbook'), cashbookRoutes);
@@ -154,22 +168,23 @@ app.use('/api/kosli/stock', requireAuth, gate('stock_kosli'), kosliStockRoutes);
 app.use('/api/jhajjar/stock', requireAuth, gate('stock_jhajjar'), jhajjarStockRoutes);
 app.use('/api/bahadurgarh/stock', requireAuth, gate('stock_bahadurgarh'), bahadurgarhStockRoutes);
 app.use('/api/sell', requireAuth, gate('sell'), sellRoutes);
-app.use('/api/backup', backupRoutes);
+app.use('/api/backup', requireAuth, requireAdmin, backupRoutes);
 app.use('/api/public', publicRoutes);
 // The landing page's "work with us" form. Public by necessity — it is the one
 // door a stranger can knock on, so the router carries its own honeypot, rate
 // limit and field caps, and guards its read side with requireAuth.
 app.use('/api/enquiry', require('./routes/enquiryRoutes'));
 app.use('/api/lr', requireAuth, gate(['lr_dump','bill_kosli','bill_jhajjar','bill_bahadurgarh']), lrRoutes); // Legacy JK Super route
-app.use('/api/labour', labourRoutes);
+app.use('/api/labour', requireAuth, labourRoutes);
 app.use('/api/parties', requireAuth, partyRoutes);
 app.use('/api/destinations', requireAuth, require('./routes/destinationRoutes'));
-app.use('/api/audit', auditRoutes);
+app.use('/api/audit', requireAuth, requireAdmin, auditRoutes);
 
 // Weather Proxy to avoid CORS
 app.get('/api/weather', async (req, res) => {
   try {
-    const city = req.query.city || 'Ahmedabad';
+    // Sanitize city to letters, spaces, and hyphens only — prevents SSRF via path injection.
+    const city = ((req.query.city || 'Ahmedabad') + '').replace(/[^a-zA-Z\s\-]/g, '').trim().slice(0, 60) || 'Ahmedabad';
     // 5 second timeout for weather proxy
     const response = await axios.get(`https://wttr.in/${city}?format=j1`, { timeout: 5000 });
     res.json(response.data);
@@ -247,7 +262,7 @@ app.get('/', async (req, res, next) => {
     if (error) {
         const safeError = escapeHtml(error);
         return res.send(`<html><body><script>
-            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Authorization failed' }, '*'); window.close(); }
+            if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Authorization failed' }, '${trustedOrigin}'); window.close(); }
         </script><p>Authorization failed: ${safeError}</p></body></html>`);
     }
 
@@ -258,7 +273,7 @@ app.get('/', async (req, res, next) => {
             await driveService.saveToken(code);
             return res.send(`<html><body><script>
                 if (window.opener) {
-                    window.opener.postMessage({ type: 'oauth-success' }, '*');
+                    window.opener.postMessage({ type: 'oauth-success' }, '${trustedOrigin}');
                     setTimeout(() => window.close(), 500);
                 } else {
                     document.write('<p style="font-family:sans-serif;padding:40px;text-align:center;color:#10b981">&#x2705; Google Drive authorized! You can close this tab.</p>');
@@ -266,7 +281,7 @@ app.get('/', async (req, res, next) => {
             </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#10b981">&#x2705; Authorized! Closing...</p></body></html>`);
         } catch (e) {
             return res.send(`<html><body><script>
-                if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Token exchange failed' }, '*'); window.close(); }
+                if (window.opener) { window.opener.postMessage({ type: 'oauth-error', msg: 'Token exchange failed' }, '${trustedOrigin}'); window.close(); }
             </script><p style="font-family:sans-serif;padding:40px;text-align:center;color:#f43f5e">&#x274c; Authorization failed.</p></body></html>`);
         }
     }

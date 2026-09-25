@@ -152,13 +152,18 @@ export const exportToPDF = (rows, title = 'Document Export', columns = null, opt
     const wide = headers.length > 8;
     const fontSize = headers.length > 20 ? 7 : headers.length > 14 ? 8 : headers.length > 10 ? 9 : 11;
 
-    const cell = (v) => (v === null || v === undefined ? '' : String(v));
+    const escHtml = (v) => String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 
     const html = `<!DOCTYPE html>
     <html>
       <head>
         <meta charset="UTF-8">
-        <title>${title}</title>
+        <title>${escHtml(title)}</title>
         <style>
           @page { size: ${wide ? 'A4 landscape' : 'A4 portrait'}; margin: 10mm; }
           body { font-family: system-ui, -apple-system, sans-serif; color: #111827; padding: 16px; }
@@ -176,16 +181,16 @@ export const exportToPDF = (rows, title = 'Document Export', columns = null, opt
       <body>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
-            <h2>${title}</h2>
+            <h2>${escHtml(title)}</h2>
             <div class="meta">${rows.length} row${rows.length === 1 ? '' : 's'} ·
               ${headers.length} columns · printed ${new Date().toLocaleString('en-IN')}</div>
           </div>
           <button onclick="window.print()" style="padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Print / Save PDF</button>
         </div>
         <table>
-          <thead><tr>${headers.map(h => `<th>${cell(h)}</th>`).join('')}</tr></thead>
+          <thead><tr>${headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead>
           <tbody>
-            ${rows.map(r => `<tr>${headers.map(h => `<td>${cell(r[h])}</td>`).join('')}</tr>`).join('')}
+            ${rows.map(r => `<tr>${headers.map(h => `<td>${escHtml(r[h])}</td>`).join('')}</tr>`).join('')}
           </tbody>
         </table>
         <!--
@@ -211,11 +216,11 @@ export const exportToPDF = (rows, title = 'Document Export', columns = null, opt
         try { opts.onHtml(html); } catch { /* archiving must never block the print */ }
     }
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-    } else {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (!win) {
         alert('Popup blocked. Please allow popups to print/export PDF.');
         return;
     }

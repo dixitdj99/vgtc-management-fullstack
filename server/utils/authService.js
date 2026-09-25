@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { randomInt, timingSafeEqual } = require('crypto');
 const localStore = require('./localStore');
 const { db, isAvailable } = require('../firebase');
 const orgService = require('../services/orgService');
@@ -44,7 +45,7 @@ const seed = async () => {
             const existing = await findByUsername(u.username);
             if (!existing) {
                 const { password, ...rest } = u;
-                const hash = bcrypt.hashSync(password, 10);
+                const hash = bcrypt.hashSync(password, 12);
                 if (isFirebaseAvailable()) {
                     await db.collection(getUCol()).add({ ...rest, password: hash, createdAt: new Date().toISOString() });
                     console.log(`[Auth] User '${u.username}' created in Firestore`);
@@ -260,7 +261,7 @@ const deleteUser = async (id) => {
 };
 
 const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
 };
 
 const saveUserOTP = async (id, otp) => {
@@ -268,9 +269,15 @@ const saveUserOTP = async (id, otp) => {
     await updateUser(id, { otpCode: otp, otpExpiry: expiry });
 };
 
+const timingSafeStringEqual = (a, b) => {
+    const ba = Buffer.from(String(a));
+    const bb = Buffer.from(String(b));
+    return ba.length === bb.length && timingSafeEqual(ba, bb);
+};
+
 const verifyOTP = async (id, code) => {
     const user = await findById(id);
-    if (!user || !user.otpCode || user.otpCode !== code) return false;
+    if (!user || !user.otpCode || !timingSafeStringEqual(user.otpCode, code)) return false;
     
     if (!user.otpExpiry) return false;
     const expiry = new Date(user.otpExpiry);

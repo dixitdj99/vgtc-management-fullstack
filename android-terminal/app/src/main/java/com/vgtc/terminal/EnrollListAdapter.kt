@@ -33,11 +33,25 @@ class EnrollListAdapter(
         holder.binding.tvName.text = profile.name
         holder.binding.tvType.text = profile.profileType ?: "Staff"
 
-        val hasFace = !profile.photo.isNullOrBlank()
+        val hasFace = !profile.faceEmbedding.isNullOrEmpty() || !profile.photo.isNullOrBlank()
         holder.binding.badgeFace.visibility = if (hasFace) View.VISIBLE else View.GONE
+        if (!profile.faceEmbedding.isNullOrEmpty()) {
+            holder.binding.badgeFace.text = "Face (AI) ✓"
+        } else {
+            holder.binding.badgeFace.text = "Face ✓"
+        }
 
-        val hasFingerprint = prefs.enrolledFingerprintProfileId == profile.id
+        val hasFingerprint = profile.fingerprintEnrolled || profile.fingerprintSlotId != null || prefs.enrolledFingerprintProfileId == profile.id
         holder.binding.badgeFingerprint.visibility = if (hasFingerprint) View.VISIBLE else View.GONE
+        if (profile.fingerprintSlotId != null) {
+            holder.binding.badgeFingerprint.text = "R307 Slot #${profile.fingerprintSlotId} ✓"
+        } else {
+            holder.binding.badgeFingerprint.text = "Fingerprint ✓"
+        }
+
+        val hasVehicle = !profile.vehicleNo.isNullOrBlank()
+        holder.binding.badgeVehicle.visibility = if (hasVehicle) View.VISIBLE else View.GONE
+        holder.binding.badgeVehicle.text = "🚛 ${profile.vehicleNo}"
 
         if (hasFace) {
             Glide.with(holder.itemView.context)

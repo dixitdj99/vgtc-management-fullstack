@@ -88,20 +88,8 @@ env:
   - variable: GOOGLE_CREDENTIALS
     secret: GOOGLE_CREDENTIALS
   # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling
-  # /api/jobs/*. Kept as a literal so the existing Scheduler jobs keep working
-  # unchanged — the value here must match the header they already send.
-  #
-  # Worth hardening when there is a moment: a value committed to the repo is not
-  # really a secret, and this is the only thing between the public internet and
-  # the backup/alert jobs. Moving it means creating the secret, switching this to
-  # `secret: CRON_SECRET`, and updating the Scheduler header in the same change:
+  # /api/jobs/*. Must be set in Cloud Secret Manager before deploying:
   #   firebase apphosting:secrets:set CRON_SECRET --project vgtc-management
+  # Then update the X-Cron-Secret header in all Cloud Scheduler jobs to match.
   - variable: CRON_SECRET
-    value: "vgtc-cron-secret-default-2026"
-    availability:
-      - RUNTIME
-# `availability` was listed twice under CRON_SECRET above. App Hosting validates
-# this file before it builds anything and rejects duplicate keys outright, so the
-# whole rollout failed with "Invalid apphosting.yaml" and production silently
-# stayed on the previous bundle. Note that a plain yaml.safe_load does NOT catch
-# this — it keeps the last duplicate and reports the file as fine.
+    secret: CRON_SECRET

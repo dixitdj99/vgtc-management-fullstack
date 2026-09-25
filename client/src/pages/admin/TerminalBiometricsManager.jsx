@@ -2,22 +2,31 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   ScanFace, Fingerprint, Calendar, Search, Filter, Download,
   CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, User,
-  Eye, Image as ImageIcon, Shield, Smartphone, HardHat, Truck
+  Eye, Image as ImageIcon, Shield, Smartphone, HardHat, Truck,
+  Plus, Trash2, Upload
 } from 'lucide-react';
 import ax from '../../api';
 import TableScroll from '../../components/TableScroll';
 import * as XLSX from 'xlsx';
 
+const getTodayIST = () => {
+  const d = new Date();
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const ist = new Date(utc + (3600000 * 5.5));
+  return ist.toISOString().slice(0, 10);
+};
+
 export default function TerminalBiometricsManager() {
   const [activeTab, setActiveTab] = useState('logs'); // 'logs' | 'enrolled'
   const [loading, setLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Logs state
   const [logs, setLogs] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(getTodayIST);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('terminal'); // 'terminal' | 'all'
+  const [sourceFilter, setSourceFilter] = useState('all'); // 'all' | 'terminal'
 
   // Enrolled employees state
   const [profiles, setProfiles] = useState([]);
@@ -25,9 +34,81 @@ export default function TerminalBiometricsManager() {
   const [enrolledSearch, setEnrolledSearch] = useState('');
   const [viewingPhotoModal, setViewingPhotoModal] = useState(null); // profile object
 
-  // Fetch Attendance Logs
-  const fetchLogs = async () => {
-    setLoading(true);
+  // Add Employee Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addRole, setAddRole] = useState('Staff');
+  const [addVehicle, setAddVehicle] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addPhoto, setAddPhoto] = useState(null);
+  const [savingEmployee, setSavingEmployee] = useState(false);
+
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 320;
+        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUri = canvas.toDataURL('image/jpeg', 0.8);
+        setAddPhoto(dataUri);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveEmployee = async (e) => {
+    e.preventDefault();
+    if (!addName.trim()) return alert('Please enter employee name');
+    setSavingEmployee(true);
+    try {
+      const payload = {
+        name: addName.trim(),
+        profileType: addRole,
+        vehicleNo: addVehicle.trim().toUpperCase() || null,
+        phone: addPhone.trim() || null,
+        photo: addPhoto || null,
+        photos: addPhoto ? [addPhoto] : [],
+        createdAt: new Date().toISOString(),
+      };
+      await ax.post('profiles', payload);
+      await fetchProfiles();
+      setIsAddModalOpen(false);
+      setAddName('');
+      setAddRole('Staff');
+      setAddVehicle('');
+      setAddPhone('');
+      setAddPhoto(null);
+    } catch (err) {
+      console.error('Failed to create profile:', err);
+      alert(err.response?.data?.error || err.message || 'Failed to save employee');
+    } finally {
+      setSavingEmployee(false);
+    }
+  };
+
+  const handleDeleteProfile = async (p) => {
+    if (!window.confirm(`Are you sure you want to remove ${p.name}? This will also delete their biometrics on the terminal.`)) return;
+    try {
+      await ax.delete(`profiles/${p.id}`);
+      await fetchProfiles();
+    } catch (err) {
+      console.error('Failed to delete profile:', err);
+      alert('Failed to delete profile');
+    }
+  };
+
+  // Fetch Attendance Logs (supports silent background sync)
+  const fetchLogs = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       // Fetch attendance range around selectedDate
       const res = await ax.get(`attendance?from=${selectedDate}&to=${selectedDate}`);
@@ -36,7 +117,7 @@ export default function TerminalBiometricsManager() {
     } catch (err) {
       console.error('Failed to load attendance logs:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -55,10 +136,20 @@ export default function TerminalBiometricsManager() {
     fetchProfiles();
   }, [selectedDate]);
 
+  // Live auto-refresh polling every 5 seconds so punches appear in real-time
+  useEffect(() => {
+    if (!autoRefresh || activeTab !== 'logs') return;
+    const interval = setInterval(() => {
+      fetchLogs(true);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selectedDate, autoRefresh, activeTab]);
+
   // Filtered Logs
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
-      if (sourceFilter === 'terminal' && log.source !== 'terminal') return false;
+      const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_');
+      if (sourceFilter === 'terminal' && !isTerminal) return false;
       if (statusFilter !== 'all' && log.status !== statusFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -89,7 +180,7 @@ export default function TerminalBiometricsManager() {
     const presentCount = filteredLogs.filter(l => l.status === 'present').length;
     const halfDayCount = filteredLogs.filter(l => l.status === 'half_day').length;
     const absentCount = filteredLogs.filter(l => l.status === 'absent').length;
-    const terminalCount = filteredLogs.filter(l => l.source === 'terminal').length;
+    const terminalCount = filteredLogs.filter(l => l.source === 'terminal' || l.terminalId || l.method === 'face' || l.method === 'fingerprint' || l.id?.startsWith('emp_')).length;
 
     const totalEnrolled = profiles.length;
     const faceEnrolledCount = profiles.filter(p => p.photo || (p.photos && p.photos.length > 0)).length;
@@ -361,8 +452,8 @@ export default function TerminalBiometricsManager() {
                   fontSize: 13,
                 }}
               >
+                <option value="all">All Sources (Kiosk + Web)</option>
                 <option value="terminal">Kiosk Terminal Only</option>
-                <option value="all">All Sources (Manual + Kiosk)</option>
               </select>
 
               {/* Search */}
@@ -431,11 +522,54 @@ export default function TerminalBiometricsManager() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {/* Live auto-refresh indicator */}
+          {activeTab === 'logs' && (
+            <button
+              type="button"
+              onClick={() => setAutoRefresh(v => !v)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 8,
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                background: autoRefresh ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.1)',
+                color: autoRefresh ? '#34d399' : '#94a3b8',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              title="Click to toggle real-time auto-refresh"
+            >
+              <span style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: autoRefresh ? '#10b981' : '#64748b',
+                boxShadow: autoRefresh ? '0 0 8px #10b981' : 'none',
+              }} />
+              {autoRefresh ? 'Live Sync (5s)' : 'Live Paused'}
+            </button>
+          )}
+
+          {activeTab === 'enrolled' && (
+            <button
+              type="button"
+              className="adm-btn adm-btn--primary adm-btn--sm"
+              onClick={() => setIsAddModalOpen(true)}
+              style={{ background: '#10b981', borderColor: '#059669', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Plus size={14} />
+              Enroll Employee
+            </button>
+          )}
+
           <button
             type="button"
             className="adm-btn adm-btn--ghost adm-btn--sm"
-            onClick={activeTab === 'logs' ? fetchLogs : fetchProfiles}
+            onClick={activeTab === 'logs' ? () => fetchLogs(false) : fetchProfiles}
             disabled={loading}
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -481,9 +615,21 @@ export default function TerminalBiometricsManager() {
                       log.status === 'present' ? '#10b981' :
                       log.status === 'half_day' ? '#f59e0b' : '#ef4444';
 
-                    const punchTime = log.createdAt
-                      ? new Date(log.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                    const rawTime = log.punchTime || log.markedAt || log.createdAt || (log.updatedAt?.seconds ? log.updatedAt.seconds * 1000 : log.updatedAt);
+                    const punchTime = rawTime
+                      ? new Date(rawTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
                       : 'Logged';
+
+                    const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_');
+
+                    const punchMethod = log.method === 'fingerprint' ? 'OTG Fingerprint' :
+                                        log.method === 'face' ? 'Face Verification' :
+                                        log.method === 'manual' ? 'Terminal Direct' :
+                                        (isTerminal ? 'Kiosk Auto-Punch' : 'Supervisor Roll-Call');
+
+                    const matchedProfile = profiles.find(p => p.id === log.profileId || p.name?.toLowerCase() === log.profileName?.toLowerCase());
+                    const photoUrl = log.photo || matchedProfile?.photo || (matchedProfile?.photos && matchedProfile.photos[0]);
+                    const assignedVeh = log.vehicleNo || matchedProfile?.vehicleNo;
 
                     return (
                       <tr key={log.id || idx}>
@@ -495,25 +641,49 @@ export default function TerminalBiometricsManager() {
                         </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{
-                              width: 32,
-                              height: 32,
-                              borderRadius: '50%',
-                              background: 'rgba(99, 102, 241, 0.15)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontWeight: 700,
-                              color: '#818cf8',
-                              fontSize: 12,
-                            }}>
-                              {(log.profileName || 'U').charAt(0).toUpperCase()}
+                            {photoUrl ? (
+                              <img
+                                src={photoUrl}
+                                alt=""
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
+                                  border: '2px solid #6366f1',
+                                  flexShrink: 0,
+                                }}
+                              />
+                            ) : (
+                              <div style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: '50%',
+                                background: 'rgba(99, 102, 241, 0.15)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 700,
+                                color: '#818cf8',
+                                fontSize: 13,
+                                flexShrink: 0,
+                              }}>
+                                {(log.profileName || 'U').charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 700, color: '#f1f5f9' }}>{log.profileName}</div>
+                              {assignedVeh && (
+                                <div style={{ fontSize: 11, color: '#38bdf8', fontWeight: 600 }}>
+                                  🚛 {assignedVeh}
+                                </div>
+                              )}
                             </div>
-                            <span style={{ fontWeight: 700, color: '#f1f5f9' }}>{log.profileName}</span>
                           </div>
                         </td>
                         <td style={{ color: '#cbd5e1' }}>
-                          {log.profileType || 'Staff'}
+                          <div>{log.profileType || 'Staff'}</div>
+                          {assignedVeh && <div style={{ fontSize: 11, color: '#94a3b8' }}>{assignedVeh}</div>}
                         </td>
                         <td>
                           <span style={{
@@ -541,15 +711,25 @@ export default function TerminalBiometricsManager() {
                             borderRadius: 6,
                             fontSize: 12,
                             fontWeight: 600,
-                            background: log.source === 'terminal' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.15)',
-                            color: log.source === 'terminal' ? '#60a5fa' : '#94a3b8',
+                            background: isTerminal ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+                            color: isTerminal ? '#60a5fa' : '#94a3b8',
                           }}>
                             <Smartphone size={12} />
-                            {log.source === 'terminal' ? 'VGTC Terminal Kiosk' : 'Web Manual'}
+                            {isTerminal ? 'VGTC Terminal Kiosk' : 'Web Manual'}
                           </span>
                         </td>
-                        <td style={{ fontSize: 12, color: '#94a3b8' }}>
-                          Face / OTG Sensor
+                        <td>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: 12,
+                            color: log.method === 'fingerprint' ? '#10b981' : '#a5b4fc',
+                            fontWeight: 600,
+                          }}>
+                            {log.method === 'fingerprint' ? <Fingerprint size={13} /> : <ScanFace size={13} />}
+                            {punchMethod}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -582,9 +762,10 @@ export default function TerminalBiometricsManager() {
             </div>
           ) : (
             filteredProfiles.map(p => {
-              const hasFace = !!(p.photo || (p.photos && p.photos.length > 0));
-              const photoCount = p.photos ? p.photos.length : (p.photo ? 1 : 0);
-              const hasFp = !!p.fingerprintEnrolled;
+              const primaryPhoto = p.photo || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
+              const hasFace = !!(primaryPhoto || (p.faceEmbedding && p.faceEmbedding.length > 0));
+              const photoCount = p.photos && p.photos.length > 0 ? p.photos.length : (primaryPhoto ? 1 : 0);
+              const hasFp = !!p.fingerprintEnrolled || p.fingerprintSlotId != null;
 
               return (
                 <div
@@ -601,22 +782,23 @@ export default function TerminalBiometricsManager() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    {p.photo ? (
+                    {primaryPhoto ? (
                       <img
-                        src={p.photo}
+                        src={primaryPhoto}
                         alt={p.name}
                         style={{
-                          width: 52,
-                          height: 52,
+                          width: 54,
+                          height: 54,
                           borderRadius: '50%',
                           objectFit: 'cover',
                           border: '2px solid #6366f1',
+                          flexShrink: 0,
                         }}
                       />
                     ) : (
                       <div style={{
-                        width: 52,
-                        height: 52,
+                        width: 54,
+                        height: 54,
                         borderRadius: '50%',
                         background: 'rgba(99, 102, 241, 0.15)',
                         display: 'flex',
@@ -625,6 +807,7 @@ export default function TerminalBiometricsManager() {
                         color: '#818cf8',
                         fontSize: 20,
                         fontWeight: 700,
+                        flexShrink: 0,
                       }}>
                         {p.name.charAt(0).toUpperCase()}
                       </div>
@@ -634,8 +817,14 @@ export default function TerminalBiometricsManager() {
                       <div style={{ fontWeight: 800, fontSize: 16, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.name}
                       </div>
-                      <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
-                        {p.profileType || 'Staff'} {p.phone ? `• ${p.phone}` : ''}
+                      <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span>{p.profileType || 'Staff'}</span>
+                        {p.vehicleNo && (
+                          <span style={{ color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.12)', padding: '1px 6px', borderRadius: 4 }}>
+                            🚛 {p.vehicleNo}
+                          </span>
+                        )}
+                        {p.phone && <span>• {p.phone}</span>}
                       </div>
                     </div>
                   </div>
@@ -675,18 +864,29 @@ export default function TerminalBiometricsManager() {
                     </span>
                   </div>
 
-                  {/* View photos button */}
-                  {hasFace && (
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    {hasFace && (
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn--ghost adm-btn--sm"
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={() => setViewingPhotoModal(p)}
+                      >
+                        <Eye size={14} />
+                        View Angles ({photoCount})
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="adm-btn adm-btn--ghost adm-btn--sm"
-                      style={{ marginTop: 4, width: '100%', justifyContent: 'center' }}
-                      onClick={() => setViewingPhotoModal(p)}
+                      style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', padding: '6px 10px' }}
+                      onClick={() => handleDeleteProfile(p)}
+                      title="Remove employee"
                     >
-                      <Eye size={14} />
-                      View Enrolled Face Angles ({photoCount})
+                      <Trash2 size={13} />
                     </button>
-                  )}
+                  </div>
                 </div>
               );
             })
@@ -763,6 +963,201 @@ export default function TerminalBiometricsManager() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ENROLL EMPLOYEE MODAL */}
+      {isAddModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 20,
+        }}>
+          <div style={{
+            background: '#1e293b',
+            border: '1px solid rgba(148, 163, 184, 0.2)',
+            borderRadius: 16,
+            maxWidth: 480,
+            width: '100%',
+            padding: 24,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ScanFace size={20} color="#10b981" />
+                Enroll New Employee
+              </h3>
+              <button
+                type="button"
+                className="adm-btn adm-btn--ghost adm-btn--sm"
+                onClick={() => setIsAddModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEmployee} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>
+                  Employee Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Kumar"
+                  value={addName}
+                  onChange={e => setAddName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#0f172a',
+                    border: '1px solid rgba(148, 163, 184, 0.25)',
+                    borderRadius: 8,
+                    padding: '8px 12px',
+                    color: '#f8fafc',
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>
+                    Role / Category
+                  </label>
+                  <select
+                    value={addRole}
+                    onChange={e => setAddRole(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: '#0f172a',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      color: '#f8fafc',
+                      fontSize: 13,
+                    }}
+                  >
+                    <option value="Staff">Staff</option>
+                    <option value="Driver">Driver</option>
+                    <option value="Labour">Labour</option>
+                    <option value="Helper">Helper</option>
+                    <option value="Manager">Manager</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>
+                    Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="9876543210"
+                    value={addPhone}
+                    onChange={e => setAddPhone(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: '#0f172a',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      color: '#f8fafc',
+                      fontSize: 14,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>
+                  Assigned Vehicle / Truck Number {addRole === 'Driver' ? '(Linked for Driver Attendance)' : '(Optional)'}
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. HR 55 AB 1234"
+                  value={addVehicle}
+                  onChange={e => setAddVehicle(e.target.value.toUpperCase())}
+                  style={{
+                    width: '100%',
+                    background: '#0f172a',
+                    border: '1px solid rgba(148, 163, 184, 0.25)',
+                    borderRadius: 8,
+                    padding: '8px 12px',
+                    color: '#f8fafc',
+                    fontSize: 14,
+                    textTransform: 'uppercase',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>
+                  Face Photo (For Biometric AI Recognition)
+                </label>
+                <div style={{
+                  border: '2px dashed rgba(148, 163, 184, 0.3)',
+                  borderRadius: 10,
+                  padding: 16,
+                  textAlign: 'center',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                }}>
+                  {addPhoto ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                      <img
+                        src={addPhoto}
+                        alt="Preview"
+                        style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '3px solid #10b981' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAddPhoto(null)}
+                        style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                      >
+                        Change Photo
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Upload size={28} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block' }} />
+                      <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>Upload face portrait image</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>JPG, PNG up to 5MB (auto-compressed)</div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoSelect}
+                        style={{ marginTop: 10, fontSize: 12, color: '#94a3b8' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="adm-btn adm-btn--ghost"
+                  onClick={() => setIsAddModalOpen(false)}
+                  disabled={savingEmployee}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="adm-btn adm-btn--primary"
+                  style={{ background: '#10b981', borderColor: '#059669' }}
+                  disabled={savingEmployee}
+                >
+                  {savingEmployee ? 'Saving & Syncing...' : 'Save & Sync to Terminal'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

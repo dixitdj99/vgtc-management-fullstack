@@ -34,6 +34,15 @@ const validatePhoto = (photo) => {
     return null;
 };
 
+// Fields that callers are permitted to write. Anything else in req.body is
+// silently dropped so that a client cannot set arbitrary internal fields.
+const ALLOWED_FIELDS = [
+    'name', 'phone', 'role', 'profileType', 'vehicleNo', 'salary',
+    'joiningDate', 'address', 'photo', 'photos', 'faceEmbedding',
+    'fingerprintEnrolled', 'fingerprintSlotId', 'paidLeaveEntitlement',
+    'department', 'type'
+];
+
 // GET all profiles
 router.get('/', async (req, res) => {
     try {
@@ -68,18 +77,41 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: `Cannot create test profile "${req.body.name}" in production` });
         }
 
-        const payload = {
-            ...req.body,
-            createdAt: new Date().toISOString()
-        };
+        const targetId = req.body.id ? String(req.body.id).trim() : null;
 
-        let docRefId;
+        // Fix #2: allowlist — never spread the whole req.body into Firestore
+        const payload = {};
+        ALLOWED_FIELDS.forEach(k => { if (req.body[k] !== undefined) payload[k] = req.body[k]; });
+        payload.createdAt = req.body.createdAt || new Date().toISOString();
+        if (req.body.id) payload.id = req.body.id; // preserve only the id field explicitly
+
+        let docRefId = targetId;
         if (!isAvailable()) {
-            const doc = localStore.insert(PROFILE_COL, payload);
-            docRefId = doc.id;
+            if (targetId) {
+                const existing = localStore.getById(PROFILE_COL, targetId);
+                if (existing) {
+                    localStore.update(PROFILE_COL, targetId, payload);
+                } else {
+                    const docs = localStore.getAll(PROFILE_COL);
+                    docs.unshift({ id: targetId, ...payload });
+                    const fs = require('fs');
+                    const path = require('path');
+                    const DATA_DIR = path.join(__dirname, '..', 'data');
+                    const file = path.join(DATA_DIR, PROFILE_COL + '.json');
+                    try { fs.writeFileSync(file, JSON.stringify(docs, null, 2), 'utf8'); } catch (_) {}
+                }
+            } else {
+                const doc = localStore.insert(PROFILE_COL, payload);
+                docRefId = doc.id;
+            }
         } else {
-            const docRef = await db.collection(getCol(PROFILE_COL, req)).add(payload);
-            docRefId = docRef.id;
+            const colRef = db.collection(getCol(PROFILE_COL, req));
+            if (targetId) {
+                await colRef.doc(targetId).set(payload, { merge: true });
+            } else {
+                const docRef = await colRef.add(payload);
+                docRefId = docRef.id;
+            }
         }
         
         res.json({ id: docRefId, ...payload });
@@ -99,14 +131,38 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: `Cannot set test profile name "${req.body.name}" in production` });
         }
 
-        const payload = { ...req.body, updatedAt: new Date().toISOString() };
+        const targetId = String(req.params.id).trim();
+
+        // Fix #3: allowlist — never spread the whole req.body into Firestore
+        const payload = {};
+        ALLOWED_FIELDS.forEach(k => { if (req.body[k] !== undefined) payload[k] = req.body[k]; });
+        payload.id = targetId;
+        payload.updatedAt = new Date().toISOString();
         
         if (!isAvailable()) {
-            localStore.update(PROFILE_COL, req.params.id, payload);
+            const existing = localStore.getById(PROFILE_COL, targetId);
+            if (existing) {
+                localStore.update(PROFILE_COL, targetId, payload);
+            } else {
+                const docs = localStore.getAll(PROFILE_COL);
+                const idx = docs.findIndex(d => d.id === targetId || d.name === payload.name);
+                if (idx >= 0) {
+                    docs[idx] = { ...docs[idx], ...payload, updatedAt: new Date().toISOString() };
+                } else {
+                    docs.unshift(payload);
+                }
+                const fs = require('fs');
+                const path = require('path');
+                const DATA_DIR = path.join(__dirname, '..', 'data');
+                const file = path.join(DATA_DIR, PROFILE_COL + '.json');
+                try { fs.writeFileSync(file, JSON.stringify(docs, null, 2), 'utf8'); } catch (_) {}
+            }
         } else {
-            await db.collection(getCol(PROFILE_COL, req)).doc(req.params.id).update(payload);
+            const colRef = db.collection(getCol(PROFILE_COL, req));
+            // Fix #1: only update the target document — no "sync by name" cross-doc writes
+            await colRef.doc(targetId).set(payload, { merge: true });
         }
-        res.json({ id: req.params.id, ...payload });
+        res.json({ id: targetId, ...payload });
     } catch (err) {
         console.error('update profile error:', err);
         res.status(500).json({ error: err.message });

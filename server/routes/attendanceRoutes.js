@@ -38,7 +38,10 @@ router.get('/roster', async (req, res, next) => {
  */
 router.get('/pending', async (req, res, next) => {
     try {
-        res.json(await attendanceService.getPendingDays(req.orgId, req, req.query.days));
+        // Fix #6: cap the days window so a caller cannot trigger an
+        // arbitrarily large Firestore scan.
+        const days = Math.min(Math.max(parseInt(req.query.days) || 14, 1), 90);
+        res.json(await attendanceService.getPendingDays(req.orgId, req, days));
     } catch (err) { next(err); }
 });
 
@@ -99,6 +102,10 @@ router.get('/', async (req, res, next) => {
             to = t;
         }
         if (from > to) return res.status(400).json({ error: '"from" must not be after "to"' });
+
+        // Fix #7: reject date ranges that would cause an oversized DB scan.
+        const diffDays = (new Date(to).getTime() - new Date(from).getTime()) / 86400000;
+        if (diffDays > 93) return res.status(400).json({ error: 'Date range cannot exceed 93 days' });
 
         res.json(await attendanceService.getRange(req.orgId, req, { from, to, profileId }));
     } catch (err) { next(err); }

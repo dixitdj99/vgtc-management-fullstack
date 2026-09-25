@@ -12,13 +12,9 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: '40px', fontFamily: 'monospace', color: '#f43f5e', background: '#0f0f0f', minHeight: '100vh' }}>
-          <h2>App crashed — open DevTools console for details</h2>
-          <pre style={{ fontSize: '12px', marginTop: '16px', whiteSpace: 'pre-wrap' }}>
-            {this.state.error?.message}
-            {'\n\n'}
-            {this.state.error?.stack}
-          </pre>
+        <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', color: '#f43f5e', background: '#0f0f0f', minHeight: '100vh' }}>
+          <h2>Something went wrong</h2>
+          <p style={{ fontSize: '14px', marginTop: '8px', color: '#9ca3af' }}>An unexpected error occurred. Please try reloading the page.</p>
           <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
             Reload Page
           </button>

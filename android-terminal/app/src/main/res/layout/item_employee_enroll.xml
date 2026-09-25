@@ -87,6 +87,21 @@
                         android:backgroundTint="#E8F5E9"
                         android:paddingHorizontal="8dp"
                         android:paddingVertical="2dp" />
+
+                    <TextView
+                        android:id="@+id/badgeVehicle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🚛 HR55AB1234"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/primary"
+                        android:background="@drawable/chip_rounded"
+                        android:backgroundTint="#EDE7F6"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="2dp"
+                        android:layout_marginStart="6dp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
 

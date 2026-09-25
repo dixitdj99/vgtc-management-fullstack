@@ -10,9 +10,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
-    <!-- Biometric fingerprint -->
+    <!-- Biometric fingerprint & USB Host for R307 UART module -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <!-- Kiosk mode: keep screen on, boot on device start -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -52,10 +53,17 @@
         <!-- Main terminal activity -->
         <activity
             android:name=".MainActivity"
-            android:exported="false"
+            android:exported="true"
             android:screenOrientation="portrait"
             android:launchMode="singleTask"
-            android:windowSoftInputMode="stateHidden|adjustResize" />
+            android:windowSoftInputMode="stateHidden|adjustResize">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
+        </activity>
 
         <!-- Face scan activity -->
         <activity
@@ -104,7 +112,7 @@
         <!-- Boot receiver for auto-start -->
         <receiver
             android:name=".BootReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>

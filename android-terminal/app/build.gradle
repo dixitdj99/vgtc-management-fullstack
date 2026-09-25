@@ -36,6 +36,10 @@ android {
     buildFeatures {
         viewBinding true
     }
+
+    aaptOptions {
+        noCompress "tflite"
+    }
 }
 
 dependencies {
@@ -66,6 +70,13 @@ dependencies {
 
     // Biometric (fingerprint)
     implementation 'androidx.biometric:biometric:1.2.0-alpha05'
+
+    // USB Serial for UART Fingerprint Sensor (R307 via CP2102/CH340 OTG)
+    implementation 'com.github.mik3y:usb-serial-for-android:3.8.0'
+
+    // TensorFlow Lite for real Face Recognition
+    implementation 'org.tensorflow:tensorflow-lite:2.16.1'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
 
     // WorkManager (auto-restart)
     implementation 'androidx.work:work-runtime-ktx:2.9.1'

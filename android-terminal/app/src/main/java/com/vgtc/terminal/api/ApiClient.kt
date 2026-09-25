@@ -31,7 +31,13 @@ class ApiClient(context: Context) {
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-    private fun baseUrl() = prefs.serverUrl.trimEnd('/')
+    private fun baseUrl(): String {
+        var url = prefs.serverUrl.trim().trimEnd('/')
+        if (url.endsWith("/api")) {
+            url = url.substringBeforeLast("/api")
+        }
+        return url
+    }
 
     private fun authHeaders(): Map<String, String> {
         val token = prefs.authToken
@@ -116,22 +122,16 @@ class ApiClient(context: Context) {
     // ──────────────────────────────────────────────────
     // POST /api/attendance — mark single person
     // ──────────────────────────────────────────────────
-    fun markAttendance(profile: com.vgtc.terminal.model.Profile, status: String, callback: (ApiResult<Boolean>) -> Unit) {
+    fun markAttendance(
+        record: AttendanceRecord,
+        callback: (ApiResult<Boolean>) -> Unit
+    ) {
         ensureToken { tokenOk ->
             if (!tokenOk) {
                 callback(Result.failure(Exception("Not authenticated")))
                 return@ensureToken
             }
 
-            val today = SimpleDateFormat("yyyy-MM-dd", Locale("en", "IN")).format(Date())
-            val record = AttendanceRecord(
-                profileId = profile.id,
-                profileName = profile.name,
-                profileType = profile.profileType ?: "Staff",
-                status = status,
-                date = today,
-                source = "terminal"
-            )
             val body = gson.toJson(record)
             val request = Request.Builder()
                 .url("${baseUrl()}/api/attendance")
@@ -158,6 +158,39 @@ class ApiClient(context: Context) {
                 }
             })
         }
+    }
+
+    fun markAttendance(
+        profile: com.vgtc.terminal.model.Profile,
+        status: String,
+        method: String = "face",
+        inTime: String? = null,
+        outTime: String? = null,
+        durationHours: Double? = null,
+        dutyDays: Double? = null,
+        dutyState: String? = null,
+        overrideReason: String? = null,
+        callback: (ApiResult<Boolean>) -> Unit
+    ) {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale("en", "IN")).format(Date())
+        val record = AttendanceRecord(
+            profileId = profile.id,
+            profileName = profile.name,
+            profileType = profile.profileType ?: "Staff",
+            status = status,
+            date = today,
+            vehicleNo = profile.vehicleNo,
+            inTime = inTime,
+            outTime = outTime,
+            durationHours = durationHours,
+            dutyDays = dutyDays,
+            dutyState = dutyState,
+            overrideReason = overrideReason,
+            source = if (overrideReason != null) "manual" else "terminal",
+            method = method,
+            terminalId = "VGTC-TERMINAL-01"
+        )
+        markAttendance(record, callback)
     }
 
     // ──────────────────────────────────────────────────

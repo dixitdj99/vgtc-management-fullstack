@@ -777,6 +777,66 @@ function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick })
             Suggested · सुझाव
           </div>
         )}
+
+        {row.inTime && (
+          <div style={{
+            fontSize: '10.5px', fontWeight: 700, color: 'var(--text)', background: 'var(--bg-muted, rgba(0,0,0,0.04))',
+            padding: '2px 8px', borderRadius: '8px', marginTop: '2px', textAlign: 'center', width: '100%',
+          }}>
+            🕒 In: {row.inTime} {row.outTime ? `| Out: ${row.outTime}` : ''}
+            {row.durationHours ? ` (${row.durationHours}h)` : ''}
+          </div>
+        )}
+
+        {row.dutyState === 'in_duty' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+            fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.14)',
+            padding: '2px 8px', borderRadius: '12px', marginTop: '2px',
+          }}>
+            ⚡ Shift Active (Min 8h)
+          </div>
+        )}
+
+        {row.dutyState === 'emergency_leave' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+            fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.12)',
+            padding: '2px 8px', borderRadius: '12px', marginTop: '2px',
+          }}>
+            ⚠️ Early Leave ({row.dutyDays || 0} Day)
+          </div>
+        )}
+
+        {row.method === 'admin_override' && (
+          <div title={row.overrideReason || 'Admin Override'} style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+            fontWeight: 800, color: '#8b5cf6', background: 'rgba(139,92,246,0.12)',
+            padding: '2px 8px', borderRadius: '12px', marginTop: '2px',
+          }}>
+            ⚙️ Override: {row.dutyDays ?? 1.0} Day
+          </div>
+        )}
+
+        {row.method === 'face' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px',
+            fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.12)',
+            padding: '2px 8px', borderRadius: '12px', marginTop: '2px',
+          }}>
+            📷 Face Verified {row.punchTime && !row.inTime ? `(${new Date(row.punchTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : ''}
+          </div>
+        )}
+
+        {row.method === 'fingerprint' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px',
+            fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.12)',
+            padding: '2px 8px', borderRadius: '12px', marginTop: '2px',
+          }}>
+            👆 Fingerprint {row.punchTime && !row.inTime ? `(${new Date(row.punchTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : ''}
+          </div>
+        )}
       </button>
 
       {/* Precise picker, so half-day and leave don't need repeated tapping */}

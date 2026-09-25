@@ -3,10 +3,12 @@ const router = express.Router();
 const voucherService = require('../services/voucherService');
 
 // GET /api/public/receipt/:truckNo/:date
+// Org is always fixed to 'vgtc' — never sourced from the caller. Accepting an
+// arbitrary ?org= query param would let anyone read another org's voucher data.
 router.get('/receipt/:truckNo/:date', async (req, res) => {
     try {
         const { truckNo, date } = req.params;
-        const orgId = req.query.org || 'vgtc';
+        const orgId = 'vgtc'; // never trust req.query.org — IDOR vulnerability
         const vouchers = await voucherService.getVouchersByTruckAndDate(orgId, truckNo, date);
         
         // Sanitize the response to only return necessary summary data for public viewing
@@ -31,25 +33,12 @@ router.get('/receipt/:truckNo/:date', async (req, res) => {
         res.json(sanitized);
     } catch (error) {
         console.error('Public receipt error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Unable to fetch receipt. Please try again.' });
     }
 });
 
-// Check organization status for diagnostics
-router.get('/org/:id', async (req, res) => {
-    try {
-        const orgService = require('../services/orgService');
-        const org = await orgService.getById(req.params.id);
-        if (!org) return res.status(404).json({ error: 'Organization not found' });
-        res.json({
-            id: org.id,
-            name: org.name,
-            status: org.status,
-            config: org.config ? 'present' : 'missing'
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// Removed: GET /api/public/org/:id — leaked org name, status, and config presence
+// to unauthenticated callers, enabling org enumeration reconnaissance.
+// Admins can use the authenticated /api/org/:id endpoint instead.
 
 module.exports = router;

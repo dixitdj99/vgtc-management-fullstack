@@ -4,8 +4,8 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const authService = require('../utils/authService');
 const emailService = require('../utils/emailService');
-const { SECRET } = require('../middleware/auth');
 const { ENV, getEnvPrefix } = require('../utils/envConfig');
+const SECRET = process.env.JWT_SECRET;
 const { isAvailable } = require('../firebase');
 const stytchService = require('../utils/stytchService');
 const { getEnvCol } = require('../utils/collectionUtils');
@@ -20,7 +20,7 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// OTP resend: 5 per 10 min per IP
+// OTP / password-reset: 5 per 10 min per IP
 const otpLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
     max: 5,
@@ -29,8 +29,16 @@ const otpLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// GET /api/auth/status (Diagnostic)
+// GET /api/auth/status — unauthenticated liveness probe (used by Android terminal).
+// Returns the minimum needed for connectivity checks. Internal infra details
+// (env name, collection prefix, firebase status, stytch config) are NOT disclosed
+// to unauthenticated callers — those leak the attack surface to anyone probing.
 router.get('/status', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// GET /api/auth/status/admin — full diagnostic, admin-only.
+router.get('/status/admin', require('../middleware/auth').requireAdmin, (req, res) => {
     const firebaseConnected = isAvailable();
     res.json({
         status: 'ok',
@@ -41,7 +49,6 @@ router.get('/status', (req, res) => {
         stytchConfigured: stytchService.isStytchConfigured(),
         environment: process.env.K_SERVICE ? 'app-hosting' : 'local',
         timestamp: new Date().toISOString(),
-        note: !firebaseConnected ? 'To enable Firestore, add server/serviceAccountKey.json (local) or FIREBASE_SERVICE_ACCOUNT (cloud)' : 'Firestore is active'
     });
 });
 
@@ -58,8 +65,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         if (user) {
             emailToAuth = user.email || `${username}@vgtc.com`;
         } else if (username.includes('@')) {
-            // Find user in DB by email
-            const allUsers = await authService.getAll(req.body.orgId || 'vgtc');
+            // FIX #6: Global lookup — never scope by caller-supplied orgId to prevent cross-tenant enumeration
+            const allUsers = await authService.getAll('vgtc');
             user = allUsers.find(u => u.email.toLowerCase() === username.toLowerCase());
             if (user) {
                 emailToAuth = user.email;
@@ -75,7 +82,9 @@ router.post('/login', loginLimiter, async (req, res) => {
             try {
                 await stytchService.authenticate(emailToAuth, password);
             } catch (err) {
-                return res.status(401).json({ error: err.message || 'Invalid username/email or password' });
+                // FIX #7: Log full error server-side; send only a safe generic message to client
+                console.error('[Auth] Stytch authentication error:', err);
+                return res.status(401).json({ error: 'Invalid username/email or password' });
             }
         } else {
             // Fallback to local bcrypt validation
@@ -125,7 +134,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
 
     } catch (err) {
-        console.error('[Auth] Login error:', err.message);
+        console.error('[Auth] Login error:', err);
         res.status(500).json({ error: 'Login failed. Please try again.' });
     }
 });
@@ -136,7 +145,8 @@ router.post('/signup', async (req, res) => {
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', async (req, res) => {
+// FIX #3: Rate-limited with otpLimiter
+router.post('/forgot-password', otpLimiter, async (req, res) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -154,23 +164,29 @@ router.post('/forgot-password', async (req, res) => {
             user = localStore.getAll(getUCol()).find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
         }
 
+        // FIX #5: Never confirm or deny whether the email is registered (prevents user enumeration)
         if (!user) {
-            return res.status(404).json({ error: 'No user registered with this email address.' });
+            return res.json({ message: 'If that email is registered, a password reset link has been sent.' });
         }
 
-        const origin = req.headers.origin || 'http://localhost:5173';
+        // FIX #1: Allowlisted origins only — never trust caller-supplied Origin header directly
+        const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+        const requestOrigin = req.headers.origin || '';
+        const origin = ALLOWED_ORIGINS.find(o => o === requestOrigin) || ALLOWED_ORIGINS[0] || 'https://vgtc.site';
         const redirectUrl = `${origin}/reset-password`;
 
         await stytchService.resetPasswordStart(email, redirectUrl);
-        res.json({ message: 'A password reset link has been sent to your email.' });
+        res.json({ message: 'If that email is registered, a password reset link has been sent.' });
     } catch (err) {
-        console.error('[Auth] Forgot password error:', err.message);
-        res.status(400).json({ error: err.message });
+        // FIX #7: Log full error server-side; send only a safe generic message to client
+        console.error('[Auth] Forgot password error:', err);
+        res.status(500).json({ error: 'Operation failed. Please try again.' });
     }
 });
 
 // POST /api/auth/reset-password
-router.post('/reset-password', async (req, res) => {
+// FIX #4: Rate-limited with otpLimiter
+router.post('/reset-password', otpLimiter, async (req, res) => {
     try {
         const { token, password } = req.body;
         if (!token || !password) {
@@ -212,13 +228,15 @@ router.post('/reset-password', async (req, res) => {
 
         res.json({ message: 'Password reset successful. You can now login with your new password.' });
     } catch (err) {
-        console.error('[Auth] Reset password error:', err.message);
-        res.status(400).json({ error: err.message });
+        // FIX #7: Log full error server-side; send only a safe generic message to client
+        console.error('[Auth] Reset password error:', err);
+        res.status(400).json({ error: 'Password reset failed. The link may be invalid or expired. Please request a new one.' });
     }
 });
 
 // POST /api/auth/verify-otp
-router.post('/verify-otp', async (req, res) => {
+// FIX #2: Rate-limited with otpLimiter
+router.post('/verify-otp', otpLimiter, async (req, res) => {
     try {
         const { userId, code } = req.body;
         if (!userId || !code) return res.status(400).json({ error: 'User ID and OTP code required' });
@@ -263,7 +281,9 @@ router.post('/verify-otp', async (req, res) => {
         );
         res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions: user.permissions, isSandbox: !!user.isSandbox } });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        // FIX #7: Log full error server-side; send only a safe generic message to client
+        console.error('[Auth] Verify OTP error:', err);
+        res.status(500).json({ error: 'Operation failed. Please try again.' });
     }
 });
 
@@ -281,7 +301,9 @@ router.post('/resend-otp', otpLimiter, async (req, res) => {
         await emailService.sendOTP(user.email, otp);
         res.json({ message: 'OTP resent successfully' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        // FIX #7: Log full error server-side; send only a safe generic message to client
+        console.error('[Auth] Resend OTP error:', err);
+        res.status(500).json({ error: 'Operation failed. Please try again.' });
     }
 });
 

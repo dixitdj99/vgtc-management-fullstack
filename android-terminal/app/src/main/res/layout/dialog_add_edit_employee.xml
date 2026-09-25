@@ -59,6 +59,22 @@
             android:textSize="14sp" />
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Assigned Vehicle input (e.g. for Drivers) -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:hint="Assigned Vehicle / Truck No (Optional, e.g. HR55AB1234)"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etEmployeeVehicle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textCapCharacters"
+            android:textSize="14sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
     <!-- Biometric capture actions -->
     <LinearLayout
         android:layout_width="match_parent"

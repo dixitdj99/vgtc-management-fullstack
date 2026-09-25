@@ -294,6 +294,15 @@ const getRoster = async (orgId, req, date) => {
             markedBy: existing?.markedByName || null,
             markedAt: existing?.markedAt || null,
             source: existing?.source || null,
+            method: existing?.method || null,
+            terminalId: existing?.terminalId || null,
+            punchTime: existing?.punchTime || existing?.markedAt || null,
+            inTime: existing?.inTime || null,
+            outTime: existing?.outTime || null,
+            durationHours: existing?.durationHours || null,
+            dutyDays: existing?.dutyDays ?? (existing?.status === 'present' ? 1.0 : (existing?.status === 'half_day' ? 0.5 : 0.0)),
+            dutyState: existing?.dutyState || null,
+            overrideReason: existing?.overrideReason || null,
         };
     });
 
@@ -392,19 +401,32 @@ const saveBulk = async (orgId, req, { date, records, user }) => {
         if (!STATUSES.includes(r.status)) {
             throw new Error(`invalid status "${r.status}" for ${r.profileName || r.profileId}`);
         }
+        const effectiveSource = r.source === 'terminal' ? 'terminal' : (r.source === 'derived' ? 'derived' : (r.source || 'manual'));
+        const nowIso = new Date().toISOString();
         return {
             profileId: String(r.profileId),
             profileName: String(r.profileName || ''),
             profileType: String(r.profileType || ''),
             status: r.status,
             note: r.note ? String(r.note).slice(0, 300) : null,
-            // Where the value came from, so a hand-correction stays visible later.
-            source: r.source === 'derived' ? 'derived' : 'manual',
+            // Where the value came from: 'terminal' (kiosk), 'derived' (trips/fuel), or 'manual' (supervisor)
+            source: effectiveSource,
+            method: r.method || (effectiveSource === 'terminal' ? 'face' : 'manual'),
+            terminalId: r.terminalId || (effectiveSource === 'terminal' ? 'VGTC-TERMINAL-01' : null),
+            vehicleNo: r.vehicleNo ? String(r.vehicleNo).trim().toUpperCase() : null,
             date,
             orgId,
             markedBy: user?.id || null,
             markedByName: user?.name || null,
-            markedAt: new Date().toISOString(),
+            markedAt: r.markedAt || nowIso,
+            createdAt: r.createdAt || r.markedAt || nowIso,
+            punchTime: r.punchTime || r.markedAt || nowIso,
+            inTime: r.inTime || null,
+            outTime: r.outTime || null,
+            durationHours: typeof r.durationHours === 'number' ? r.durationHours : (r.durationHours ? Number(r.durationHours) : null),
+            dutyDays: typeof r.dutyDays === 'number' ? r.dutyDays : (r.dutyDays ? Number(r.dutyDays) : (r.status === 'present' ? 1.0 : (r.status === 'half_day' ? 0.5 : 0.0))),
+            dutyState: r.dutyState || null,
+            overrideReason: r.overrideReason || null,
         };
     });
 

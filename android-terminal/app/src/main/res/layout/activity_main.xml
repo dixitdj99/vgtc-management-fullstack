@@ -59,18 +59,49 @@
                 android:shadowRadius="8"
                 android:fontFamily="sans-serif-medium" />
 
-            <!-- Live Connection Status -->
-            <TextView
-                android:id="@+id/tvLiveConnection"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="● Connecting..."
-                android:textSize="12sp"
-                android:textColor="@color/grey_status"
-                android:shadowColor="#B3000000"
-                android:shadowRadius="6"
-                android:textStyle="bold" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="2dp">
+
+                <!-- Live Connection Status -->
+                <TextView
+                    android:id="@+id/tvLiveConnection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="● Connecting..."
+                    android:textSize="11sp"
+                    android:textColor="@color/grey_status"
+                    android:shadowColor="#B3000000"
+                    android:shadowRadius="6"
+                    android:textStyle="bold" />
+
+                <!-- R307 Optical Fingerprint Sensor Status -->
+                <TextView
+                    android:id="@+id/tvR307SensorStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" • 🔌 R307 Optical Sensor"
+                    android:textSize="11sp"
+                    android:textColor="#34D399"
+                    android:shadowColor="#B3000000"
+                    android:shadowRadius="6"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
+
+        <!-- Manual Attendance / Master Override Button -->
+        <ImageButton
+            android:id="@+id/btnAttendanceOverride"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_edit"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Manual Attendance Override"
+            android:tint="@color/white"
+            android:layout_marginEnd="4dp" />
 
         <!-- Admin Lock / Settings Icon (Protected by PIN) -->
         <ImageButton
@@ -173,6 +204,7 @@
                 android:contentDescription="Success" />
 
             <TextView
+                android:id="@+id/tvSuccessTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Attendance Marked!"
@@ -208,7 +240,19 @@
                 android:textColor="@color/text_secondary"
                 android:layout_marginTop="2dp" />
 
+            <TextView
+                android:id="@+id/tvSuccessVehicle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🚛 HR55AB1234"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary"
+                android:layout_marginTop="3dp"
+                android:visibility="gone" />
+
             <LinearLayout
+                android:id="@+id/layoutSuccessStatusChip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -236,6 +280,39 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="13sp" />
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvSuccessMethod"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Method: Face Recognition"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="6dp" />
+
+            <TextView
+                android:id="@+id/tvSuccessDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Shift Duration: 8h 30m • Present (1.0 Day)"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginTop="6dp"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEmergencyCheckout"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="Admin Early Checkout (Emergency)"
+                android:textSize="12sp"
+                android:textColor="@color/red_offline"
+                app:strokeColor="@color/red_offline"
+                app:cornerRadius="8dp"
+                android:layout_marginTop="10dp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/tvAutoDismiss"

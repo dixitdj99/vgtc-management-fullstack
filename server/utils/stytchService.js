@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { isProduction } = require('./envConfig');
 
 // Read Stytch Configuration from environment
 const STYTCH_PROJECT_ID = process.env.STYTCH_PROJECT_ID || '';
@@ -136,11 +137,12 @@ const sendEmailOTP = async (email) => {
 };
 
 const authenticateOTP = async (methodId, code) => {
+    // Mock OTP bypass — dev/test only, NEVER in production.
+    if (!isStytchConfigured() && !isProduction() && code === '123456') {
+        return { user_id: 'mock-user-otp-auth' };
+    }
     if (!isStytchConfigured()) {
-        console.warn('[Stytch] WARNING: Using simulated OTP authentication.');
-        if (code === '123456') {
-            return { user_id: 'mock-user-otp-auth' };
-        }
+        if (isProduction()) throw new Error('Stytch is not configured. OTP authentication is disabled.');
         throw new Error('Invalid mock OTP code');
     }
     

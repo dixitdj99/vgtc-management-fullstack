@@ -48,8 +48,10 @@ const AdminModule = () => {
     };
 
     // Listen for postMessage from the OAuth popup
+    const EXPECTED_ORIGIN = window.location.origin;
     useEffect(() => {
         const handler = (event) => {
+            if (event.origin !== EXPECTED_ORIGIN) return; // reject cross-origin messages
             if (event.data?.type === 'oauth-success') {
                 setStatus({ type: 'success', msg: 'Google Drive authorized successfully!' });
                 fetchStatus();

@@ -39,7 +39,7 @@ class SetupActivity : AppCompatActivity() {
             }
 
             if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                url = "http://$url"
+                url = "https://$url"
                 binding.etServerUrl.setText(url)
             }
 

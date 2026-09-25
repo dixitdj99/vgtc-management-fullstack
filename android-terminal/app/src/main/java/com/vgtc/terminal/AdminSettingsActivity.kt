@@ -55,7 +55,7 @@ class AdminSettingsActivity : AppCompatActivity() {
             }
 
             if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                url = "http://$url"
+                url = "https://$url"
                 binding.etServerUrl.setText(url)
             }
 
@@ -104,7 +104,8 @@ class AdminSettingsActivity : AppCompatActivity() {
                 .setPositiveButton("Exit App") { _, _ ->
                     try {
                         stopLockTask()
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                     finishAffinity()
                 }
                 .setNegativeButton("Cancel", null)

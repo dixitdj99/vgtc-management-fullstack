@@ -142,13 +142,19 @@ router.delete('/:id', async (req, res) => {
 
 // Update LR status with history tracking
 router.patch('/:id/status', async (req, res) => {
-    const { status, updatedBy } = req.body;
+    // Fix #4: derive updatedBy from the authenticated user, not from req.body,
+    // to prevent a caller from forging the audit trail.
+    const { status } = req.body;
     const VALID = ['Created', 'Loaded', 'In Transit', 'Delivered', 'Billed'];
     if (!VALID.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     try {
         const { db, admin, isAvailable } = require('../firebase');
         const col = getCol(BASE_COL, req);
-        const entry = { status, timestamp: new Date().toISOString(), updatedBy: updatedBy || 'system' };
+        const entry = {
+            status,
+            timestamp: new Date().toISOString(),
+            updatedBy: req.user?.name || req.user?.username || 'system'
+        };
         if (isAvailable()) {
             await db.collection(col).doc(req.params.id).update({
                 status,
@@ -207,10 +213,14 @@ router.post('/invoice/generate', async (req, res) => {
             })();
         }
 
+        // Fix #5: sanitize invoiceNumber before interpolating into the
+        // Content-Disposition header to prevent header injection.
+        const safeName = String(invoiceNumber || 'draft').replace(/[^a-zA-Z0-9_\-]/g, '_');
+
         // Return PDF
         res.set({
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="Invoice_${invoiceNumber || 'draft'}.pdf"`,
+            'Content-Disposition': `attachment; filename="Invoice_${safeName}.pdf"`,
             'Content-Length': pdfBuffer.length,
         });
         res.send(pdfBuffer);
