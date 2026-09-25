@@ -478,7 +478,7 @@ async function getWhatsAppConfig(req = null) {
     const adminPhones = Array.from(new Set(adminList));
 
     return {
-      enabled: finalCfg.enabled !== undefined ? finalCfg.enabled : true,
+      enabled: finalCfg.enabled !== undefined ? !!finalCfg.enabled : false,
       provider: 'meta',
       phoneNumberId: (finalCfg.phoneNumberId || process.env.META_PHONE_NUMBER_ID || '').trim(),
       wabaId: (finalCfg.wabaId || process.env.META_WABA_ID || '').trim(),
@@ -535,6 +535,7 @@ async function broadcastToAdmins(title, message, actionButtons = null, req = nul
 async function saveWhatsAppConfig(config, req = null) {
   const payload = {
     ...config,
+    enabled: config.enabled !== undefined ? !!config.enabled : false,
     provider: 'meta',
     phoneNumberId: (config.phoneNumberId || '').trim(),
     wabaId: (config.wabaId || '').trim(),

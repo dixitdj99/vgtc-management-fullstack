@@ -14,7 +14,7 @@ const DEFAULT_VERIFY_TOKEN = 'vgtc_meta_verify_token_2026';
 
 export default function WhatsAppControlModule() {
   const [config, setConfig] = useState({
-    enabled: true,
+    enabled: false,
     provider: 'meta',
     phoneNumberId: '',
     wabaId: '',
@@ -46,6 +46,7 @@ export default function WhatsAppControlModule() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [status, setStatus] = useState({
     checking: true,
     connected: false,
@@ -73,6 +74,25 @@ export default function WhatsAppControlModule() {
   const showToast = (type, message) => {
     setNotifyState({ type, message });
     setTimeout(() => setNotifyState(null), 4500);
+  };
+
+  const handleToggleEnabled = async () => {
+    setToggling(true);
+    try {
+      const nextState = !config.enabled;
+      const res = await ax.post('/whatsapp/toggle', { enabled: nextState });
+      setConfig(prev => ({ ...prev, enabled: res.data.enabled }));
+      showToast(
+        res.data.enabled ? 'success' : 'info',
+        res.data.enabled
+          ? '🟢 WhatsApp Messages are now LIVE (Enabled)'
+          : '🔴 WhatsApp Messages TURNED OFF (Muted for Meta Business Verification)'
+      );
+    } catch (err) {
+      showToast('error', 'Failed to toggle WhatsApp status: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setToggling(false);
+    }
   };
 
   // Derive public Webhook Callback URL
@@ -310,7 +330,7 @@ export default function WhatsAppControlModule() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="adm-head">
+      <div className="adm-head" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span className="adm-icon-tile" style={{ background: '#25D366', color: '#fff' }}>
@@ -322,7 +342,45 @@ export default function WhatsAppControlModule() {
             Official Meta WhatsApp Business Cloud API • Automated Notifications &amp; Webhooks
           </p>
         </div>
-        <div className="adm-head-actions">
+        <div className="adm-head-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Master Toggle Button right in the Header */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            background: config.enabled ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+            border: `1.5px solid ${config.enabled ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
+            padding: '6px 14px',
+            borderRadius: '24px'
+          }}>
+            <span style={{
+              fontSize: '12px',
+              fontWeight: 800,
+              color: config.enabled ? '#10b981' : '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span style={{
+                display: 'inline-block',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: config.enabled ? '#10b981' : '#ef4444'
+              }} />
+              {config.enabled ? 'MESSAGES LIVE' : 'MESSAGES MUTED (OFF)'}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.enabled}
+              disabled={toggling}
+              className="adm-switch"
+              onClick={handleToggleEnabled}
+              title={config.enabled ? 'Click to turn OFF WhatsApp messages' : 'Click to turn ON WhatsApp messages'}
+            />
+          </div>
+
           <a
             href="https://developers.facebook.com/apps"
             target="_blank"
@@ -343,6 +401,83 @@ export default function WhatsAppControlModule() {
           </button>
         </div>
       </div>
+
+      {/* Meta Unapproved / Messages Muted Banner */}
+      {!config.enabled ? (
+        <div style={{
+          marginTop: '14px',
+          marginBottom: '16px',
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1.5px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '14px',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '280px' }}>
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.15)',
+              color: '#ef4444',
+              borderRadius: '50%',
+              padding: '8px',
+              display: 'flex',
+              flexShrink: 0
+            }}>
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#ef4444' }}>
+                WhatsApp Messages are Currently Turned OFF (Muted)
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', lineHeight: 1.5 }}>
+                Our business account is pending approval on Meta. All outbound WhatsApp notifications (LRs, Vouchers, Cashbook, Advance alerts) are safely suppressed so daily operations continue smoothly without dispatch failures.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="adm-btn adm-btn--primary adm-btn--sm"
+            onClick={handleToggleEnabled}
+            disabled={toggling}
+            style={{ flexShrink: 0 }}
+          >
+            <Zap size={13} /> Turn ON Messages
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          marginTop: '14px',
+          marginBottom: '16px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1.5px solid rgba(16, 185, 129, 0.3)',
+          borderRadius: '12px',
+          padding: '12px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '14px',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CheckCircle2 size={18} style={{ color: '#10b981' }} />
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#10b981' }}>
+              WhatsApp Messages are LIVE — Outbound alerts are actively dispatched via Meta Cloud API.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="adm-btn adm-btn--secondary adm-btn--sm"
+            onClick={handleToggleEnabled}
+            disabled={toggling}
+            style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', flexShrink: 0 }}
+          >
+            Turn OFF (Mute)
+          </button>
+        </div>
+      )}
 
       {/* Live Status & Connection Banner */}
       <div

@@ -61,6 +61,26 @@ router.post('/config', async (req, res) => {
   }
 });
 
+// POST /api/whatsapp/toggle
+// Master toggle to turn automated WhatsApp messages ON or OFF in 1 click
+router.post('/toggle', async (req, res) => {
+  try {
+    const config = await getWhatsAppConfig(req);
+    const newEnabled = req.body.enabled !== undefined ? !!req.body.enabled : !config.enabled;
+    const updated = await saveWhatsAppConfig({ ...config, enabled: newEnabled }, req);
+    res.json({
+      ok: true,
+      enabled: updated.enabled,
+      message: updated.enabled
+        ? 'WhatsApp notifications enabled (Live)'
+        : 'WhatsApp notifications turned OFF (Muted)'
+    });
+  } catch (err) {
+    console.error('whatsapp toggle error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/whatsapp/status
 router.get('/status', async (req, res) => {
   try {
