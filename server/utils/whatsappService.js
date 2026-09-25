@@ -477,12 +477,16 @@ async function getWhatsAppConfig(req = null) {
     }
     const adminPhones = Array.from(new Set(adminList));
 
+const DEFAULT_PHONE_NUMBER_ID = '1216388781567509';
+const DEFAULT_WABA_ID = '923120010444696';
+const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
+
     return {
       enabled: finalCfg.enabled !== undefined ? !!finalCfg.enabled : false,
       provider: 'meta',
-      phoneNumberId: (finalCfg.phoneNumberId || process.env.META_PHONE_NUMBER_ID || '').trim(),
-      wabaId: (finalCfg.wabaId || process.env.META_WABA_ID || '').trim(),
-      accessToken: token,
+      phoneNumberId: (finalCfg.phoneNumberId || process.env.META_PHONE_NUMBER_ID || DEFAULT_PHONE_NUMBER_ID).trim(),
+      wabaId: (finalCfg.wabaId || process.env.META_WABA_ID || DEFAULT_WABA_ID).trim(),
+      accessToken: (token && token.length > 20 ? token : DEFAULT_ACCESS_TOKEN).trim(),
       webhookVerifyToken: (finalCfg.webhookVerifyToken || process.env.META_WEBHOOK_VERIFY_TOKEN || DEFAULT_VERIFY_TOKEN).trim(),
       adminPhone: adminPhones[0] || HARDCODED_ADMIN,
       adminPhones,
@@ -495,9 +499,9 @@ async function getWhatsAppConfig(req = null) {
     return {
       enabled: false,
       provider: 'meta',
-      phoneNumberId: '',
-      wabaId: '',
-      accessToken: '',
+      phoneNumberId: DEFAULT_PHONE_NUMBER_ID,
+      wabaId: DEFAULT_WABA_ID,
+      accessToken: DEFAULT_ACCESS_TOKEN,
       webhookVerifyToken: DEFAULT_VERIFY_TOKEN,
       adminPhone: HARDCODED_ADMIN,
       adminPhones: fallbackAdmins,
@@ -2041,11 +2045,6 @@ function previewTemplate(eventKey, config) {
   return interpolateTemplate(eventCfg.template || '', sampleData);
 }
 
-async function startWhatsAppSession(req = null) {
-  // Meta Cloud API is cloud-hosted and does not require local browser session startup
-  return { ok: true, provider: 'meta', message: 'Meta Cloud API runs 24/7 in the cloud without session QR startup.' };
-}
-
 // ─── Exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -2056,13 +2055,11 @@ module.exports = {
   sendWhatsAppButtons,
   sendWhatsAppPoll,
   sendMetaTemplate,
-  sendOpenWATemplate,
   sendWhatsAppImage,
   sendWhatsAppDocument,
   broadcastToAdmins,
   generateLrReceiptImageBuffer,
   generateVoucherImageBuffer,
-  startWhatsAppSession,
   sendEventNotification,
   triggerEventWhatsApp: (eventKey, data, req) => sendEventNotification(eventKey, data, [data.ownerContact || data.driverContact], req),
   generateLrReceiptHtml,
@@ -2073,7 +2070,6 @@ module.exports = {
   lookupProfilePhone,
   lookupUserPhone,
   formatMetaPhone,
-  formatPhoneWid,
   discoverBotPhoneNumber,
   getPublicActionBaseUrl,
   logWhatsAppActivity,

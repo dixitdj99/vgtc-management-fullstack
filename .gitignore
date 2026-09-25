@@ -27,3 +27,4 @@ OpenWA/
 *.apk
 scratch/
 android-terminal/
+server/data/
