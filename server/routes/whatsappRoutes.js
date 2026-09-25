@@ -42,7 +42,12 @@ router.delete('/logs', async (req, res) => {
 router.get('/config', async (req, res) => {
   try {
     const config = await getWhatsAppConfig(req);
-    res.json(config);
+    const { getAppEnv, getEnvPrefix } = require('../utils/envConfig');
+    res.json({
+      ...config,
+      env: getAppEnv(),
+      envPrefix: getEnvPrefix()
+    });
   } catch (err) {
     console.error('get whatsapp config error:', err);
     res.status(500).json({ error: err.message });
@@ -84,7 +89,14 @@ router.post('/toggle', async (req, res) => {
 router.get('/status', async (req, res) => {
   try {
     const status = await checkWhatsAppStatus(req);
-    res.json(status);
+    const config = await getWhatsAppConfig(req);
+    const { getAppEnv, getEnvPrefix } = require('../utils/envConfig');
+    res.json({
+      ...status,
+      env: getAppEnv(),
+      envPrefix: getEnvPrefix(),
+      displayPhoneNumber: status.displayPhoneNumber || config.phoneNumberId || '1216388781567509'
+    });
   } catch (err) {
     console.error('whatsapp status check error:', err);
     res.status(500).json({ connected: false, message: err.message });
@@ -114,15 +126,6 @@ router.post('/test', async (req, res) => {
 router.get('/preview/:eventKey', async (req, res) => {
   try {
     const { eventKey } = req.params;
-    const validKeys = [
-      'lr_created', 'lr_created_owner', 'lr_created_driver', 'lr_loading_labour',
-      'voucher_created', 'voucher_created_owner', 'voucher_created_driver',
-      'balance_paid', 'cashout', 'deposit',
-      'online_advance_clerk', 'online_advance_paid_owner', 'online_advance_paid_driver', 'online_advance_pending_reminder'
-    ];
-    if (!validKeys.includes(eventKey)) {
-      return res.status(400).json({ error: `Unknown event key: ${eventKey}` });
-    }
     const config = await getWhatsAppConfig(req);
     const preview = previewTemplate(eventKey, config);
     res.json({ eventKey, preview });
