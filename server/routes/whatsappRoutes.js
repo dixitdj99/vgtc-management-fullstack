@@ -6,7 +6,6 @@ const {
   saveWhatsAppConfig,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
-  startWhatsAppSession,
   previewTemplate,
   generateLrReceiptHtml,
   generateVoucherHtml,
@@ -92,16 +91,6 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// POST /api/whatsapp/start-session
-router.post('/start-session', async (req, res) => {
-  try {
-    const result = await startWhatsAppSession(req);
-    res.json({ ok: true, result });
-  } catch (err) {
-    console.error('whatsapp start session error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // POST /api/whatsapp/test
 router.post('/test', async (req, res) => {
