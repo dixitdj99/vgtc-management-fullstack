@@ -6,7 +6,7 @@ const { getCol } = require('../utils/collectionUtils');
 const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
-const { sendEventNotification, sendWhatsAppImage, generateVoucherImageBuffer, lookupVehicleInfo, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, lookupVehicleInfo, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -17,20 +17,14 @@ const VEHICLE_COL = 'vehicles';
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
-        const voucherData = {
-            ...req.body,
-            createdBy: req.user?.id || req.user?.username || '',
-            createdByName: req.user?.name || req.user?.username || '',
-            creatorPhone: req.user?.phone || req.user?.mobile || ''
-        };
-        const result = await voucherService.createVoucher(req.orgId, voucherData, getCol(BASE_COL, req));
+        const result = await voucherService.createVoucher(req.orgId, req.body, getCol(BASE_COL, req));
         await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
         // Real-time backup — fire and forget, never blocks response
         const savedResult = result;
-        const savedBody = { ...voucherData };
+        const savedBody = { ...req.body };
         res.status(201).json(result);
 
         // WhatsApp Notification — fire and forget
@@ -39,25 +33,20 @@ router.post('/', async (req, res) => {
                 const vData = { ...savedBody, ...savedResult };
 
                 // Calculate gross and net freight
-                const weight     = parseFloat(vData.weight) || 0;
-                const rate       = parseFloat(vData.rate) || 0;
-                const gross      = parseFloat(vData.freight) || (vData.deliveries?.length > 0
+                const gross = vData.deliveries?.length > 0
                     ? vData.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0) * (parseFloat(d.rate) || 0), 0)
-                    : weight * rate);
+                    : (parseFloat(vData.weight) || 0) * (parseFloat(vData.rate) || 0);
                 const diesel     = parseFloat(vData.advanceDiesel) || 0;
                 const cash       = parseFloat(vData.advanceCash) || 0;
                 const online     = parseFloat(vData.advanceOnline) || 0;
-                const munshi     = parseFloat(vData.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0);
-                const shortage   = parseFloat(vData.shortage) || 0;
+                const weight     = parseFloat(vData.weight) || 0;
+                const isBill     = vData.type === 'Kosli_Bill' || vData.type === 'Jajjhar_Bill' || vData.type === 'Bahadurgarh_Bill';
+                const munshi     = isBill ? 0 : (parseFloat(vData.munshi) || (weight > 0 ? (weight < 18 ? 50 : 100) : 0));
                 const commission = parseFloat(vData.commission) || 0;
-                const tyrePuncture = parseFloat(vData.tyrePuncture) || 0;
-                const tyreGreasing = (parseFloat(vData.tyreGreasingAir) || 0) + (parseFloat(vData.tyreGreasing) || 0) + (parseFloat(vData.tyreAir) || 0);
-                const extraCash  = parseFloat(vData.extraCash) || 0;
-                const totalDeductions = diesel + cash + online + munshi + shortage + commission + tyrePuncture + tyreGreasing + extraCash;
-                const net        = gross - totalDeductions;
+                const net        = gross - diesel - cash - online - munshi - commission;
 
                 const templateData = {
-                    voucherNo:     vData.voucherNo || vData.entryId || vData.id,
+                    voucherNo:     vData.voucherNo || vData.id,
                     lrNo:          vData.lrNo,
                     date:          vData.date || new Date().toLocaleDateString('en-IN'),
                     truckNo:       vData.truckNo,
@@ -78,92 +67,31 @@ router.post('/', async (req, res) => {
                 const waCfg       = await getWhatsAppConfig(req);
                 const adminPhone  = waCfg.adminPhone || '8708032492';
 
-                const isSelf      = (vInfo?.ownershipType === 'self') || (vData.ownershipType === 'self') || (vData.isSelf === true);
+                const isSelf = (vInfo?.ownershipType === 'self') || (vData.ownershipType === 'self') || (vData.isSelf === true);
                 const ownerPhone  = vInfo?.ownerContact || vData.ownerContact || '';
                 const driverPhone = vInfo?.driverContact || vData.driverContact || '';
 
-                const cleanDigits = (p) => {
-                    if (!p) return '';
-                    let c = String(p).replace(/\D/g, '');
-                    if (c.length === 10) c = '91' + c;
-                    return c;
-                };
-
-                const cleanDriver = cleanDigits(driverPhone);
-                const cleanOwner  = cleanDigits(ownerPhone);
-                const cleanAdmin  = cleanDigits(adminPhone);
-
-                // 1. Generate Voucher Receipt PNG image buffer
-                let voucherImageBuffer = null;
-                try {
-                    voucherImageBuffer = generateVoucherImageBuffer({
-                        ...vData,
-                        id: savedResult?.id,
-                        voucherNo: templateData.voucherNo,
-                        date: templateData.date,
-                        weight,
-                        rate,
-                        freight: gross,
-                        advanceDiesel: diesel,
-                        advanceCash: cash,
-                        advanceOnline: online,
-                        munshi,
-                        shortage,
-                        commission,
-                        tyrePuncture,
-                        tyreGreasingAir: tyreGreasing,
-                        extraCash
-                    });
-                } catch (imgErr) {
-                    console.error('[WA-Hook] Failed to render Voucher image slip:', imgErr.message);
+                // 1. Driver voucher alert — sent to driver
+                if (driverPhone) {
+                    await sendEventNotification('voucher_created_driver', templateData, [driverPhone], req);
                 }
 
-                const voucherCaption = [
-                    `*VIKAS GOODS TRANSPORT CO.*`,
-                    `📋 *Freight Voucher — #${templateData.voucherNo}*`,
-                    `*Date:* ${templateData.date} | *Truck:* ${String(vData.truckNo || '—').toUpperCase()}`,
-                    `*LR:* #${templateData.lrNo || '—'} | *Party:* ${vData.partyName || '—'}${vData.destination ? ' (' + vData.destination + ')' : ''}`,
-                    `*Gross Freight:* Rs.${gross.toLocaleString('en-IN')}`,
-                    `*Total Deductions:* Rs.${totalDeductions.toLocaleString('en-IN')}`,
-                    `*Net Balance:* Rs.${net.toLocaleString('en-IN')}`,
-                    `_Voucher slip attached above._`
-                ].join('\n');
-
-                // 2. Dispatch Voucher Slip Image to all parties (Driver, Owner, Admin)
-                const imageRecipients = new Map();
-                if (cleanDriver) imageRecipients.set(cleanDriver, driverPhone);
-                if (!isSelf && cleanOwner) imageRecipients.set(cleanOwner, ownerPhone);
-                if (cleanAdmin) imageRecipients.set(cleanAdmin, adminPhone);
-
-                for (const [cleanP, rawPhone] of imageRecipients.entries()) {
-                    try {
-                        if (voucherImageBuffer) {
-                            await sendWhatsAppImage(rawPhone, voucherImageBuffer, voucherCaption, req);
-                            console.log(`[WA-Hook] Voucher image slip sent to ${rawPhone}`);
-                        } else {
-                            const eventKey = cleanP === cleanDriver ? 'voucher_created_driver' : 'voucher_created_owner';
-                            await sendEventNotification(eventKey, templateData, [rawPhone], req);
-                            console.log(`[WA-Hook] Voucher text alert [${eventKey}] sent to ${rawPhone}`);
-                        }
-                    } catch (err) {
-                        console.error(`[WA-Hook] Voucher alert to ${rawPhone} failed:`, err.message);
-                        try {
-                            const eventKey = cleanP === cleanDriver ? 'voucher_created_driver' : 'voucher_created_owner';
-                            await sendEventNotification(eventKey, templateData, [rawPhone], req);
-                        } catch (_) {}
-                    }
+                // 2. Owner voucher copy — sent ONLY for market vehicles (not self vehicles)
+                if (!isSelf && ownerPhone) {
+                    await sendEventNotification('voucher_created_owner', templateData, [ownerPhone], req);
                 }
 
-                // 3. If there is an online advance, ALSO send the action button message to the clerk/admin
-                if (online > 0 && cleanAdmin) {
-                    try {
-                        await sendEventNotification('online_advance_clerk', templateData, [adminPhone], req);
-                        console.log(`[WA-Hook] Online Advance Clerk alert sent to ${adminPhone}`);
-                    } catch (clerkErr) {
-                        console.error(`[WA-Hook] Clerk alert to ${adminPhone} failed:`, clerkErr.message);
-                    }
+                // 3. Admin copy — sent to admin number (8708032492)
+                if (adminPhone) {
+                    await sendEventNotification('voucher_created_owner', templateData, [adminPhone], req);
                 }
 
+                // 4. Online Advance Clerk Alert — sent to clerk (or admin fallback) when advanceOnline > 0
+                const clerkRecipient = waCfg.clerkPhone || adminPhone;
+                if (online > 0 && clerkRecipient) {
+                    await sendEventNotification('online_advance_clerk', templateData, [clerkRecipient], req);
+                    console.log(`[WA-Hook] Online advance clerk alert sent to ${clerkRecipient} for voucher ${templateData.voucherNo} (Rs.${templateData.advanceOnline})`);
+                }
             } catch (waErr) {
                 console.error('[WA-Hook] Voucher notify FAILED:', waErr.message);
             }
@@ -207,15 +135,6 @@ router.patch('/:id', async (req, res) => {
             });
         }
 
-        if (req.body.paymentClearedDate) {
-            const smsService = require('../utils/smsService');
-            const whatsappService = require('../utils/whatsappService');
-            const updated = await voucherService.getVoucherById(req.params.id, col);
-            if (updated) {
-                whatsappService.triggerEventWhatsApp('balance_paid', { ...updated, amount: updated.paidBalance }, req);
-                smsService.triggerEventSms('balance_paid', { ...updated, amount: updated.paidBalance }, req);
-            }
-        }
 
         res.json({ message: 'Voucher updated' });
 
@@ -239,7 +158,6 @@ router.patch('/:id', async (req, res) => {
                         await sheetsService.deletePayHistory(updated.id, updated.brand);
                     }
 
-                    // 2. Re-generate and re-upload PDF to Drive
                     const { backupVoucher } = require('../utils/realtimeBackup');
                     await backupVoucher(updated, { brand: updated.brand, type: updated.type });
                 } catch (e) {
@@ -340,21 +258,6 @@ router.delete('/:id', async (req, res) => {
         res.json({ message: 'Voucher deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });
-    }
-});
-
-/**
- * POST /api/vouchers/remind-pending-advances
- * Manually trigger scanning and sending pending online advance reminders with interactive buttons.
- */
-router.post('/remind-pending-advances', requireAuth, tenancyMiddleware, async (req, res, next) => {
-    try {
-        const { checkAndSendPendingOnlineAdvanceReminders } = require('../services/onlineAdvanceReminderService');
-        const forceAll = req.body.forceAll === true;
-        const result = await checkAndSendPendingOnlineAdvanceReminders({ forceAll });
-        res.json(result);
-    } catch (err) {
-        next(err);
     }
 });
 
