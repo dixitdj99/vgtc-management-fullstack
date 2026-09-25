@@ -1,0 +1,46 @@
+[
+  {
+    "id": "walog_1789664606292_8cbl1",
+    "timestamp": "2026-09-17T17:03:26.292Z",
+    "type": "outbound",
+    "category": "challan_created",
+    "phone": "8708032492",
+    "status": "sent",
+    "title": "Challan #CH-TEST-101 Issued",
+    "details": "Challan #CH-TEST-101 (HR13W1834) | 10 MT (200 Bags)",
+    "error": null
+  },
+  {
+    "id": "walog_1789664606291_9tfm6",
+    "timestamp": "2026-09-17T17:03:26.291Z",
+    "type": "outbound",
+    "category": "text_message",
+    "phone": "918708032492",
+    "status": "sent",
+    "title": "WhatsApp Message Sent",
+    "details": "*VIKAS GOODS TRANSPORT CO.*\n📝 *Challan Issued — #CH-TEST-101*\n*Date:* 2026-09-17 | *Truck:* HR13W1834\n*Party:* VIKAS TRADING CO. | *Destination:* ROHTAK\n*Mater",
+    "error": null
+  },
+  {
+    "id": "walog_1789660208160_pva3p",
+    "timestamp": "2026-09-17T15:50:08.160Z",
+    "type": "outbound",
+    "category": "interactive_button",
+    "phone": "918708032492",
+    "status": "sent",
+    "title": "Button Message: ACTION REQUIRED",
+    "details": "*VIKAS GOODS TRANSPORT CO.*\n*📦 Labour Loading Queue*\n*Token #6* | *LR #19* | *Truck:* HR47F7819\n*From:* JK Lakshmi Plant (Jharli) → *To:* ADMPUR\n*Party:* JD AN",
+    "error": null
+  },
+  {
+    "id": "walog_1789660204320_qkdg7",
+    "timestamp": "2026-09-17T15:50:04.320Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47F7819",
+    "status": "sent",
+    "title": "LR #19 Dispatched",
+    "details": "LR #19 (HR47F7819) → ADMPUR | 0.75 MT",
+    "error": null
+  }
+]

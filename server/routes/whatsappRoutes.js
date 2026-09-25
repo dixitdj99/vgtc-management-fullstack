@@ -9,10 +9,35 @@ const {
   startWhatsAppSession,
   previewTemplate,
   generateLrReceiptHtml,
-  generateVoucherHtml
+  generateVoucherHtml,
+  getWhatsAppLogs,
+  clearWhatsAppLogs
 } = require('../utils/whatsappService');
 
 router.use(requireAuth);
+
+// GET /api/whatsapp/logs
+router.get('/logs', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const logs = getWhatsAppLogs(limit);
+    res.json({ ok: true, logs });
+  } catch (err) {
+    console.error('get whatsapp logs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/whatsapp/logs
+router.delete('/logs', async (req, res) => {
+  try {
+    clearWhatsAppLogs();
+    res.json({ ok: true, message: 'Logs cleared successfully' });
+  } catch (err) {
+    console.error('clear whatsapp logs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/whatsapp/config
 router.get('/config', async (req, res) => {
@@ -32,6 +57,26 @@ router.post('/config', async (req, res) => {
     res.json({ ok: true, config: saved });
   } catch (err) {
     console.error('save whatsapp config error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/whatsapp/toggle
+// Master toggle to turn automated WhatsApp messages ON or OFF in 1 click
+router.post('/toggle', async (req, res) => {
+  try {
+    const config = await getWhatsAppConfig(req);
+    const newEnabled = req.body.enabled !== undefined ? !!req.body.enabled : !config.enabled;
+    const updated = await saveWhatsAppConfig({ ...config, enabled: newEnabled }, req);
+    res.json({
+      ok: true,
+      enabled: updated.enabled,
+      message: updated.enabled
+        ? 'WhatsApp notifications enabled (Live)'
+        : 'WhatsApp notifications turned OFF (Muted)'
+    });
+  } catch (err) {
+    console.error('whatsapp toggle error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -65,7 +110,7 @@ router.post('/test', async (req, res) => {
     if (!phone) {
       return res.status(400).json({ error: 'Recipient phone number is required' });
     }
-    const msgText = message || 'Hello! This is a test message from VGTC Management via OpenWA Gateway.';
+    const msgText = message || 'Hello! This is a test message from Vikas Goods Transport Co. via Meta WhatsApp Business Cloud API.';
     const result = await sendWhatsAppMessage(phone, msgText, req);
     res.json({ ok: true, result });
   } catch (err) {
@@ -81,9 +126,10 @@ router.get('/preview/:eventKey', async (req, res) => {
   try {
     const { eventKey } = req.params;
     const validKeys = [
-      'lr_created', 'lr_created_owner', 'lr_created_driver',
+      'lr_created', 'lr_created_owner', 'lr_created_driver', 'lr_loading_labour',
       'voucher_created', 'voucher_created_owner', 'voucher_created_driver',
-      'balance_paid', 'cashout', 'deposit'
+      'balance_paid', 'cashout', 'deposit',
+      'online_advance_clerk', 'online_advance_paid_owner', 'online_advance_paid_driver', 'online_advance_pending_reminder'
     ];
     if (!validKeys.includes(eventKey)) {
       return res.status(400).json({ error: `Unknown event key: ${eventKey}` });
@@ -142,6 +188,19 @@ router.get('/preview/receipt/voucher', async (req, res) => {
   const html = generateVoucherHtml(sampleVoucher);
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
+});
+
+// POST /api/whatsapp/check-pending-advances
+// Trigger check for unpaid online advances created before today and send WhatsApp reminders to clerk
+router.post('/check-pending-advances', async (req, res) => {
+  try {
+    const { checkPendingOnlineAdvances } = require('../jobs');
+    const result = await checkPendingOnlineAdvances({ forceAll: req.query.force === 'true' });
+    res.json(result);
+  } catch (err) {
+    console.error('check-pending-advances error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
