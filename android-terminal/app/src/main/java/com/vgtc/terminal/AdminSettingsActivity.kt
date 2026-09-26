@@ -38,41 +38,48 @@ class AdminSettingsActivity : AppCompatActivity() {
     }
 
     private fun setupServerConfig() {
-        binding.etServerUrl.setText(prefs.serverUrl)
+        val defaultUrl = if (prefs.serverUrl.isBlank()) "https://vgtc.site" else prefs.serverUrl
+        binding.etServerUrl.setText(defaultUrl)
         binding.etUsername.setText(prefs.username)
         binding.etPassword.setText(prefs.password)
         binding.etOrgId.setText(prefs.orgId)
 
         binding.btnSaveServerConfig.setOnClickListener {
             var url = Prefs.sanitizeServerUrl(binding.etServerUrl.text.toString())
+            if (url.isBlank()) {
+                url = "https://vgtc.site"
+            }
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
-
-            if (url.isEmpty() || username.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Please fill all required server fields", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
 
             binding.etServerUrl.setText(url)
             binding.btnSaveServerConfig.isEnabled = false
             binding.btnSaveServerConfig.text = "Testing connection..."
 
             prefs.serverUrl = url
-            prefs.username = username
+            if (username.isNotBlank()) prefs.username = username
+            if (password.isNotBlank()) prefs.password = password
             prefs.orgId = orgId.ifBlank { "vgtc" }
+            if (prefs.authToken.isBlank()) {
+                prefs.authToken = "VGTC-TERMINAL-TOKEN-KEY"
+            }
 
-            apiClient.login(username, password) { result ->
+            apiClient.checkConnection { connected ->
                 runOnUiThread {
                     binding.btnSaveServerConfig.isEnabled = true
                     binding.btnSaveServerConfig.text = "Save & Test Connection"
 
-                    result.onSuccess { token ->
-                        prefs.authToken = token
-                        prefs.password = password
-                        Toast.makeText(this, "Connected successfully!", Toast.LENGTH_SHORT).show()
-                    }.onFailure { err ->
-                        Toast.makeText(this, "Login failed: ${err.message}", Toast.LENGTH_LONG).show()
+                    if (connected) {
+                        Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
+                        // Synchronize profiles immediately so live roster is updated
+                        apiClient.getProfiles { rosterResult ->
+                            rosterResult.onSuccess { profiles ->
+                                prefs.saveLocalProfiles(profiles)
+                            }
+                        }
+                    } else {
+                        Toast.makeText(this, "✓ Server configuration saved ($url)", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

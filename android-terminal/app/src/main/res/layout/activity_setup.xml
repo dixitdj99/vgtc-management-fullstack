@@ -65,7 +65,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
             android:hint="Server URL"
-            app:helperText="e.g. https://your-backend.com or http://192.168.1.100:3001"
+            app:helperText="e.g. https://vgtc.site"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
             <com.google.android.material.textfield.TextInputEditText
