@@ -714,11 +714,15 @@ function AppInner() {
       ? [{ id: 'qa-new-lr', label: 'New LR Entry', Icon: Receipt, color: '#10b981', group: 'Action', keywords: 'create add loading receipt', run: navCommand(plant === 'jklakshmi' ? 'lr_jharli' : 'lr_dump') }]
       : []),
     { id: 'qa-theme', label: 'Toggle theme', Icon: Sun, color: '#f59e0b', group: 'Action', keywords: 'dark light sepia mode', run: () => cycleTheme() },
+    { id: 'qa-terminal', label: 'Open VGTC OS Attendance Terminal (Kiosk)', Icon: Camera, color: '#6366f1', group: 'Action', keywords: 'terminal kiosk attendance face driver movement', run: () => window.open('/terminal', '_blank') },
   ];
 
 
   const path = window.location.pathname;
   // Move public/auth-independent routes here
+  if (path === '/terminal' || path === '/vgtc-os' || path === '/kiosk') {
+    return <TerminalModule onExit={() => window.location.href = '/'} />;
+  }
   if (path === '/loading-status') return <PublicLoadingStatus />;
   if (path === '/labour') return <LabourLoadingStatus />;
   if (path === '/reset-password') return <ResetPasswordPage />;
@@ -1154,7 +1158,7 @@ function AppInner() {
                   unreadPortalCount + unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState) > 0 ? (
                     <span style={{
                       position: 'absolute', top: '2px', right: '2px', minWidth: '15px', height: '15px',
-                      padding: '0 3px', borderRadius: '8px', background: '#EF4444', color: '#fff',
+                      padding: '0 3px', borderRadius: '8px', background: unreadPortalCount > 0 ? '#10B981' : '#EF4444', color: '#fff',
                       fontSize: '9px', fontWeight: 900, display: 'flex', alignItems: 'center',
                       justifyContent: 'center', boxShadow: '0 0 6px #EF4444',
                     }}>{unreadPortalCount + unreadCount(wxAlerts) + unreadUpdateCount(UPDATE_ITEMS, updateState)}</span>
@@ -1166,8 +1170,8 @@ function AppInner() {
                     width: '7px',
                     height: '7px',
                     borderRadius: '50%',
-                    background: '#EF4444',
-                    boxShadow: '0 0 6px #EF4444',
+                    background: '#10B981',
+                    boxShadow: '0 0 6px #10B981',
                   }} />
                   )
                 )}
@@ -1751,7 +1755,6 @@ function AppInner() {
               pointerEvents: 'none'
             }}
           >
-            <TruckLoader size={45} />
             <div>
               <div>Waking up remote server...</div>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Please wait (~50 seconds)</div>
@@ -1784,7 +1787,28 @@ function AppInner() {
 }
 
 
+
+// ─── Capacitor exit helper (no npm package needed) ────────────────────────
+function nativeExitApp() {
+  try {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.exitApp();
+      return;
+    }
+  } catch (_) {}
+  window.history.back();
+}
+
 export default function App() {
+  // ── When running as the Android APK (Capacitor), go straight to the
+  // attendance terminal — skip auth, routing, management UI entirely.
+  // window.Capacitor is always set by the Capacitor WebView bridge.
+  const isAndroidApp = typeof window !== 'undefined' && !!(window.Capacitor);
+  if (isAndroidApp) {
+    return <TerminalModule onExit={nativeExitApp} />;
+  }
+
+  // ── In the browser, use the full app with auth + routing.
   return (
     <AuthProvider>
       <AppInner />

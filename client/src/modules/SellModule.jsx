@@ -240,7 +240,7 @@ export default function SellModule({ brand = 'dump', role = 'user', permissions 
         module: 'Sell', kind: 'Documents',
         plant: brand === 'jkl' ? 'JK Lakshmi' : 'JK Super',
         name: archiveName('Sale', s.date, s.customerName, s.id?.slice(0, 6)),
-        meta: { customerName: s.customerName, date: s.date, amount: s.totalAmount },
+        meta: { customerName: s.customerName, date: s.date, amount: s.totalAmount, docData: s },
       },
       title: `Receipt - ${s.customerName}`,
       fontSize: '9.5pt',

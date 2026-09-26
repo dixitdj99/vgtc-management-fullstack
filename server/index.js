@@ -227,9 +227,13 @@ app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRo
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
-// Public (no-auth) webhook — OpenWA POSTs here on message.received.
-// Must be mounted BEFORE the requireAuth whatsapp routes so OpenWA's call is not rejected.
+// Public (no-auth) webhook — Meta WhatsApp Cloud API sends challenge GET and message/button POST here.
+// Must be mounted BEFORE the requireAuth whatsapp routes so Meta's call is not rejected.
 app.use('/api/whatsapp/webhook', require('./routes/whatsappWebhookRoute'));
+// Public (no-auth) 1-Click quick action endpoints for WhatsApp links (paid, loaded)
+app.use('/api/action', require('./routes/quickActionRoutes'));
+// VGTC OS Terminal Biometric & Attendance API (kiosk devices authenticate via terminal token/id)
+app.use('/api/terminal', require('./routes/terminalRoutes'));
 app.use('/api/whatsapp', requireAuth, require('./routes/whatsappRoutes'));
 app.use('/api/notifications', requireAuth, require('./routes/notificationRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret
