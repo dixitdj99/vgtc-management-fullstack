@@ -88,8 +88,8 @@ env:
   - variable: GOOGLE_CREDENTIALS
     secret: GOOGLE_CREDENTIALS
   # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling
-  # /api/jobs/*. Must be set in Cloud Secret Manager before deploying:
+  # /api/jobs/*. To enable, create the secret in Secret Manager:
   #   firebase apphosting:secrets:set CRON_SECRET --project vgtc-management
-  # Then update the X-Cron-Secret header in all Cloud Scheduler jobs to match.
-  - variable: CRON_SECRET
-    secret: CRON_SECRET
+  # - variable: CRON_SECRET
+  #   secret: CRON_SECRET
+
