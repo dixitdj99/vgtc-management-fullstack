@@ -1335,6 +1335,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumeScanning()
+        startCameraPreview()
         loadProfiles()
         resetScreensaverTimer()
         setupR307Driver()

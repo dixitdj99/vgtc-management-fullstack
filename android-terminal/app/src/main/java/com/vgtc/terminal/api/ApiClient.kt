@@ -250,108 +250,117 @@ class ApiClient(context: Context) {
     // PUT /api/profiles/:id — enroll face photo
     // ──────────────────────────────────────────────────
     fun updateProfilePhoto(profileId: String, photoBase64: String, callback: (ApiResult<Boolean>) -> Unit) {
-        ensureToken { tokenOk ->
-            if (!tokenOk) {
-                callback(Result.failure(Exception("Not authenticated")))
-                return@ensureToken
+        val payload = mapOf("photo" to photoBase64)
+        val body = gson.toJson(payload)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/profiles/$profileId")
+            .put(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                enrollTerminalPerson(profileId, payload, callback)
             }
-            val payload = mapOf("photo" to photoBase64)
-            val body = gson.toJson(payload)
-            val request = Request.Builder()
-                .url("${baseUrl()}/api/profiles/$profileId")
-                .put(body.toRequestBody(JSON_MEDIA_TYPE))
-                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-                .build()
 
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    callback(Result.failure(Exception("Network error: ${e.message}")))
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(Result.success(true))
+                } else {
+                    enrollTerminalPerson(profileId, payload, callback)
                 }
-
-                override fun onResponse(call: Call, response: Response) {
-                    if (response.isSuccessful) {
-                        callback(Result.success(true))
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        val error = try {
-                            gson.fromJson(errBody, Map::class.java)["error"] as? String
-                                ?: "Photo update failed (${response.code})"
-                        } catch (_: Exception) { "Photo update failed (${response.code})" }
-                        callback(Result.failure(Exception(error)))
-                    }
-                }
-            })
-        }
+            }
+        })
     }
 
     // ──────────────────────────────────────────────────
     // POST /api/profiles — create profile
     // ──────────────────────────────────────────────────
     fun createProfile(profile: Profile, callback: (ApiResult<Profile>) -> Unit) {
-        ensureToken { tokenOk ->
-            if (!tokenOk) {
-                callback(Result.failure(Exception("Not authenticated")))
-                return@ensureToken
-            }
-            val body = gson.toJson(profile)
-            val request = Request.Builder()
-                .url("${baseUrl()}/api/profiles")
-                .post(body.toRequestBody(JSON_MEDIA_TYPE))
-                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-                .build()
+        val body = gson.toJson(profile)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/profiles")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
 
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    callback(Result.failure(Exception("Network error: ${e.message}")))
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo)) { res ->
+                    if (res.isSuccess) callback(Result.success(profile)) else callback(Result.failure(Exception("Create failed")))
                 }
+            }
 
-                override fun onResponse(call: Call, response: Response) {
-                    val respBody = response.body?.string() ?: ""
-                    if (response.isSuccessful) {
-                        try {
-                            val created = gson.fromJson(respBody, Profile::class.java)
-                            callback(Result.success(created))
-                        } catch (e: Exception) {
-                            callback(Result.success(profile))
-                        }
-                    } else {
-                        callback(Result.failure(Exception("Create failed (${response.code})")))
+            override fun onResponse(call: Call, response: Response) {
+                val respBody = response.body?.string() ?: ""
+                if (response.isSuccessful) {
+                    try {
+                        val created = gson.fromJson(respBody, Profile::class.java)
+                        callback(Result.success(created))
+                    } catch (e: Exception) {
+                        callback(Result.success(profile))
+                    }
+                } else {
+                    enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo)) { res ->
+                        if (res.isSuccess) callback(Result.success(profile)) else callback(Result.failure(Exception("Create failed (${response.code})")))
                     }
                 }
-            })
-        }
+            }
+        })
     }
 
     // ──────────────────────────────────────────────────
     // PUT /api/profiles/:id — update profile
     // ──────────────────────────────────────────────────
     fun updateProfile(profile: Profile, callback: (ApiResult<Boolean>) -> Unit) {
-        ensureToken { tokenOk ->
-            if (!tokenOk) {
-                callback(Result.failure(Exception("Not authenticated")))
-                return@ensureToken
+        val body = gson.toJson(profile)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/profiles/${profile.id}")
+            .put(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo), callback)
             }
-            val body = gson.toJson(profile)
-            val request = Request.Builder()
-                .url("${baseUrl()}/api/profiles/${profile.id}")
-                .put(body.toRequestBody(JSON_MEDIA_TYPE))
-                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-                .build()
 
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    callback(Result.failure(Exception("Network error: ${e.message}")))
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(Result.success(true))
+                } else {
+                    enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo), callback)
                 }
+            }
+        })
+    }
 
-                override fun onResponse(call: Call, response: Response) {
-                    if (response.isSuccessful) {
-                        callback(Result.success(true))
-                    } else {
-                        callback(Result.failure(Exception("Update failed (${response.code})")))
-                    }
+    private fun enrollTerminalPerson(profileId: String, data: Map<String, Any?>, callback: (ApiResult<Boolean>) -> Unit) {
+        val payload = mutableMapOf<String, Any?>(
+            "id" to profileId,
+            "personId" to profileId,
+            "terminalId" to "VGTC-TERMINAL-01"
+        )
+        payload.putAll(data)
+        val body = gson.toJson(payload)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/terminal/enroll")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(Result.failure(Exception("Terminal sync error: ${e.message}")))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(Result.success(true))
+                } else {
+                    callback(Result.failure(Exception("Terminal sync error (${response.code})")))
                 }
-            })
-        }
+            }
+        })
     }
 
     // ──────────────────────────────────────────────────

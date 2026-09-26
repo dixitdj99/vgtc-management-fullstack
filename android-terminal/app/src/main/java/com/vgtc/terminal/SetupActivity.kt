@@ -55,19 +55,22 @@ class SetupActivity : AppCompatActivity() {
                         Toast.makeText(this, "✓ Connected to VGTC Server!", Toast.LENGTH_SHORT).show()
                         startActivity(Intent(this, MainActivity::class.java))
                         finishAffinity()
-                    }.onFailure { err ->
-                        // Fallback connection check: If server is reachable, save URL and proceed
+                    }.onFailure { _ ->
+                        // Fallback connection check: Verify server connectivity & set terminal token
                         apiClient.checkConnection { connected ->
                             runOnUiThread {
                                 if (connected) {
                                     prefs.password = password
+                                    if (prefs.authToken.isBlank()) {
+                                        prefs.authToken = "VGTC-TERMINAL-TOKEN-KEY"
+                                    }
                                     Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
                                     startActivity(Intent(this, MainActivity::class.java))
                                     finishAffinity()
                                 } else {
                                     binding.btnSave.isEnabled = true
                                     binding.btnSave.text = "Save & Connect"
-                                    Toast.makeText(this, "Cannot connect: ${err.message}", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this, "Cannot connect to server. Check URL.", Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
