@@ -261,11 +261,27 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 
-    private fun speakVoice(textEn: String, textHi: String) {
+    private var lastSpokenText: String = ""
+    private var lastSpokenTime: Long = 0L
+
+    private fun speakVoice(textEn: String, textHi: String, force: Boolean = false) {
         val lang = prefs.language
         val textToSpeak = if (lang == "hi") textHi else textEn
+        val now = System.currentTimeMillis()
+
+        if (!force && textToSpeak == lastSpokenText && (now - lastSpokenTime) < 6000L) return
+        if (!force && textToSpeech?.isSpeaking == true) return
+
+        lastSpokenText = textToSpeak
+        lastSpokenTime = now
+
         updateTtsLanguage()
-        textToSpeech?.speak(textToSpeak, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "vgtc_voice_${System.currentTimeMillis()}")
+        textToSpeech?.speak(
+            textToSpeak,
+            if (force) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD,
+            null,
+            "vgtc_voice_${System.currentTimeMillis()}"
+        )
     }
 
     private fun setupLanguageToggle() {
@@ -803,7 +819,8 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             speakVoice(
                 "Shift completed for ${profile.name}",
-                "${profile.name} की ड्यूटी पूरी हो गई है"
+                "${profile.name} की ड्यूटी पूरी हो गई है",
+                force = true
             )
             showDutyCompletedSuccess(profile, completedDuty, elapsedMs, method)
         }
@@ -812,6 +829,12 @@ class MainActivity : AppCompatActivity() {
     private fun showDutyStartSuccess(profile: Profile, inTimeFormatted: String, method: String) {
         val isDriver = profile.profileType.equals("Driver", ignoreCase = true)
         val isHi = prefs.language == "hi"
+
+        speakVoice(
+            "Shift started for ${profile.name}",
+            "${profile.name} की ड्यूटी शुरू हो गई है",
+            force = true
+        )
 
         binding.tvSuccessTitle.text = if (isDriver) {
             if (isHi) "गाड़ी पर हाजिर (ड्यूटी शुरू)" else "Tour / Duty Started!"
