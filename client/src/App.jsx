@@ -714,7 +714,7 @@ function AppInner() {
       ? [{ id: 'qa-new-lr', label: 'New LR Entry', Icon: Receipt, color: '#10b981', group: 'Action', keywords: 'create add loading receipt', run: navCommand(plant === 'jklakshmi' ? 'lr_jharli' : 'lr_dump') }]
       : []),
     { id: 'qa-theme', label: 'Toggle theme', Icon: Sun, color: '#f59e0b', group: 'Action', keywords: 'dark light sepia mode', run: () => cycleTheme() },
-    { id: 'qa-terminal', label: 'Open VGTC OS Attendance Terminal (Kiosk)', Icon: Camera, color: '#6366f1', group: 'Action', keywords: 'terminal kiosk attendance face driver movement', run: () => window.open('/terminal', '_blank') },
+    { id: 'qa-terminal', label: 'Open VGTC OS Attendance Terminal (Kiosk)', Icon: ScanFace, color: '#6366f1', group: 'Action', keywords: 'terminal kiosk attendance face driver movement', run: () => window.open('/terminal', '_blank') },
   ];
 
 
