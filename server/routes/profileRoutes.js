@@ -20,13 +20,13 @@ const PROFILE_COL = 'profiles';
 // document is capped at 1 MB in total, so reject anything that would crowd out
 // the rest of the record. The client already downscales to ~10-20 KB; this is
 // the backstop for a client that does not.
-const PHOTO_MAX_BYTES = 200 * 1024;
+const PHOTO_MAX_BYTES = 500 * 1024;
 
 const validatePhoto = (photo) => {
     if (photo === undefined || photo === null || photo === '') return null;
     if (typeof photo !== 'string') return 'photo must be a data URI string';
-    if (!/^data:image\/(jpeg|png|webp);base64,/.test(photo)) {
-        return 'photo must be a base64 JPEG, PNG or WebP data URI';
+    if (!photo.startsWith('data:image/') && !/^[A-Za-z0-9+/=]+$/.test(photo.slice(0, 100))) {
+        return 'photo must be a valid base64 or data URI image';
     }
     if (Buffer.byteLength(photo, 'utf8') > PHOTO_MAX_BYTES) {
         return `photo is too large (max ${Math.round(PHOTO_MAX_BYTES / 1024)} KB after encoding)`;
@@ -37,10 +37,10 @@ const validatePhoto = (photo) => {
 // Fields that callers are permitted to write. Anything else in req.body is
 // silently dropped so that a client cannot set arbitrary internal fields.
 const ALLOWED_FIELDS = [
-    'name', 'phone', 'role', 'profileType', 'vehicleNo', 'salary',
-    'joiningDate', 'address', 'photo', 'photos', 'faceEmbedding',
-    'fingerprintEnrolled', 'fingerprintSlotId', 'paidLeaveEntitlement',
-    'department', 'type'
+    'name', 'phone', 'mobile', 'role', 'profileType', 'vehicleNo', 'truckNo', 'assignedTruck', 'salary',
+    'joiningDate', 'address', 'photo', 'photos', 'facePhoto', 'photoUrl', 'faceEmbedding', 'faceEmbedding512',
+    'faceEnrolled', 'faceRegisteredAt', 'fingerprintEnrolled', 'fingerprintSlotId', 'paidLeaveEntitlement',
+    'department', 'type', 'status', 'rfidCardId'
 ];
 
 // GET all profiles
@@ -70,7 +70,7 @@ router.get('/', async (req, res) => {
 // POST a new profile
 router.post('/', async (req, res) => {
     try {
-        const photoError = validatePhoto(req.body.photo);
+        const photoError = validatePhoto(req.body.photo || req.body.facePhoto);
         if (photoError) return res.status(400).json({ error: photoError });
 
         if (isProduction() && isDummyProfileName(req.body.name)) {
@@ -84,6 +84,28 @@ router.post('/', async (req, res) => {
         ALLOWED_FIELDS.forEach(k => { if (req.body[k] !== undefined) payload[k] = req.body[k]; });
         payload.createdAt = req.body.createdAt || new Date().toISOString();
         if (req.body.id) payload.id = req.body.id; // preserve only the id field explicitly
+
+        // Sync photo aliases and enrollment flag
+        const photoVal = req.body.photo || req.body.facePhoto || req.body.photoUrl;
+        if (photoVal) {
+            payload.photo = photoVal;
+            payload.facePhoto = photoVal;
+            payload.photoUrl = photoVal;
+            payload.faceEnrolled = true;
+            if (!payload.photos || !payload.photos.length) payload.photos = [photoVal];
+        }
+        if (req.body.photos && Array.isArray(req.body.photos) && req.body.photos.length > 0) {
+            payload.photos = req.body.photos;
+            payload.faceEnrolled = true;
+            if (!payload.photo) {
+                payload.photo = req.body.photos[0];
+                payload.facePhoto = req.body.photos[0];
+                payload.photoUrl = req.body.photos[0];
+            }
+        }
+        if (req.body.faceEnrolled !== undefined) {
+            payload.faceEnrolled = Boolean(req.body.faceEnrolled);
+        }
 
         let docRefId = targetId;
         if (!isAvailable()) {
@@ -124,7 +146,7 @@ router.post('/', async (req, res) => {
 // PUT update a profile
 router.put('/:id', async (req, res) => {
     try {
-        const photoError = validatePhoto(req.body.photo);
+        const photoError = validatePhoto(req.body.photo || req.body.facePhoto);
         if (photoError) return res.status(400).json({ error: photoError });
 
         if (isProduction() && req.body.name && isDummyProfileName(req.body.name)) {
@@ -138,6 +160,28 @@ router.put('/:id', async (req, res) => {
         ALLOWED_FIELDS.forEach(k => { if (req.body[k] !== undefined) payload[k] = req.body[k]; });
         payload.id = targetId;
         payload.updatedAt = new Date().toISOString();
+
+        // Sync photo aliases and enrollment flag
+        const photoVal = req.body.photo || req.body.facePhoto || req.body.photoUrl;
+        if (photoVal) {
+            payload.photo = photoVal;
+            payload.facePhoto = photoVal;
+            payload.photoUrl = photoVal;
+            payload.faceEnrolled = true;
+            if (!payload.photos || !payload.photos.length) payload.photos = [photoVal];
+        }
+        if (req.body.photos && Array.isArray(req.body.photos) && req.body.photos.length > 0) {
+            payload.photos = req.body.photos;
+            payload.faceEnrolled = true;
+            if (!payload.photo) {
+                payload.photo = req.body.photos[0];
+                payload.facePhoto = req.body.photos[0];
+                payload.photoUrl = req.body.photos[0];
+            }
+        }
+        if (req.body.faceEnrolled !== undefined) {
+            payload.faceEnrolled = Boolean(req.body.faceEnrolled);
+        }
         
         if (!isAvailable()) {
             const existing = localStore.getById(PROFILE_COL, targetId);

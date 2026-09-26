@@ -712,6 +712,24 @@ class MainActivity : AppCompatActivity() {
             // Cannot mark completed yet - minimum 8 hours required for staff!
             lastPunchedProfileId = profile.id
             lastPunchTime = now
+
+            // Record Gate Pass / Active Shift In-Progress scan to server & Punch Logs
+            val timeFormatted = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN")).format(Date(now))
+            apiClient.sendTerminalEventDirect(
+                profileId = profile.id,
+                profileName = profile.name,
+                status = "present",
+                action = "GATE_PASS",
+                dutyState = "IN_DUTY",
+                biometricMethod = if (method == "fingerprint") "FINGERPRINT" else "FACE",
+                method = method,
+                inTime = currentDuty.inTimeFormatted,
+                punchTime = timeFormatted,
+                vehicleNo = profile.vehicleNo ?: currentDuty.vehicleNo,
+                dutyDays = 1.0,
+                notes = "Gate Visit / Active Shift In-Progress"
+            )
+
             showActiveDutyInProgressCard(profile, currentDuty, elapsedMs, minHoursRequired)
         } else {
             // 8+ hours elapsed! Complete shift (Punch-Out)

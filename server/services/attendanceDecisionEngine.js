@@ -3,15 +3,15 @@
  *
  * Implements the core logic defined in "VGTC OS — Terminal Specification":
  * 1. Face / Biometric Recognition event processing.
- * 2. 60-second duplicate scan protection.
+ * 2. Rapid scan debounce protection.
  * 3. Driver trip state resolution (AVAILABLE -> ON_TRIP -> TRIP_RETURN).
- * 4. Staff office check-in / check-out calculation.
- * 5. Event logging and automatic sync into VGTC daily attendance records.
+ * 4. Staff office check-in / check-out / emergency leave calculation.
+ * 5. Event logging and automatic sync into VGTC daily attendance records & punch logs.
  */
 
 const { db, isAvailable } = require('../firebase');
 const localStore = require('../utils/localStore');
-const { getCol } = require('../utils/collectionUtils');
+const { getEnvCol } = require('../utils/collectionUtils');
 const crypto = require('crypto');
 
 const ATTENDANCE_EVENTS_COL = 'attendance_events';
@@ -21,9 +21,9 @@ const VOUCHERS_COL = 'vouchers';
 const LRS_COL = 'lrs';
 const TERMINALS_COL = 'terminals';
 
-// In-memory duplicate scan cache: employeeId -> timestamp (ms)
+// In-memory rapid debounce scan cache: employeeId -> timestamp (ms)
 const recentScans = new Map();
-const DUPLICATE_WINDOW_MS = 60 * 1000; // 60 seconds duplicate protection
+const DUPLICATE_WINDOW_MS = 4 * 1000; // 4 seconds camera micro-burst debounce
 
 const clean = s => String(s || '').trim();
 const upper = s => clean(s).toUpperCase().replace(/\s+/g, '');
@@ -32,7 +32,8 @@ const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/
 async function getDocs(colName) {
     if (isAvailable() && db) {
         try {
-            const snap = await db.collection(colName).get();
+            const actualCol = getEnvCol ? getEnvCol(colName) : colName;
+            const snap = await db.collection(actualCol).get();
             return snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) {
             console.warn(`[DecisionEngine] Firestore read failed for ${colName}, falling back to localStore:`, e.message);
@@ -47,7 +48,8 @@ async function insertDoc(colName, data) {
 
     if (isAvailable() && db) {
         try {
-            await db.collection(colName).doc(docId).set(payload, { merge: true });
+            const actualCol = getEnvCol ? getEnvCol(colName) : colName;
+            await db.collection(actualCol).doc(docId).set(payload, { merge: true });
             return payload;
         } catch (e) {
             console.warn(`[DecisionEngine] Firestore insert failed for ${colName}:`, e.message);
@@ -75,7 +77,10 @@ const attendanceDecisionEngine = {
         const staffList = [];
 
         profiles.forEach(p => {
-            const type = String(p.type || '').toLowerCase();
+            const type = String(p.type || p.profileType || '').toLowerCase();
+            const primaryPhoto = p.facePhoto || p.photo || p.photoUrl || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
+            const isEnrolled = Boolean(primaryPhoto || p.faceEnrolled || (p.faceEmbedding && p.faceEmbedding.length > 0));
+
             if (type.includes('driver')) {
                 // Find driver's active trip if any
                 const pName = upper(p.name);
@@ -135,8 +140,10 @@ const attendanceDecisionEngine = {
                     phone: pPhone,
                     type: 'DRIVER',
                     assignedTruck: p.vehicleNo || p.truckNo || '',
-                    faceEnrolled: Boolean(p.facePhoto || p.photoUrl || p.faceEnrolled),
-                    photoUrl: p.facePhoto || p.photoUrl || null,
+                    faceEnrolled: isEnrolled,
+                    photoUrl: primaryPhoto,
+                    photo: primaryPhoto,
+                    photos: p.photos || (primaryPhoto ? [primaryPhoto] : []),
                     fingerprintEnrolled: Boolean(p.fingerprintEnrolled),
                     status, // AVAILABLE | ON_TRIP | LOADED
                     activeTrip
@@ -149,8 +156,10 @@ const attendanceDecisionEngine = {
                     phone: clean(p.mobile || p.phone),
                     type: 'STAFF',
                     department: p.department || p.type || 'Office',
-                    faceEnrolled: Boolean(p.facePhoto || p.photoUrl || p.faceEnrolled),
-                    photoUrl: p.facePhoto || p.photoUrl || null,
+                    faceEnrolled: isEnrolled,
+                    photoUrl: primaryPhoto,
+                    photo: primaryPhoto,
+                    photos: p.photos || (primaryPhoto ? [primaryPhoto] : []),
                     fingerprintEnrolled: Boolean(p.fingerprintEnrolled),
                     status: 'ACTIVE'
                 });
@@ -158,33 +167,33 @@ const attendanceDecisionEngine = {
         });
 
         const vehicleList = (vehicles || []).map(v => ({
-            id: v.id,
-            truckNo: v.truckNo,
-            owner: v.ownerName || v.owner || '',
-            driverName: v.driverName || '',
-            status: v.status || 'AVAILABLE'
-        })).filter(v => Boolean(v.truckNo));
+            vehicleNo: v.vehicleNo || v.truckNo,
+            driverId: v.driverId || null,
+            status: v.status || 'AVAILABLE',
+            location: v.location || 'Yard Rewari'
+        }));
 
         return {
-            today,
-            totalDrivers: driverList.length,
-            totalStaff: staffList.length,
+            date: today,
             drivers: driverList,
             staff: staffList,
-            vehicles: vehicleList,
-            terminals: [
-                { id: 'OFFICE-REWARI-01', name: 'Main Yard Terminal — Gate 1', location: 'Jharli / Rewari' }
-            ]
+            vehicles: vehicleList
         };
     },
 
     /**
      * Process an incoming attendance scan or terminal action
+     * Handles ALL conditions:
+     * - CHECK_IN (Morning shift start)
+     * - CHECK_OUT (Shift end / 8h complete / Tour complete)
+     * - EMERGENCY_EXIT (Early departure authorized by Admin)
+     * - GATE_PASS (Re-scan while shift is active)
+     * - TRIP_RETURN (Driver returned from active trip)
+     * - MANUAL_OVERRIDE (Admin override via pencil menu)
      */
     async processEvent(body = {}) {
         const {
             eventId,
-            employeeType, // 'DRIVER' | 'STAFF'
             terminalId = 'OFFICE-REWARI-01',
             timestamp,
             notes = '',
@@ -192,32 +201,96 @@ const attendanceDecisionEngine = {
         } = body;
         const employeeId = body.employeeId || body.profileId || body.personId || body.id;
         const biometricMethod = (body.biometricMethod || body.method || 'FACE').toUpperCase();
-        const action = body.action || (body.status === 'present' ? 'CHECK_IN' : 'AUTO');
 
         const now = timestamp ? new Date(timestamp) : new Date();
         const nowMs = now.getTime();
         const date = todayStr();
-        const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
-        // 1. Duplicate check (60-second cooldown per employee, skipped in testing mode or explicit scan)
+        // Resolve action
+        let action = (body.action || '').toUpperCase();
+        if (!action || action === 'AUTO') {
+            if (body.dutyState?.includes('emergency') || body.method?.includes('emergency')) {
+                action = 'EMERGENCY_EXIT';
+            } else if (body.outTime || body.dutyState === 'COMPLETED' || body.dutyState === 'OFF_DUTY') {
+                action = 'CHECK_OUT';
+            } else if (body.dutyState === 'GATE_PASS') {
+                action = 'GATE_PASS';
+            } else if (body.overrideReason) {
+                action = 'MANUAL_OVERRIDE';
+            } else {
+                action = 'CHECK_IN';
+            }
+        }
+
+        // 1. Debounce rapid repeat attempts (4 seconds), only for AUTO/CHECK_IN
         const lastScanTime = recentScans.get(employeeId);
-        if (!isTest && lastScanTime && (nowMs - lastScanTime < DUPLICATE_WINDOW_MS) && action === 'AUTO') {
+        if (!isTest && lastScanTime && (nowMs - lastScanTime < DUPLICATE_WINDOW_MS) && action === 'CHECK_IN') {
             const elapsedSec = Math.round((nowMs - lastScanTime) / 1000);
             return {
                 status: 'DUPLICATE',
-                message: `Attendance already recorded ${elapsedSec}s ago. Cooldown active.`,
+                message: `Attendance recently scanned ${elapsedSec}s ago. Please wait a moment.`,
                 employeeId,
                 terminalId,
-                duplicateCooldownSec: Math.max(0, 60 - elapsedSec)
+                duplicateCooldownSec: Math.max(0, 4 - elapsedSec)
             };
         }
 
         // 2. Fetch full profile and latest trip state
         const roster = await this.getTerminalRoster();
-        const driver = roster.drivers.find(d => d.id === employeeId || d.employeeId === employeeId || d.phone === employeeId);
-        const staff = roster.staff.find(s => s.id === employeeId || s.employeeId === employeeId || s.phone === employeeId);
+        const empName = clean(body.personName || body.profileName).toLowerCase();
+        const driver = roster.drivers.find(d =>
+            d.id === employeeId ||
+            d.employeeId === employeeId ||
+            d.phone === employeeId ||
+            (empName && clean(d.name).toLowerCase() === empName)
+        );
+        const staff = roster.staff.find(s =>
+            s.id === employeeId ||
+            s.employeeId === employeeId ||
+            s.phone === employeeId ||
+            (empName && clean(s.name).toLowerCase() === empName)
+        );
 
-        const person = driver || staff;
+        let person = driver || staff;
+
+        // Fallback: check raw profiles collection
+        if (!person) {
+            const rawProfiles = await getDocs(PROFILES_COL);
+            const rawMatch = rawProfiles.find(p =>
+                p.id === employeeId ||
+                p.employeeId === employeeId ||
+                clean(p.mobile || p.phone) === clean(employeeId) ||
+                (empName && clean(p.name).toLowerCase() === empName)
+            );
+            if (rawMatch) {
+                const isDrv = String(rawMatch.type || rawMatch.profileType || '').toLowerCase().includes('driver');
+                person = {
+                    id: rawMatch.id,
+                    employeeId: rawMatch.employeeId || rawMatch.id,
+                    name: rawMatch.name,
+                    phone: rawMatch.phone || rawMatch.mobile || '',
+                    type: isDrv ? 'DRIVER' : 'STAFF',
+                    department: rawMatch.department || rawMatch.profileType || 'Staff',
+                    assignedTruck: rawMatch.vehicleNo || rawMatch.truckNo || '',
+                    vehicleNo: rawMatch.vehicleNo || rawMatch.truckNo || ''
+                };
+            }
+        }
+
+        // Final fallback: if terminal provided personName, create a valid attendee record
+        if (!person && (body.personName || body.profileName)) {
+            const isDrv = String(body.employeeType || body.type || (body.vehicleNo ? 'DRIVER' : 'STAFF')).toUpperCase().includes('DRIVER');
+            person = {
+                id: employeeId || crypto.randomUUID(),
+                employeeId: employeeId || `EMP-${Date.now().toString().slice(-4)}`,
+                name: body.personName || body.profileName,
+                type: isDrv ? 'DRIVER' : 'STAFF',
+                department: body.department || (isDrv ? 'Fleet' : 'Staff'),
+                vehicleNo: body.vehicleNo || ''
+            };
+        }
+
         if (!person) {
             return {
                 status: 'UNKNOWN_EMPLOYEE',
@@ -229,24 +302,52 @@ const attendanceDecisionEngine = {
         const isDriver = !!driver;
         let eventType = action;
 
-        // Auto-resolve action if 'AUTO'
-        if (action === 'AUTO') {
-            if (isDriver) {
-                if (driver.status === 'ON_TRIP' || driver.status === 'LOADED') {
-                    eventType = 'PROMPT_TRIP_RETURN'; // Terminal will display prompt options
-                } else {
-                    eventType = 'CHECK_IN';
-                }
-            } else {
-                eventType = 'CHECK_IN';
-            }
+        // Auto-resolve trip state if AUTO was supplied
+        if (action === 'AUTO' && isDriver && (driver.status === 'ON_TRIP' || driver.status === 'LOADED')) {
+            eventType = 'PROMPT_TRIP_RETURN';
         }
 
-        // If the driver is returning from a trip
         let tripDetails = driver?.activeTrip || null;
 
-        // Create immutable attendance event record
-        const record = {
+        // Resolve Status, DutyState, and Punch Time
+        let recordStatus = 'present';
+        let dutyState = 'IN_DUTY';
+        let responseMsg = '';
+        const punchTimeVal = body.punchTime || body.outTime || body.inTime || timeStr;
+
+        if (eventType === 'CHECK_IN') {
+            recordStatus = 'present';
+            dutyState = 'IN_DUTY';
+            responseMsg = `Shift started for ${person.name} at ${punchTimeVal} (Present)`;
+        } else if (eventType === 'CHECK_OUT') {
+            recordStatus = body.status || 'present';
+            dutyState = isDriver ? 'OFF_DUTY' : 'COMPLETED';
+            const durStr = body.durationHours ? ` (${body.durationHours} hrs)` : '';
+            responseMsg = `Shift completed for ${person.name} at ${punchTimeVal}${durStr}`;
+        } else if (eventType === 'EMERGENCY_EXIT') {
+            recordStatus = body.status || (body.durationHours >= 4.0 ? 'half_day' : 'leave');
+            dutyState = 'EMERGENCY_LEAVE';
+            responseMsg = `Emergency early exit approved for ${person.name} at ${punchTimeVal} (${recordStatus.toUpperCase()})`;
+        } else if (eventType === 'GATE_PASS') {
+            recordStatus = 'present';
+            dutyState = 'IN_DUTY';
+            responseMsg = `Gate visit recorded for ${person.name} at ${punchTimeVal} (Shift in progress)`;
+        } else if (eventType === 'TRIP_RETURN') {
+            recordStatus = 'present';
+            dutyState = 'AVAILABLE';
+            responseMsg = `Welcome back, ${person.name}! Trip return recorded.`;
+        } else if (eventType === 'MANUAL_OVERRIDE') {
+            recordStatus = body.status || 'present';
+            dutyState = body.dutyState || (recordStatus === 'present' ? 'IN_DUTY' : 'COMPLETED');
+            responseMsg = `Attendance override recorded for ${person.name} (${recordStatus.toUpperCase()})`;
+        } else {
+            recordStatus = body.status || 'present';
+            dutyState = body.dutyState || 'IN_DUTY';
+            responseMsg = `Attendance punch recorded for ${person.name} at ${punchTimeVal}`;
+        }
+
+        // 3. Create immutable attendance event record for audit & sync logs
+        const eventRecord = {
             id: eventId || crypto.randomUUID(),
             employeeId: person.id,
             employeeCode: person.employeeId,
@@ -254,60 +355,123 @@ const attendanceDecisionEngine = {
             employeeType: isDriver ? 'DRIVER' : 'STAFF',
             terminalId,
             eventType,
+            action: eventType,
             biometricMethod,
+            method: biometricMethod.toLowerCase(),
+            status: recordStatus,
+            dutyState,
+            inTime: body.inTime || (eventType === 'CHECK_IN' ? timeStr : null),
+            outTime: body.outTime || ((eventType === 'CHECK_OUT' || eventType === 'EMERGENCY_EXIT') ? timeStr : null),
+            punchTime: punchTimeVal,
+            durationHours: body.durationHours != null ? Number(body.durationHours) : null,
+            dutyDays: body.dutyDays != null ? Number(body.dutyDays) : (recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0)),
+            overrideReason: body.overrideReason || null,
             timestamp: now.toISOString(),
             date,
             time: timeStr,
             tripDetails,
-            notes,
+            notes: notes || body.overrideReason || '',
             syncStatus: 'SYNCED',
             createdAt: now.toISOString()
         };
-
-        // Write event log
-        await insertDoc(ATTENDANCE_EVENTS_COL, record);
+        await insertDoc(ATTENDANCE_EVENTS_COL, eventRecord);
 
         // Update recent scans cache
         recentScans.set(employeeId, nowMs);
 
-        // Update daily attendance collection so the existing VGTC dashboard reflects it immediately
+        // 4. Insert dedicated punch log into `attendance` collection so the "Punch Logs" table shows EVERY punch
+        const punchDocId = `punch_${date}_${person.id}_${nowMs}_${eventType.toLowerCase()}`;
+        const punchRecord = {
+            id: punchDocId,
+            date,
+            profileId: person.id,
+            profileName: person.name,
+            profileType: isDriver ? 'Driver' : (person.department || 'Staff'),
+            vehicleNo: person.vehicleNo || person.assignedTruck || body.vehicleNo || null,
+            status: recordStatus,
+            source: 'terminal',
+            terminalId,
+            terminalEvent: eventType,
+            eventType: eventType,
+            action: eventType,
+            dutyState,
+            terminalTime: punchTimeVal,
+            punchTime: punchTimeVal,
+            inTime: body.inTime || (eventType === 'CHECK_IN' ? timeStr : null),
+            outTime: body.outTime || ((eventType === 'CHECK_OUT' || eventType === 'EMERGENCY_EXIT') ? timeStr : null),
+            durationHours: body.durationHours != null ? Number(body.durationHours) : null,
+            dutyDays: body.dutyDays != null ? Number(body.dutyDays) : (recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0)),
+            overrideReason: body.overrideReason || null,
+            note: notes || body.overrideReason || (eventType === 'EMERGENCY_EXIT' ? 'Emergency Early Departure' : eventType === 'GATE_PASS' ? 'Gate Pass / Active Duty' : ''),
+            markedAt: now.toISOString(),
+            createdAt: now.toISOString(),
+            method: biometricMethod.toLowerCase(),
+            updatedAt: now.toISOString(),
+            isPunchLog: true
+        };
+        await insertDoc(ATTENDANCE_COL, punchRecord);
+
+        // 5. Update daily summary attendance record so roll-call roster reflects consolidated status
+        let summaryDoc = null;
         try {
-            const attendanceDocId = `${date}_${person.id}`;
-            await insertDoc(ATTENDANCE_COL, {
-                id: attendanceDocId,
+            const summaryDocId = `${person.id}_${date}`;
+            const existingDocs = await getDocs(ATTENDANCE_COL);
+            const existingSummary = existingDocs.find(d => d.id === summaryDocId || d.id === `${date}_${person.id}`);
+
+            const firstIn = existingSummary?.inTime || body.inTime || (eventType === 'CHECK_IN' ? timeStr : null);
+            const lastOut = ((eventType === 'CHECK_OUT' || eventType === 'EMERGENCY_EXIT') ? (body.outTime || timeStr) : existingSummary?.outTime) || null;
+
+            summaryDoc = {
+                ...(existingSummary || {}),
+                id: summaryDocId,
                 date,
                 profileId: person.id,
                 profileName: person.name,
                 profileType: isDriver ? 'Driver' : (person.department || 'Staff'),
-                status: 'present',
+                vehicleNo: person.vehicleNo || person.assignedTruck || body.vehicleNo || existingSummary?.vehicleNo || null,
+                status: (eventType === 'EMERGENCY_EXIT') ? recordStatus : (eventType === 'CHECK_OUT' ? (body.status || 'present') : (existingSummary?.status || recordStatus)),
+                dutyState,
                 source: 'terminal',
                 terminalId,
                 terminalEvent: eventType,
-                terminalTime: timeStr,
-                punchTime: timeStr,
-                inTime: timeStr,
+                terminalTime: punchTimeVal,
+                punchTime: punchTimeVal,
+                inTime: firstIn,
+                outTime: lastOut,
+                durationHours: body.durationHours != null ? Number(body.durationHours) : existingSummary?.durationHours || null,
+                dutyDays: body.dutyDays != null ? Number(body.dutyDays) : (existingSummary?.dutyDays != null ? existingSummary.dutyDays : (recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0))),
+                overrideReason: body.overrideReason || existingSummary?.overrideReason || null,
                 markedAt: now.toISOString(),
-                createdAt: now.toISOString(),
+                createdAt: existingSummary?.createdAt || now.toISOString(),
                 method: biometricMethod.toLowerCase(),
-                updatedAt: now.toISOString()
-            });
+                updatedAt: now.toISOString(),
+                isDailySummary: true
+            };
+            await insertDoc(ATTENDANCE_COL, summaryDoc);
+
+            // Also keep backwards compatible id `${date}_${person.id}` updated
+            await insertDoc(ATTENDANCE_COL, { ...summaryDoc, id: `${date}_${person.id}` });
         } catch (attErr) {
-            console.warn('[DecisionEngine] Failed to update daily attendance doc:', attErr.message);
+            console.warn('[DecisionEngine] Failed to update daily attendance summary doc:', attErr.message);
         }
 
         return {
             status: 'SUCCESS',
             eventType,
-            message: eventType === 'TRIP_RETURN'
-                ? `Welcome back, ${person.name}! Trip return recorded.`
-                : eventType === 'CHECK_IN'
-                ? `Check-in confirmed for ${person.name} at ${timeStr}`
-                : `Gate visit recorded for ${person.name}`,
+            action: eventType,
+            message: responseMsg,
             person,
             tripDetails,
-            time: timeStr,
+            statusType: recordStatus,
+            dutyState,
+            inTime: summaryDoc?.inTime || body.inTime || timeStr,
+            outTime: summaryDoc?.outTime || body.outTime || null,
+            punchTime: punchTimeVal,
+            time: punchTimeVal,
             date,
-            terminalId
+            terminalId,
+            punchId: punchDocId,
+            eventId: eventRecord.id
         };
     },
 
@@ -341,9 +505,10 @@ const attendanceDecisionEngine = {
             profileType: body.profileType || existing?.profileType || (body.type?.toLowerCase() === 'driver' ? 'Driver' : 'Staff'),
             vehicleNo: assignedTruck,
             truckNo: assignedTruck,
-            photo: photo || existing?.photo || null,
+            photo: photo || existing?.photo || (photos.length > 0 ? photos[0] : null),
             photos: photos,
-            facePhoto: photo || existing?.facePhoto || null,
+            facePhoto: photo || existing?.facePhoto || (photos.length > 0 ? photos[0] : null),
+            photoUrl: photo || existing?.photoUrl || (photos.length > 0 ? photos[0] : null),
             faceEmbedding: faceEmbedding,
             faceEnrolled: Boolean(photo || existing?.faceEnrolled || (photos && photos.length > 0)),
             fingerprintEnrolled: fingerprintEnrolled,
@@ -363,6 +528,9 @@ const attendanceDecisionEngine = {
         const payload = {
             ...existing,
             facePhoto: null,
+            photo: null,
+            photoUrl: null,
+            photos: [],
             faceEnrolled: false,
             fingerprintEnrolled: false,
             updatedAt: new Date().toISOString()

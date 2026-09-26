@@ -150,12 +150,16 @@ class ApiClient(context: Context) {
     }
 
     // ──────────────────────────────────────────────────
-    // POST /api/attendance — mark single person
+    // POST /api/attendance & POST /api/terminal/event
     // ──────────────────────────────────────────────────
     fun markAttendance(
         record: AttendanceRecord,
-        callback: (ApiResult<Boolean>) -> Unit
+        callback: (ApiResult<Boolean>) -> Unit = {}
     ) {
+        // 1. Always send rich event to Terminal Event Engine (handles events, per-punch logs, and consolidated daily summary)
+        sendTerminalEvent(record) { _ -> }
+
+        // 2. Also write to daily attendance API for multi-system sync
         val body = gson.toJson(record)
         val request = Request.Builder()
             .url("${baseUrl()}/api/attendance")
@@ -165,36 +169,59 @@ class ApiClient(context: Context) {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                sendTerminalEvent(record, callback)
+                callback(Result.success(true))
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    callback(Result.success(true))
-                } else {
-                    sendTerminalEvent(record, callback)
-                }
+                callback(Result.success(true))
             }
         })
     }
 
-    private fun sendTerminalEvent(record: AttendanceRecord, callback: (ApiResult<Boolean>) -> Unit) {
+    fun sendTerminalEvent(record: AttendanceRecord, callback: (ApiResult<Boolean>) -> Unit = {}) {
         val timeStr = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN")).format(Date())
+
+        val isEmergency = record.dutyState?.contains("emergency", ignoreCase = true) == true ||
+                          record.method?.contains("emergency", ignoreCase = true) == true
+        val isCheckOut = record.outTime != null ||
+                         record.dutyState?.equals("COMPLETED", ignoreCase = true) == true ||
+                         record.dutyState?.equals("OFF_DUTY", ignoreCase = true) == true
+        val isGatePass = record.dutyState?.contains("gate_pass", ignoreCase = true) == true
+        val isTripReturn = record.dutyState?.contains("trip_return", ignoreCase = true) == true
+        val isManual = record.overrideReason != null || record.source == "manual"
+
+        val action = when {
+            isEmergency -> "EMERGENCY_EXIT"
+            isCheckOut -> "CHECK_OUT"
+            isGatePass -> "GATE_PASS"
+            isTripReturn -> "TRIP_RETURN"
+            isManual -> "MANUAL_OVERRIDE"
+            else -> "CHECK_IN"
+        }
+
+        val punchTimeStr = when {
+            isCheckOut || isEmergency -> (record.outTime ?: timeStr)
+            else -> (record.inTime ?: timeStr)
+        }
+
         val payload = mapOf(
             "terminalId" to "OFFICE-REWARI-01",
             "employeeId" to record.profileId,
             "profileId" to record.profileId,
             "personId" to record.profileId,
             "personName" to record.profileName,
-            "status" to (record.status ?: "present"),
-            "action" to "CHECK_IN",
+            "status" to (record.status ?: if (isEmergency) "leave" else "present"),
+            "action" to action,
+            "dutyState" to (record.dutyState ?: if (isEmergency) "EMERGENCY_LEAVE" else if (isCheckOut) "COMPLETED" else "IN_DUTY"),
             "biometricMethod" to (if (record.method?.equals("fingerprint", ignoreCase = true) == true) "FINGERPRINT" else "FACE"),
             "method" to (record.method ?: "face"),
             "inTime" to (record.inTime ?: timeStr),
-            "punchTime" to (record.inTime ?: timeStr),
             "outTime" to record.outTime,
-            "dutyDays" to (record.dutyDays ?: 1.0),
-            "dutyState" to record.dutyState,
+            "punchTime" to punchTimeStr,
+            "durationHours" to record.durationHours,
+            "dutyDays" to (record.dutyDays ?: if (isEmergency) 0.0 else 1.0),
+            "overrideReason" to record.overrideReason,
+            "notes" to (record.overrideReason ?: if (isEmergency) "Emergency Early Departure" else null),
             "vehicleNo" to record.vehicleNo
         )
         val body = gson.toJson(payload)
@@ -214,6 +241,62 @@ class ApiClient(context: Context) {
                 } else {
                     callback(Result.failure(Exception("Terminal event failed (${response.code})")))
                 }
+            }
+        })
+    }
+
+    fun sendTerminalEventDirect(
+        profileId: String,
+        profileName: String,
+        status: String = "present",
+        action: String = "GATE_PASS",
+        dutyState: String = "IN_DUTY",
+        biometricMethod: String = "FACE",
+        method: String = "face",
+        inTime: String? = null,
+        outTime: String? = null,
+        punchTime: String? = null,
+        vehicleNo: String? = null,
+        dutyDays: Double = 1.0,
+        durationHours: Double? = null,
+        overrideReason: String? = null,
+        notes: String? = null,
+        callback: (ApiResult<Boolean>) -> Unit = {}
+    ) {
+        val timeStr = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN")).format(Date())
+        val payload = mapOf(
+            "terminalId" to "OFFICE-REWARI-01",
+            "employeeId" to profileId,
+            "profileId" to profileId,
+            "personId" to profileId,
+            "personName" to profileName,
+            "status" to status,
+            "action" to action,
+            "dutyState" to dutyState,
+            "biometricMethod" to biometricMethod,
+            "method" to method,
+            "inTime" to (inTime ?: timeStr),
+            "outTime" to outTime,
+            "punchTime" to (punchTime ?: timeStr),
+            "vehicleNo" to vehicleNo,
+            "dutyDays" to dutyDays,
+            "durationHours" to durationHours,
+            "overrideReason" to overrideReason,
+            "notes" to notes
+        )
+        val body = gson.toJson(payload)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/terminal/event")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(Result.failure(Exception("Cannot connect: ${e.message}")))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                callback(Result.success(response.isSuccessful))
             }
         })
     }

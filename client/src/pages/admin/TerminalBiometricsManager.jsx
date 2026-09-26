@@ -350,7 +350,7 @@ export default function TerminalBiometricsManager() {
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
-      const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_');
+      const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_') || log.isPunchLog;
       if (sourceFilter === 'terminal' && !isTerminal) return false;
       if (statusFilter !== 'all' && log.status !== statusFilter) return false;
       if (searchQuery.trim()) {
@@ -379,11 +379,11 @@ export default function TerminalBiometricsManager() {
   const stats = useMemo(() => {
     const presentCount = filteredLogs.filter(l => l.status === 'present').length;
     const halfDayCount = filteredLogs.filter(l => l.status === 'half_day').length;
-    const absentCount = filteredLogs.filter(l => l.status === 'absent').length;
-    const terminalCount = filteredLogs.filter(l => l.source === 'terminal' || l.terminalId || l.method === 'face' || l.method === 'fingerprint' || l.id?.startsWith('emp_')).length;
+    const absentCount = filteredLogs.filter(l => l.status === 'absent' || l.status === 'leave').length;
+    const terminalCount = filteredLogs.filter(l => l.source === 'terminal' || l.terminalId || l.method === 'face' || l.method === 'fingerprint' || l.id?.startsWith('emp_') || l.isPunchLog).length;
     const totalEnrolled = profiles.length;
-    const faceEnrolledCount = profiles.filter(p => p.facePhoto || p.photo || p.faceEnrolled || (p.photos && p.photos.length > 0)).length;
-    const fpEnrolledCount = profiles.filter(p => p.fingerprintEnrolled).length;
+    const faceEnrolledCount = profiles.filter(p => p.facePhoto || p.photo || p.photoUrl || p.faceEnrolled || (p.photos && p.photos.length > 0) || (p.faceEmbedding && p.faceEmbedding.length > 0)).length;
+    const fpEnrolledCount = profiles.filter(p => p.fingerprintEnrolled || p.fingerprintSlotId != null).length;
     return { presentCount, halfDayCount, absentCount, terminalCount, totalEnrolled, faceEnrolledCount, fpEnrolledCount };
   }, [filteredLogs, profiles]);
 
@@ -468,7 +468,7 @@ export default function TerminalBiometricsManager() {
           <div style={{ display: 'flex', gap: 6, background: 'var(--bg-th)', padding: 5, borderRadius: 12, border: '1px solid var(--border)' }}>
             <button
               type="button"
-              onClick={() => setActiveTab('presence')}
+              onClick={() => { setActiveTab('presence'); fetchRoster(false); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
@@ -484,7 +484,7 @@ export default function TerminalBiometricsManager() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('logs')}
+              onClick={() => { setActiveTab('logs'); fetchLogs(false); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
@@ -500,7 +500,7 @@ export default function TerminalBiometricsManager() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('enrolled')}
+              onClick={() => { setActiveTab('enrolled'); fetchProfiles(); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
@@ -1418,7 +1418,7 @@ export default function TerminalBiometricsManager() {
                                       (isTerminal ? 'Kiosk Auto-Punch' : 'Supervisor Roll-Call');
 
                   const matchedProfile = profiles.find(p => p.id === log.profileId || p.name?.toLowerCase() === log.profileName?.toLowerCase());
-                  const photoUrl = log.photo || matchedProfile?.photo || (matchedProfile?.photos && matchedProfile.photos[0]);
+                  const photoUrl = log.photo || matchedProfile?.photo || matchedProfile?.facePhoto || matchedProfile?.photoUrl || (matchedProfile?.photos && matchedProfile.photos[0]);
                   const assignedVeh = log.vehicleNo || matchedProfile?.vehicleNo;
                   const roleType = log.profileType || matchedProfile?.profileType || 'Staff';
                   const isDriver = roleType.toLowerCase() === 'driver';
@@ -1497,14 +1497,51 @@ export default function TerminalBiometricsManager() {
                             {log.status === 'present' ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
                             {(log.status || 'present').toUpperCase()}
                           </span>
-                          {log.dutyState === 'in_duty' && isDriver && (
+                          {(log.terminalEvent === 'EMERGENCY_EXIT' || log.dutyState === 'EMERGENCY_LEAVE' || log.dutyState === 'emergency_leave') ? (
                             <span style={{
-                              fontSize: '10px', fontWeight: 800, color: '#059669',
+                              fontSize: '10.5px', fontWeight: 800, color: '#dc2626',
+                              background: 'rgba(239,68,68,0.12)', padding: '2px 7px',
+                              borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
+                            }}>
+                              🚨 Emergency Exit
+                            </span>
+                          ) : (log.terminalEvent === 'CHECK_OUT' || log.dutyState === 'COMPLETED' || log.dutyState === 'OFF_DUTY') ? (
+                            <span style={{
+                              fontSize: '10.5px', fontWeight: 800, color: '#2563eb',
+                              background: 'rgba(37,99,235,0.12)', padding: '2px 7px',
+                              borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
+                            }}>
+                              🏁 Shift Complete
+                            </span>
+                          ) : log.terminalEvent === 'GATE_PASS' ? (
+                            <span style={{
+                              fontSize: '10.5px', fontWeight: 800, color: '#0d9488',
+                              background: 'rgba(13,148,136,0.12)', padding: '2px 7px',
+                              borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
+                            }}>
+                              🚶 Gate Pass
+                            </span>
+                          ) : (log.dutyState === 'in_duty' || log.dutyState === 'IN_DUTY') && isDriver ? (
+                            <span style={{
+                              fontSize: '10.5px', fontWeight: 800, color: '#059669',
                               background: 'rgba(16,185,129,0.14)', padding: '2px 7px',
                               borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
                             }}>
                               ⚡ Tour Active
                             </span>
+                          ) : log.terminalEvent === 'CHECK_IN' ? (
+                            <span style={{
+                              fontSize: '10.5px', fontWeight: 800, color: '#16a34a',
+                              background: 'rgba(22,163,74,0.12)', padding: '2px 7px',
+                              borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
+                            }}>
+                              🟢 Shift In
+                            </span>
+                          ) : null}
+                          {(log.note || log.overrideReason) && (
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.note || log.overrideReason}>
+                              {log.note || log.overrideReason}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -1591,7 +1628,7 @@ export default function TerminalBiometricsManager() {
             </div>
           ) : (
             filteredProfiles.map(p => {
-              const primaryPhoto = p.facePhoto || p.photo || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
+              const primaryPhoto = p.facePhoto || p.photo || p.photoUrl || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
               const hasFace = !!(primaryPhoto || p.faceEnrolled || (p.faceEmbedding && p.faceEmbedding.length > 0));
               const photoCount = p.photos && p.photos.length > 0 ? p.photos.length : (primaryPhoto ? 1 : 0);
               const hasFp = !!p.fingerprintEnrolled || p.fingerprintSlotId != null;
@@ -1702,7 +1739,7 @@ export default function TerminalBiometricsManager() {
                 <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>
                   {viewingPhotoModal.name} — Enrolled Face Photos
                 </h3>
-                <p className="adm-sub">{viewingPhotoModal.photos?.length || 1} angles captured for biometric recognition</p>
+                <p className="adm-sub">Captured for biometric recognition</p>
               </div>
               <button type="button" className="adm-btn adm-btn--sm" onClick={() => setViewingPhotoModal(null)}>
                 Close
@@ -1712,7 +1749,7 @@ export default function TerminalBiometricsManager() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
                 {(viewingPhotoModal.photos && viewingPhotoModal.photos.length > 0
                   ? viewingPhotoModal.photos
-                  : [viewingPhotoModal.photo]
+                  : [viewingPhotoModal.facePhoto || viewingPhotoModal.photo || viewingPhotoModal.photoUrl].filter(Boolean)
                 ).map((imgSrc, i) => (
                   <div key={i} style={{ textAlign: 'center' }}>
                     <img

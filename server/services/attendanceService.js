@@ -267,9 +267,12 @@ const getRoster = async (orgId, req, date) => {
         deriveDriverActivity(orgId, req, { from: lookbackDate, to: date, profiles }),
     ]);
 
-    const savedByProfile = new Map(saved.map(r => [r.profileId, r]));
-
-    // Group recent attendance by profile to evaluate active tour state
+    const savedByProfile = new Map();
+    for (const r of saved) {
+        if (!savedByProfile.has(r.profileId) || r.isDailySummary || r.id === `${r.profileId}_${date}` || r.id === `${date}_${r.profileId}`) {
+            savedByProfile.set(r.profileId, r);
+        }
+    }
     const recentByProfile = new Map();
     for (const r of recentAttendance) {
         if (!recentByProfile.has(r.profileId)) recentByProfile.set(r.profileId, []);
