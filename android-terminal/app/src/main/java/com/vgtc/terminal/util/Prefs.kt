@@ -90,7 +90,14 @@ class Prefs(context: Context) {
     }
 
     var serverUrl: String
-        get() = sanitizeServerUrl(sp.getString("server_url", "") ?: "")
+        get() {
+            val raw = sp.getString("server_url", "https://vgtc.site") ?: "https://vgtc.site"
+            val clean = sanitizeServerUrl(raw)
+            if (clean.isBlank() || clean.contains("192.168.") || clean.contains("localhost")) {
+                return "https://vgtc.site"
+            }
+            return clean
+        }
         set(value) = sp.edit().putString("server_url", sanitizeServerUrl(value)).apply()
 
     var language: String

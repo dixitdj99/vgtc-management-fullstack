@@ -398,14 +398,31 @@ class ApiClient(context: Context) {
     // GET /api/auth/status  — quick connectivity check
     // ──────────────────────────────────────────────────
     fun checkConnection(callback: (Boolean) -> Unit) {
-        if (baseUrl().isBlank()) { callback(false); return }
+        val url = baseUrl()
+        if (url.isBlank()) { callback(false); return }
         val request = Request.Builder()
-            .url("${baseUrl()}/api/auth/status")
+            .url("$url/api/auth/status")
             .get()
             .build()
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) { callback(false) }
-            override fun onResponse(call: Call, response: Response) { callback(response.isSuccessful) }
+            override fun onFailure(call: Call, e: IOException) {
+                val rosterReq = Request.Builder().url("$url/api/terminal/roster").get().build()
+                client.newCall(rosterReq).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) { callback(false) }
+                    override fun onResponse(call: Call, response: Response) { callback(response.isSuccessful) }
+                })
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(true)
+                } else {
+                    val rosterReq = Request.Builder().url("$url/api/terminal/roster").get().build()
+                    client.newCall(rosterReq).enqueue(object : Callback {
+                        override fun onFailure(call: Call, e: IOException) { callback(false) }
+                        override fun onResponse(call: Call, response: Response) { callback(response.isSuccessful) }
+                    })
+                }
+            }
         })
     }
 

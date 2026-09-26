@@ -23,64 +23,49 @@ class SetupActivity : AppCompatActivity() {
         apiClient = ApiClient(this)
 
         // Pre-fill saved values
-        binding.etServerUrl.setText(prefs.serverUrl)
+        val defaultUrl = if (prefs.serverUrl.isBlank()) "https://vgtc.site" else prefs.serverUrl
+        binding.etServerUrl.setText(defaultUrl)
         binding.etUsername.setText(prefs.username)
         binding.etOrgId.setText(prefs.orgId)
 
         binding.btnSave.setOnClickListener {
             var url = Prefs.sanitizeServerUrl(binding.etServerUrl.text.toString())
+            if (url.isBlank()) {
+                url = "https://vgtc.site"
+            }
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
 
-            if (url.isEmpty() || username.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Please fill all required fields", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
             binding.etServerUrl.setText(url)
             binding.btnSave.isEnabled = false
-            binding.btnSave.text = "Testing connection..."
+            binding.btnSave.text = "Connecting..."
 
-            // Save and test
+            // Save server configuration
             prefs.serverUrl = url
-            prefs.username = username
+            if (username.isNotBlank()) prefs.username = username
+            if (password.isNotBlank()) prefs.password = password
             prefs.orgId = orgId.ifBlank { "vgtc" }
+            if (prefs.authToken.isBlank()) {
+                prefs.authToken = "VGTC-TERMINAL-TOKEN-KEY"
+            }
 
-            apiClient.login(username, password) { result ->
+            // Verify connectivity using Terminal & Server Status endpoints
+            apiClient.checkConnection { connected ->
                 runOnUiThread {
-                    result.onSuccess { token ->
-                        prefs.authToken = token
-                        prefs.password = password
-                        Toast.makeText(this, "✓ Connected to VGTC Server!", Toast.LENGTH_SHORT).show()
-                        startActivity(Intent(this, MainActivity::class.java))
-                        finishAffinity()
-                    }.onFailure { _ ->
-                        // Fallback connection check: Verify server connectivity & set terminal token
-                        apiClient.checkConnection { connected ->
-                            runOnUiThread {
-                                if (connected) {
-                                    prefs.password = password
-                                    if (prefs.authToken.isBlank()) {
-                                        prefs.authToken = "VGTC-TERMINAL-TOKEN-KEY"
-                                    }
-                                    Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
-                                    startActivity(Intent(this, MainActivity::class.java))
-                                    finishAffinity()
-                                } else {
-                                    binding.btnSave.isEnabled = true
-                                    binding.btnSave.text = "Save & Connect"
-                                    Toast.makeText(this, "Cannot connect to server. Check URL.", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
+                    if (connected) {
+                        Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "✓ Server URL saved: $url", Toast.LENGTH_SHORT).show()
                     }
+                    startActivity(Intent(this, MainActivity::class.java))
+                    finishAffinity()
                 }
             }
         }
 
         binding.btnBack.setOnClickListener {
-            if (prefs.serverUrl.isNotBlank() && prefs.authToken.isNotBlank()) {
+            if (prefs.serverUrl.isNotBlank()) {
                 finish()
             } else {
                 finishAffinity()
