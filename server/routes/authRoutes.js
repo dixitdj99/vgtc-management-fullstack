@@ -77,14 +77,15 @@ router.post('/login', loginLimiter, async (req, res) => {
             emailToAuth = `${username}@vgtc.com`;
         }
 
-        // Authenticate password
+        // Authenticate password (with fallback to local bcrypt if Stytch throws/fails)
         if (stytchService.isStytchConfigured() && emailToAuth) {
             try {
                 await stytchService.authenticate(emailToAuth, password);
             } catch (err) {
-                // FIX #7: Log full error server-side; send only a safe generic message to client
-                console.error('[Auth] Stytch authentication error:', err);
-                return res.status(401).json({ error: 'Invalid username/email or password' });
+                console.warn('[Auth] Stytch auth failed, falling back to local bcrypt validation:', err.message);
+                if (!user || !authService.verifyPassword(password, user.password)) {
+                    return res.status(401).json({ error: 'Invalid username/email or password' });
+                }
             }
         } else {
             // Fallback to local bcrypt validation
