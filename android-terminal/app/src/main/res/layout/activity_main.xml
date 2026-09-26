@@ -51,9 +51,9 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="VGTC Terminal"
+                android:text="VGTC Attendance System"
                 android:textColor="@color/white"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold"
                 android:shadowColor="#B3000000"
                 android:shadowRadius="8"
@@ -92,11 +92,26 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Language Switcher Toggle Button (EN / HI) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLanguageToggle"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="🌐 EN"
+            android:textSize="11sp"
+            android:textColor="@color/white"
+            app:strokeColor="#64748B"
+            app:strokeWidth="1dp"
+            app:cornerRadius="18dp"
+            android:paddingHorizontal="10dp"
+            android:layout_marginEnd="6dp" />
+
         <!-- Manual Attendance / Master Override Button -->
         <ImageButton
             android:id="@+id/btnAttendanceOverride"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@drawable/ic_edit"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Manual Attendance Override"
@@ -172,18 +187,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 5. ATTENDANCE MARKED CONFIRMATION POPUP -->
+    <!-- 5. ATTENDANCE MARKED SLIDE-UP BOTTOM SHEET -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cardAttendanceSuccess"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="28dp"
-        app:cardCornerRadius="20dp"
-        app:cardElevation="16dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="16dp"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="20dp"
         app:cardBackgroundColor="@color/white"
         android:visibility="gone"
         tools:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -197,8 +212,8 @@
 
             <ImageView
                 android:id="@+id/ivSuccessCheck"
-                android:layout_width="68dp"
-                android:layout_height="68dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
                 android:src="@drawable/ic_check_circle"
                 android:tint="@color/green_online"
                 android:contentDescription="Success" />
@@ -211,7 +226,7 @@
                 android:textSize="22sp"
                 android:textStyle="bold"
                 android:textColor="@color/text_primary"
-                android:layout_marginTop="10dp" />
+                android:layout_marginTop="8dp" />
 
             <ImageView
                 android:id="@+id/ivSuccessPhoto"
@@ -219,7 +234,7 @@
                 android:layout_height="72dp"
                 android:src="@drawable/ic_person_placeholder"
                 android:contentDescription="Employee Photo"
-                android:layout_marginTop="12dp" />
+                android:layout_marginTop="10dp" />
 
             <TextView
                 android:id="@+id/tvSuccessName"
@@ -325,7 +340,7 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- 6. AMBIENT SCREENSAVER (Activates after 15s inactivity) -->
+    <!-- 6. AMBIENT ALWAYS-ON DISPLAY SCREENSAVER (Activates after 15s inactivity) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/layoutScreensaver"
         android:layout_width="0dp"
@@ -348,23 +363,13 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 
-            <!-- Big VGTC Official Logo in Screensaver -->
+            <!-- Big Premium VGTC Official Logo in Screensaver -->
             <ImageView
-                android:layout_width="120dp"
-                android:layout_height="120dp"
+                android:layout_width="140dp"
+                android:layout_height="140dp"
                 android:src="@drawable/vgtc_logo"
                 android:contentDescription="VGTC Logo"
                 android:scaleType="fitCenter" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="VGTC Logistics"
-                android:textColor="@color/white"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:fontFamily="sans-serif-medium"
-                android:layout_marginTop="12dp" />
 
             <!-- Screensaver Time (No seconds) -->
             <TextView
@@ -372,12 +377,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="12:00 PM"
-                android:textSize="64sp"
+                android:textSize="68sp"
                 android:textStyle="bold"
                 android:fontFamily="sans-serif-light"
                 android:textColor="@color/white"
                 android:letterSpacing="0.02"
-                android:layout_marginTop="16dp" />
+                android:layout_marginTop="24dp" />
 
             <!-- Screensaver Date -->
             <TextView
@@ -388,17 +393,17 @@
                 android:textSize="16sp"
                 android:fontFamily="sans-serif"
                 android:textColor="#9CA3AF"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="6dp" />
 
-            <!-- Pulsing hint -->
+            <!-- Touch screen hint -->
             <TextView
                 android:id="@+id/tvSaverHint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Step in front of camera or touch screen to punch"
-                android:textColor="#6B7280"
-                android:textSize="13sp"
-                android:layout_marginTop="32dp" />
+                android:text="Touch screen to start"
+                android:textColor="#9CA3AF"
+                android:textSize="14sp"
+                android:layout_marginTop="36dp" />
         </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 

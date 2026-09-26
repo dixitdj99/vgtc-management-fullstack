@@ -70,9 +70,32 @@ class Prefs(context: Context) {
         sp.edit().putBoolean("migrated_from_legacy_v1", true).apply()
     }
 
+    companion object {
+        fun sanitizeServerUrl(rawUrl: String): String {
+            var clean = rawUrl.trim()
+            if (clean.isEmpty()) return ""
+            // Fix duplicated schemes like http://https://vgtc.site or http://http://
+            clean = clean.replace(Regex("^(https?://)+", RegexOption.IGNORE_CASE)) { match ->
+                val last = match.value.lowercase()
+                if (last.contains("https")) "https://" else "http://"
+            }
+            if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+                clean = "https://$clean"
+            }
+            if (clean.endsWith("/")) {
+                clean = clean.substring(0, clean.length - 1)
+            }
+            return clean
+        }
+    }
+
     var serverUrl: String
-        get() = sp.getString("server_url", "") ?: ""
-        set(value) = sp.edit().putString("server_url", value).apply()
+        get() = sanitizeServerUrl(sp.getString("server_url", "") ?: "")
+        set(value) = sp.edit().putString("server_url", sanitizeServerUrl(value)).apply()
+
+    var language: String
+        get() = sp.getString("app_language", "en") ?: "en"
+        set(value) = sp.edit().putString("app_language", value).apply()
 
     var username: String
         get() = sp.getString("username", "") ?: ""

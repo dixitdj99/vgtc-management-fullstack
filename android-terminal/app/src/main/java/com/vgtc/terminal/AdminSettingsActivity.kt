@@ -44,7 +44,7 @@ class AdminSettingsActivity : AppCompatActivity() {
         binding.etOrgId.setText(prefs.orgId)
 
         binding.btnSaveServerConfig.setOnClickListener {
-            var url = binding.etServerUrl.text.toString().trim().trimEnd('/')
+            var url = Prefs.sanitizeServerUrl(binding.etServerUrl.text.toString())
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
@@ -54,11 +54,7 @@ class AdminSettingsActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                url = "https://$url"
-                binding.etServerUrl.setText(url)
-            }
-
+            binding.etServerUrl.setText(url)
             binding.btnSaveServerConfig.isEnabled = false
             binding.btnSaveServerConfig.text = "Testing connection..."
 

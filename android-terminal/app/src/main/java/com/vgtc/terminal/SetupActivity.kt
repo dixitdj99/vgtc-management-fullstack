@@ -28,7 +28,7 @@ class SetupActivity : AppCompatActivity() {
         binding.etOrgId.setText(prefs.orgId)
 
         binding.btnSave.setOnClickListener {
-            var url = binding.etServerUrl.text.toString().trim().trimEnd('/')
+            var url = Prefs.sanitizeServerUrl(binding.etServerUrl.text.toString())
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
@@ -38,11 +38,7 @@ class SetupActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                url = "https://$url"
-                binding.etServerUrl.setText(url)
-            }
-
+            binding.etServerUrl.setText(url)
             binding.btnSave.isEnabled = false
             binding.btnSave.text = "Testing connection..."
 

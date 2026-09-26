@@ -432,7 +432,7 @@ class EnrollActivity : AppCompatActivity() {
             .setMessage("R307 USB optical sensor not detected.\n\nPlease plug your R307 fingerprint module via USB OTG cable into the terminal.\n\nWould you like to mark ${profile.name} as linked anyway for testing?")
             .apply {
                 // Only show "Mark Linked" in debug builds — never in production
-                if (BuildConfig.DEBUG) {
+                if (com.vgtc.terminal.BuildConfig.DEBUG) {
                     setPositiveButton("Mark Linked (Debug Only)") { _, _ ->
                         prefs.enrolledFingerprintProfileId = profile.id
                         prefs.enrolledFingerprintProfileName = profile.name

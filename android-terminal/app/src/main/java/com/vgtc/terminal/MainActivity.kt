@@ -136,6 +136,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupLiveClock()
+        initAudioAndVoice()
+        setupLanguageToggle()
         setupAdminLockAction()
         setupAttendanceOverrideAction()
         setupTouchAndScreensaver()
@@ -219,8 +221,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (isScreensaverActive && ev?.action == MotionEvent.ACTION_DOWN) {
+            hideScreensaver()
+            return true
+        }
         resetScreensaverTimer()
         return super.dispatchTouchEvent(ev)
+    }
+
+    // ──────────────────────────────────────────────────
+    // Audio Beep Chime & TextToSpeech Voice Guidance
+    // ──────────────────────────────────────────────────
+    private var textToSpeech: android.speech.tts.TextToSpeech? = null
+    private var toneGenerator: android.media.ToneGenerator? = null
+
+    private fun initAudioAndVoice() {
+        try {
+            toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        textToSpeech = android.speech.tts.TextToSpeech(this) { status ->
+            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                updateTtsLanguage()
+            }
+        }
+    }
+
+    private fun updateTtsLanguage() {
+        val lang = prefs.language
+        val locale = if (lang == "hi") Locale("hi", "IN") else Locale.US
+        textToSpeech?.language = locale
+    }
+
+    private fun playPunchChime() {
+        try {
+            toneGenerator?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 180)
+        } catch (_: Exception) {}
+    }
+
+    private fun speakVoice(textEn: String, textHi: String) {
+        val lang = prefs.language
+        val textToSpeak = if (lang == "hi") textHi else textEn
+        updateTtsLanguage()
+        textToSpeech?.speak(textToSpeak, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "vgtc_voice_${System.currentTimeMillis()}")
+    }
+
+    private fun setupLanguageToggle() {
+        updateLanguageUi()
+        binding.btnLanguageToggle.setOnClickListener {
+            prefs.language = if (prefs.language == "hi") "en" else "hi"
+            updateLanguageUi()
+            val msg = if (prefs.language == "hi") "भाषा हिंदी पर सेट की गई" else "Language set to English"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateLanguageUi() {
+        val isHi = prefs.language == "hi"
+        binding.btnLanguageToggle.text = if (isHi) "🌐 HI" else "🌐 EN"
+        binding.tvFaceDetectionHint.text = if (isHi) {
+            "कैमरे की तरफ देखें या फिंगरप्रिंट सेंसर छुएं"
+        } else {
+            "Look at camera or touch fingerprint sensor"
+        }
     }
 
     // ──────────────────────────────────────────────────
@@ -701,6 +766,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
     private fun completeShift(profile: Profile, currentDuty: DutyRecord, method: String, elapsedMs: Long) {
         val now = System.currentTimeMillis()
         val outTimeFormatted = SimpleDateFormat("hh:mm a", Locale("en", "IN")).format(Date(now))
@@ -708,7 +774,7 @@ class MainActivity : AppCompatActivity() {
         val durationRounded = Math.round(elapsedHours * 10.0) / 10.0
 
         pauseScanning()
-        binding.tvFaceDetectionHint.text = "Completing shift for ${profile.name}..."
+        binding.tvFaceDetectionHint.text = if (prefs.language == "hi") "हाजिरी पूरी की जा रही है..." else "Completing shift for ${profile.name}..."
 
         val completedDuty = currentDuty.copy(
             outTimeMs = now,
@@ -735,13 +801,23 @@ class MainActivity : AppCompatActivity() {
         ) { _ -> }
 
         runOnUiThread {
+            speakVoice(
+                "Shift completed for ${profile.name}",
+                "${profile.name} की ड्यूटी पूरी हो गई है"
+            )
             showDutyCompletedSuccess(profile, completedDuty, elapsedMs, method)
         }
     }
 
     private fun showDutyStartSuccess(profile: Profile, inTimeFormatted: String, method: String) {
         val isDriver = profile.profileType.equals("Driver", ignoreCase = true)
-        binding.tvSuccessTitle.text = if (isDriver) "Tour / Duty Started! (गाड़ी पर हाजिर)" else "Shift Started! (Punch-In)"
+        val isHi = prefs.language == "hi"
+
+        binding.tvSuccessTitle.text = if (isDriver) {
+            if (isHi) "गाड़ी पर हाजिर (ड्यूटी शुरू)" else "Tour / Duty Started!"
+        } else {
+            if (isHi) "हाजिरी दर्ज (Punch-In)" else "Shift Started!"
+        }
         binding.tvSuccessTitle.setTextColor(getColor(R.color.text_primary))
 
         binding.ivSuccessCheck.setImageResource(R.drawable.ic_check_circle)
@@ -752,9 +828,9 @@ class MainActivity : AppCompatActivity() {
         binding.tvSuccessType.text = profile.profileType ?: "Staff"
         binding.tvSuccessPunchTime.text = " • In: $inTimeFormatted"
         binding.tvSuccessMethod.text = if (method == "fingerprint") {
-            "Method: R307 Optical Fingerprint ✓"
+            if (isHi) "माध्यम: फिंगरप्रिंट सेंसर ✓" else "Method: R307 Optical Fingerprint ✓"
         } else {
-            "Method: Face AI Verification (MobileFaceNet) ✓"
+            if (isHi) "माध्यम: चेहरा पहचान AI ✓" else "Method: Face AI Verification ✓"
         }
 
         if (!profile.vehicleNo.isNullOrBlank()) {
@@ -766,14 +842,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.layoutSuccessStatusChip.backgroundTintList =
             android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#E8F5E9"))
-        binding.tvSuccessStatus.text = "⚡ ON DUTY"
+        binding.tvSuccessStatus.text = if (isHi) "✓ हाजिर (ON DUTY)" else "⚡ ON DUTY"
         binding.tvSuccessStatus.setTextColor(getColor(R.color.green_online))
 
         binding.tvSuccessDuration.visibility = View.VISIBLE
         binding.tvSuccessDuration.text = if (isDriver) {
-            "Duty tour active • Auto-present on all tour days until punch-out"
+            if (isHi) "ड्यूटी चालू • वापसी तक प्रतिदिन उपस्थिति दर्ज" else "Duty tour active • Auto-present on all tour days"
         } else {
-            "Shift started • Min. 8 hours required to mark present"
+            if (isHi) "ड्यूटी शुरू हुई • न्यूनतम 8 घंटे आवश्यक" else "Shift started • Min. 8 hours required to mark present"
         }
         binding.tvSuccessDuration.setTextColor(getColor(R.color.text_secondary))
 
@@ -787,7 +863,7 @@ class MainActivity : AppCompatActivity() {
             binding.ivSuccessPhoto.setImageResource(R.drawable.ic_person_placeholder)
         }
 
-        animateInSuccessCard(3500)
+        animateInSuccessCard(3000L)
     }
 
     private fun showActiveDutyInProgressCard(
@@ -797,7 +873,10 @@ class MainActivity : AppCompatActivity() {
         minHours: Double
     ) {
         pauseScanning()
-        binding.tvSuccessTitle.text = "Shift In Progress"
+        val isHi = prefs.language == "hi"
+        speakVoice("Active shift is currently in progress", "हाजिरी चालू है")
+
+        binding.tvSuccessTitle.text = if (isHi) "ड्यूटी चालू है" else "Shift In Progress"
         binding.tvSuccessTitle.setTextColor(getColor(R.color.text_primary))
 
         binding.ivSuccessCheck.setImageResource(R.drawable.ic_check_circle)
@@ -816,11 +895,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.layoutSuccessStatusChip.backgroundTintList =
             android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#E8F0FE"))
-        binding.tvSuccessStatus.text = "⏳ ACTIVE DUTY"
+        binding.tvSuccessStatus.text = if (isHi) "⏳ ड्यूटी चालू" else "⏳ ACTIVE DUTY"
         binding.tvSuccessStatus.setTextColor(getColor(R.color.primary))
         binding.tvSuccessPunchTime.text = " • In: ${currentDuty.inTimeFormatted}"
 
-        binding.tvSuccessMethod.text = "Active duty shift is currently running"
+        binding.tvSuccessMethod.text = if (isHi) "ड्यूटी अभी चल रही है" else "Active duty shift is currently running"
 
         val elapsedH = (elapsedMs / (1000 * 3600)).toInt()
         val elapsedM = ((elapsedMs / (1000 * 60)) % 60).toInt()
@@ -846,11 +925,13 @@ class MainActivity : AppCompatActivity() {
             binding.ivSuccessPhoto.setImageResource(R.drawable.ic_person_placeholder)
         }
 
-        animateInSuccessCard(5000)
+        animateInSuccessCard(3000L)
     }
 
     private fun showDutyCompletedSuccess(profile: Profile, completedDuty: DutyRecord, elapsedMs: Long, method: String) {
-        binding.tvSuccessTitle.text = "Shift Completed! (Punch-Out)"
+        val isHi = prefs.language == "hi"
+
+        binding.tvSuccessTitle.text = if (isHi) "ड्यूटी पूरी हुई (Punch-Out)" else "Shift Completed! (Punch-Out)"
         binding.tvSuccessTitle.setTextColor(getColor(R.color.text_primary))
 
         binding.ivSuccessCheck.setImageResource(R.drawable.ic_check_circle)
@@ -862,9 +943,9 @@ class MainActivity : AppCompatActivity() {
         binding.tvSuccessPunchTime.text =
             " • In: ${completedDuty.inTimeFormatted} | Out: ${completedDuty.outTimeFormatted}"
         binding.tvSuccessMethod.text = if (method == "fingerprint") {
-            "Method: R307 Optical Fingerprint ✓"
+            if (isHi) "माध्यम: फिंगरप्रिंट सेंसर ✓" else "Method: R307 Optical Fingerprint ✓"
         } else {
-            "Method: Face AI Verification (MobileFaceNet) ✓"
+            if (isHi) "माध्यम: चेहरा पहचान AI ✓" else "Method: Face AI Verification ✓"
         }
 
         val vehStr = if (!profile.vehicleNo.isNullOrBlank()) profile.vehicleNo else completedDuty.vehicleNo
@@ -877,7 +958,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.layoutSuccessStatusChip.backgroundTintList =
             android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#E8F5E9"))
-        binding.tvSuccessStatus.text = "✓ 1.0 DAY PRESENT"
+        binding.tvSuccessStatus.text = if (isHi) "✓ 1.0 दिन पूरा दर्ज" else "✓ 1.0 DAY PRESENT"
         binding.tvSuccessStatus.setTextColor(getColor(R.color.green_online))
 
         val elapsedH = (elapsedMs / (1000 * 3600)).toInt()
@@ -896,7 +977,7 @@ class MainActivity : AppCompatActivity() {
             binding.ivSuccessPhoto.setImageResource(R.drawable.ic_person_placeholder)
         }
 
-        animateInSuccessCard(4000)
+        animateInSuccessCard(3000L)
     }
 
     private fun executeEmergencyCheckout(profile: Profile, currentDuty: DutyRecord) {
@@ -951,33 +1032,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun animateInSuccessCard(dismissDelayMs: Long) {
-        binding.cardAttendanceSuccess.alpha = 0f
-        binding.cardAttendanceSuccess.scaleX = 0.85f
-        binding.cardAttendanceSuccess.scaleY = 0.85f
+    private fun animateInSuccessCard(dismissDelayMs: Long = 3000L) {
+        playPunchChime()
+        val screenHeight = resources.displayMetrics.heightPixels.toFloat()
+        binding.cardAttendanceSuccess.translationY = screenHeight
+        binding.cardAttendanceSuccess.alpha = 1f
         binding.cardAttendanceSuccess.visibility = View.VISIBLE
         binding.cardAttendanceSuccess.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(250)
+            .translationY(0f)
+            .setDuration(350)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
             .start()
 
-        binding.ivSuccessCheck.scaleX = 0f
-        binding.ivSuccessCheck.scaleY = 0f
-        binding.ivSuccessCheck.animate()
-            .scaleX(1.2f)
-            .scaleY(1.2f)
-            .setDuration(300)
-            .withEndAction {
-                binding.ivSuccessCheck.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
-            }
-            .start()
+        val isHi = prefs.language == "hi"
+        binding.tvAutoDismiss.text = if (isHi) "3 सेकंड में बंद होगा..." else "Auto-closing in 3 seconds..."
 
         dismissHandler?.removeCallbacksAndMessages(null)
         dismissRunnable = Runnable { dismissSuccessPopup() }
         dismissHandler = Handler(Looper.getMainLooper()).apply {
-            postDelayed(dismissRunnable!!, dismissDelayMs)
+            postDelayed(dismissRunnable!!, 3000L)
         }
     }
 
@@ -985,11 +1058,12 @@ class MainActivity : AppCompatActivity() {
         dismissHandler?.removeCallbacksAndMessages(null)
         binding.tvSuccessDuration.visibility = View.GONE
         binding.btnEmergencyCheckout.visibility = View.GONE
+
+        val screenHeight = resources.displayMetrics.heightPixels.toFloat()
         binding.cardAttendanceSuccess.animate()
-            .alpha(0f)
-            .scaleX(0.85f)
-            .scaleY(0.85f)
-            .setDuration(200)
+            .translationY(screenHeight)
+            .setDuration(300)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
             .withEndAction {
                 binding.cardAttendanceSuccess.visibility = View.GONE
                 resumeScanning()
@@ -1007,7 +1081,7 @@ class MainActivity : AppCompatActivity() {
         scanPaused = false
         faceDetected = false
         isAnalyzingFace = false
-        binding.tvFaceDetectionHint.text = "Look at camera or touch fingerprint sensor"
+        updateLanguageUi()
         resetScreensaverTimer()
     }
 
@@ -1060,7 +1134,7 @@ class MainActivity : AppCompatActivity() {
 
     @androidx.camera.core.ExperimentalGetImage
     private fun analyzeFrame(imageProxy: ImageProxy) {
-        if (scanPaused || scanComplete) {
+        if (scanPaused || scanComplete || isScreensaverActive) {
             imageProxy.close()
             return
         }
@@ -1090,7 +1164,8 @@ class MainActivity : AppCompatActivity() {
                     if (!faceDetected) {
                         faceDetected = true
                         runOnUiThread {
-                            binding.tvFaceDetectionHint.text = "Face detected! Recognizing..."
+                            binding.tvFaceDetectionHint.text = if (prefs.language == "hi") "चेहरा पहचाना गया! पहचान रहे हैं..." else "Face detected! Recognizing..."
+                            speakVoice("Look at camera", "कैमरे की तरफ देखें")
                         }
                     }
 
@@ -1114,10 +1189,11 @@ class MainActivity : AppCompatActivity() {
                                         val pct = (matchResult.similarity * 100).toInt().coerceIn(0, 99)
                                         if (profiles.isEmpty()) {
                                             binding.tvFaceDetectionHint.text =
-                                                "Face detected, but no enrolled employees in terminal"
+                                                if (prefs.language == "hi") "चेहरा पहचाना गया, परंतु कोई कर्मचारी दर्ज नहीं है" else "Face detected, but no enrolled employees in terminal"
                                         } else {
                                             binding.tvFaceDetectionHint.text =
-                                                "Unknown Face ($pct% match) - Hold still or enroll in Admin"
+                                                if (prefs.language == "hi") "अज्ञात चेहरा ($pct% मैच)" else "Unknown Face ($pct% match) - Hold still or enroll in Admin"
+                                            speakVoice("Face not recognized", "चेहरा पहचाना नहीं गया")
                                         }
                                     }
                                     isAnalyzingFace = false
@@ -1133,7 +1209,7 @@ class MainActivity : AppCompatActivity() {
                     faceDetected = false
                     isAnalyzingFace = false
                     runOnUiThread {
-                        binding.tvFaceDetectionHint.text = "Look at camera or touch fingerprint sensor"
+                        updateLanguageUi()
                     }
                 }
             }
@@ -1246,6 +1322,8 @@ class MainActivity : AppCompatActivity() {
         dismissHandler?.removeCallbacksAndMessages(null)
         stopR307Polling()
         r307Driver.disconnect()
+        try { textToSpeech?.stop(); textToSpeech?.shutdown() } catch (_: Exception) {}
+        try { toneGenerator?.release() } catch (_: Exception) {}
         cameraExecutor.shutdown()
         faceDetector.close()
     }
