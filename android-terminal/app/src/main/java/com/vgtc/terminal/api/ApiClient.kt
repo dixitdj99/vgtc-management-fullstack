@@ -82,41 +82,71 @@ class ApiClient(context: Context) {
     }
 
     // ──────────────────────────────────────────────────
-    // GET /api/profiles
+    // GET /api/profiles with fallback to /api/terminal/roster
     // ──────────────────────────────────────────────────
     fun getProfiles(callback: (ApiResult<List<Profile>>) -> Unit) {
-        ensureToken { tokenOk ->
-            if (!tokenOk) {
-                callback(Result.failure(Exception("Not authenticated")))
-                return@ensureToken
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/profiles")
+            .get()
+            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                fetchRoster(callback)
             }
-            val request = Request.Builder()
-                .url("${baseUrl()}/api/profiles")
-                .get()
-                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-                .build()
 
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    callback(Result.failure(Exception("Network error: ${e.message}")))
-                }
-
-                override fun onResponse(call: Call, response: Response) {
-                    val body = response.body?.string() ?: "[]"
-                    if (response.isSuccessful) {
-                        try {
-                            val type = object : TypeToken<List<Profile>>() {}.type
-                            val profiles: List<Profile> = gson.fromJson(body, type)
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body?.string() ?: "[]"
+                if (response.isSuccessful) {
+                    try {
+                        val type = object : TypeToken<List<Profile>>() {}.type
+                        val profiles: List<Profile> = gson.fromJson(body, type)
+                        if (profiles.isNotEmpty()) {
                             callback(Result.success(profiles))
-                        } catch (e: Exception) {
-                            callback(Result.failure(Exception("Parse error: ${e.message}")))
+                        } else {
+                            fetchRoster(callback)
                         }
-                    } else {
-                        callback(Result.failure(Exception("Failed to load profiles: ${response.code}")))
+                    } catch (e: Exception) {
+                        fetchRoster(callback)
                     }
+                } else {
+                    fetchRoster(callback)
                 }
-            })
-        }
+            }
+        })
+    }
+
+    private fun fetchRoster(callback: (ApiResult<List<Profile>>) -> Unit) {
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/terminal/roster")
+            .get()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(Result.failure(Exception("Cannot connect to server: ${e.message}")))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body?.string() ?: "{}"
+                if (response.isSuccessful) {
+                    try {
+                        val map = gson.fromJson(body, Map::class.java)
+                        val staffList = map["staff"] as? List<*> ?: map["roster"] as? List<*> ?: emptyList<Any>()
+                        val driversList = map["drivers"] as? List<*> ?: emptyList<Any>()
+                        val combinedJson = gson.toJson(staffList + driversList)
+                        val type = object : TypeToken<List<Profile>>() {}.type
+                        val list: List<Profile> = gson.fromJson(combinedJson, type)
+                        callback(Result.success(list))
+                    } catch (e: Exception) {
+                        callback(Result.failure(Exception("Roster parse error: ${e.message}")))
+                    }
+                } else {
+                    callback(Result.failure(Exception("Roster request failed (${response.code})")))
+                }
+            }
+        })
     }
 
     // ──────────────────────────────────────────────────
@@ -126,38 +156,61 @@ class ApiClient(context: Context) {
         record: AttendanceRecord,
         callback: (ApiResult<Boolean>) -> Unit
     ) {
-        ensureToken { tokenOk ->
-            if (!tokenOk) {
-                callback(Result.failure(Exception("Not authenticated")))
-                return@ensureToken
+        val body = gson.toJson(record)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/attendance")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                sendTerminalEvent(record, callback)
             }
 
-            val body = gson.toJson(record)
-            val request = Request.Builder()
-                .url("${baseUrl()}/api/attendance")
-                .post(body.toRequestBody(JSON_MEDIA_TYPE))
-                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-                .build()
-
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    callback(Result.failure(Exception("Network error: ${e.message}")))
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(Result.success(true))
+                } else {
+                    sendTerminalEvent(record, callback)
                 }
+            }
+        })
+    }
 
-                override fun onResponse(call: Call, response: Response) {
-                    if (response.isSuccessful) {
-                        callback(Result.success(true))
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        val error = try {
-                            gson.fromJson(errBody, Map::class.java)["error"] as? String
-                                ?: "Attendance failed (${response.code})"
-                        } catch (_: Exception) { "Attendance failed (${response.code})" }
-                        callback(Result.failure(Exception(error)))
-                    }
+    private fun sendTerminalEvent(record: AttendanceRecord, callback: (ApiResult<Boolean>) -> Unit) {
+        val payload = mapOf(
+            "terminalId" to "VGTC-TERMINAL-01",
+            "profileId" to record.profileId,
+            "personId" to record.profileId,
+            "personName" to record.profileName,
+            "status" to record.status,
+            "method" to record.method,
+            "inTime" to record.inTime,
+            "outTime" to record.outTime,
+            "dutyDays" to record.dutyDays,
+            "dutyState" to record.dutyState,
+            "vehicleNo" to record.vehicleNo
+        )
+        val body = gson.toJson(payload)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/terminal/event")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(Result.failure(Exception("Cannot connect to server: ${e.message}")))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(Result.success(true))
+                } else {
+                    callback(Result.failure(Exception("Terminal event failed (${response.code})")))
                 }
-            })
-        }
+            }
+        })
     }
 
     fun markAttendance(

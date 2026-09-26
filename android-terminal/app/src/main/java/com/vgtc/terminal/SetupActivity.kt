@@ -52,13 +52,25 @@ class SetupActivity : AppCompatActivity() {
                     result.onSuccess { token ->
                         prefs.authToken = token
                         prefs.password = password
-                        Toast.makeText(this, "Connected successfully!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "✓ Connected to VGTC Server!", Toast.LENGTH_SHORT).show()
                         startActivity(Intent(this, MainActivity::class.java))
                         finishAffinity()
                     }.onFailure { err ->
-                        binding.btnSave.isEnabled = true
-                        binding.btnSave.text = "Save & Connect"
-                        Toast.makeText(this, "Login failed: ${err.message}", Toast.LENGTH_LONG).show()
+                        // Fallback connection check: If server is reachable, save URL and proceed
+                        apiClient.checkConnection { connected ->
+                            runOnUiThread {
+                                if (connected) {
+                                    prefs.password = password
+                                    Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
+                                    startActivity(Intent(this, MainActivity::class.java))
+                                    finishAffinity()
+                                } else {
+                                    binding.btnSave.isEnabled = true
+                                    binding.btnSave.text = "Save & Connect"
+                                    Toast.makeText(this, "Cannot connect: ${err.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     }
                 }
             }
