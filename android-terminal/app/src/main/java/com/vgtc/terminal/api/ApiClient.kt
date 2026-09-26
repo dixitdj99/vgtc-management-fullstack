@@ -179,16 +179,21 @@ class ApiClient(context: Context) {
     }
 
     private fun sendTerminalEvent(record: AttendanceRecord, callback: (ApiResult<Boolean>) -> Unit) {
+        val timeStr = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN")).format(Date())
         val payload = mapOf(
-            "terminalId" to "VGTC-TERMINAL-01",
+            "terminalId" to "OFFICE-REWARI-01",
+            "employeeId" to record.profileId,
             "profileId" to record.profileId,
             "personId" to record.profileId,
             "personName" to record.profileName,
-            "status" to record.status,
-            "method" to record.method,
-            "inTime" to record.inTime,
+            "status" to (record.status ?: "present"),
+            "action" to "CHECK_IN",
+            "biometricMethod" to (if (record.method?.equals("fingerprint", ignoreCase = true) == true) "FINGERPRINT" else "FACE"),
+            "method" to (record.method ?: "face"),
+            "inTime" to (record.inTime ?: timeStr),
+            "punchTime" to (record.inTime ?: timeStr),
             "outTime" to record.outTime,
-            "dutyDays" to record.dutyDays,
+            "dutyDays" to (record.dutyDays ?: 1.0),
             "dutyState" to record.dutyState,
             "vehicleNo" to record.vehicleNo
         )
@@ -249,8 +254,19 @@ class ApiClient(context: Context) {
     // ──────────────────────────────────────────────────
     // PUT /api/profiles/:id — enroll face photo
     // ──────────────────────────────────────────────────
+    // PUT /api/profiles/:id — enroll face photo
+    // ──────────────────────────────────────────────────
     fun updateProfilePhoto(profileId: String, photoBase64: String, callback: (ApiResult<Boolean>) -> Unit) {
-        val payload = mapOf("photo" to photoBase64)
+        val payload = mapOf(
+            "id" to profileId,
+            "employeeId" to profileId,
+            "personId" to profileId,
+            "photo" to photoBase64,
+            "facePhoto" to photoBase64,
+            "photoUrl" to photoBase64,
+            "photos" to listOf(photoBase64),
+            "faceEnrolled" to true
+        )
         val body = gson.toJson(payload)
         val request = Request.Builder()
             .url("${baseUrl()}/api/profiles/$profileId")
@@ -264,11 +280,8 @@ class ApiClient(context: Context) {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    callback(Result.success(true))
-                } else {
-                    enrollTerminalPerson(profileId, payload, callback)
-                }
+                // Ensure terminal enrollment also saves to the terminal registry
+                enrollTerminalPerson(profileId, payload, callback)
             }
         })
     }
@@ -277,7 +290,33 @@ class ApiClient(context: Context) {
     // POST /api/profiles — create profile
     // ──────────────────────────────────────────────────
     fun createProfile(profile: Profile, callback: (ApiResult<Profile>) -> Unit) {
-        val body = gson.toJson(profile)
+        val primaryPhoto = profile.photo ?: profile.photos?.firstOrNull()
+        val data = mutableMapOf<String, Any?>(
+            "id" to profile.id,
+            "employeeId" to profile.id,
+            "personId" to profile.id,
+            "name" to profile.name,
+            "profileType" to profile.profileType,
+            "type" to (if (profile.profileType?.equals("Driver", ignoreCase = true) == true) "DRIVER" else "STAFF"),
+            "vehicleNo" to profile.vehicleNo,
+            "assignedTruck" to profile.vehicleNo,
+            "fingerprintEnrolled" to profile.fingerprintEnrolled,
+            "fingerprintSlotId" to profile.fingerprintSlotId,
+            "faceEnrolled" to (primaryPhoto != null || profile.photos?.isNotEmpty() == true)
+        )
+        if (primaryPhoto != null) {
+            data["photo"] = primaryPhoto
+            data["facePhoto"] = primaryPhoto
+            data["photoUrl"] = primaryPhoto
+        }
+        if (profile.photos != null) {
+            data["photos"] = profile.photos
+        }
+        if (profile.faceEmbedding != null) {
+            data["faceEmbedding"] = profile.faceEmbedding
+        }
+
+        val body = gson.toJson(data)
         val request = Request.Builder()
             .url("${baseUrl()}/api/profiles")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
@@ -286,12 +325,13 @@ class ApiClient(context: Context) {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo)) { res ->
+                enrollTerminalPerson(profile.id, data) { res ->
                     if (res.isSuccess) callback(Result.success(profile)) else callback(Result.failure(Exception("Create failed")))
                 }
             }
 
             override fun onResponse(call: Call, response: Response) {
+                enrollTerminalPerson(profile.id, data) { _ -> }
                 val respBody = response.body?.string() ?: ""
                 if (response.isSuccessful) {
                     try {
@@ -301,9 +341,7 @@ class ApiClient(context: Context) {
                         callback(Result.success(profile))
                     }
                 } else {
-                    enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo)) { res ->
-                        if (res.isSuccess) callback(Result.success(profile)) else callback(Result.failure(Exception("Create failed (${response.code})")))
-                    }
+                    callback(Result.success(profile))
                 }
             }
         })
@@ -313,7 +351,33 @@ class ApiClient(context: Context) {
     // PUT /api/profiles/:id — update profile
     // ──────────────────────────────────────────────────
     fun updateProfile(profile: Profile, callback: (ApiResult<Boolean>) -> Unit) {
-        val body = gson.toJson(profile)
+        val primaryPhoto = profile.photo ?: profile.photos?.firstOrNull()
+        val data = mutableMapOf<String, Any?>(
+            "id" to profile.id,
+            "employeeId" to profile.id,
+            "personId" to profile.id,
+            "name" to profile.name,
+            "profileType" to profile.profileType,
+            "type" to (if (profile.profileType?.equals("Driver", ignoreCase = true) == true) "DRIVER" else "STAFF"),
+            "vehicleNo" to profile.vehicleNo,
+            "assignedTruck" to profile.vehicleNo,
+            "fingerprintEnrolled" to profile.fingerprintEnrolled,
+            "fingerprintSlotId" to profile.fingerprintSlotId,
+            "faceEnrolled" to (primaryPhoto != null || profile.photos?.isNotEmpty() == true)
+        )
+        if (primaryPhoto != null) {
+            data["photo"] = primaryPhoto
+            data["facePhoto"] = primaryPhoto
+            data["photoUrl"] = primaryPhoto
+        }
+        if (profile.photos != null) {
+            data["photos"] = profile.photos
+        }
+        if (profile.faceEmbedding != null) {
+            data["faceEmbedding"] = profile.faceEmbedding
+        }
+
+        val body = gson.toJson(data)
         val request = Request.Builder()
             .url("${baseUrl()}/api/profiles/${profile.id}")
             .put(body.toRequestBody(JSON_MEDIA_TYPE))
@@ -322,15 +386,11 @@ class ApiClient(context: Context) {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo), callback)
+                enrollTerminalPerson(profile.id, data, callback)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    callback(Result.success(true))
-                } else {
-                    enrollTerminalPerson(profile.id, mapOf("name" to profile.name, "profileType" to profile.profileType, "vehicleNo" to profile.vehicleNo, "photo" to profile.photo), callback)
-                }
+                enrollTerminalPerson(profile.id, data, callback)
             }
         })
     }
@@ -338,10 +398,21 @@ class ApiClient(context: Context) {
     private fun enrollTerminalPerson(profileId: String, data: Map<String, Any?>, callback: (ApiResult<Boolean>) -> Unit) {
         val payload = mutableMapOf<String, Any?>(
             "id" to profileId,
+            "employeeId" to profileId,
             "personId" to profileId,
-            "terminalId" to "VGTC-TERMINAL-01"
+            "terminalId" to "OFFICE-REWARI-01",
+            "faceEnrolled" to true
         )
         payload.putAll(data)
+        val p = data["photo"] ?: data["facePhoto"] ?: data["photoUrl"]
+        if (p != null) {
+            payload["photo"] = p
+            payload["facePhoto"] = p
+            payload["photoUrl"] = p
+            if (!payload.containsKey("photos")) {
+                payload["photos"] = listOf(p)
+            }
+        }
         val body = gson.toJson(payload)
         val request = Request.Builder()
             .url("${baseUrl()}/api/terminal/enroll")

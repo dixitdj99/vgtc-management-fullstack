@@ -382,7 +382,7 @@ export default function TerminalBiometricsManager() {
     const absentCount = filteredLogs.filter(l => l.status === 'absent').length;
     const terminalCount = filteredLogs.filter(l => l.source === 'terminal' || l.terminalId || l.method === 'face' || l.method === 'fingerprint' || l.id?.startsWith('emp_')).length;
     const totalEnrolled = profiles.length;
-    const faceEnrolledCount = profiles.filter(p => p.photo || (p.photos && p.photos.length > 0)).length;
+    const faceEnrolledCount = profiles.filter(p => p.facePhoto || p.photo || p.faceEnrolled || (p.photos && p.photos.length > 0)).length;
     const fpEnrolledCount = profiles.filter(p => p.fingerprintEnrolled).length;
     return { presentCount, halfDayCount, absentCount, terminalCount, totalEnrolled, faceEnrolledCount, fpEnrolledCount };
   }, [filteredLogs, profiles]);
@@ -426,8 +426,8 @@ export default function TerminalBiometricsManager() {
         'S.No': i + 1,
         'Employee Name': p.name,
         'Department': p.profileType || 'Staff',
-        'Face Enrolled': p.photo ? 'Yes (Photo Saved)' : 'No',
-        'Photos Count': p.photos ? p.photos.length : (p.photo ? 1 : 0),
+        'Face Enrolled': (p.facePhoto || p.photo || p.faceEnrolled) ? 'Yes (Photo Saved)' : 'No',
+        'Photos Count': p.photos ? p.photos.length : ((p.facePhoto || p.photo) ? 1 : 0),
         'Fingerprint Enrolled': p.fingerprintEnrolled ? 'Yes (Linked)' : 'No',
         'Phone': p.phone || '-',
       }));
@@ -1396,10 +1396,19 @@ export default function TerminalBiometricsManager() {
                     log.status === 'present' ? '#10b981' :
                     log.status === 'half_day' ? '#f59e0b' : '#ef4444';
 
-                  const rawTime = log.punchTime || log.markedAt || log.createdAt || (log.updatedAt?.seconds ? log.updatedAt.seconds * 1000 : log.updatedAt);
-                  const punchTime = rawTime
-                    ? new Date(rawTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
-                    : 'Logged';
+                  const rawTime = log.punchTime || log.terminalTime || log.inTime || log.markedAt || log.createdAt || (log.updatedAt?.seconds ? log.updatedAt.seconds * 1000 : log.updatedAt);
+                  let punchTime = 'Logged';
+                  if (rawTime) {
+                    if (typeof rawTime === 'string' && (rawTime.includes(':') && (rawTime.includes('AM') || rawTime.includes('PM') || rawTime.includes('am') || rawTime.includes('pm')))) {
+                      punchTime = rawTime;
+                    } else {
+                      try {
+                        punchTime = new Date(rawTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                      } catch (_) {
+                        punchTime = String(rawTime);
+                      }
+                    }
+                  }
 
                   const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_');
 
@@ -1582,8 +1591,8 @@ export default function TerminalBiometricsManager() {
             </div>
           ) : (
             filteredProfiles.map(p => {
-              const primaryPhoto = p.photo || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
-              const hasFace = !!(primaryPhoto || (p.faceEmbedding && p.faceEmbedding.length > 0));
+              const primaryPhoto = p.facePhoto || p.photo || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
+              const hasFace = !!(primaryPhoto || p.faceEnrolled || (p.faceEmbedding && p.faceEmbedding.length > 0));
               const photoCount = p.photos && p.photos.length > 0 ? p.photos.length : (primaryPhoto ? 1 : 0);
               const hasFp = !!p.fingerprintEnrolled || p.fingerprintSlotId != null;
 

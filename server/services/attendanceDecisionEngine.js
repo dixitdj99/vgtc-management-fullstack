@@ -181,17 +181,19 @@ const attendanceDecisionEngine = {
     /**
      * Process an incoming attendance scan or terminal action
      */
-    async processEvent({
-        eventId,
-        employeeId,
-        employeeType, // 'DRIVER' | 'STAFF'
-        terminalId = 'OFFICE-REWARI-01',
-        biometricMethod = 'FACE', // 'FACE' | 'MANUAL_ID' | 'FINGERPRINT'
-        action = 'AUTO', // 'AUTO' | 'CHECK_IN' | 'CHECK_OUT' | 'TRIP_RETURN' | 'OFFICE_VISIT'
-        timestamp,
-        notes = '',
-        isTest = false
-    }) {
+    async processEvent(body = {}) {
+        const {
+            eventId,
+            employeeType, // 'DRIVER' | 'STAFF'
+            terminalId = 'OFFICE-REWARI-01',
+            timestamp,
+            notes = '',
+            isTest = false
+        } = body;
+        const employeeId = body.employeeId || body.profileId || body.personId || body.id;
+        const biometricMethod = (body.biometricMethod || body.method || 'FACE').toUpperCase();
+        const action = body.action || (body.status === 'present' ? 'CHECK_IN' : 'AUTO');
+
         const now = timestamp ? new Date(timestamp) : new Date();
         const nowMs = now.getTime();
         const date = todayStr();
@@ -282,6 +284,11 @@ const attendanceDecisionEngine = {
                 terminalId,
                 terminalEvent: eventType,
                 terminalTime: timeStr,
+                punchTime: timeStr,
+                inTime: timeStr,
+                markedAt: now.toISOString(),
+                createdAt: now.toISOString(),
+                method: biometricMethod.toLowerCase(),
                 updatedAt: now.toISOString()
             });
         } catch (attErr) {
@@ -304,24 +311,43 @@ const attendanceDecisionEngine = {
         };
     },
 
-    async enrollPerson({ id, name, phone, employeeId, type = 'DRIVER', assignedTruck, facePhoto, fingerprintEnrolled }) {
-        const docId = id || crypto.randomUUID();
+    async enrollPerson(body = {}) {
+        const docId = body.id || body.personId || body.profileId || crypto.randomUUID();
         const profiles = await getDocs(PROFILES_COL);
         const existing = profiles.find(p => p.id === docId);
+
+        const photo = body.facePhoto || body.photo || body.photoUrl || null;
+        const photos = (body.photos && Array.isArray(body.photos) && body.photos.length > 0)
+            ? body.photos
+            : (photo ? [photo] : (existing?.photos || []));
+        const faceEmbedding = body.faceEmbedding || body.embedding || existing?.faceEmbedding || null;
+        const fingerprintEnrolled = body.fingerprintEnrolled !== undefined
+            ? Boolean(body.fingerprintEnrolled)
+            : Boolean(existing?.fingerprintEnrolled);
+        const fingerprintSlotId = body.fingerprintSlotId !== undefined
+            ? body.fingerprintSlotId
+            : (existing?.fingerprintSlotId || null);
+
+        const assignedTruck = body.assignedTruck !== undefined ? body.assignedTruck : (body.vehicleNo !== undefined ? body.vehicleNo : (existing?.vehicleNo || existing?.truckNo || ''));
 
         const payload = {
             ...(existing || {}),
             id: docId,
-            name: name || existing?.name || 'Unnamed',
-            phone: phone || existing?.phone || existing?.mobile || '',
-            mobile: phone || existing?.mobile || '',
-            employeeId: employeeId || existing?.employeeId || `${type === 'DRIVER' ? 'DRV' : 'EMP'}-${docId.slice(-4).toUpperCase()}`,
-            type: String(type).toLowerCase(),
-            vehicleNo: assignedTruck !== undefined ? assignedTruck : (existing?.vehicleNo || existing?.truckNo || ''),
-            truckNo: assignedTruck !== undefined ? assignedTruck : (existing?.truckNo || existing?.vehicleNo || ''),
-            facePhoto: facePhoto !== undefined ? facePhoto : (existing?.facePhoto || null),
-            faceEnrolled: facePhoto ? true : (existing?.faceEnrolled || false),
-            fingerprintEnrolled: fingerprintEnrolled !== undefined ? fingerprintEnrolled : (existing?.fingerprintEnrolled || false),
+            name: body.name || existing?.name || 'Unnamed',
+            phone: body.phone || existing?.phone || existing?.mobile || '',
+            mobile: body.phone || existing?.mobile || '',
+            employeeId: body.employeeId || existing?.employeeId || `${(body.type || existing?.type) === 'DRIVER' ? 'DRV' : 'EMP'}-${docId.slice(-4).toUpperCase()}`,
+            type: String(body.type || existing?.type || 'DRIVER').toLowerCase(),
+            profileType: body.profileType || existing?.profileType || (body.type?.toLowerCase() === 'driver' ? 'Driver' : 'Staff'),
+            vehicleNo: assignedTruck,
+            truckNo: assignedTruck,
+            photo: photo || existing?.photo || null,
+            photos: photos,
+            facePhoto: photo || existing?.facePhoto || null,
+            faceEmbedding: faceEmbedding,
+            faceEnrolled: Boolean(photo || existing?.faceEnrolled || (photos && photos.length > 0)),
+            fingerprintEnrolled: fingerprintEnrolled,
+            fingerprintSlotId: fingerprintSlotId,
             updatedAt: new Date().toISOString()
         };
 
