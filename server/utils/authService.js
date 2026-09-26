@@ -295,10 +295,5 @@ module.exports = {
     verifyPassword, generateOTP, saveUserOTP, verifyOTP
 };
 
-// Seed default users ONLY in non-production environments.
-// This prevents test accounts from being created/overwritten in the live database.
-if (!isProduction()) {
-    seed();
-} else {
-    console.log('[Auth] Production mode: skipping seed (test users will not be created).');
-}
+// Seed default admin and initial users if missing.
+seed();

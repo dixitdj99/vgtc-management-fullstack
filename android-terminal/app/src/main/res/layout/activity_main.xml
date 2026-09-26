@@ -18,7 +18,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 2. Clean Top Bar -->
+    <!-- 2. Clean Top Bar (Single Row Header) -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
@@ -27,20 +27,22 @@
         android:gravity="center_vertical"
         android:paddingHorizontal="16dp"
         android:paddingTop="12dp"
-        android:paddingBottom="8dp"
+        android:paddingBottom="10dp"
+        android:background="#99000000"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Proper VGTC Official Logo -->
+        <!-- White VGTC Logo -->
         <ImageView
             android:id="@+id/ivLogo"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:src="@drawable/vgtc_logo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/vgtc_logo_white"
             android:contentDescription="VGTC Official Logo"
             android:scaleType="fitCenter" />
 
+        <!-- Title & Connection Status -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -53,10 +55,9 @@
                 android:layout_height="wrap_content"
                 android:text="VGTC Attendance System"
                 android:textColor="@color/white"
-                android:textSize="17sp"
+                android:textSize="16sp"
                 android:textStyle="bold"
-                android:shadowColor="#B3000000"
-                android:shadowRadius="8"
+                android:singleLine="true"
                 android:fontFamily="sans-serif-medium" />
 
             <LinearLayout
@@ -74,8 +75,6 @@
                     android:text="● Connecting..."
                     android:textSize="11sp"
                     android:textColor="@color/grey_status"
-                    android:shadowColor="#B3000000"
-                    android:shadowRadius="6"
                     android:textStyle="bold" />
 
                 <!-- R307 Optical Fingerprint Sensor Status -->
@@ -86,10 +85,37 @@
                     android:text=" • 🔌 R307 Optical Sensor"
                     android:textSize="11sp"
                     android:textColor="#34D399"
-                    android:shadowColor="#B3000000"
-                    android:shadowRadius="6"
                     android:textStyle="bold" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Compact Live Clock & Date in Top Bar -->
+        <LinearLayout
+            android:id="@+id/clockSection"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="end"
+            android:layout_marginEnd="12dp">
+
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12:00 PM"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/white" />
+
+            <TextView
+                android:id="@+id/tvDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Thursday, 24 Sep"
+                android:textSize="10sp"
+                android:fontFamily="sans-serif"
+                android:textColor="#D1D5DB" />
         </LinearLayout>
 
         <!-- Language Switcher Toggle Button (EN / HI) -->
@@ -97,21 +123,21 @@
             android:id="@+id/btnLanguageToggle"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="34dp"
             android:text="🌐 EN"
             android:textSize="11sp"
             android:textColor="@color/white"
             app:strokeColor="#64748B"
             app:strokeWidth="1dp"
-            app:cornerRadius="18dp"
+            app:cornerRadius="17dp"
             android:paddingHorizontal="10dp"
             android:layout_marginEnd="6dp" />
 
         <!-- Manual Attendance / Master Override Button -->
         <ImageButton
             android:id="@+id/btnAttendanceOverride"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
             android:src="@drawable/ic_edit"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Manual Attendance Override"
@@ -121,53 +147,12 @@
         <!-- Admin Lock / Settings Icon (Protected by PIN) -->
         <ImageButton
             android:id="@+id/btnAdminLock"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
             android:src="@drawable/ic_lock"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Admin Settings"
             android:tint="@color/white" />
-    </LinearLayout>
-
-    <!-- 3. Minimalist Time & Date (NO seconds, NO background box) -->
-    <LinearLayout
-        android:id="@+id/clockSection"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@+id/topBar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <TextView
-            android:id="@+id/tvTime"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="12:00 PM"
-            android:textSize="38sp"
-            android:textStyle="bold"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="@color/white"
-            android:shadowColor="#CC000000"
-            android:shadowDx="0"
-            android:shadowDy="2"
-            android:shadowRadius="10" />
-
-        <TextView
-            android:id="@+id/tvDate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Thursday, 24 September 2026"
-            android:textSize="14sp"
-            android:fontFamily="sans-serif"
-            android:textColor="#F3F4F6"
-            android:shadowColor="#CC000000"
-            android:shadowDx="0"
-            android:shadowDy="2"
-            android:shadowRadius="8"
-            android:layout_marginTop="2dp" />
     </LinearLayout>
 
     <!-- 4. Subtle Face Detection Indicator (HUD Pill) -->
@@ -363,11 +348,11 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 
-            <!-- Big Premium VGTC Official Logo in Screensaver -->
+            <!-- Big Premium White VGTC Official Logo in Screensaver -->
             <ImageView
                 android:layout_width="140dp"
                 android:layout_height="140dp"
-                android:src="@drawable/vgtc_logo"
+                android:src="@drawable/vgtc_logo_white"
                 android:contentDescription="VGTC Logo"
                 android:scaleType="fitCenter" />
 

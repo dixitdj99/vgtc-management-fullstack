@@ -155,6 +155,8 @@ class MainActivity : AppCompatActivity() {
     // ──────────────────────────────────────────────────
     // Clock Without Seconds (Clean, no background box)
     // ──────────────────────────────────────────────────
+    private val topDateFormatter = SimpleDateFormat("EEE, dd MMM", Locale("en", "IN"))
+
     private fun setupLiveClock() {
         clockHandler = Handler(Looper.getMainLooper())
         clockRunnable = object : Runnable {
@@ -162,9 +164,10 @@ class MainActivity : AppCompatActivity() {
                 val now = Date()
                 val timeStr = timeFormatter.format(now)
                 val dateStr = dateFormatter.format(now)
+                val topDateStr = topDateFormatter.format(now)
 
                 binding.tvTime.text = timeStr
-                binding.tvDate.text = dateStr
+                binding.tvDate.text = topDateStr
                 binding.tvSaverTime.text = timeStr
                 binding.tvSaverDate.text = dateStr
 

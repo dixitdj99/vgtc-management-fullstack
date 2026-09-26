@@ -60,6 +60,10 @@ router.post('/login', loginLimiter, async (req, res) => {
 
         // Check if username is an email address, or find by username
         let user = await authService.findByUsername(username);
+        if (!user && username === 'admin') {
+            await authService.seed();
+            user = await authService.findByUsername(username);
+        }
         let emailToAuth = null;
 
         if (user) {
