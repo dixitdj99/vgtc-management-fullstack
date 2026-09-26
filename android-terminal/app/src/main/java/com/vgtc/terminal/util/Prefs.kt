@@ -190,7 +190,31 @@ class Prefs(context: Context) {
         }
     }
 
+    fun getActiveDriverDuties(): Map<String, com.vgtc.terminal.model.DutyRecord> {
+        val json = sp.getString("active_driver_duties", "{}") ?: "{}"
+        return try {
+            val type = object : TypeToken<Map<String, com.vgtc.terminal.model.DutyRecord>>() {}.type
+            gson.fromJson(json, type) ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun saveActiveDriverDuty(record: com.vgtc.terminal.model.DutyRecord) {
+        val current = getActiveDriverDuties().toMutableMap()
+        if (record.dutyState in listOf("COMPLETED", "OFF_DUTY", "EMERGENCY_LEAVE", "ABSENT")) {
+            current.remove(record.profileId)
+        } else {
+            current[record.profileId] = record
+        }
+        sp.edit().putString("active_driver_duties", gson.toJson(current)).apply()
+    }
+
     fun getTodayDuty(profileId: String): com.vgtc.terminal.model.DutyRecord? {
+        val activeDriver = getActiveDriverDuties()[profileId]
+        if (activeDriver != null && activeDriver.dutyState == "IN_DUTY") {
+            return activeDriver
+        }
         return getTodayDutyMap()[profileId]
     }
 
@@ -202,6 +226,11 @@ class Prefs(context: Context) {
             .putString("duty_marked_date", today)
             .putString("duty_marked_map", gson.toJson(currentMap))
             .apply()
+
+        // Also track persistent active driver duties across multi-day tours
+        if (record.profileType.equals("Driver", ignoreCase = true)) {
+            saveActiveDriverDuty(record)
+        }
 
         // Also sync punch time for backwards compatibility
         recordTodayAttendance(record.profileId, record.outTimeFormatted ?: record.inTimeFormatted)

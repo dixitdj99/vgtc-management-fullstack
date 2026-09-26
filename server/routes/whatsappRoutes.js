@@ -6,6 +6,7 @@ const {
   saveWhatsAppConfig,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
+  sendEventNotification,
   previewTemplate,
   generateLrReceiptHtml,
   generateVoucherHtml,
@@ -104,18 +105,37 @@ router.get('/status', async (req, res) => {
 });
 
 
-// POST /api/whatsapp/test
-router.post('/test', async (req, res) => {
+// POST /api/whatsapp/send-salary-settlement
+router.post('/send-salary-settlement', async (req, res) => {
   try {
-    const { phone, message } = req.body;
+    const { phone, settlementData } = req.body;
     if (!phone) {
       return res.status(400).json({ error: 'Recipient phone number is required' });
     }
-    const msgText = message || 'Hello! This is a test message from Vikas Goods Transport Co. via Meta WhatsApp Business Cloud API.';
-    const result = await sendWhatsAppMessage(phone, msgText, req);
-    res.json({ ok: true, result });
+
+    const tplData = {
+      staffName: settlementData.profileName || 'Staff',
+      staffType: settlementData.profileType || 'Staff',
+      month: settlementData.month || '',
+      vehicleLine: settlementData.vehicleNo ? `🚚 *Truck:* ${settlementData.vehicleNo}` : '',
+      daysInMonth: settlementData.daysInMonth || 0,
+      presentDays: settlementData.presentDays || 0,
+      absentDays: (settlementData.absentDays || 0) + (settlementData.leaveDays || 0),
+      deductedDays: settlementData.deductedDays || 0,
+      baseSalary: settlementData.baseSalary || 0,
+      attendanceDeductions: settlementData.attendanceDeductions || 0,
+      allowanceLine: settlementData.extraAllowance > 0 ? `• Allowance / Bonus: +Rs.${settlementData.extraAllowance}` : '',
+      penaltyLine: settlementData.otherDeduction > 0 ? `• Fine / Penalty: -Rs.${settlementData.otherDeduction}` : '',
+      adjustedSalary: settlementData.adjustedSalary || 0,
+      payoutAmount: settlementData.payoutAmount || 0,
+      paymentMethod: settlementData.paymentMethod || 'Cash',
+      payoutDate: settlementData.payoutDate || new Date().toISOString().slice(0, 10),
+    };
+
+    await sendEventNotification('staff_salary_settlement', tplData, [phone], req);
+    res.json({ ok: true });
   } catch (err) {
-    console.error('whatsapp test send error:', err);
+    console.error('whatsapp salary settlement send error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -588,8 +588,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 2. Fetch today's duty record for this employee
+        // 2. Fetch duty record for this employee
         val currentDuty = prefs.getTodayDuty(profile.id)
+        val isDriver = profile.profileType.equals("Driver", ignoreCase = true)
 
         // Case A: Starting a new shift (First scan of the day OR starting again after leaving)
         if (currentDuty == null || currentDuty.dutyState in listOf(
@@ -608,8 +609,23 @@ class MainActivity : AppCompatActivity() {
         val elapsedHours = elapsedMs / (1000.0 * 60 * 60)
         val minHoursRequired = 8.0
 
+        if (isDriver) {
+            // For Drivers: Multi-day Tour Lifecycle.
+            // If they scan again, show confirmation to end tour / go home
+            if (elapsedMs < 60000) {
+                // Scanned within 1 minute of starting - debounce accidental double scan
+                lastPunchedProfileId = profile.id
+                lastPunchTime = now
+                return
+            }
+            lastPunchedProfileId = profile.id
+            lastPunchTime = now
+            showDriverTourEndConfirmation(profile, currentDuty, method, elapsedMs)
+            return
+        }
+
         if (elapsedHours < minHoursRequired) {
-            // Cannot mark completed yet - minimum 8 hours required!
+            // Cannot mark completed yet - minimum 8 hours required for staff!
             lastPunchedProfileId = profile.id
             lastPunchTime = now
             showActiveDutyInProgressCard(profile, currentDuty, elapsedMs, minHoursRequired)
@@ -617,6 +633,31 @@ class MainActivity : AppCompatActivity() {
             // 8+ hours elapsed! Complete shift (Punch-Out)
             completeShift(profile, currentDuty, method, elapsedMs)
         }
+    }
+
+    private fun showDriverTourEndConfirmation(
+        profile: Profile,
+        currentDuty: DutyRecord,
+        method: String,
+        elapsedMs: Long
+    ) {
+        pauseScanning()
+        val daysElapsed = (elapsedMs / (1000.0 * 60 * 60 * 24)).toInt()
+        val hoursElapsed = ((elapsedMs / (1000.0 * 60 * 60)) % 24).toInt()
+        val durationStr = if (daysElapsed > 0) "${daysElapsed}d ${hoursElapsed}h" else "${hoursElapsed}h"
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Driver Duty End / घर जा रहे हैं?")
+            .setMessage("${profile.name} (गाड़ी: ${profile.vehicleNo ?: "—"})\nड्यूटी शुरू: ${currentDuty.inTimeFormatted}\nकुल ड्यूटी अवधि: $durationStr\n\nक्या आप ड्यूटी समाप्त करके घर जा रहे हैं?")
+            .setPositiveButton("हाँ, ड्यूटी समाप्त (Punch Out)") { _, _ ->
+                completeShift(profile, currentDuty, method, elapsedMs)
+            }
+            .setNegativeButton("नहीं, अभी ड्यूटी पर हूँ (Cancel)") { dialog, _ ->
+                dialog.dismiss()
+                resumeScanning()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun startShift(profile: Profile, method: String) {
@@ -699,7 +740,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDutyStartSuccess(profile: Profile, inTimeFormatted: String, method: String) {
-        binding.tvSuccessTitle.text = "Shift Started! (Punch-In)"
+        val isDriver = profile.profileType.equals("Driver", ignoreCase = true)
+        binding.tvSuccessTitle.text = if (isDriver) "Tour / Duty Started! (गाड़ी पर हाजिर)" else "Shift Started! (Punch-In)"
         binding.tvSuccessTitle.setTextColor(getColor(R.color.text_primary))
 
         binding.ivSuccessCheck.setImageResource(R.drawable.ic_check_circle)
@@ -728,7 +770,11 @@ class MainActivity : AppCompatActivity() {
         binding.tvSuccessStatus.setTextColor(getColor(R.color.green_online))
 
         binding.tvSuccessDuration.visibility = View.VISIBLE
-        binding.tvSuccessDuration.text = "Shift started • Min. 8 hours required to mark present"
+        binding.tvSuccessDuration.text = if (isDriver) {
+            "Duty tour active • Auto-present on all tour days until punch-out"
+        } else {
+            "Shift started • Min. 8 hours required to mark present"
+        }
         binding.tvSuccessDuration.setTextColor(getColor(R.color.text_secondary))
 
         binding.btnEmergencyCheckout.visibility = View.GONE

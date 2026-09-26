@@ -39,11 +39,15 @@ const calcGrossV = (v) => {
 };
 
 const hasDieselAdvance = (value) => String(value ?? '').trim() !== '';
-const getAllowedPump = (pump, advanceDiesel, pumpOptions = [], isCng = false) => {
+const getAllowedPump = (pump, advanceDiesel, pumpOptions = [], isCng = false, isFullTank = false) => {
     if (isCng) return pump || 'CNG';
-    if (!hasDieselAdvance(advanceDiesel)) return NONE_PUMP;
-    const pumps = pumpOptions.filter(p => p !== NONE_PUMP);
-    return pump && pump !== NONE_PUMP ? pump : (pumps[0] || NONE_PUMP);
+    if (!hasDieselAdvance(advanceDiesel) && !isFullTank) return NONE_PUMP;
+    // When advance diesel is entered, do NOT auto-select the top fuel station.
+    // Preserve the user's explicit selection if valid; otherwise keep NONE_PUMP so selection is mandatory.
+    if (pump && pump !== NONE_PUMP && pumpOptions.includes(pump)) {
+        return pump;
+    }
+    return NONE_PUMP;
 };
 const getPumpDisplay = (pump) => pump && pump !== NONE_PUMP ? pump : '—';
 
@@ -62,7 +66,7 @@ const dieselPumpProblem = (advanceDiesel, isFullTank, pump, pumpOptions = [], is
         return 'No fuel station is registered, so a diesel advance cannot be recorded. Add the station first under Admin Settings → Fuel Stations.';
     }
     if (!pump || pump === NONE_PUMP) {
-        return 'Select the fuel station this diesel was taken from — a diesel advance cannot be saved without one.';
+        return 'Select the fuel station this diesel was taken from — fuel station is mandatory when advance diesel is entered.';
     }
     return null;
 };
@@ -785,18 +789,20 @@ function ExtraMoneyList({ extras = [], onChange }) {
 }
 
 /* ── Edit Modal ── */
-function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, isCngTruck = () => false, pumpOptions = [], driverOptions = [], lookupDestinationRate = () => 0, destinationOptions = [] }) {
+function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers = [], isVGTCTruck = () => false, isCngTruck = () => false, pumpOptions = [], driverOptions = [], lookupDestinationRate = () => 0, destinationOptions = [], requireDriver = false }) {
     const isCng = isCngTruck(v.truckNo) || String(v.fuelType || '').toUpperCase() === 'CNG';
+    const assignedDriver = (truckNo) => driverOptions.find(d => cleanTruckNo(d.vehicleNo) === cleanTruckNo(truckNo)) || null;
+    const initialDriver = v.driverId ? driverOptions.find(d => d.id === v.driverId) : (driverOptions.find(d => d.name === v.driverName) || assignedDriver(v.truckNo));
     const [form, setForm] = useState({
         // Older vouchers pre-date the driver field and have only a name, so fall
         // back to matching that name against the roster to pre-select the row.
-        driverId: v.driverId || driverOptions.find(d => d.name === v.driverName)?.id || '',
-        driverName: v.driverName || '',
+        driverId: initialDriver?.id || '',
+        driverName: initialDriver?.name || v.driverName || '',
         lrNo: v.lrNo, date: v.date, truckNo: v.truckNo, destination: v.destination || '', partyName: v.partyName || '',
         remark: v.remark || '',
         weight: v.weight ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseFloat(d.weight) || 0), 0)) : '') ?? '',
         bags: v.bags ?? (v.deliveries?.length > 0 ? String(v.deliveries.reduce((s, d) => s + (parseInt(d.bags) || 0), 0)) : '') ?? '',
-        rate: v.rate, pump: isCng ? (v.pump || 'CNG') : getAllowedPump(v.pump, v.advanceDiesel, pumpOptions),
+        rate: v.rate, pump: isCng ? (v.pump || 'CNG') : getAllowedPump(v.pump, v.advanceDiesel, pumpOptions, false, v.isFullTank),
         advanceDiesel: v.advanceDiesel || '', advanceCash: v.advanceCash || '',
         advanceOnline: v.advanceOnline || '', hasCommission: v.hasCommission !== undefined ? !!v.hasCommission : (parseFloat(v.commission) > 0 || v.commission === undefined),
         billNo: v.billNo || '', partyCode: v.partyCode || '', materialName: v.materialName || '',
@@ -837,6 +843,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     // Validate BEFORE the confirm modal opens — not after the user already confirmed
     const requestSave = () => {
         if (markInvalidFields(modalRef.current)) return;
+        if (requireDriver && isVGTCTruck(form.truckNo) && !form.driverId) {
+            alert('Driver is required for own-fleet Jharli vouchers');
+            return;
+        }
         if (isBillVoucherType(v.type) && !String(form.billNo || '').trim()) return;
         // Same rule as the create form: diesel needs a real station or the
         // pump ledger gets an unbillable "None" row. CNG vehicles exempt.
@@ -854,10 +864,10 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
     useEffect(() => {
         if (isCng) return;
         setForm(f => {
-            const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions);
+            const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions, false, f.isFullTank);
             return f.pump === nextPump ? f : { ...f, pump: nextPump };
         });
-    }, [form.advanceDiesel, pumpOptions, isCng]);
+    }, [form.advanceDiesel, form.isFullTank, pumpOptions, isCng]);
 
     const executeSave = async () => {
         setSaving(true); setIsConfirming(false);
@@ -878,6 +888,8 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
         try {
             await ax.patch(API_V + '/' + v.id, {
                 ...form,
+                ownershipType: isSelf ? 'self' : 'market',
+                ...(requireDriver ? { plant: 'jharli' } : {}),
                 fuelType: isCng ? 'CNG' : 'Diesel',
                 pump: isCng ? (form.pump || 'CNG') : form.pump,
                 partyName: resolvePartyName(form.partyName, partySuggestions),
@@ -932,17 +944,22 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                     <div className="field-h">
                         <label>Truck No. *</label>
                         <div style={{ position: 'relative', width: '100%' }}>
-                            <input className="fi" type="text" value={form.truckNo} onChange={e => S('truckNo', cleanTruckNo(e.target.value))} list={`voucher-truck-list-${v.id}`} required />
+                            <input className="fi" type="text" value={form.truckNo} onChange={e => {
+                                const truckNo = cleanTruckNo(e.target.value);
+                                const driver = assignedDriver(truckNo);
+                                setForm(f => ({ ...f, truckNo, driverId: driver?.id || '', driverName: driver?.name || '' }));
+                            }} list={`voucher-truck-list-${v.id}`} required />
                             <datalist id={`voucher-truck-list-${v.id}`}>
                                 {vehicleNumbers.map(no => <option key={no} value={no} />)}
                             </datalist>
                         </div>
                     </div>
                     <div className="field-h">
-                        <label>Driver</label>
+                            <label>Driver{requireDriver && isVGTCTruck(form.truckNo) ? ' *' : ''}</label>
                         <select
-                            className="fi"
-                            value={form.driverId}
+                                className="fi"
+                                value={form.driverId}
+                                required={requireDriver && isVGTCTruck(form.truckNo)}
                             onChange={e => {
                                 const d = driverOptions.find(x => x.id === e.target.value);
                                 setForm(f => ({ ...f, driverId: d?.id || '', driverName: d?.name || '' }));
@@ -1116,9 +1133,23 @@ function EditModal({ v, onClose, onSave, partySuggestions = [], vehicleNumbers =
                             </div>
                             {!isCng && (
                                 <div className="field-h">
-                                    <label>Fuel Station</label>
-                                    <select className="fi" value={form.pump} onChange={e => S('pump', e.target.value)}>
-                                        {pumpOptions.map(p => <option key={p}>{p}</option>)}
+                                    <label>
+                                        Fuel Station
+                                        {(hasDieselAdvance(form.advanceDiesel) || form.isFullTank) && (
+                                            <span style={{ color: 'var(--danger)', fontWeight: 800, marginLeft: 4 }}>*</span>
+                                        )}
+                                    </label>
+                                    <select
+                                        className="fi"
+                                        value={form.pump}
+                                        onChange={e => S('pump', e.target.value)}
+                                        style={(hasDieselAdvance(form.advanceDiesel) || form.isFullTank) && (form.pump === NONE_PUMP || !form.pump) ? { borderColor: 'var(--warn, #f59e0b)' } : {}}
+                                    >
+                                        {pumpOptions.map(p => (
+                                            <option key={p} value={p}>
+                                                {p === NONE_PUMP ? '-- Select Fuel Station --' : p}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             )}
@@ -1207,7 +1238,7 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
 /* ══════════════════════════════════════════════════
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
-export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand }) {
+export default function VoucherModule({ role = 'user', initialTab, lockedType, permissions = {}, brand, requireDriver = false }) {
     const { user } = useAuth();
     const { showToast } = useToast() || {};
     const org = user?.org || {};
@@ -1608,7 +1639,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     ...f,
                     lrEntryId: rows[0].entryId || '',
                     truckNo: truck,
-                    ...(f.driverId ? {} : { driverId: assignedDriver?.id || '', driverName: assignedDriver?.name || '' }),
+                    driverId: assignedDriver?.id || '', driverName: assignedDriver?.name || '',
                     ...(isCng ? { pump: f.pump && f.pump !== NONE_PUMP ? f.pump : 'CNG' } : {}),
                     date: fetchedDate,
                     weight: tw.toFixed(2),
@@ -1635,10 +1666,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         setForm(f => ({
             ...f,
             truckNo: clean,
-            // Pre-fill the truck's usual driver, but never overwrite a driver the
-            // user has already picked — a relief driver is exactly the case this
-            // field exists for.
-            ...(f.driverId ? {} : { driverId: assigned?.id || '', driverName: assigned?.name || '' }),
+            // Changing trucks starts from that truck's usual driver. The user
+            // can still choose a temporary/relief driver after this.
+            driverId: assigned?.id || '', driverName: assigned?.name || '',
             ...(isCng ? { pump: f.pump && f.pump !== NONE_PUMP ? f.pump : 'CNG' } : {}),
         }));
         fetchLastKm(clean);
@@ -1660,6 +1690,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         }
         if (isFactory && !form.truckNo) {
             alert('Truck No. is required');
+            return;
+        }
+        if (requireDriver && isSelfTruck && !form.driverId) {
+            alert('Driver is required for own-fleet Jharli vouchers');
             return;
         }
 
@@ -1717,12 +1751,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         const payload = {
             ...form,
             fuelType: isCng ? 'CNG' : 'Diesel',
+            ownershipType: isSelfTruck ? 'self' : 'market',
             pump: isCng ? (form.pump || 'CNG') : form.pump,
             partyName: hasMultiDelivery ? (validDeliveries.map(d => d.partyName).filter(Boolean).join(', ') || form.partyName) : resolvePartyName(form.partyName, knownPartyNames),
             destination: hasMultiDelivery ? validDeliveries.map(d => d.destination).filter(Boolean).join(', ') : form.destination,
             weight: String(totalW.toFixed ? totalW.toFixed(2) : totalW),
             bags: String(totalB),
             type: vType, brand,
+            ...(requireDriver ? { plant: 'jharli' } : {}),
             ...calc,
             materials: form.materials || [],
             // Tyre work is only offered on our own trucks; if the number was
@@ -1778,11 +1814,12 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
     useEffect(() => {
+        const isCng = isCngTruck(form.truckNo);
         setForm(f => {
-            const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions);
+            const nextPump = getAllowedPump(f.pump, f.advanceDiesel, pumpOptions, isCng, f.isFullTank);
             return f.pump === nextPump ? f : { ...f, pump: nextPump };
         });
-    }, [form.advanceDiesel, pumpOptions]);
+    }, [form.advanceDiesel, form.isFullTank, form.truckNo, pumpOptions]);
 
     /* Sort helper */
     const toggleSort = col => {
@@ -1871,7 +1908,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 message={isBill ? `Are you sure you want to create a new Bill for LR #${form.lrNo}?` : `Are you sure you want to create a new Voucher for LR #${form.lrNo}?`}
                 isSaving={saving}
             />
-            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} isCngTruck={isCngTruck} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} driverOptions={driverOptions} isVGTCTruck={isVGTCTruck} lookupDestinationRate={lookupDestinationRate} destinationOptions={destinationOptions} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
+            <AnimatePresence>{editVoucher && <EditModal v={editVoucher} requireDriver={requireDriver || editVoucher.plant === 'jharli'} isCngTruck={isCngTruck} pumpOptions={pumpOptions} partySuggestions={knownPartyNames} vehicleNumbers={vehicleNumbers} driverOptions={driverOptions} isVGTCTruck={isVGTCTruck} lookupDestinationRate={lookupDestinationRate} destinationOptions={destinationOptions} onClose={() => setEditVoucher(null)} onSave={() => { setEditVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
             <AnimatePresence>{delVoucher && <DeleteConfirm v={delVoucher} onClose={() => setDelVoucher(null)} onConfirm={() => { setDelVoucher(null); fetchVouchers(); }} />}</AnimatePresence>
 
             {/* Duplicate LR popup */}
@@ -1964,10 +2001,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     />
                                                 </div>
                                                 <div className="field-h">
-                                                    <label>Driver</label>
+                                                    <label>Driver{requireDriver && isSelfTruck ? ' *' : ''}</label>
                                                     <select
                                                         className="fi"
                                                         value={form.driverId}
+                                                        required={requireDriver && isSelfTruck}
                                                         onChange={e => handleDriverChange(e.target.value)}
                                                     >
                                                         <option value="">— not recorded —</option>
@@ -2201,9 +2239,23 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                         </div>
                                                         {!isBill && !isCngTruck(form.truckNo) && (
                                                             <div className="field-h">
-                                                                <label>Fuel Station</label>
-                                                                <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
-                                                                    {pumpOptions.map(p => <option key={p}>{p}</option>)}
+                                                                <label>
+                                                                    Fuel Station
+                                                                    {(hasDieselAdvance(form.advanceDiesel) || form.isFullTank) && (
+                                                                        <span style={{ color: 'var(--danger)', fontWeight: 800, marginLeft: 4 }}>*</span>
+                                                                    )}
+                                                                </label>
+                                                                <select
+                                                                    className="fi"
+                                                                    value={form.pump}
+                                                                    onChange={e => set('pump', e.target.value)}
+                                                                    style={(hasDieselAdvance(form.advanceDiesel) || form.isFullTank) && (form.pump === NONE_PUMP || !form.pump) ? { borderColor: 'var(--warn, #f59e0b)' } : {}}
+                                                                >
+                                                                    {pumpOptions.map(p => (
+                                                                        <option key={p} value={p}>
+                                                                            {p === NONE_PUMP ? '-- Select Fuel Station --' : p}
+                                                                        </option>
+                                                                    ))}
                                                                 </select>
                                                             </div>
                                                         )}
@@ -2211,9 +2263,23 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 )}
                                                 {!isBill && isFactory && !isCngTruck(form.truckNo) && (
                                                     <div className="field-h">
-                                                        <label>Fuel Station</label>
-                                                        <select className="fi" value={form.pump} onChange={e => set('pump', e.target.value)}>
-                                                            {pumpOptions.map(p => <option key={p}>{p}</option>)}
+                                                        <label>
+                                                            Fuel Station
+                                                            {(hasDieselAdvance(form.advanceDiesel) || form.isFullTank) && (
+                                                                <span style={{ color: 'var(--danger)', fontWeight: 800, marginLeft: 4 }}>*</span>
+                                                            )}
+                                                        </label>
+                                                        <select
+                                                            className="fi"
+                                                            value={form.pump}
+                                                            onChange={e => set('pump', e.target.value)}
+                                                            style={(hasDieselAdvance(form.advanceDiesel) || form.isFullTank) && (form.pump === NONE_PUMP || !form.pump) ? { borderColor: 'var(--warn, #f59e0b)' } : {}}
+                                                        >
+                                                            {pumpOptions.map(p => (
+                                                                <option key={p} value={p}>
+                                                                    {p === NONE_PUMP ? '-- Select Fuel Station --' : p}
+                                                                </option>
+                                                            ))}
                                                         </select>
                                                     </div>
                                                 )}

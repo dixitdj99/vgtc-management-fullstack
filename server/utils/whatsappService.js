@@ -411,6 +411,35 @@ const DEFAULT_TEMPLATES = {
       '*Pending Advance:* *Rs.{advanceOnline}*',
       '*Driver:* {driverName} | *To:* {destination}'
     ].join('\n')
+  },
+  // Staff / Driver Salary Settlement Voucher Notification
+  staff_salary_settlement: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.* 🚛',
+      '*SALARY SETTLEMENT VOUCHER*',
+      '----------------------------------------',
+      '👤 *Staff:* {staffName} ({staffType})',
+      '📅 *Month:* {month}',
+      '{vehicleLine}',
+      '----------------------------------------',
+      '📊 *Attendance Summary:*',
+      '• Total Days: {daysInMonth} | Present: {presentDays} days',
+      '• Absences / Leaves: {absentDays} days',
+      '• Salary Deductions Applied: {deductedDays} days',
+      '----------------------------------------',
+      '💰 *Salary Breakdown:*',
+      '• Basic Fixed Salary: Rs.{baseSalary}',
+      '• Attendance Deduction: -Rs.{attendanceDeductions}',
+      '{allowanceLine}',
+      '{penaltyLine}',
+      '• Net Adjusted Salary: *Rs.{adjustedSalary}*',
+      '----------------------------------------',
+      '✅ *Amount Paid:* *Rs.{payoutAmount}* ({paymentMethod})',
+      '📅 *Payout Date:* {payoutDate}',
+      '----------------------------------------',
+      '_Vikas Goods Transport Co. Accounts Department_'
+    ].filter(Boolean).join('\n')
   }
 };
 
@@ -2051,6 +2080,21 @@ function previewTemplate(eventKey, config) {
     newBalance: '48000',
     currentBalance: '3200',
     staffName: 'Suresh Driver',
+    staffType: 'Driver',
+    month: 'September 2026',
+    vehicleLine: '🚚 Truck: HR55AC4586',
+    daysInMonth: '30',
+    presentDays: '26',
+    absentDays: '4',
+    deductedDays: '3',
+    baseSalary: '30000',
+    attendanceDeductions: '3000',
+    allowanceLine: '• Allowance / Bonus: +Rs.1000',
+    penaltyLine: '',
+    adjustedSalary: '28000',
+    payoutAmount: '28000',
+    paymentMethod: 'Cash',
+    payoutDate: '26/09/2026',
     entryId: 'CSH-901',
     totalAdvances: '12000',
     remainingPay: '15000'

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import ax from '../api';
 import TableScroll from '../components/TableScroll';
+import AttendanceSettlementModal from '../components/AttendanceSettlementModal';
 
 const fmtRs = (n) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const fmtDate = (s) => (s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -246,16 +247,6 @@ export default function StaffKhataBook({
   });
   const [savingEntry, setSavingEntry] = useState(false);
 
-  // Form state for Settlement
-  const [settleForm, setSettleForm] = useState({
-    amount: '',
-    date: new Date().toISOString().slice(0, 10),
-    paymentMethod: 'Cash',
-    recordInCashbook: true,
-    remark: 'Salary Settlement',
-  });
-  const [settling, setSettling] = useState(false);
-
   // Time filter inside personal ledger
   const [ledgerTimeFilter, setLedgerTimeFilter] = useState('all'); // all | 3months | 6months | this_month
 
@@ -381,14 +372,6 @@ export default function StaffKhataBook({
   // Quick Open Settlement Modal
   const openSettleModal = (profile) => {
     setShowSettleModal(profile);
-    const netBal = Math.max(0, profile.khata?.summary?.netBalance || 0);
-    setSettleForm({
-      amount: netBal > 0 ? String(netBal) : '',
-      date: new Date().toISOString().slice(0, 10),
-      paymentMethod: 'Cash',
-      recordInCashbook: true,
-      remark: `Salary Settlement (${profile.name})`,
-    });
   };
 
   // Submit Add Entry
@@ -455,50 +438,6 @@ export default function StaffKhataBook({
     }
   };
 
-  // Submit Settlement
-  const handleSaveSettlement = async (e) => {
-    e.preventDefault();
-    if (!showSettleModal) return;
-    const amt = parseFloat(settleForm.amount);
-    if (!amt || amt <= 0) return alert('Please enter a valid settlement amount');
-
-    setSettling(true);
-    try {
-      const p = showSettleModal;
-
-      if (settleForm.paymentMethod === 'Cash' && settleForm.recordInCashbook) {
-        const cbPath = brand === 'jklakshmi' ? '/jkl/cashbook/cash-out-linked' : '/cashbook/cash-out-linked';
-        await ax.post(cbPath, {
-          amount: amt,
-          date: settleForm.date,
-          remark: settleForm.remark || `Salary Settlement for ${p.name}`,
-          entityType: p.type === 'Driver' ? 'driver' : 'staff',
-          entityId: p.id,
-          entityName: p.name,
-        });
-      } else {
-        await ax.post('/payments', {
-          profileId: p.id,
-          profileName: p.name,
-          amount: amt,
-          date: settleForm.date,
-          category: 'Salary Settlement',
-          entryType: 'debit',
-          paymentMethod: settleForm.paymentMethod,
-          remark: settleForm.remark || 'Salary Settlement payout',
-        });
-      }
-
-      setShowSettleModal(null);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      console.error('Settlement failed:', err);
-      alert(err.response?.data?.error || 'Failed to record settlement');
-    } finally {
-      setSettling(false);
-    }
-  };
-
   // Delete an entry
   const handleDeleteEntry = async (entry) => {
     if (!entry.canDelete) return;
@@ -521,23 +460,23 @@ export default function StaffKhataBook({
 
     const lines = [
       `*VIKAS GOODS TRANSPORT CO.* 🚛`,
-      `*Staff Khata Statement / वेतन खाता पर्ची*`,
+      `*Staff & Driver Khata Statement*`,
       `----------------------------------------`,
       `👤 *Name:* ${name} (${role})`,
       pData.vehicleNo ? `🚚 *Vehicle:* ${pData.vehicleNo}` : null,
       pData.phone ? `📱 *Phone:* ${pData.phone}` : null,
       pData.fixedSalary ? `💰 *Fixed Monthly Salary:* ${fmtRs(pData.fixedSalary)}` : null,
       `----------------------------------------`,
-      `📊 *Khata Summary / कुल विवरण:*`,
+      `📊 *Khata Summary:*`,
       `➕ Total Salary Earned: *${fmtRs(sum.totalCredit)}*`,
       `➖ Cash Advances Taken: *${fmtRs(sum.totalCashAdv)}*`,
-      `🧱 Non-Cash Material Deductions: *${fmtRs(sum.totalNonCash)}*`,
+      `🧱 Non-Cash Deductions: *${fmtRs(sum.totalNonCash)}*`,
       `----------------------------------------`,
       sum.netBalance > 0
-        ? `✅ *Net Payable Balance (कंपनी द्वारा देय राशि):* *${fmtRs(sum.netBalance)}*`
+        ? `✅ *Net Payable Balance:* *${fmtRs(sum.netBalance)}*`
         : sum.netBalance < 0
-        ? `⚠️ *Excess Advance to Recover (कर्मचारी पर बकाया):* *${fmtRs(Math.abs(sum.netBalance))}*`
-        : `🤝 *Account Status: Fully Settled / कोई बकाया नहीं (₹0)*`,
+        ? `⚠️ *Excess Advance to Recover:* *${fmtRs(Math.abs(sum.netBalance))}*`
+        : `🤝 *Account Status: Fully Settled (₹0)*`,
       `----------------------------------------`,
       `📅 Generated On: ${new Date().toLocaleDateString('en-IN')}`,
       `_For any discrepancy, contact office accounts._`
@@ -546,6 +485,20 @@ export default function StaffKhataBook({
     return lines.join('\n');
   };
 
+  if (showSettleModal) {
+    return (
+      <AttendanceSettlementModal
+        profile={showSettleModal}
+        brand={brand}
+        onClose={() => setShowSettleModal(null)}
+        onSuccess={() => {
+          setShowSettleModal(null);
+          if (onRefresh) onRefresh();
+        }}
+      />
+    );
+  }
+
   return (
     <div>
       {/* Top Title & Header */}
@@ -553,7 +506,7 @@ export default function StaffKhataBook({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <BookOpen size={20} color="var(--primary)" /> Staff & Driver Khata Book (खाता बही)
+              <BookOpen size={20} color="var(--primary)" /> Staff & Driver Khata Book
             </h2>
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
               Individual ledgers, non-cash adjustments, and multi-month accumulated salary settlement
@@ -749,13 +702,14 @@ export default function StaffKhataBook({
                           <Package size={12} /> + Deduction
                         </button>
 
-                        {sum.netBalance > 0 && (
+                        {(sum.netBalance > 0 || parseFloat(p.fixedSalary) > 0) && (
                           <button
                             className="btn btn-sm"
                             style={{ fontSize: '10.5px', padding: '4px 8px', background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                             onClick={() => openSettleModal(p)}
+                            title="Attendance & Salary Settlement"
                           >
-                            <CheckCircle2 size={12} /> Settle
+                            <CheckCircle2 size={12} /> Settle & Pay
                           </button>
                         )}
                       </div>
@@ -904,11 +858,12 @@ export default function StaffKhataBook({
                   <Plus size={13} /> + Cash / Advance
                 </button>
 
-                {activeProfileData.khata.summary.netBalance > 0 && (
+                {(activeProfileData.khata.summary.netBalance > 0 || parseFloat(activeProfileData.fixedSalary) > 0) && (
                   <button
                     className="btn btn-sm"
                     style={{ background: '#10b981', color: '#fff', border: 'none', fontWeight: 800, fontSize: '11px', padding: '5px 12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                     onClick={() => openSettleModal(activeProfileData)}
+                    title="Attendance-linked Salary Settlement"
                   >
                     <CheckCircle2 size={13} /> Settle & Pay
                   </button>
@@ -1124,11 +1079,11 @@ export default function StaffKhataBook({
                     value={entryForm.category}
                     onChange={e => setEntryForm(f => ({ ...f, category: e.target.value }))}
                   >
-                    <option value="Cement Bags">Cement Bags (सीमेंट बोरी)</option>
-                    <option value="Diesel Deduction">Diesel Deduction (डीजल कटौती)</option>
+                    <option value="Cement Bags">Cement Bags</option>
+                    <option value="Diesel Deduction">Diesel Deduction</option>
                     <option value="Vehicle Spares">Vehicle Spare Parts / Tyre</option>
-                    <option value="Challan / Fine">Challan / Traffic Fine (चालान / जुर्माना)</option>
-                    <option value="Store / Ration">Store / Ration Item (राशन / सामान)</option>
+                    <option value="Challan / Fine">Challan / Traffic Fine</option>
+                    <option value="Store / Ration">Store / Ration Item</option>
                     <option value="Advance Adjustment">Advance Adjustment</option>
                     <option value="Other Non-Cash">Other Non-Cash Deduction</option>
                   </select>
@@ -1205,122 +1160,7 @@ export default function StaffKhataBook({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: SETTLE & PAY (1-MONTH OR MULTI-MONTH SETTLEMENT)                   */}
-      {/* ========================================================================= */}
-      {showSettleModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '500px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
-          >
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-th)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>
-                  Settle & Clear Salary Balance
-                </h3>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Person: <strong style={{ color: 'var(--text)' }}>{showSettleModal.name}</strong> ({showSettleModal.type})
-                </div>
-              </div>
-              <button onClick={() => setShowSettleModal(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <X size={18} />
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveSettlement} style={{ padding: '20px' }}>
-              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', textTransform: 'uppercase' }}>Current Khata Balance Due</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Accumulated earnings minus all advances & cement deductions</div>
-                </div>
-                <div style={{ fontSize: '20px', fontWeight: 900, color: '#10b981' }}>
-                  {fmtRs(showSettleModal.khata?.summary?.netBalance || 0)}
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Payout Amount (₹) *</label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="1"
-                    required
-                    className="fi"
-                    style={{ height: '36px', fontSize: '14px', fontWeight: 800 }}
-                    value={settleForm.amount}
-                    onChange={e => setSettleForm(f => ({ ...f, amount: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Payout Date *</label>
-                  <input
-                    type="date"
-                    required
-                    className="fi"
-                    style={{ height: '36px', fontSize: '12px' }}
-                    value={settleForm.date}
-                    onChange={e => setSettleForm(f => ({ ...f, date: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Payment Method</label>
-                <select
-                  className="fi"
-                  style={{ height: '36px', fontSize: '12px' }}
-                  value={settleForm.paymentMethod}
-                  onChange={e => setSettleForm(f => ({ ...f, paymentMethod: e.target.value }))}
-                >
-                  <option value="Cash">Physical Cash</option>
-                  <option value="Bank Transfer">Bank Transfer (NEFT / IMPS)</option>
-                  <option value="UPI">UPI / GPay / PhonePe</option>
-                  <option value="Cheque">Cheque</option>
-                </select>
-              </div>
-
-              {settleForm.paymentMethod === 'Cash' && (
-                <div style={{ marginBottom: '14px', background: 'var(--bg-input)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
-                    <input
-                      type="checkbox"
-                      checked={settleForm.recordInCashbook}
-                      onChange={e => setSettleForm(f => ({ ...f, recordInCashbook: e.target.checked }))}
-                    />
-                    <span>Deduct from Cashbook (Record as Cash Out in Cashbook)</span>
-                  </label>
-                </div>
-              )}
-
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Settlement Remark</label>
-                <input
-                  type="text"
-                  className="fi"
-                  style={{ height: '36px', fontSize: '12px' }}
-                  placeholder="e.g. 2-month salary settlement (July & August)"
-                  value={settleForm.remark}
-                  onChange={e => setSettleForm(f => ({ ...f, remark: e.target.value }))}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn btn-g" onClick={() => setShowSettleModal(null)} disabled={settling}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-p" disabled={settling} style={{ background: '#10b981', border: 'none', padding: '8px 20px', fontWeight: 800 }}>
-                  {settling ? 'Recording...' : 'Confirm Settlement'}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* MODAL: WHATSAPP SHARE STATEMENT                                           */}
@@ -1406,7 +1246,7 @@ export default function StaffKhataBook({
             <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '16px', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '1px' }}>VIKAS GOODS TRANSPORT CO.</h2>
               <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '4px' }}>FLEET MANAGEMENT & TRANSPORT CONTRACTORS</div>
-              <div style={{ fontSize: '15px', fontWeight: 800, marginTop: '8px', textDecoration: 'underline' }}>STAFF & DRIVER KHATA STATEMENT (खाता पर्ची)</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, marginTop: '8px', textDecoration: 'underline' }}>STAFF & DRIVER KHATA STATEMENT</div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px', fontSize: '13px' }}>

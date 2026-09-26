@@ -37,7 +37,7 @@ const NAV_GROUPS = [
     items: [
       { id: 'users', label: 'User Management', Icon: Users },
       { id: 'profiles', label: 'Staff Profiles', Icon: UserCircle },
-      { id: 'biometrics', label: 'Terminal & Biometrics', Icon: ScanFace },
+      { id: 'biometrics', label: 'Terminal & Attendance', Icon: ScanFace },
     ],
   },
   {

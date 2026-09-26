@@ -561,15 +561,12 @@ function AppInner() {
         { id: 'online', label: 'Online Advances' },
         { id: 'vehicle_advances', label: 'Vehicle Credit & Debit' },
         { id: 'labour', label: 'Labour Account' },
-        { id: 'staff', label: 'Profile Pay' },
+        { id: 'staff', label: 'Staff Khata Book' },
       ]
     },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
     { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
-    { id: 'admin_loading_status_dump', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#6366f1', section: 'jksuper', permKey: 'loading_status' },
-    { id: 'attendance_dump', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'attendance' },
-    { id: 'terminal_biometrics_dump', label: 'Terminal & Biometrics', Icon: ScanFace, color: '#06b6d4', section: 'jksuper', permKey: 'attendance' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
     { id: 'lr_jharli', label: 'Loading Receipt', Icon: Receipt, color: '#f59e0b', section: 'jharli', permKey: 'lr_jkl' },
@@ -617,14 +614,11 @@ function AppInner() {
         { id: 'online', label: 'Online Advances' },
         { id: 'vehicle_advances', label: 'Vehicle Credit & Debit' },
         { id: 'labour', label: 'Labour Account' },
-        { id: 'staff', label: 'Profile Pay' },
+        { id: 'staff', label: 'Staff Khata Book' },
       ]
     },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
     { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
-    { id: 'trip_profit_jharli', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jharli', permKey: 'pay' },
-    { id: 'attendance_jharli', label: 'Attendance', Icon: ClipboardList, color: '#6366f1', section: 'jharli', permKey: 'attendance' },
-    { id: 'terminal_biometrics_jharli', label: 'Terminal & Biometrics', Icon: ScanFace, color: '#06b6d4', section: 'jharli', permKey: 'attendance' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -761,7 +755,10 @@ function AppInner() {
       {id === 'lr_dump' && <LRModule role={user.role} permissions={user.permissions} brand={godown === 'jhajjar' ? 'jhajjar' : godown === 'bahadurgarh' ? 'bahadurgarh' : 'kosli'} />}
       {(id === 'lr_jkl' || id === 'lr_jharli') && <LRModule role={user.role} permissions={user.permissions} brand="jkl" />}
       {id === 'voucher_dump' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
-      {id === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
+      {/* Jharli is the only plant that marks a driver present straight from the
+          voucher, so only there is the driver mandatory — and only on our own
+          fleet, since a market truck's driver is not on our payroll. */}
+      {id === 'voucher_jharli' && <VoucherModule role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} requireDriver />}
       {id === 'balance_dump' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || (godown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : (godown === 'jhajjar' ? 'Jajjhar_Bill' : 'Kosli_Bill'))} brand="jksuper" />}
       {id === 'balance_jharli' && <BalanceSheet role={user.role} permissions={user.permissions} lockedType={sub || 'Dump'} brand={sub === 'JK_Super' ? 'jksuper' : 'jklakshmi'} />}
       {/* One component, two nav ids — the sheet reads across every plant the
@@ -810,8 +807,7 @@ function AppInner() {
       {(id === 'party_master_dump' || id === 'party_master_jharli') && <PartyMaster />}
       {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
-      {(id === 'attendance_jharli' || id === 'attendance_main' || id === 'attendance_dump') && <AttendanceModule />}
-      {(id === 'terminal_biometrics' || id === 'terminal_biometrics_dump' || id === 'terminal_biometrics_jharli') && <TerminalBiometricsManager />}
+      {(id === 'attendance_jharli' || id === 'attendance_main' || id === 'attendance_dump' || id === 'terminal_biometrics' || id === 'terminal_biometrics_dump' || id === 'terminal_biometrics_jharli') && <TerminalBiometricsManager />}
       {(id === 'whatsapp_dump' || id === 'whatsapp_jkl' || id === 'whatsapp_jharli' || id === 'whatsapp_main') && <WhatsAppControlModule />}
       {(id === 'labour_dump' || id === 'labour_jharli' || id === 'labour_main') && <LabourAccount canEdit={user.role === 'admin' || user.permissions?.pay === 'edit'} />}
       {/* ── Generic (non-VGTC orgs) ── */}

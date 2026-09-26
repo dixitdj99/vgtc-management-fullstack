@@ -159,6 +159,12 @@ const ALL_EVENT_DEFINITIONS = [
     title: '22. Staff Dispute Approved & Reverted',
     category: 'Challan & Staff Khata',
     tags: ['{staffName}', '{entryId}', '{amount}']
+  },
+  {
+    key: 'staff_salary_settlement',
+    title: '23. Staff Salary Settlement Voucher',
+    category: 'Challan & Staff Khata',
+    tags: ['{staffName}', '{staffType}', '{month}', '{vehicleLine}', '{daysInMonth}', '{presentDays}', '{absentDays}', '{deductedDays}', '{baseSalary}', '{attendanceDeductions}', '{allowanceLine}', '{penaltyLine}', '{adjustedSalary}', '{payoutAmount}', '{paymentMethod}', '{payoutDate}']
   }
 ];
 

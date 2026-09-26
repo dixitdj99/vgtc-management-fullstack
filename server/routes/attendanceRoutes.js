@@ -149,6 +149,56 @@ router.post('/bulk', requirePermission('attendance', 'edit'), async (req, res, n
     }
 });
 
+/**
+ * GET /api/attendance/active-duties
+ * Active driver tours currently on duty.
+ */
+router.get('/active-duties', async (req, res, next) => {
+    try {
+        res.json(await attendanceService.getActiveDuties(req.orgId, req));
+    } catch (err) { next(err); }
+});
+
+/**
+ * POST /api/attendance/off-duty — mark a driver off-duty / relieve them from an active tour.
+ * Body: { profileId, outDate?, outTime?, reason? }
+ */
+router.post('/off-duty', requirePermission('attendance', 'edit'), async (req, res, next) => {
+    try {
+        const { profileId, outDate, outTime, reason } = req.body;
+        if (!profileId) return res.status(400).json({ error: 'profileId is required' });
+
+        const record = await attendanceService.markOffDuty(req.orgId, req, {
+            profileId, outDate, outTime, reason, user: req.user,
+        });
+
+        auditService.logAction({
+            orgId: req.orgId,
+            action: auditService.ACTIONS.ATTENDANCE_MARKED,
+            performedBy: req.user.id,
+            performedByName: req.user.name,
+            targetId: `${profileId}_${record.date}`,
+            targetType: 'attendance',
+            before: null,
+            after: {
+                profileId,
+                date: record.date,
+                status: record.status,
+                dutyState: record.dutyState,
+                outTime: record.outTime,
+                reason: record.overrideReason,
+            },
+        });
+
+        res.json({ message: 'Driver marked off-duty', record });
+    } catch (err) {
+        if (/required|invalid|must be/i.test(err.message)) {
+            return res.status(400).json({ error: err.message });
+        }
+        next(err);
+    }
+});
+
 /** POST /api/attendance — mark a single person. */
 router.post('/', requirePermission('attendance', 'edit'), async (req, res, next) => {
     try {

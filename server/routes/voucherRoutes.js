@@ -17,6 +17,9 @@ const VEHICLE_COL = 'vehicles';
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
+        if (req.body?.plant === 'jharli' && req.body?.ownershipType === 'self' && !String(req.body?.driverId || '').trim()) {
+            return res.status(400).json({ error: 'Driver is required for own-fleet Jharli vouchers' });
+        }
         const result = await voucherService.createVoucher(req.orgId, req.body, getCol(BASE_COL, req));
         await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
@@ -127,6 +130,9 @@ router.get('/', async (req, res) => {
 // ─── Update (includes balance-sheet edits + mark-paid) ───────────────────────
 router.patch('/:id', async (req, res) => {
     try {
+        if (req.body?.plant === 'jharli' && req.body?.ownershipType === 'self' && !String(req.body?.driverId || '').trim()) {
+            return res.status(400).json({ error: 'Driver is required for own-fleet Jharli vouchers' });
+        }
         const col = getCol(BASE_COL, req);
         await voucherService.updateVoucher(req.params.id, req.body, col);
         if (req.body.truckNo) {

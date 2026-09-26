@@ -251,17 +251,30 @@ const getRange = async (orgId, req, { from, to, profileId }) => {
  * The roll-call for one date: every attending profile, the status already saved
  * (if any), and a suggested status for anyone not yet marked.
  *
- * Suggestion rules — drivers get "present" only with evidence, staff default to
- * "present" because the supervisor marks exceptions rather than the whole yard.
+ * Suggestion rules — drivers on an active tour (IN_DUTY from terminal or supervisor)
+ * remain proposed present for all tour days, drivers with trip evidence get "present",
+ * and staff default to "present" because the supervisor marks exceptions rather than the whole yard.
  */
 const getRoster = async (orgId, req, date) => {
     const profiles = await getAttendingProfiles(orgId, req, date);
-    const [saved, evidence] = await Promise.all([
+
+    // Look back up to 14 days before `date` to detect active multi-day driver duties and recent activity
+    const lookbackDate = new Date(new Date(`${date}T00:00:00Z`).getTime() - 14 * 86400000).toISOString().slice(0, 10);
+
+    const [saved, recentAttendance, evidence] = await Promise.all([
         getRange(orgId, req, { from: date, to: date }),
-        deriveDriverActivity(orgId, req, { from: date, to: date, profiles }),
+        getRange(orgId, req, { from: lookbackDate, to: date }),
+        deriveDriverActivity(orgId, req, { from: lookbackDate, to: date, profiles }),
     ]);
 
     const savedByProfile = new Map(saved.map(r => [r.profileId, r]));
+
+    // Group recent attendance by profile to evaluate active tour state
+    const recentByProfile = new Map();
+    for (const r of recentAttendance) {
+        if (!recentByProfile.has(r.profileId)) recentByProfile.set(r.profileId, []);
+        recentByProfile.get(r.profileId).push(r);
+    }
 
     const rows = profiles.map(p => {
         const existing = savedByProfile.get(p.id) || null;
@@ -270,14 +283,74 @@ const getRoster = async (orgId, req, date) => {
 
         let suggested;
         let suggestedBy;
+        let activeDuty = null;
+        let idleWarning = false;
+        let idleDays = 0;
+        let idleReason = null;
+
         if (isDriver) {
-            // No evidence is not proof of absence — a driver can be mid-trip with
-            // nothing recorded that day. Leave it unset so the supervisor decides.
-            suggested = dayEvidence.length ? 'present' : null;
-            suggestedBy = dayEvidence.length ? 'trip_data' : null;
+            // Find most recent attendance record with a duty state on or before `date`
+            const driverRecs = (recentByProfile.get(p.id) || [])
+                .filter(r => r.date <= date)
+                .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+            const latestDutyRec = driverRecs.find(r => r.dutyState);
+            const isCurrentlyInDuty = latestDutyRec && (
+                String(latestDutyRec.dutyState).toLowerCase() === 'in_duty'
+            );
+
+            if (isCurrentlyInDuty) {
+                // Find initial start record for this continuous tour
+                const tourStartRec = [...driverRecs].reverse().find(r =>
+                    String(r.dutyState).toLowerCase() === 'in_duty'
+                ) || latestDutyRec;
+
+                activeDuty = {
+                    startDate: tourStartRec.date,
+                    inTime: tourStartRec.inTime || tourStartRec.punchTime,
+                    method: tourStartRec.method || 'face',
+                    terminalId: tourStartRec.terminalId || 'VGTC-TERMINAL-01'
+                };
+
+                // Check for idle warning: days since last trip/voucher or tour start
+                const allEvidenceDates = Object.keys(evidence[p.id] || {}).filter(d => d <= date).sort().reverse();
+                const lastActivityDate = allEvidenceDates[0] || activeDuty.startDate;
+
+                const msDiff = new Date(`${date}T00:00:00Z`).getTime() - new Date(`${lastActivityDate}T00:00:00Z`).getTime();
+                idleDays = Math.max(0, Math.floor(msDiff / 86400000));
+                if (idleDays >= 2) {
+                    idleWarning = true;
+                    idleReason = `No voucher/movement for ${idleDays} day${idleDays > 1 ? 's' : ''}`;
+                }
+            }
+
+            if (dayEvidence.length) {
+                suggested = 'present';
+                suggestedBy = 'trip_data';
+            } else if (isCurrentlyInDuty) {
+                // Driver is on a continuous multi-day tour
+                suggested = 'present';
+                suggestedBy = 'duty_cycle';
+            } else {
+                suggested = null;
+                suggestedBy = null;
+            }
         } else {
             suggested = 'present';
             suggestedBy = 'default';
+        }
+
+        const effectiveDutyState = existing?.dutyState || (activeDuty ? 'in_duty' : null);
+
+        // Augment day evidence with active tour info if applicable
+        const finalEvidence = [...dayEvidence];
+        if (activeDuty && !dayEvidence.some(e => e.type === 'tour')) {
+            finalEvidence.unshift({
+                type: 'tour',
+                ref: `Tour started ${activeDuty.startDate}`,
+                truckNo: p.vehicleNo || null,
+                detail: activeDuty.inTime ? `Punched in at ${activeDuty.inTime}` : 'On duty tour'
+            });
         }
 
         return {
@@ -289,19 +362,23 @@ const getRoster = async (orgId, req, date) => {
             vehicleNo: p.vehicleNo || '',
             status: existing?.status || null,     // what is already saved
             suggested,                            // what to pre-select when unsaved
-            suggestedBy,                          // 'trip_data' | 'default' | null
-            evidence: dayEvidence,                // proof shown next to driver tiles
+            suggestedBy,                          // 'trip_data' | 'duty_cycle' | 'default' | null
+            evidence: finalEvidence,              // proof shown next to driver tiles
+            activeDuty,                           // tour details if driver is currently in_duty
+            idleWarning,                          // true if driver is in_duty >= 2 days with no voucher
+            idleDays,                             // number of days without trip
+            idleReason,                           // human readable explanation
             markedBy: existing?.markedByName || null,
             markedAt: existing?.markedAt || null,
-            source: existing?.source || null,
-            method: existing?.method || null,
-            terminalId: existing?.terminalId || null,
+            source: existing?.source || (activeDuty ? 'terminal' : null),
+            method: existing?.method || activeDuty?.method || null,
+            terminalId: existing?.terminalId || activeDuty?.terminalId || null,
             punchTime: existing?.punchTime || existing?.markedAt || null,
-            inTime: existing?.inTime || null,
+            inTime: existing?.inTime || activeDuty?.inTime || null,
             outTime: existing?.outTime || null,
             durationHours: existing?.durationHours || null,
             dutyDays: existing?.dutyDays ?? (existing?.status === 'present' ? 1.0 : (existing?.status === 'half_day' ? 0.5 : 0.0)),
-            dutyState: existing?.dutyState || null,
+            dutyState: effectiveDutyState,
             overrideReason: existing?.overrideReason || null,
         };
     });
@@ -312,7 +389,7 @@ const getRoster = async (orgId, req, date) => {
         counts: {
             total: rows.length,
             saved: rows.filter(r => r.status).length,
-            derived: rows.filter(r => r.suggestedBy === 'trip_data').length,
+            derived: rows.filter(r => r.suggestedBy === 'trip_data' || r.suggestedBy === 'duty_cycle').length,
             unresolved: rows.filter(r => !r.status && !r.suggested).length,
         },
     };
@@ -516,6 +593,94 @@ const getMonthlySummary = async (orgId, req, month) => {
     return { month, daysInMonth: datesBetween(from, to).length, rows };
 };
 
+/**
+ * Mark a driver off-duty / relieved from an active tour.
+ * Sets the active duty status to completed / off_duty, records outTime, outDate, and reason.
+ */
+const markOffDuty = async (orgId, req, { profileId, outDate, outTime, reason, user }) => {
+    if (!profileId) throw new Error('profileId is required');
+    const effectiveDate = isValidDate(outDate) ? outDate : businessToday();
+    const effectiveTime = outTime || new Intl.DateTimeFormat('en-IN', {
+        timeZone: BUSINESS_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: true
+    }).format(new Date());
+
+    // 1. Fetch recent records for this driver to find active tour
+    const lookbackDate = new Date(new Date(`${effectiveDate}T00:00:00Z`).getTime() - 30 * 86400000).toISOString().slice(0, 10);
+    const recent = await getRange(orgId, req, {
+        from: lookbackDate,
+        to: effectiveDate,
+        profileId,
+    });
+
+    const activeRecord = recent.find(r => String(r.dutyState).toLowerCase() === 'in_duty');
+    const nowIso = new Date().toISOString();
+
+    const existingDayRecord = recent.find(r => r.date === effectiveDate);
+    const updatedRecord = {
+        profileId: String(profileId),
+        date: effectiveDate,
+        orgId,
+        status: existingDayRecord?.status || 'present',
+        dutyState: 'completed',
+        outTime: effectiveTime,
+        inTime: existingDayRecord?.inTime || activeRecord?.inTime || null,
+        durationHours: existingDayRecord?.durationHours || null,
+        dutyDays: existingDayRecord?.dutyDays ?? 1.0,
+        source: 'manual',
+        method: existingDayRecord?.method || 'manual',
+        overrideReason: reason || 'Marked off-duty by supervisor',
+        markedBy: user?.id || null,
+        markedByName: user?.name || null,
+        markedAt: nowIso,
+        updatedAt: nowIso,
+    };
+
+    if (firebaseAvailable()) {
+        const col = getCol(ATTENDANCE_COL, req);
+        const docRef = db.collection(col).doc(`${profileId}_${effectiveDate}`);
+        await docRef.set({
+            ...updatedRecord,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        // If the active record was on an earlier date, close that one too
+        if (activeRecord && activeRecord.date !== effectiveDate) {
+            await db.collection(col).doc(`${profileId}_${activeRecord.date}`).set({
+                dutyState: 'completed',
+                outDate: effectiveDate,
+                outTime: effectiveTime,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+        }
+    } else {
+        const existing = localStore.getAll(ATTENDANCE_COL)
+            .find(d => d.profileId === profileId && d.date === effectiveDate);
+        if (existing) localStore.update(ATTENDANCE_COL, existing.id, updatedRecord);
+        else localStore.insert(ATTENDANCE_COL, updatedRecord);
+
+        if (activeRecord && activeRecord.date !== effectiveDate) {
+            const actDoc = localStore.getAll(ATTENDANCE_COL)
+                .find(d => d.profileId === profileId && d.date === activeRecord.date);
+            if (actDoc) localStore.update(ATTENDANCE_COL, actDoc.id, {
+                dutyState: 'completed',
+                outDate: effectiveDate,
+                outTime: effectiveTime
+            });
+        }
+    }
+
+    return { id: `${profileId}_${effectiveDate}`, ...updatedRecord };
+};
+
+/**
+ * All drivers currently on an active tour.
+ */
+const getActiveDuties = async (orgId, req) => {
+    const today = businessToday();
+    const roster = await getRoster(orgId, req, today);
+    return roster.rows.filter(r => r.type === 'Driver' && r.dutyState === 'in_duty');
+};
+
 module.exports = {
     STATUSES,
     NON_ATTENDING_TYPES,
@@ -529,6 +694,8 @@ module.exports = {
     getPendingDays,
     saveBulk,
     getMonthlySummary,
+    markOffDuty,
+    getActiveDuties,
     // exported for tests
     _internal: { nameKey, truckKey, datesBetween, monthBounds },
 };

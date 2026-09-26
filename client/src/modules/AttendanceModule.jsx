@@ -90,6 +90,7 @@ export default function AttendanceModule() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [error, setError] = useState(null);
+  const [relieveModal, setRelieveModal] = useState(null);
 
   const canEdit = user?.role === 'admin' || user?.permissions?.attendance === 'edit';
 
@@ -637,6 +638,12 @@ function DailyRollCall({
               index={i}
               onCycle={() => cycleStatus(r.profileId)}
               onPick={(s) => setStatus(r.profileId, s)}
+              onRelieve={(driver) => setRelieveModal({
+                driver,
+                outDate: selectedDate,
+                outTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                reason: driver.idleWarning ? 'Idle in yard / going home' : 'Going home / off-duty',
+              })}
             />
           ))}
         </div>
@@ -678,6 +685,135 @@ function DailyRollCall({
           </div>
         </div>
       )}
+
+      {/* Relieve Driver / Mark Off-Duty Modal */}
+      {relieveModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '16px',
+        }}>
+          <div style={{
+            background: 'var(--bg-card, #fff)', border: '1px solid var(--border)',
+            borderRadius: '16px', padding: '24px', maxWidth: '440px', width: '100%',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+          }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 900, color: 'var(--text)' }}>
+              Relieve Driver / ड्यूटी समाप्त करें
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--text-muted)' }}>
+              Mark driver off-duty when leaving the yard for home or leave.
+            </p>
+
+            <div style={{
+              background: 'var(--bg-muted, rgba(0,0,0,0.04))', padding: '12px',
+              borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px',
+            }}>
+              <div><b>Driver:</b> {relieveModal.driver.name}</div>
+              {relieveModal.driver.vehicleNo && <div><b>Assigned Truck:</b> {relieveModal.driver.vehicleNo}</div>}
+              {relieveModal.driver.activeDuty && (
+                <div style={{ marginTop: '4px', color: '#059669', fontWeight: 700 }}>
+                  Tour started: {relieveModal.driver.activeDuty.startDate} ({relieveModal.driver.inTime || '—'})
+                </div>
+              )}
+              {relieveModal.driver.idleWarning && (
+                <div style={{ marginTop: '4px', color: '#b45309', fontWeight: 700 }}>
+                  ⚠️ {relieveModal.driver.idleReason}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                  Off-Duty Date (तारीख)
+                </label>
+                <input
+                  type="date"
+                  value={relieveModal.outDate}
+                  onChange={(e) => setRelieveModal(m => ({ ...m, outDate: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
+                    fontSize: '13px', fontWeight: 600, boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                  Off-Duty Time (समय)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 05:30 PM"
+                  value={relieveModal.outTime}
+                  onChange={(e) => setRelieveModal(m => ({ ...m, outTime: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
+                    fontSize: '13px', fontWeight: 600, boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                  Reason (कारण)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Going home / Leave / Truck Breakdown"
+                  value={relieveModal.reason}
+                  onChange={(e) => setRelieveModal(m => ({ ...m, reason: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
+                    fontSize: '13px', fontWeight: 600, boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setRelieveModal(null)}
+                style={{
+                  padding: '9px 16px', borderRadius: '8px', border: '1px solid var(--border)',
+                  background: 'transparent', color: 'var(--text-muted)', fontWeight: 700, fontSize: '12.5px', cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await ax.post('/attendance/off-duty', {
+                      profileId: relieveModal.driver.profileId,
+                      outDate: relieveModal.outDate,
+                      outTime: relieveModal.outTime,
+                      reason: relieveModal.reason,
+                    });
+                    setRelieveModal(null);
+                    await loadRoster(selectedDate);
+                    loadPendingDays();
+                  } catch (err) {
+                    alert(err.response?.data?.error || err.message);
+                  }
+                }}
+                style={{
+                  padding: '9px 18px', borderRadius: '8px', border: 'none',
+                  background: '#f59e0b', color: '#fff', fontWeight: 800, fontSize: '12.5px', cursor: 'pointer',
+                }}
+              >
+                Confirm & Relieve (घर भेजा)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -686,11 +822,12 @@ function DailyRollCall({
  * One person. The whole tile is the button — a big target for someone marking
  * twenty people quickly on a phone at the gate.
  */
-function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick }) {
+function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick, onRelieve }) {
   const s = STATUS_BY_ID[status];
   const unresolved = !status;
   const isDriver = row.type === 'Driver';
   const showDerivedBadge = isDriver && row.suggestedBy === 'trip_data' && !isTouched;
+  const showTourBadge = isDriver && row.suggestedBy === 'duty_cycle' && !isTouched;
   /**
    * A default-suggested tile is a proposal, not a record. It used to render
    * exactly like a confirmed Present, so non-drivers looked "already marked" on
@@ -768,6 +905,17 @@ function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick })
           </div>
         )}
 
+        {showTourBadge && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+            fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.12)',
+            padding: '2px 8px', borderRadius: '12px',
+          }}>
+            <Sparkles size={10} />
+            Tour Active · ऑन-ड्यूटी
+          </div>
+        )}
+
         {showSuggestedBadge && (
           <div title="Suggested by default, not saved yet — tap to change, then Save." style={{
             display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
@@ -788,7 +936,44 @@ function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick })
           </div>
         )}
 
-        {row.dutyState === 'in_duty' && (
+        {row.dutyState === 'in_duty' && isDriver && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%', marginTop: '2px',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+              fontWeight: 800, color: '#059669', background: 'rgba(16,185,129,0.14)',
+              padding: '2px 8px', borderRadius: '12px',
+            }}>
+              🚚 On Duty Tour {row.activeDuty?.startDate ? `(Since ${row.activeDuty.startDate.slice(5)})` : ''}
+            </div>
+            {row.idleWarning && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px',
+                fontWeight: 800, color: '#b45309', background: 'rgba(245,158,11,0.18)',
+                padding: '2px 6px', borderRadius: '6px', marginTop: '2px',
+              }}>
+                ⚠️ {row.idleReason}
+              </div>
+            )}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onRelieve && onRelieve(row); }}
+                title="Mark this driver off-duty (घर भेजा / रिलीव)"
+                style={{
+                  marginTop: '4px', padding: '3px 8px', borderRadius: '6px',
+                  border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.1)',
+                  color: '#b45309', fontSize: '10px', fontWeight: 800, cursor: 'pointer',
+                }}
+              >
+                Relieve / छुट्टी दें
+              </button>
+            )}
+          </div>
+        )}
+
+        {row.dutyState === 'in_duty' && !isDriver && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
             fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.14)',

@@ -229,6 +229,45 @@ function TodayRollCall({ source, onSaved, canEdit }) {
     );
 }
 
+function getDriverLiveStatus(v, attendanceRows = []) {
+    if (!v.driverName) {
+        return { label: 'No Driver Assigned', color: 'var(--text-muted)', bg: 'var(--bg)', border: 'var(--border)' };
+    }
+
+    if (v.status === 'ON_TRIP') {
+        return { label: 'Live On Trip', sub: `Driving to ${v.activeTrip?.destination || 'Destination'}`, color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', isLive: true };
+    }
+    if (v.status === 'LOADED') {
+        return { label: 'Assigned / Loaded', sub: `Loaded for ${v.activeTrip?.destination || 'Destination'}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)', isLive: true };
+    }
+
+    // Vehicle is FREE / IDLE: determine if driver is available in yard, on leave, or absent at home
+    const dName = (v.driverName || '').trim().toLowerCase();
+    const att = (attendanceRows || []).find(r => {
+        const rName = (r.name || r.profileName || '').trim().toLowerCase();
+        if (rName && (rName === dName || rName.includes(dName) || dName.includes(rName))) return true;
+        if (r.phone && v.driverContact && String(r.phone).replace(/\D/g, '').endsWith(String(v.driverContact).replace(/\D/g, '').slice(-10))) return true;
+        return false;
+    });
+
+    if (att) {
+        if (att.status === 'present') {
+            return { label: 'Present in Yard', sub: 'Available for trip assignment', color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', isLive: true };
+        }
+        if (att.status === 'leave') {
+            return { label: 'On Leave Today', sub: att.note || 'Excused leave recorded', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
+        }
+        if (att.status === 'absent') {
+            return { label: 'Absent / At Home', sub: 'Driver not reported to yard', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)' };
+        }
+        if (att.status === 'half_day') {
+            return { label: 'Half Day Duty', sub: 'Available half day only', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
+        }
+    }
+
+    return { label: 'Not Punched Today', sub: 'No check-in record for today', color: 'var(--text-muted)', bg: 'var(--bg)', border: 'var(--border)' };
+}
+
 export default function DashboardHome({ filteredNavIds = new Set(), navItems = [] }) {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
@@ -301,14 +340,7 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
                 </div>
             </div>
 
-            {/* Today's roll-call, marked here. Admin only (hidden on dump logins) */}
-            {isAdmin && !isDump && (
-                <TodayRollCall
-                    source={attendanceToday}
-                    canEdit={canMarkAttendance}
-                    onSaved={fetchAttendanceToday}
-                />
-            )}
+            {/* Attendance marking card removed from dashboard as requested. Managed inside Terminal Hub */}
 
             {/* KPI row */}
             <div className="stat-grid">
@@ -611,6 +643,8 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
                                 };
                                 const StatusIcon = statusCfg.icon;
 
+                                const driverStatus = getDriverLiveStatus(v, attendanceToday?.data?.rows || []);
+
                                 return (
                                     <div
                                         key={v.id || v.truckNo}
@@ -641,8 +675,27 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
                                                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', letterSpacing: '0.02em' }}>
                                                     {v.truckNo}
                                                 </div>
-                                                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                                    👤 {v.driverName}{v.driverContact ? ` (${v.driverContact})` : ''}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                                        👤 {v.driverName || 'No Driver'}{v.driverContact ? ` (${v.driverContact})` : ''}
+                                                    </span>
+                                                    {driverStatus && (
+                                                        <span style={{
+                                                            fontSize: '9.5px',
+                                                            fontWeight: 800,
+                                                            padding: '1px 6px',
+                                                            borderRadius: '4px',
+                                                            background: driverStatus.bg,
+                                                            color: driverStatus.color,
+                                                            border: `1px solid ${driverStatus.border}`,
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px'
+                                                        }}>
+                                                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: driverStatus.color }} />
+                                                            {driverStatus.label}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -671,10 +724,17 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
                                                 </div>
                                             ) : (
                                                 <div>
-                                                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b' }}>
-                                                        Idle Today — No Trip Assigned
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b' }}>
+                                                            Vehicle Idle
+                                                        </span>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>•</span>
+                                                        <span style={{ fontSize: '11.5px', fontWeight: 700, color: driverStatus.color }}>
+                                                            {driverStatus.label}
+                                                        </span>
                                                     </div>
-                                                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '1px' }}>
+                                                        {driverStatus.sub ? `${driverStatus.sub} · ` : ''}
                                                         {v.lastActivity ? `Last trip: ${dayLabel(v.lastActivity.date?.slice(0, 10))} to ${v.lastActivity.destination}` : 'Ready for assignment'}
                                                     </div>
                                                 </div>
