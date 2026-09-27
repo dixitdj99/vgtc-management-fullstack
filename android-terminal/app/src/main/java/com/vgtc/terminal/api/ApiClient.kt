@@ -31,6 +31,12 @@ class ApiClient(context: Context) {
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
+    private fun isBiometricPerson(profile: Profile): Boolean {
+        val values = listOf(profile.profileType, profile.role, profile.name)
+            .map { it.orEmpty().trim().lowercase(Locale.US) }
+        return values.none { it in setOf("tyre", "manual", "pump", "fuel", "fuel pump", "fuel station", "firm", "expense", "labour") || it.contains("fuel pump") || it.contains("fuel station") }
+    }
+
     companion object {
         // Static terminal token — accepted by the server as an admin-level kiosk identity.
         // Matches the TERMINAL_KEY env var (or the default) checked in middleware/auth.js.
@@ -121,7 +127,7 @@ class ApiClient(context: Context) {
                         val type = object : TypeToken<List<Profile>>() {}.type
                         val profiles: List<Profile> = gson.fromJson(body, type)
                         if (profiles.isNotEmpty()) {
-                            callback(Result.success(profiles))
+                            callback(Result.success(profiles.filter(::isBiometricPerson)))
                         } else {
                             fetchRoster(callback)
                         }
@@ -156,7 +162,7 @@ class ApiClient(context: Context) {
                         val combinedJson = gson.toJson(staffList + driversList)
                         val type = object : TypeToken<List<Profile>>() {}.type
                         val list: List<Profile> = gson.fromJson(combinedJson, type)
-                        callback(Result.success(list))
+                        callback(Result.success(list.filter(::isBiometricPerson)))
                     } catch (e: Exception) {
                         callback(Result.failure(Exception("Roster parse error: ${e.message}")))
                     }

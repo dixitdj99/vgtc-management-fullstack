@@ -27,6 +27,10 @@ const DUPLICATE_WINDOW_MS = 4 * 1000; // 4 seconds camera micro-burst debounce
 
 const clean = s => String(s || '').trim();
 const upper = s => clean(s).toUpperCase().replace(/\s+/g, '');
+const NON_PERSON_PROFILE_RE = /^(tyre|manual|pump|fuel|fuel pump|fuel station|firm|expense|labour)$/i;
+const isBiometricPerson = (p) => [p.type, p.profileType, p.department, p.category, p.name]
+    .map(clean)
+    .every(v => !NON_PERSON_PROFILE_RE.test(v) && !/fuel\s*(pump|station)/i.test(v));
 
 /**
  * Returns today's date as a YYYY-MM-DD string in Asia/Kolkata timezone.
@@ -138,7 +142,7 @@ const attendanceDecisionEngine = {
         const driverList = [];
         const staffList = [];
 
-        profiles.forEach(p => {
+        profiles.filter(isBiometricPerson).forEach(p => {
             const type = String(p.type || p.profileType || '').toLowerCase();
             const primaryPhoto = p.facePhoto || p.photo || p.photoUrl || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
             const isEnrolled = Boolean(primaryPhoto || p.faceEnrolled || (p.faceEmbedding && p.faceEmbedding.length > 0));

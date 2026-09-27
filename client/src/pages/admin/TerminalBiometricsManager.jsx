@@ -17,6 +17,10 @@ const getTodayIST = () => {
   return ist.toISOString().slice(0, 10);
 };
 
+const isBiometricPerson = (p) => [p?.type, p?.profileType, p?.department, p?.category, p?.name]
+  .map(v => String(v || '').trim().toLowerCase())
+  .every(v => !['tyre', 'manual', 'pump', 'fuel', 'fuel pump', 'fuel station', 'firm', 'expense', 'labour'].includes(v) && !/fuel\s*(pump|station)/i.test(v));
+
 const formatPunchTime = (value) => {
   if (!value) return 'Logged';
   if (typeof value === 'string' && /^\d{1,2}:\d{2}(:\d{2})?\s?(AM|PM)$/i.test(value.trim())) return value;
@@ -158,7 +162,7 @@ export default function TerminalBiometricsManager() {
   const fetchProfiles = async () => {
     try {
       const res = await ax.get('profiles');
-      setProfiles(Array.isArray(res.data) ? res.data : []);
+      setProfiles(Array.isArray(res.data) ? res.data.filter(isBiometricPerson) : []);
     } catch (err) {
       console.error('Failed to load profiles:', err);
     }

@@ -75,6 +75,12 @@ class EnrollActivity : AppCompatActivity() {
     // Active OTG callback
     private var onOtgSuccessCallback: (() -> Unit)? = null
 
+    private fun isBiometricPerson(profile: Profile): Boolean {
+        val values = listOf(profile.profileType, profile.role, profile.name)
+            .map { it.orEmpty().trim().lowercase(Locale.US) }
+        return values.none { it in setOf("tyre", "manual", "pump", "fuel", "fuel pump", "fuel station", "firm", "expense", "labour") || it.contains("fuel pump") || it.contains("fuel station") }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityEnrollBinding.inflate(layoutInflater)
@@ -208,7 +214,7 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun loadProfiles() {
-        val localList = prefs.getLocalProfiles()
+        val localList = prefs.getLocalProfiles().filter(::isBiometricPerson)
         allProfiles = localList.toMutableList()
         filteredProfiles = allProfiles.toMutableList()
         updateUiState()
@@ -219,7 +225,7 @@ class EnrollActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
                 result.onSuccess { serverList ->
                     if (serverList.isNotEmpty()) {
-                        val merged = serverList.toMutableList()
+                        val merged = serverList.filter(::isBiometricPerson).toMutableList()
                         for (local in localList) {
                             val serverIdx = merged.indexOfFirst { it.id == local.id }
                             if (serverIdx >= 0) {
