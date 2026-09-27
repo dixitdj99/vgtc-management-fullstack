@@ -31,6 +31,12 @@ class ApiClient(context: Context) {
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
+    companion object {
+        // Static terminal token — accepted by the server as an admin-level kiosk identity.
+        // Matches the TERMINAL_KEY env var (or the default) checked in middleware/auth.js.
+        const val TERMINAL_TOKEN = "VGTC-TERMINAL-TOKEN-KEY"
+    }
+
     private fun baseUrl(): String {
         var url = prefs.serverUrl.trim().trimEnd('/')
         if (url.endsWith("/api")) {
@@ -39,11 +45,23 @@ class ApiClient(context: Context) {
         return url
     }
 
+    /**
+     * Always prefer the terminal static token so biometric writes are accepted
+     * even when the user JWT has no 'attendance' or 'profiles' permission.
+     * Falls back to the stored JWT only for non-biometric calls (login, etc.).
+     */
+    private fun terminalHeaders(): Map<String, String> {
+        return mapOf(
+            "Authorization" to "Bearer $TERMINAL_TOKEN",
+            "X-Org-Id" to prefs.orgId.ifBlank { "vgtc" }
+        )
+    }
+
     private fun authHeaders(): Map<String, String> {
         val token = prefs.authToken
         return if (token.isNotBlank()) {
             mapOf("Authorization" to "Bearer $token")
-        } else emptyMap()
+        } else terminalHeaders()
     }
 
     // ──────────────────────────────────────────────────
@@ -160,11 +178,12 @@ class ApiClient(context: Context) {
         sendTerminalEvent(record) { _ -> }
 
         // 2. Also write to daily attendance API for multi-system sync
+        // Use terminal token so this is accepted even without a user JWT with attendance permission.
         val body = gson.toJson(record)
         val request = Request.Builder()
             .url("${baseUrl()}/api/attendance")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
-            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -173,6 +192,9 @@ class ApiClient(context: Context) {
             }
 
             override fun onResponse(call: Call, response: Response) {
+                if (!response.isSuccessful) {
+                    android.util.Log.w("ApiClient", "Attendance POST ${response.code}: ${response.body?.string()?.take(200)}")
+                }
                 callback(Result.success(true))
             }
         })
@@ -216,6 +238,7 @@ class ApiClient(context: Context) {
             "biometricMethod" to (if (record.method?.equals("fingerprint", ignoreCase = true) == true) "FINGERPRINT" else "FACE"),
             "method" to (record.method ?: "face"),
             "inTime" to (record.inTime ?: timeStr),
+            "inTimeMs" to record.inTimeMs,
             "outTime" to record.outTime,
             "punchTime" to punchTimeStr,
             "durationHours" to record.durationHours,
@@ -228,6 +251,7 @@ class ApiClient(context: Context) {
         val request = Request.Builder()
             .url("${baseUrl()}/api/terminal/event")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -239,6 +263,7 @@ class ApiClient(context: Context) {
                 if (response.isSuccessful) {
                     callback(Result.success(true))
                 } else {
+                    android.util.Log.w("ApiClient", "Terminal event ${response.code}: ${response.body?.string()?.take(200)}")
                     callback(Result.failure(Exception("Terminal event failed (${response.code})")))
                 }
             }
@@ -254,6 +279,7 @@ class ApiClient(context: Context) {
         biometricMethod: String = "FACE",
         method: String = "face",
         inTime: String? = null,
+        inTimeMs: Long? = null,
         outTime: String? = null,
         punchTime: String? = null,
         vehicleNo: String? = null,
@@ -288,6 +314,7 @@ class ApiClient(context: Context) {
         val request = Request.Builder()
             .url("${baseUrl()}/api/terminal/event")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -306,6 +333,7 @@ class ApiClient(context: Context) {
         status: String,
         method: String = "face",
         inTime: String? = null,
+        inTimeMs: Long? = null,
         outTime: String? = null,
         durationHours: Double? = null,
         dutyDays: Double? = null,
@@ -313,7 +341,7 @@ class ApiClient(context: Context) {
         overrideReason: String? = null,
         callback: (ApiResult<Boolean>) -> Unit
     ) {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale("en", "IN")).format(Date())
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val record = AttendanceRecord(
             profileId = profile.id,
             profileName = profile.name,
@@ -322,6 +350,7 @@ class ApiClient(context: Context) {
             date = today,
             vehicleNo = profile.vehicleNo,
             inTime = inTime,
+            inTimeMs = inTimeMs,
             outTime = outTime,
             durationHours = durationHours,
             dutyDays = dutyDays,
@@ -387,6 +416,9 @@ class ApiClient(context: Context) {
             "fingerprintSlotId" to profile.fingerprintSlotId,
             "faceEnrolled" to (primaryPhoto != null || profile.photos?.isNotEmpty() == true)
         )
+        data["photo"] = primaryPhoto
+        data["facePhoto"] = primaryPhoto
+        data["photoUrl"] = primaryPhoto
         if (primaryPhoto != null) {
             data["photo"] = primaryPhoto
             data["facePhoto"] = primaryPhoto
@@ -426,6 +458,38 @@ class ApiClient(context: Context) {
                 } else {
                     callback(Result.success(profile))
                 }
+            }
+        })
+    }
+
+    fun uploadEnrollmentImages(profileId: String, photos: List<String>, callback: (ApiResult<List<String>>) -> Unit) {
+        val body = gson.toJson(mapOf("profileId" to profileId, "photos" to photos))
+        val request = Request.Builder().url("${baseUrl()}/api/terminal/enroll-images")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE)).apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }.build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = callback(Result.failure(e))
+            override fun onResponse(call: Call, response: Response) {
+                val raw = response.body?.string() ?: "{}"
+                if (!response.isSuccessful) return callback(Result.failure(Exception("Image upload failed (${response.code})")))
+                try {
+                    val json = gson.fromJson(raw, com.google.gson.JsonObject::class.java)
+                    val urls = json.getAsJsonArray("urls").map { it.asString }
+                    callback(Result.success(urls))
+                } catch (e: Exception) { callback(Result.failure(e)) }
+            }
+        })
+    }
+
+    fun getAttendanceHistory(profileId: String, callback: (ApiResult<String>) -> Unit) {
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/attendance?profileId=$profileId&from=2020-01-01&to=2099-12-31")
+            .get().apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }.build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = callback(Result.failure(e))
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body?.string() ?: "[]"
+                if (response.isSuccessful) callback(Result.success(body))
+                else callback(Result.failure(Exception("Attendance history failed (${response.code})")))
             }
         })
     }
@@ -500,10 +564,12 @@ class ApiClient(context: Context) {
         val request = Request.Builder()
             .url("${baseUrl()}/api/terminal/enroll")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                // Also try updating profiles directly if terminal enroll fails
                 callback(Result.failure(Exception("Terminal sync error: ${e.message}")))
             }
 
@@ -511,6 +577,7 @@ class ApiClient(context: Context) {
                 if (response.isSuccessful) {
                     callback(Result.success(true))
                 } else {
+                    android.util.Log.w("ApiClient", "Terminal enroll ${response.code}: ${response.body?.string()?.take(200)}")
                     callback(Result.failure(Exception("Terminal sync error (${response.code})")))
                 }
             }

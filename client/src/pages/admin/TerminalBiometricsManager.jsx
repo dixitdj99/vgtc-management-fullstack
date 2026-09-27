@@ -17,6 +17,13 @@ const getTodayIST = () => {
   return ist.toISOString().slice(0, 10);
 };
 
+const formatPunchTime = (value) => {
+  if (!value) return 'Logged';
+  if (typeof value === 'string' && /^\d{1,2}:\d{2}(:\d{2})?\s?(AM|PM)$/i.test(value.trim())) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+};
+
 export default function TerminalBiometricsManager() {
   // Tabs: 'presence' | 'logs' | 'enrolled'
   const [activeTab, setActiveTab] = useState('presence');
@@ -1397,18 +1404,7 @@ export default function TerminalBiometricsManager() {
                     log.status === 'half_day' ? '#f59e0b' : '#ef4444';
 
                   const rawTime = log.punchTime || log.terminalTime || log.inTime || log.markedAt || log.createdAt || (log.updatedAt?.seconds ? log.updatedAt.seconds * 1000 : log.updatedAt);
-                  let punchTime = 'Logged';
-                  if (rawTime) {
-                    if (typeof rawTime === 'string' && (rawTime.includes(':') && (rawTime.includes('AM') || rawTime.includes('PM') || rawTime.includes('am') || rawTime.includes('pm')))) {
-                      punchTime = rawTime;
-                    } else {
-                      try {
-                        punchTime = new Date(rawTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-                      } catch (_) {
-                        punchTime = String(rawTime);
-                      }
-                    }
-                  }
+                  const punchTime = formatPunchTime(rawTime);
 
                   const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_');
 
@@ -1468,6 +1464,9 @@ export default function TerminalBiometricsManager() {
                               </div>
                             )}
                           </div>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#0d9488', fontWeight: 700, marginTop: 3 }}>
+                          📍 {log.location || (isDriver ? 'Yard' : 'Office')}
                         </div>
                       </td>
 

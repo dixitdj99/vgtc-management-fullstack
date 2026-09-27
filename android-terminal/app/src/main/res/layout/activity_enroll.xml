@@ -127,7 +127,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Tap the 'Enroll Employee' button below to add and enroll face or fingerprint."
+            android:text="Profiles are managed in the VGTC Portal. Select a profile to enroll or remove face and fingerprint biometrics."
             android:textSize="13sp"
             android:textColor="@color/text_secondary"
             android:gravity="center"

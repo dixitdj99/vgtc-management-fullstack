@@ -6,6 +6,9 @@
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="12dp"
     android:layout_marginVertical="6dp"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
     app:cardCornerRadius="12dp"
     app:cardElevation="2dp"
     app:cardBackgroundColor="@color/surface_card">
@@ -16,6 +19,7 @@
         android:orientation="vertical"
         android:padding="14dp">
 
+        <!-- Top row: photo + info -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -45,27 +49,28 @@
                     android:textStyle="bold"
                     android:textColor="@color/text_primary" />
 
+                <!-- Type + location + truck -->
                 <TextView
                     android:id="@+id/tvType"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Staff"
+                    android:text="Staff • Office"
                     android:textSize="13sp"
                     android:textColor="@color/text_secondary"
                     android:layout_marginTop="2dp" />
 
-                <!-- Badges for enrolled status -->
+                <!-- Badges row -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginTop="4dp">
+                    android:layout_marginTop="5dp">
 
                     <TextView
                         android:id="@+id/badgeFace"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Face ✓"
+                        android:text="Face AI &#x2713;"
                         android:textSize="11sp"
                         android:textStyle="bold"
                         android:textColor="@color/green_online"
@@ -73,26 +78,28 @@
                         android:backgroundTint="#E8F5E9"
                         android:paddingHorizontal="8dp"
                         android:paddingVertical="2dp"
-                        android:layout_marginEnd="6dp" />
+                        android:layout_marginEnd="6dp"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/badgeFingerprint"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Fingerprint ✓"
+                        android:text="Fingerprint &#x2713;"
                         android:textSize="11sp"
                         android:textStyle="bold"
                         android:textColor="@color/green_online"
                         android:background="@drawable/chip_rounded"
                         android:backgroundTint="#E8F5E9"
                         android:paddingHorizontal="8dp"
-                        android:paddingVertical="2dp" />
+                        android:paddingVertical="2dp"
+                        android:layout_marginEnd="6dp"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/badgeVehicle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🚛 HR55AB1234"
                         android:textSize="11sp"
                         android:textStyle="bold"
                         android:textColor="@color/primary"
@@ -100,30 +107,21 @@
                         android:backgroundTint="#EDE7F6"
                         android:paddingHorizontal="8dp"
                         android:paddingVertical="2dp"
-                        android:layout_marginStart="6dp"
                         android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Edit Button -->
-            <ImageButton
-                android:id="@+id/btnEdit"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:src="@drawable/ic_edit"
-                android:tint="@color/primary"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Edit" />
-
-            <!-- Delete Button -->
-            <ImageButton
-                android:id="@+id/btnDelete"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:src="@drawable/ic_delete"
-                android:tint="#EF4444"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Delete" />
+            <!-- View attendance history button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnViewAttendance"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="History"
+                android:textSize="11sp"
+                app:icon="@drawable/ic_history"
+                app:iconSize="16dp"
+                app:cornerRadius="8dp" />
         </LinearLayout>
 
         <View
@@ -132,7 +130,38 @@
             android:background="@color/divider"
             android:layout_marginVertical="10dp" />
 
-        <!-- Action buttons: Re-enroll Face & Fingerprint -->
+        <!-- Face row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginBottom="6dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClearFace"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="Clear Face"
+                android:textSize="11sp"
+                app:cornerRadius="8dp"
+                android:layout_marginEnd="8dp"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEnrollFace"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="Enroll Face"
+                android:textSize="11sp"
+                app:icon="@drawable/ic_face_scan"
+                app:iconSize="16dp"
+                app:cornerRadius="8dp" />
+        </LinearLayout>
+
+        <!-- Fingerprint row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -140,28 +169,28 @@
             android:gravity="end">
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnEnrollFace"
+                android:id="@+id/btnClearFingerprint"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Face Scan"
-                android:textSize="12sp"
-                app:icon="@drawable/ic_face_scan"
-                app:iconSize="18dp"
+                android:layout_height="38dp"
+                android:text="Clear FP"
+                android:textSize="11sp"
                 app:cornerRadius="8dp"
-                android:layout_marginEnd="8dp" />
+                android:layout_marginEnd="8dp"
+                android:visibility="gone" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnEnrollFingerprint"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:text="Fingerprint"
-                android:textSize="12sp"
+                android:layout_height="38dp"
+                android:text="Record FP"
+                android:textSize="11sp"
                 app:icon="@drawable/ic_fingerprint"
-                app:iconSize="18dp"
+                app:iconSize="16dp"
                 app:cornerRadius="8dp"
                 app:backgroundTint="@color/primary"
                 android:textColor="@color/white" />
         </LinearLayout>
+
     </LinearLayout>
 </androidx.cardview.widget.CardView>

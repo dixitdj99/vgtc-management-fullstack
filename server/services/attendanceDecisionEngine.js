@@ -27,7 +27,69 @@ const DUPLICATE_WINDOW_MS = 4 * 1000; // 4 seconds camera micro-burst debounce
 
 const clean = s => String(s || '').trim();
 const upper = s => clean(s).toUpperCase().replace(/\s+/g, '');
-const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+/**
+ * Returns today's date as a YYYY-MM-DD string in Asia/Kolkata timezone.
+ * Always produces a valid ISO date — never 'Invalid Date'.
+ */
+const todayStr = () => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(new Date()).reduce((m, p) => (m[p.type] = p.value, m), {});
+    return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+/**
+ * Converts a timestamp (ms) to YYYY-MM-DD in IST.
+ * Guarantees a valid string — falls back to todayStr() if conversion fails.
+ */
+const msToDateStr = (ms) => {
+    try {
+        const d = new Date(ms);
+        if (isNaN(d.getTime())) return todayStr();
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(d).reduce((m, p) => (m[p.type] = p.value, m), {});
+        return `${parts.year}-${parts.month}-${parts.day}`;
+    } catch (_) { return todayStr(); }
+};
+
+/**
+ * Salary day counter — only counts hours between 06:00 and 22:00 IST per
+ * calendar date. Overnight hours (22:00–06:00) are excluded from pay.
+ *
+ * @param {number} inMs   Punch-in timestamp (ms)
+ * @param {number} outMs  Punch-out timestamp (ms)
+ * @returns {number}      Salary days (0.0 / 0.5 / 1.0)
+ */
+const calcSalaryDays = (inMs, outMs) => {
+    if (!inMs || !outMs || outMs <= inMs) return 0.0;
+    const DAY_START_H = 6;  // 06:00 IST
+    const DAY_END_H   = 22; // 22:00 IST
+
+    let totalBillableMs = 0;
+    // Iterate over each calendar date spanned by [inMs, outMs]
+    let cursor = inMs;
+    while (cursor < outMs) {
+        const dateStr = msToDateStr(cursor);
+        // Build day window boundaries for that calendar date in IST
+        const dayStartMs = new Date(`${dateStr}T0${DAY_START_H}:00:00+05:30`).getTime();
+        const dayEndMs   = new Date(`${dateStr}T${DAY_END_H}:00:00+05:30`).getTime();
+        const windowStart = Math.max(cursor, dayStartMs);
+        const windowEnd   = Math.min(outMs, dayEndMs);
+        if (windowEnd > windowStart) {
+            totalBillableMs += (windowEnd - windowStart);
+        }
+        // Advance to start of next calendar day (midnight IST)
+        const nextDay = new Date(`${dateStr}T00:00:00+05:30`);
+        nextDay.setDate(nextDay.getDate() + 1);
+        cursor = nextDay.getTime();
+    }
+    const totalBillableHours = totalBillableMs / (1000 * 3600);
+    if (totalBillableHours >= 8) return 1.0;
+    if (totalBillableHours >= 4) return 0.5;
+    return 0.0;
+};
 
 async function getDocs(colName) {
     if (isAvailable() && db) {
@@ -204,7 +266,7 @@ const attendanceDecisionEngine = {
 
         const now = timestamp ? new Date(timestamp) : new Date();
         const nowMs = now.getTime();
-        const date = todayStr();
+        const date = msToDateStr(nowMs);
         const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
         // Resolve action
@@ -381,14 +443,18 @@ const attendanceDecisionEngine = {
 
         // 4. Insert dedicated punch log into `attendance` collection so the "Punch Logs" table shows EVERY punch
         const punchDocId = `punch_${date}_${person.id}_${nowMs}_${eventType.toLowerCase()}`;
+        const isDriverRecord = !!driver;
+        const locationLabel = isDriverRecord ? 'Yard' : 'Office';
+
         const punchRecord = {
             id: punchDocId,
-            date,
+            date,  // guaranteed YYYY-MM-DD
             profileId: person.id,
             profileName: person.name,
             profileType: isDriver ? 'Driver' : (person.department || 'Staff'),
             vehicleNo: person.vehicleNo || person.assignedTruck || body.vehicleNo || null,
             status: recordStatus,
+            location: locationLabel,
             source: 'terminal',
             terminalId,
             terminalEvent: eventType,
@@ -400,7 +466,14 @@ const attendanceDecisionEngine = {
             inTime: body.inTime || (eventType === 'CHECK_IN' ? timeStr : null),
             outTime: body.outTime || ((eventType === 'CHECK_OUT' || eventType === 'EMERGENCY_EXIT') ? timeStr : null),
             durationHours: body.durationHours != null ? Number(body.durationHours) : null,
-            dutyDays: body.dutyDays != null ? Number(body.dutyDays) : (recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0)),
+            // Salary days count only 6AM-10PM hours
+            dutyDays: (() => {
+                if (body.dutyDays != null) return Number(body.dutyDays);
+                if (eventType === 'CHECK_OUT' && body.inTimeMs && nowMs) {
+                    return calcSalaryDays(Number(body.inTimeMs), nowMs);
+                }
+                return recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0);
+            })(),
             overrideReason: body.overrideReason || null,
             note: notes || body.overrideReason || (eventType === 'EMERGENCY_EXIT' ? 'Emergency Early Departure' : eventType === 'GATE_PASS' ? 'Gate Pass / Active Duty' : ''),
             markedAt: now.toISOString(),
@@ -411,7 +484,7 @@ const attendanceDecisionEngine = {
         };
         await insertDoc(ATTENDANCE_COL, punchRecord);
 
-        // 5. Update daily summary attendance record so roll-call roster reflects consolidated status
+        // 5. Update daily summary attendance record
         let summaryDoc = null;
         try {
             const summaryDocId = `${person.id}_${date}`;
@@ -421,15 +494,29 @@ const attendanceDecisionEngine = {
             const firstIn = existingSummary?.inTime || body.inTime || (eventType === 'CHECK_IN' ? timeStr : null);
             const lastOut = ((eventType === 'CHECK_OUT' || eventType === 'EMERGENCY_EXIT') ? (body.outTime || timeStr) : existingSummary?.outTime) || null;
 
+            // Salary-day recalculation: only bill 6AM-10PM hours
+            const salaryDays = (() => {
+                if (body.dutyDays != null) return Number(body.dutyDays);
+                if (eventType === 'CHECK_OUT' && body.inTimeMs && nowMs) {
+                    return calcSalaryDays(Number(body.inTimeMs), nowMs);
+                }
+                return existingSummary?.dutyDays != null ? existingSummary.dutyDays
+                    : (recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0));
+            })();
+
+            // Location label for portal display
+            const locationLabel = isDriver ? 'Yard' : 'Office';
+
             summaryDoc = {
                 ...(existingSummary || {}),
                 id: summaryDocId,
-                date,
+                date,  // always YYYY-MM-DD
                 profileId: person.id,
                 profileName: person.name,
                 profileType: isDriver ? 'Driver' : (person.department || 'Staff'),
                 vehicleNo: person.vehicleNo || person.assignedTruck || body.vehicleNo || existingSummary?.vehicleNo || null,
                 status: (eventType === 'EMERGENCY_EXIT') ? recordStatus : (eventType === 'CHECK_OUT' ? (body.status || 'present') : (existingSummary?.status || recordStatus)),
+                location: locationLabel,
                 dutyState,
                 source: 'terminal',
                 terminalId,
@@ -439,7 +526,7 @@ const attendanceDecisionEngine = {
                 inTime: firstIn,
                 outTime: lastOut,
                 durationHours: body.durationHours != null ? Number(body.durationHours) : existingSummary?.durationHours || null,
-                dutyDays: body.dutyDays != null ? Number(body.dutyDays) : (existingSummary?.dutyDays != null ? existingSummary.dutyDays : (recordStatus === 'present' ? 1.0 : (recordStatus === 'half_day' ? 0.5 : 0.0))),
+                dutyDays: salaryDays,
                 overrideReason: body.overrideReason || existingSummary?.overrideReason || null,
                 markedAt: now.toISOString(),
                 createdAt: existingSummary?.createdAt || now.toISOString(),

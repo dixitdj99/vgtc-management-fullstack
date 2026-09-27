@@ -33,6 +33,8 @@ import com.vgtc.terminal.util.Prefs
 import com.vgtc.terminal.util.R307FingerprintDriver
 import com.vgtc.terminal.util.RealFaceRecognitionEngine
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
@@ -115,14 +117,15 @@ class EnrollActivity : AppCompatActivity() {
         adapter = EnrollListAdapter(
             profiles = filteredProfiles,
             prefs = prefs,
-            onEdit = { profile -> showAddEditDialog(profile) },
-            onDelete = { profile -> confirmDeleteProfile(profile) },
             onEnrollFace = { profile ->
                 startFaceEnrollment(profile) { photos, emb ->
                     saveFacePhotosToProfile(profile, photos, emb)
                 }
             },
-            onEnrollFingerprint = { profile -> startFingerprintEnrollment(profile) }
+            onEnrollFingerprint = { profile -> startFingerprintEnrollment(profile) },
+            onClearFace = { profile -> clearFaceEnrollment(profile) },
+            onClearFingerprint = { profile -> clearFingerprintEnrollment(profile) },
+            onViewAttendance = { profile -> showAttendanceHistory(profile) }
         )
         binding.rvEnrollEmployees.layoutManager = LinearLayoutManager(this)
         binding.rvEnrollEmployees.adapter = adapter
@@ -149,8 +152,58 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun setupFabAdd() {
-        binding.fabAddEmployee.setOnClickListener {
-            showAddEditDialog(null)
+        // Profiles are created and deleted only in the VGTC Portal.
+        binding.fabAddEmployee.visibility = View.GONE
+    }
+
+    private fun clearFaceEnrollment(profile: Profile) {
+        MaterialAlertDialogBuilder(this).setTitle("Delete enrolled face?")
+            .setMessage("This removes only the face biometric. The staff/driver profile stays in the portal.")
+            .setPositiveButton("Delete face") { _, _ ->
+                val cleared = profile.copy(photo = null, photos = emptyList(), faceEmbedding = null)
+                prefs.addOrUpdateLocalProfile(cleared)
+                apiClient.updateProfile(cleared) { }
+                replaceProfile(cleared)
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun clearFingerprintEnrollment(profile: Profile) {
+        MaterialAlertDialogBuilder(this).setTitle("Delete recorded fingerprint?")
+            .setMessage("This removes only the fingerprint enrollment. The staff/driver profile stays in the portal.")
+            .setPositiveButton("Delete fingerprint") { _, _ ->
+                profile.fingerprintSlotId?.let { slot -> r307Driver.deleteFingerprint(slot) { } }
+                val cleared = profile.copy(fingerprintEnrolled = false, fingerprintSlotId = null)
+                prefs.addOrUpdateLocalProfile(cleared)
+                if (prefs.enrolledFingerprintProfileId == profile.id) prefs.enrolledFingerprintProfileId = ""
+                apiClient.updateProfile(cleared) { }
+                replaceProfile(cleared)
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun replaceProfile(updated: Profile) {
+        val idx = allProfiles.indexOfFirst { it.id == updated.id }
+        if (idx >= 0) allProfiles[idx] = updated
+        filteredProfiles = allProfiles.toMutableList(); updateUiState()
+    }
+
+    private fun showAttendanceHistory(profile: Profile) {
+        apiClient.getAttendanceHistory(profile.id) { result ->
+            runOnUiThread {
+                val message = result.getOrElse { "Unable to load attendance history" }.let { body ->
+                    try {
+                        val rows = com.google.gson.Gson().fromJson(body, Array<com.google.gson.JsonObject>::class.java)
+                        rows.take(30).joinToString("\n") { r ->
+                            val date = r.get("date")?.asString ?: "—"
+                            val status = r.get("status")?.asString ?: "—"
+                            val location = r.get("location")?.asString ?: if (profile.profileType.equals("Driver", true)) "Yard" else "Office"
+                            val inTime = r.get("inTime")?.asString ?: r.get("punchTime")?.asString ?: "—"
+                            "$date  $status  $location  $inTime"
+                        }.ifBlank { "No attendance records found" }
+                    } catch (_: Exception) { "Attendance records unavailable" }
+                }
+                MaterialAlertDialogBuilder(this).setTitle("Attendance — ${profile.name}")
+                    .setMessage(message).setPositiveButton("Close", null).show()
+            }
         }
     }
 
@@ -574,6 +627,7 @@ class EnrollActivity : AppCompatActivity() {
                 imageProxy.close()
 
                 if (bitmap != null) {
+                    saveEnrollmentPhotoToPhone(bitmap, currentCaptureStep)
                     val base64DataUri = bitmapToBase64DataUri(bitmap)
 
                     // Extract AI Embedding from captured photo
@@ -668,24 +722,27 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun saveFacePhotosToProfile(profile: Profile, photos: List<String>, embedding: List<Float>?) {
-        val primaryPhoto = photos.firstOrNull()
-        val updated = profile.copy(
-            photo = primaryPhoto,
-            photos = photos,
-            faceEmbedding = embedding ?: profile.faceEmbedding
-        )
-        prefs.addOrUpdateLocalProfile(updated)
-
-        if (primaryPhoto != null) {
-            apiClient.updateProfilePhoto(profile.id, primaryPhoto) { _ -> }
+        apiClient.uploadEnrollmentImages(profile.id, photos) { uploadResult ->
+            val webPhotos = uploadResult.getOrElse { photos }
+            val primaryPhoto = webPhotos.firstOrNull()
+            val updated = profile.copy(photo = primaryPhoto, photos = webPhotos, faceEmbedding = embedding ?: profile.faceEmbedding)
+            prefs.addOrUpdateLocalProfile(updated)
+            apiClient.updateProfile(updated) { _ -> }
+            runOnUiThread {
+                replaceProfile(updated)
+                Toast.makeText(this, "✓ Face images saved on phone and uploaded to portal", Toast.LENGTH_SHORT).show()
+            }
         }
-        apiClient.updateProfile(updated) { _ -> }
 
-        val idx = allProfiles.indexOfFirst { it.id == profile.id }
-        if (idx >= 0) allProfiles[idx] = updated
-        filteredProfiles = allProfiles.toMutableList()
-        updateUiState()
-        Toast.makeText(this, "✓ 5 face angles & AI embeddings enrolled for ${profile.name}!", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveEnrollmentPhotoToPhone(bitmap: Bitmap, step: Int) {
+        try {
+            val dir = File(filesDir, "enrolled_faces").apply { mkdirs() }
+            FileOutputStream(File(dir, "${activeEnrollProfile?.id ?: "unknown"}-$step.jpg")).use {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it)
+            }
+        } catch (_: Exception) { /* portal upload remains the source of truth */ }
     }
 
     private fun imageProxyToBitmap(image: ImageProxy): Bitmap? {

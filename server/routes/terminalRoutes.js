@@ -7,6 +7,9 @@ const router = express.Router();
 const attendanceDecisionEngine = require('../services/attendanceDecisionEngine');
 const localStore = require('../utils/localStore');
 const { db, isAvailable } = require('../firebase');
+const { admin } = require('../firebase');
+const fs = require('fs');
+const path = require('path');
 
 // Active terminals in-memory / storage registry
 let terminalRegistry = {
@@ -91,6 +94,43 @@ router.post('/enroll', async (req, res) => {
         res.json({ success: true, person: result });
     } catch (err) {
         console.error('[TerminalRoutes] Enroll failed:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Store enrollment photos as real web URLs for the portal. Firebase Storage is
+// preferred in production; the local public folder keeps beta/offline installs
+// usable without turning a phone file:// URI into a broken portal image.
+router.post('/enroll-images', async (req, res) => {
+    try {
+        const profileId = String(req.body.profileId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        const photos = Array.isArray(req.body.photos) ? req.body.photos : [];
+        if (!profileId || !photos.length) return res.status(400).json({ error: 'profileId and photos are required' });
+        const urls = [];
+        for (let i = 0; i < photos.length; i++) {
+            const match = String(photos[i]).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+            if (!match) continue;
+            const mime = match[1];
+            const ext = mime.split('/')[1].replace('jpeg', 'jpg');
+            const filename = `enroll-${profileId}-${i + 1}-${Date.now()}.${ext}`;
+            const buffer = Buffer.from(match[2], 'base64');
+            if (isAvailable() && admin?.storage) {
+                const bucket = admin.storage().bucket();
+                const file = bucket.file(`enrollment/${filename}`);
+                await file.save(buffer, { metadata: { contentType: mime, cacheControl: 'public,max-age=31536000' } });
+                await file.makePublic();
+                urls.push(`https://storage.googleapis.com/${bucket.name}/${encodeURIComponent(`enrollment/${filename}`)}`);
+            } else {
+                const dir = path.join(__dirname, '..', '..', 'client', 'dist', 'uploads', 'enrollment');
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(path.join(dir, filename), buffer);
+                urls.push(`/uploads/enrollment/${filename}`);
+            }
+        }
+        if (!urls.length) return res.status(400).json({ error: 'No valid image data found' });
+        res.json({ success: true, urls });
+    } catch (err) {
+        console.error('[TerminalRoutes] Enrollment image upload failed:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });

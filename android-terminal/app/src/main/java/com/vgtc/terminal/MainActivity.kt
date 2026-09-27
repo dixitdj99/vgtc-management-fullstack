@@ -211,6 +211,8 @@ class MainActivity : AppCompatActivity() {
         binding.layoutScreensaver.alpha = 0f
         binding.layoutScreensaver.visibility = View.VISIBLE
         binding.layoutScreensaver.animate().alpha(1f).setDuration(400).start()
+        // Stop camera when screensaver is active to save battery and prevent false scans
+        stopCamera()
     }
 
     private fun hideScreensaver() {
@@ -221,6 +223,17 @@ class MainActivity : AppCompatActivity() {
         }.start()
         screensaverHandler?.removeCallbacks(screensaverRunnable ?: return)
         screensaverHandler?.postDelayed(screensaverRunnable!!, SCREENSAVER_TIMEOUT_MS)
+        // Restart camera when user wakes the screen
+        if (!scanPaused) startCameraPreview()
+    }
+
+    private fun stopCamera() {
+        try {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+            cameraProviderFuture.addListener({
+                try { cameraProviderFuture.get().unbindAll() } catch (_: Exception) {}
+            }, ContextCompat.getMainExecutor(this))
+        } catch (_: Exception) {}
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
@@ -691,7 +704,7 @@ class MainActivity : AppCompatActivity() {
         // Case B: Currently on duty (dutyState == "IN_DUTY")
         val elapsedMs = now - currentDuty.inTimeMs
         val elapsedHours = elapsedMs / (1000.0 * 60 * 60)
-        val minHoursRequired = 8.0
+        val minHoursRequired = 4.0  // 4 hours minimum to punch out
 
         if (isDriver) {
             // For Drivers: Multi-day Tour Lifecycle.
@@ -709,27 +722,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (elapsedHours < minHoursRequired) {
-            // Cannot mark completed yet - minimum 8 hours required for staff!
+            // Cannot mark completed yet - minimum 4 hours required for staff
             lastPunchedProfileId = profile.id
             lastPunchTime = now
 
-            // Record Gate Pass / Active Shift In-Progress scan to server & Punch Logs
-            val timeFormatted = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN")).format(Date(now))
-            apiClient.sendTerminalEventDirect(
-                profileId = profile.id,
-                profileName = profile.name,
-                status = "present",
-                action = "GATE_PASS",
-                dutyState = "IN_DUTY",
-                biometricMethod = if (method == "fingerprint") "FINGERPRINT" else "FACE",
-                method = method,
-                inTime = currentDuty.inTimeFormatted,
-                punchTime = timeFormatted,
-                vehicleNo = profile.vehicleNo ?: currentDuty.vehicleNo,
-                dutyDays = 1.0,
-                notes = "Gate Visit / Active Shift In-Progress"
-            )
-
+            // A face/fingerprint re-scan while on duty is only a local status
+            // check. Do not create another PRESENT punch-log row.
             showActiveDutyInProgressCard(profile, currentDuty, elapsedMs, minHoursRequired)
         } else {
             // 8+ hours elapsed! Complete shift (Punch-Out)
@@ -794,6 +792,7 @@ class MainActivity : AppCompatActivity() {
             status = "present",
             method = method,
             inTime = inTimeFormatted,
+            inTimeMs = now,
             dutyDays = 0.0,
             dutyState = "in_duty"
         ) { _ -> }
@@ -831,9 +830,10 @@ class MainActivity : AppCompatActivity() {
             status = "present",
             method = method,
             inTime = currentDuty.inTimeFormatted,
+            inTimeMs = currentDuty.inTimeMs,
             outTime = outTimeFormatted,
             durationHours = durationRounded,
-            dutyDays = 1.0,
+            dutyDays = null,
             dutyState = "completed"
         ) { _ -> }
 
@@ -869,7 +869,7 @@ class MainActivity : AppCompatActivity() {
             android.content.res.ColorStateList.valueOf(getColor(R.color.green_online))
 
         binding.tvSuccessName.text = profile.name
-        binding.tvSuccessType.text = profile.profileType ?: "Staff"
+        binding.tvSuccessType.text = if (isDriver) "Driver • Yard" else ((profile.profileType ?: "Staff") + " • Office")
         binding.tvSuccessPunchTime.text = " • In: $inTimeFormatted"
         binding.tvSuccessMethod.text = if (method == "fingerprint") {
             if (isHi) "माध्यम: फिंगरप्रिंट सेंसर ✓" else "Method: R307 Optical Fingerprint ✓"
@@ -886,14 +886,18 @@ class MainActivity : AppCompatActivity() {
 
         binding.layoutSuccessStatusChip.backgroundTintList =
             android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#E8F5E9"))
-        binding.tvSuccessStatus.text = if (isHi) "✓ हाजिर (ON DUTY)" else "⚡ ON DUTY"
+        binding.tvSuccessStatus.text = if (isDriver) {
+            if (isHi) "✓ यार्ड में हाजिर" else "⚡ PRESENT IN YARD"
+        } else {
+            if (isHi) "✓ दफ्तर में हाजिर" else "⚡ PRESENT IN OFFICE"
+        }
         binding.tvSuccessStatus.setTextColor(getColor(R.color.green_online))
 
         binding.tvSuccessDuration.visibility = View.VISIBLE
         binding.tvSuccessDuration.text = if (isDriver) {
             if (isHi) "ड्यूटी चालू • वापसी तक प्रतिदिन उपस्थिति दर्ज" else "Duty tour active • Auto-present on all tour days"
         } else {
-            if (isHi) "ड्यूटी शुरू हुई • न्यूनतम 8 घंटे आवश्यक" else "Shift started • Min. 8 hours required to mark present"
+            if (isHi) "ड्यूटी शुरू हुई • न्यूनतम 4 घंटे आवश्यक" else "Shift started • Min. 4 hours required to punch out"
         }
         binding.tvSuccessDuration.setTextColor(getColor(R.color.text_secondary))
 
@@ -953,7 +957,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvSuccessDuration.visibility = View.VISIBLE
         binding.tvSuccessDuration.text =
-            "Elapsed: ${elapsedH}h ${elapsedM}m  |  Remaining: ${remH}h ${remM}m\n(Min. 8 hrs required to punch out)"
+            "Elapsed: ${elapsedH}h ${elapsedM}m  |  Remaining: ${remH}h ${remM}m\n(Min. 4 hrs required to punch out)"
         binding.tvSuccessDuration.setTextColor(getColor(R.color.primary))
 
         binding.btnEmergencyCheckout.visibility = View.VISIBLE
@@ -1353,10 +1357,17 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumeScanning()
-        startCameraPreview()
+        if (!isScreensaverActive) startCameraPreview()
         loadProfiles()
         resetScreensaverTimer()
         setupR307Driver()
+    }
+
+    override fun onPause() {
+        // Never leave the camera bound while the terminal is covered by
+        // another activity or the app is in the background.
+        stopCamera()
+        super.onPause()
     }
 
     override fun onDestroy() {

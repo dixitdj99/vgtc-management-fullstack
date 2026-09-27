@@ -23,6 +23,7 @@ data class AttendanceRecord(
     val date: String,
     val vehicleNo: String? = null,
     val inTime: String? = null,
+    val inTimeMs: Long? = null,
     val outTime: String? = null,
     val durationHours: Double? = null,
     val dutyDays: Double? = null,

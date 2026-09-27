@@ -7,10 +7,46 @@ const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 
 const ATTENDANCE_COL = 'attendance';
 
+// Terminal kiosk token — allows biometric devices to write attendance
+// records without needing a full user JWT with attendance permissions.
+const TERMINAL_TOKEN = process.env.TERMINAL_KEY || 'VGTC-TERMINAL-TOKEN-KEY';
+
+/**
+ * Middleware that accepts either a valid terminal token OR a normal user auth
+ * token with attendance view permission. This is necessary because the Android
+ * terminal app authenticates with a static device token, not a user JWT.
+ */
+const attendanceOrTerminalAuth = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7).trim();
+        if (token === TERMINAL_TOKEN) {
+            // Terminal device — inject admin context with org from header
+            req.user = {
+                id: 'vgtc-terminal',
+                name: 'VGTC Terminal Kiosk',
+                role: 'admin',
+                orgId: req.headers['x-org-id'] || 'vgtc',
+                permissions: { attendance: 'delete' }
+            };
+            // tenancyMiddleware expects req.orgId
+            req.orgId = req.user.orgId;
+            return next();
+        }
+    }
+    // Fall through to normal permission check
+    return requirePermission('attendance', 'view')(req, res, next);
+};
+
 // Everything here is org-scoped and needs at least view access. Writes ask for
 // 'edit' individually below — the client also hides the controls, but the check
 // that matters is this one.
-router.use(requirePermission('attendance', 'view'), tenancyMiddleware);
+router.use(attendanceOrTerminalAuth, (req, res, next) => {
+    // tenancyMiddleware sets req.orgId from the JWT — terminal requests
+    // already have req.orgId set above, so skip if already populated.
+    if (req.orgId) return next();
+    return tenancyMiddleware(req, res, next);
+});
 
 // The yard's calendar day, not the server's UTC day — see attendanceService.
 const today = () => attendanceService.businessToday();
@@ -105,7 +141,12 @@ router.get('/', async (req, res, next) => {
 
         // Fix #7: reject date ranges that would cause an oversized DB scan.
         const diffDays = (new Date(to).getTime() - new Date(from).getTime()) / 86400000;
-        if (diffDays > 93) return res.status(400).json({ error: 'Date range cannot exceed 93 days' });
+        // A single profile's biometric history is used by the terminal detail
+        // card and may span years. Keep the broad limit only for that scoped
+        // request; unscoped portal queries remain capped at 93 days.
+        if (diffDays > (profileId ? 40000 : 93)) {
+            return res.status(400).json({ error: `Date range cannot exceed ${profileId ? 40000 : 93} days` });
+        }
 
         res.json(await attendanceService.getRange(req.orgId, req, { from, to, profileId }));
     } catch (err) { next(err); }

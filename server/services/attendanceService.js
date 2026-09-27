@@ -557,7 +557,18 @@ const getMonthlySummary = async (orgId, req, month) => {
     ]);
 
     const rows = profiles.map(p => {
-        const recs = monthRecs.filter(r => r.profileId === p.id);
+        // Terminal writes a punch log for every scan and a daily summary for
+        // payroll. Only the summary/roll-call row counts as a calendar day.
+        const recs = monthRecs
+            .filter(r => r.profileId === p.id && !r.isPunchLog)
+            .reduce((out, r) => {
+                const existing = out.find(x => x.date === r.date);
+                if (!existing || r.isDailySummary) {
+                    if (existing) out.splice(out.indexOf(existing), 1);
+                    out.push(r);
+                }
+                return out;
+            }, []);
         const counts = { present: 0, absent: 0, half_day: 0, leave: 0 };
         recs.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
 
@@ -569,7 +580,11 @@ const getMonthlySummary = async (orgId, req, month) => {
         const paidLeave = Math.min(counts.leave, allowanceLeft);
         const unpaidLeave = counts.leave - paidLeave;
 
-        const payableDays = counts.present + counts.half_day * 0.5 + paidLeave;
+        const terminalPresentDays = recs
+            .filter(r => r.status === 'present' && r.source === 'terminal' && r.dutyDays != null)
+            .reduce((sum, r) => sum + Number(r.dutyDays || 0), 0);
+        const payableDays = (terminalPresentDays > 0 ? terminalPresentDays : counts.present)
+            + counts.half_day * 0.5 + paidLeave;
         const salary = Number(p.fixedSalary) || 0;
         const daysInMonth = datesBetween(from, to).length;
 

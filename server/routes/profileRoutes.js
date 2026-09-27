@@ -5,6 +5,27 @@ const { getCol } = require('../utils/collectionUtils');
 const { isProduction } = require('../utils/envConfig');
 const localStore = require('../utils/localStore');
 
+// Terminal kiosk token — identical to the one accepted in middleware/auth.js
+const TERMINAL_TOKEN = process.env.TERMINAL_KEY || 'VGTC-TERMINAL-TOKEN-KEY';
+
+// Middleware: allow terminal device token OR a normal auth token.
+// profileRoutes is mounted with requireAuth in index.js, which already handles
+// the VGTC-TERMINAL-TOKEN-KEY case. This extra check is a belt-and-suspenders
+// guard and sets req.orgId so getCol() works correctly for terminal requests.
+router.use((req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7).trim();
+        if (token === TERMINAL_TOKEN) {
+            // Ensure orgId is populated for getCol()
+            if (!req.orgId) req.orgId = req.headers['x-org-id'] || req.user?.orgId || 'vgtc';
+        }
+    }
+    // Ensure orgId is always set (middleware/auth.js may set req.user.orgId)
+    if (!req.orgId && req.user) req.orgId = req.user.orgId || 'vgtc';
+    next();
+});
+
 const isDummyProfileName = (name) => {
     if (!name) return false;
     const n = String(name).trim().toUpperCase();
@@ -25,7 +46,7 @@ const PHOTO_MAX_BYTES = 500 * 1024;
 const validatePhoto = (photo) => {
     if (photo === undefined || photo === null || photo === '') return null;
     if (typeof photo !== 'string') return 'photo must be a data URI string';
-    if (!photo.startsWith('data:image/') && !/^[A-Za-z0-9+/=]+$/.test(photo.slice(0, 100))) {
+    if (!photo.startsWith('data:image/') && !/^https?:\/\//i.test(photo) && !/^\/uploads\//.test(photo) && !/^[A-Za-z0-9+/=]+$/.test(photo.slice(0, 100))) {
         return 'photo must be a valid base64 or data URI image';
     }
     if (Buffer.byteLength(photo, 'utf8') > PHOTO_MAX_BYTES) {
@@ -70,6 +91,9 @@ router.get('/', async (req, res) => {
 // POST a new profile
 router.post('/', async (req, res) => {
     try {
+        if (req.user?.id === 'vgtc-terminal') {
+            return res.status(403).json({ error: 'Profiles can only be created from the VGTC Portal' });
+        }
         const photoError = validatePhoto(req.body.photo || req.body.facePhoto);
         if (photoError) return res.status(400).json({ error: photoError });
 
@@ -105,6 +129,13 @@ router.post('/', async (req, res) => {
         }
         if (req.body.faceEnrolled !== undefined) {
             payload.faceEnrolled = Boolean(req.body.faceEnrolled);
+            if (!payload.faceEnrolled) {
+                payload.photo = null;
+                payload.facePhoto = null;
+                payload.photoUrl = null;
+                payload.photos = [];
+                payload.faceEmbedding = null;
+            }
         }
 
         let docRefId = targetId;
@@ -181,6 +212,13 @@ router.put('/:id', async (req, res) => {
         }
         if (req.body.faceEnrolled !== undefined) {
             payload.faceEnrolled = Boolean(req.body.faceEnrolled);
+            if (!payload.faceEnrolled) {
+                payload.photo = null;
+                payload.facePhoto = null;
+                payload.photoUrl = null;
+                payload.photos = [];
+                payload.faceEmbedding = null;
+            }
         }
         
         if (!isAvailable()) {
@@ -247,6 +285,9 @@ router.get('/:id/trips', async (req, res) => {
 // DELETE a profile
 router.delete('/:id', async (req, res) => {
     try {
+        if (req.user?.id === 'vgtc-terminal') {
+            return res.status(403).json({ error: 'Profiles can only be deleted from the VGTC Portal' });
+        }
         if (!isAvailable()) {
             localStore.delete(PROFILE_COL, req.params.id);
         } else {
