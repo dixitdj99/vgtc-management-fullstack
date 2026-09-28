@@ -1150,10 +1150,17 @@ test('dump godowns hide the head-office modules but keep the permissions behind 
   const cat = fs.readFileSync(path.join(root, 'permissions', 'catalogue.js'), 'utf8');
 
   const hidden = new Set([...app.matchAll(/^\s*'([a-z_]+)',\s*\/\/ /gm)].map(m => m[1]));
-  for (const id of ['cashbook_dump', 'pay_dump', 'trip_profit_dump', 'vehicles_dump',
+  for (const id of ['cashbook_dump', 'pay_dump', 'trip_profit_dump',
     'diesel_dump', 'mileage_dump', 'tyres_dump', 'vendors_dump', 'invoice_dump']) {
     assert(hidden.has(id), `${id} should be hidden at the dump godowns`);
   }
+  assert(!hidden.has('vehicles_dump'),
+    'the shared Jharli Fleet Management module should be visible at dump godowns');
+
+  assert(!/id:\s*'vehicle_credit_debit_dump'/.test(app),
+    'the Vehicle Credit & Debit ledger must not exist in Kosli/Jhajjar/Bahadurgarh navigation');
+  assert(/id:\s*'vehicle_credit_debit_jharli'/.test(app),
+    'removing the dump ledger must not remove Jharli\'s ledger');
 
   // The trap this guards. Hiding a module is not revoking its permission: the
   // screens that remain at a dump read through these, and dropping one empties
@@ -1176,6 +1183,21 @@ test('dump godowns hide the head-office modules but keep the permissions behind 
 });
 
 /* ── Splitting a multi-LR voucher for display ─────────────────────────────── */
+
+test('switching dump godowns remounts and refreshes the open module', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'App.jsx'), 'utf8');
+  const renderStart = app.indexOf('const renderModule');
+  const renderBlock = app.slice(renderStart, app.indexOf('// ── Mobile / tablet', renderStart));
+  assert(/React\.Fragment key=\{`[^`]*\$\{plant[^`]*\$\{godown/.test(renderBlock),
+    'renderModule is not keyed by plant and godown, so its state survives a location switch');
+
+  const pageStart = app.indexOf('<div className="page-area">');
+  const pageBlock = app.slice(pageStart, app.indexOf('</AnimatePresence>', pageStart));
+  assert(/motion\.div key=\{`[^`]*\$\{plant[^`]*\$\{godown/.test(pageBlock),
+    'the open desktop module wrapper does not refresh or animate on a godown switch');
+});
 
 test('a multi-LR voucher splits into one leg per LR, deductions on the first', async () => {
   // Each drop has its own destination, rate and LR number. The deductions are
@@ -2498,6 +2520,97 @@ test('landing: crawlers are pointed at the one page worth indexing', async () =>
 
 /* ── Loading receipt: typing the LR number ────────────────────────────────── */
 
+test('lr: every create route requires complete material details', async () => {
+  const { validateLrMaterials } = require('../services/lrService');
+  const invalidMaterials = [
+    undefined,
+    [],
+    [{ type: '', loadingType: 'From Godown', bags: '10', weight: '0.5' }],
+    [{ type: 'PPC', loadingType: '', bags: '10', weight: '0.5' }],
+    [{ type: 'PPC', loadingType: 'From Godown', bags: '', weight: '0.5' }],
+    [{ type: 'PPC', loadingType: 'From Godown', bags: '1.5', weight: '0.5' }],
+    [{ type: 'PPC', loadingType: 'From Godown', bags: '10', weight: '' }],
+  ];
+
+  for (const materials of invalidMaterials) {
+    let failure;
+    try {
+      validateLrMaterials(materials);
+    } catch (err) {
+      failure = err;
+    }
+    assert(failure?.status === 400,
+      `incomplete materials were accepted: ${JSON.stringify(materials)}`);
+  }
+
+  assert(validateLrMaterials([
+    { type: 'PPC', loadingType: 'From Godown', bags: '10', weight: '0.5' },
+  ]) === true, 'a complete material row was rejected');
+});
+
+test('lr: prompted mobile numbers persist in the fleet collection the UI reads', async () => {
+  const fs = require('fs');
+  const service = fs.readFileSync(path.join(__dirname, '..', 'services', 'lrService.js'), 'utf8');
+  assert(/vehicleCollection\s*=\s*'vehicles'/.test(service),
+    'the LR service has no vehicle collection boundary');
+  assert(/ensureOrUpdateVehicleContacts\([\s\S]*?vehicleCollection\)/.test(service),
+    'LR contacts are not written to the supplied fleet collection');
+
+  // Exercise the collection hand-off without writing a receipt: an invalid LR
+  // number fails only after the contact sync has received its collection.
+  const vehiclePath = require.resolve('../services/vehicleService');
+  const originalVehicleModule = require.cache[vehiclePath];
+  let receivedCollection = null;
+  require.cache[vehiclePath] = {
+    id: vehiclePath,
+    filename: vehiclePath,
+    loaded: true,
+    exports: {
+      ensureOrUpdateVehicleContacts: async (_orgId, _contact, collection) => {
+        receivedCollection = collection;
+      },
+    },
+  };
+  try {
+    await require('../services/lrService').createLoadingReceipt('vgtc', {
+      lrNo: 'not-a-number', truckNo: 'HR47G0975',
+      materials: [{ type: 'PPC', loadingType: 'From Godown', bags: '10', weight: '0.5' }],
+      driverContact: '9876543210',
+    }, 'test_lrs', 'test_metadata', 'dev_test_vehicles');
+  } catch (_) {
+    // Expected: the deliberately invalid LR number prevents any LR write.
+  } finally {
+    if (originalVehicleModule) require.cache[vehiclePath] = originalVehicleModule;
+    else delete require.cache[vehiclePath];
+  }
+  assert(receivedCollection === 'dev_test_vehicles',
+    `contact sync received ${receivedCollection || 'no collection'} instead of the scoped fleet collection`);
+
+  for (const route of [
+    'lrRoutes.js', 'jklLrRoutes.js', 'kosliLrRoutes.js',
+    'jhajjarLrRoutes.js', 'bahadurgarhLrRoutes.js',
+  ]) {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'routes', route), 'utf8');
+    assert(/getCol\('vehicles', req\)/.test(source),
+      `${route} does not save prompted contacts to its scoped fleet collection`);
+  }
+});
+
+test('dump godowns reuse Jharli Fleet Management without a duplicate dashboard', async () => {
+  const fs = require('fs');
+  const source = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'App.jsx'), 'utf8');
+  assert(!/TruckDashboard/.test(source), 'the duplicate fleet dashboard is still imported or rendered');
+  assert(/id:\s*'vehicles_dump',\s*label:\s*'Fleet Management'/.test(source),
+    'dump navigation does not offer Fleet Management');
+  assert(/id === 'vehicles_dump'[\s\S]{0,160}<VehicleModule/.test(source),
+    'dump Fleet Management does not render the same VehicleModule as Jharli');
+
+  const hiddenStart = source.indexOf('const HIDDEN_AT_DUMP_GODOWNS');
+  const hiddenBlock = source.slice(hiddenStart, source.indexOf(']);', hiddenStart));
+  assert(!hiddenBlock.includes("'vehicles_dump'"), 'Fleet Management is still hidden at dump godowns');
+  assert(hiddenBlock.includes("'vendors_dump'"), 'the separate Market Vehicles module should remain hidden');
+});
+
 test('lr: a clerk can type the LR number instead of taking the next one', async () => {
   // A paper bilty already written at the gate, or a book being caught up after
   // the fact — cases the counter cannot know about.
@@ -3275,7 +3388,7 @@ test('brand: reports are watermarked and slips are not', async () => {
   };
 
   // A4 documents that leave the office carry the mark.
-  const REPORTS = ['BalanceSheet.jsx', 'TruckDashboard.jsx', 'exportUtils.js'];
+  const REPORTS = ['BalanceSheet.jsx', 'exportUtils.js'];
   for (const name of REPORTS) {
     const f = walk(src).find(x => path.basename(x) === name);
     assert(f, name + ' has gone');

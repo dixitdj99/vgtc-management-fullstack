@@ -59,6 +59,18 @@ const ALL_EVENT_DEFINITIONS = [
     tags: ['{voucherNo}', '{lrNo}', '{date}', '{truckNo}', '{destination}', '{advanceDiesel}', '{advanceCash}', '{advanceOnline}', '{netBalance}', '{paymentStatus}']
   },
   {
+    key: 'bill_created_owner',
+    title: '6A. Transport Bill — Truck Owner Copy',
+    category: 'Freight Vouchers',
+    tags: ['{billNo}', '{lrNo}', '{date}', '{truckNo}', '{partyName}', '{source}', '{destination}', '{totalWeight}', '{rate}', '{netBalance}']
+  },
+  {
+    key: 'bill_created_driver',
+    title: '6B. Transport Bill — Driver Copy',
+    category: 'Freight Vouchers',
+    tags: ['{billNo}', '{lrNo}', '{date}', '{truckNo}', '{partyName}', '{destination}', '{totalWeight}']
+  },
+  {
     key: 'voucher_action_creator',
     title: '7. Voucher Marked Paid Confirmation',
     category: 'Freight Vouchers',
@@ -69,6 +81,12 @@ const ALL_EVENT_DEFINITIONS = [
     title: '8. Balance Payment Dispatched',
     category: 'Freight Vouchers',
     tags: ['{truckNo}', '{tripCount}', '{periodFrom}', '{periodTo}']
+  },
+  {
+    key: 'freight_payment_settled',
+    title: '8A. Freight Payment Settlement Details',
+    category: 'Freight Vouchers',
+    tags: ['{truckNo}', '{ownerName}', '{periodLabel}', '{tripCount}', '{tripLines}', '{totalGross}', '{totalDeductions}', '{totalNet}', '{paymentAmount}', '{paymentMethod}', '{paymentDate}', '{remainingBalanceLine}']
   },
 
   // 3. Online Advances
@@ -122,6 +140,12 @@ const ALL_EVENT_DEFINITIONS = [
     category: 'Cashbook & Banking',
     tags: ['{currentBalance}']
   },
+  {
+    key: 'cashout_returned',
+    title: '16A. Cashout Returned / Reversed',
+    category: 'Cashbook & Banking',
+    tags: ['{entityName}', '{entityType}', '{amount}', '{date}', '{remark}']
+  },
 
   // 5. Challan & Staff Khata
   {
@@ -146,7 +170,19 @@ const ALL_EVENT_DEFINITIONS = [
     key: 'staff_cashout_prompt',
     title: '20. Staff Advance / Cashout Confirmation',
     category: 'Challan & Staff Khata',
-    tags: ['{staffName}', '{amount}', '{date}', '{remark}', '{totalAdvances}', '{remainingPay}']
+    tags: ['{entryId}', '{staffName}', '{amount}', '{date}', '{remark}', '{totalAdvances}', '{remainingPay}']
+  },
+  {
+    key: 'staff_cashout_confirmed',
+    title: '20A. Staff Cashout Confirmed',
+    category: 'Challan & Staff Khata',
+    tags: ['{staffName}', '{entryId}', '{amount}', '{date}']
+  },
+  {
+    key: 'staff_cashout_dispute_received',
+    title: '20B. Staff Cashout Dispute Received',
+    category: 'Challan & Staff Khata',
+    tags: ['{staffName}', '{entryId}', '{amount}', '{date}']
   },
   {
     key: 'staff_cashout_disputed_admin',
@@ -161,14 +197,38 @@ const ALL_EVENT_DEFINITIONS = [
     tags: ['{staffName}', '{entryId}', '{amount}']
   },
   {
+    key: 'staff_cashout_dispute_rejected',
+    title: '22A. Staff Dispute Rejected',
+    category: 'Challan & Staff Khata',
+    tags: ['{staffName}', '{entryId}', '{amount}', '{date}']
+  },
+  {
     key: 'staff_salary_settlement',
     title: '23. Staff Salary Settlement Voucher',
     category: 'Challan & Staff Khata',
     tags: ['{staffName}', '{staffType}', '{month}', '{vehicleLine}', '{daysInMonth}', '{presentDays}', '{absentDays}', '{deductedDays}', '{baseSalary}', '{attendanceDeductions}', '{allowanceLine}', '{penaltyLine}', '{adjustedSalary}', '{payoutAmount}', '{paymentMethod}', '{payoutDate}']
+  },
+  {
+    key: 'attendance_duty_started',
+    title: '24. Duty Started / Punch In',
+    category: 'Attendance',
+    tags: ['{staffName}', '{staffType}', '{date}', '{punchTime}', '{punchMethod}', '{vehicleLine}']
+  },
+  {
+    key: 'attendance_punch_out',
+    title: '25. Duty Ended / Punch Out',
+    category: 'Attendance',
+    tags: ['{staffName}', '{staffType}', '{date}', '{punchTime}', '{attendanceStatus}', '{vehicleLine}', '{durationLine}', '{reasonLine}']
+  },
+  {
+    key: 'vehicle_document_expiry',
+    title: '25A. Vehicle Document Expiry / Overdue',
+    category: 'Fleet & Compliance',
+    tags: ['{vehicleId}', '{documentKey}', '{truckNo}', '{documentName}', '{expiryDate}', '{expiryStatus}', '{alertType}', '{expiryAction}']
   }
 ];
 
-const CATEGORIES = ['All', 'Loading & Drivers', 'Freight & Vouchers', 'Online Advances', 'Cashbook & Banking', 'Challan & Staff Khata'];
+const CATEGORIES = ['All', 'Loading & Drivers', 'Freight Vouchers', 'Online Advances', 'Cashbook & Banking', 'Challan & Staff Khata', 'Attendance', 'Fleet & Compliance'];
 
 export default function WhatsAppControlModule() {
   const [activeTab, setActiveTab] = useState('templates'); // 'templates' | 'credentials' | 'logs'
@@ -212,6 +272,7 @@ export default function WhatsAppControlModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [previews, setPreviews] = useState({});
   const [previewingKey, setPreviewingKey] = useState(null);
+  const [togglingEventKey, setTogglingEventKey] = useState(null);
 
   // Test Dispatch Form
   const [testForm, setTestForm] = useState({
@@ -357,6 +418,43 @@ export default function WhatsAppControlModule() {
       showToast('error', 'Failed to toggle status: ' + (err.response?.data?.error || err.message));
     } finally {
       setToggling(false);
+    }
+  };
+
+  const handleEventToggle = async (eventKey, evtConfig) => {
+    const wasEnabled = evtConfig.enabled !== false;
+    const enabled = !wasEnabled;
+    setTogglingEventKey(eventKey);
+    setConfig(prev => ({
+      ...prev,
+      events: {
+        ...prev.events,
+        [eventKey]: { ...(prev.events?.[eventKey] || evtConfig), enabled },
+      },
+    }));
+
+    try {
+      const { data } = await ax.patch(`/whatsapp/events/${encodeURIComponent(eventKey)}/toggle`, { enabled });
+      const persisted = data?.enabled !== undefined ? !!data.enabled : enabled;
+      setConfig(prev => ({
+        ...prev,
+        events: {
+          ...prev.events,
+          [eventKey]: { ...(prev.events?.[eventKey] || evtConfig), enabled: persisted },
+        },
+      }));
+      showToast(persisted ? 'success' : 'info', `${eventKey.replace(/_/g, ' ')} alert ${persisted ? 'turned ON' : 'turned OFF'}.`);
+    } catch (err) {
+      setConfig(prev => ({
+        ...prev,
+        events: {
+          ...prev.events,
+          [eventKey]: { ...(prev.events?.[eventKey] || evtConfig), enabled: wasEnabled },
+        },
+      }));
+      showToast('error', `Failed to change ${eventKey.replace(/_/g, ' ')}: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setTogglingEventKey(null);
     }
   };
 
@@ -642,7 +740,7 @@ export default function WhatsAppControlModule() {
             <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginTop: '4px', lineHeight: 1.5 }}>
               {config.enabled
                 ? 'Outbound notifications are LIVE. Messages will be dispatched to owners, drivers, clerk, and admin.'
-                : 'Meta Business verification is currently in progress. Outbound notifications are muted so daily operations proceed without errors. Credentials and 22 templates remain ready to turn on anytime.'}
+                : `Meta Business verification is currently in progress. Outbound notifications are muted so daily operations proceed without errors. Credentials and ${ALL_EVENT_DEFINITIONS.length} templates remain ready to turn on anytime.`}
             </div>
           </div>
         </div>
@@ -762,7 +860,7 @@ export default function WhatsAppControlModule() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ── TAB 1: ALL 22 NOTIFICATION TEMPLATES ─────────────────────────── */}
+      {/* TAB 1: ALL OPERATIONAL NOTIFICATION TEMPLATES */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'templates' && (
         <section className="adm-panel">
@@ -773,7 +871,7 @@ export default function WhatsAppControlModule() {
               </span>
               <div>
                 <h2>Operational Message Templates</h2>
-                <p className="adm-sub">All 22 automated WhatsApp templates configured for logistics, billing &amp; advances</p>
+                <p className="adm-sub">All {ALL_EVENT_DEFINITIONS.length} automated WhatsApp templates configured for logistics, billing, attendance &amp; advances</p>
               </div>
             </div>
             <button type="button" onClick={handleSaveConfig} className="adm-btn adm-btn--primary adm-btn--sm" disabled={saving}>
@@ -875,17 +973,16 @@ export default function WhatsAppControlModule() {
                       {/* Enable / Disable Switch for specific event */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{ fontSize: '12px', fontWeight: 600, color: evtConfig.enabled !== false ? '#10b981' : '#ef4444' }}>
-                          {evtConfig.enabled !== false ? 'Enabled' : 'Disabled'}
+                          {togglingEventKey === def.key ? 'Saving...' : (evtConfig.enabled !== false ? 'Enabled' : 'Disabled')}
                         </span>
                         <button
                           type="button"
                           role="switch"
                           aria-checked={evtConfig.enabled !== false}
+                          aria-label={`${evtConfig.enabled !== false ? 'Disable' : 'Enable'} ${def.title}`}
                           className="adm-switch"
-                          onClick={() => {
-                            const updated = { ...config.events, [def.key]: { ...evtConfig, enabled: evtConfig.enabled === false } };
-                            setConfig({ ...config, events: updated });
-                          }}
+                          disabled={togglingEventKey !== null}
+                          onClick={() => handleEventToggle(def.key, evtConfig)}
                         />
                       </div>
                     </div>

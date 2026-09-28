@@ -31,7 +31,8 @@ router.post('/', async (req, res) => {
             req.orgId,
             lrData, 
             getCol(BASE_COL, req), 
-            getCol(META_COL, req)
+            getCol(META_COL, req),
+            getCol('vehicles', req)
         );
 
 

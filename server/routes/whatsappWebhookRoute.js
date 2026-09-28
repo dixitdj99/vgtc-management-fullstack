@@ -27,7 +27,6 @@ const {
     sendWhatsAppMessage,
     sendWhatsAppDocument,
     sendWhatsAppButtons,
-    broadcastToAdmins,
     sendEventNotification,
     lookupVehicleInfo,
     lookupVehiclePhone,
@@ -779,10 +778,12 @@ router.post('/', async (req, res) => {
                 } else {
                     await db.collection(colName).doc(entry.id).update(updateData);
                 }
-                await sendWhatsAppMessage(clerkRecipient,
-                    `*VIKAS GOODS TRANSPORT CO.* ✅\n\n` +
-                    `Thank you! You have confirmed the cash advance of *Rs.${parseFloat(entry.amount || 0).toLocaleString('en-IN')}*.\n` +
-                    `_Transaction record confirmed in VGTC portal._`, req);
+                await sendEventNotification('staff_cashout_confirmed', {
+                    staffName: entry.entityName || 'Staff',
+                    entryId: entry.entryId || entry.id,
+                    amount: parseFloat(entry.amount || 0).toLocaleString('en-IN'),
+                    date: fmtDate(entry.date),
+                }, [clerkRecipient], req);
             } else {
                 await sendWhatsAppMessage(clerkRecipient, `✅ Cashout confirmed. Thank you!`, req);
             }
@@ -808,30 +809,23 @@ router.post('/', async (req, res) => {
                 }
 
                 // 1. Acknowledge to staff
-                await sendWhatsAppMessage(clerkRecipient,
-                    `*VIKAS GOODS TRANSPORT CO.* ⚠️\n\n` +
-                    `Your dispute for Cashout of *Rs.${parseFloat(entry.amount || 0).toLocaleString('en-IN')}* has been registered.\n` +
-                    `An approval request has been forwarded to Admin to verify and reverse this transaction.`, req);
+                await sendEventNotification('staff_cashout_dispute_received', {
+                    staffName: entry.entityName || 'Staff',
+                    entryId: entry.entryId || entry.id,
+                    amount: parseFloat(entry.amount || 0).toLocaleString('en-IN'),
+                    date: fmtDate(entry.date),
+                }, [clerkRecipient], req);
 
                 // 2. Dispatch Approval Request to ALL configured Admins
-                const adminDisputeMsg = [
-                    `*VIKAS GOODS TRANSPORT CO.* ⚠️`,
-                    `*STAFF CASHOUT DISPUTE REQUIRING APPROVAL*`,
-                    ``,
-                    `Staff *${entry.entityName || 'Staff'}* has DECLINED / DISPUTED Cashout #${entry.entryId || entry.id}:`,
-                    `• *Amount:* Rs.${parseFloat(entry.amount || 0).toLocaleString('en-IN')}`,
-                    `• *Date:* ${fmtDate(entry.date)}`,
-                    `• *Remark:* ${entry.remark || '—'}`,
-                    ``,
-                    `Do you approve reversing this cashout, restoring staff balance, and crediting the funds back to Cashbook?`
-                ].join('\n');
-
-                const adminApprovalButtons = [
-                    { id: `ADMIN_APPROVE_REVERSAL_${entry.id}`, text: '✅ Approve Reversal' },
-                    { id: `ADMIN_REJECT_DISPUTE_${entry.id}`, text: '❌ Reject Dispute' }
-                ];
-
-                await broadcastToAdmins('DISPUTE APPROVAL', adminDisputeMsg, adminApprovalButtons, req);
+                const waCfg = await getWhatsAppConfig(req);
+                await sendEventNotification('staff_cashout_disputed_admin', {
+                    id: entry.id,
+                    entryId: entry.entryId || entry.id,
+                    staffName: entry.entityName || 'Staff',
+                    amount: parseFloat(entry.amount || 0).toLocaleString('en-IN'),
+                    date: fmtDate(entry.date),
+                    remark: entry.remark || '—',
+                }, waCfg.adminPhones || [waCfg.adminPhone], req);
                 console.log(`[WA-Webhook] Dispute approval broadcast dispatched to admins for Cashout #${entry.id}`);
             } else {
                 await sendWhatsAppMessage(clerkRecipient, `⚠️ Dispute received and logged. Admin will review.`, req);
@@ -929,15 +923,11 @@ router.post('/', async (req, res) => {
             const staffPhone = await lookupProfilePhone(entry.entityId || entry.entityName, req);
             if (staffPhone) {
                 try {
-                    const staffNotice = [
-                        `*VIKAS GOODS TRANSPORT CO.* ✅`,
-                        `*Cashout Dispute Approved*`,
-                        ``,
-                        `Dear *${entry.entityName || 'Staff'}*,`,
-                        `Your decline request for Cashout #${entry.entryId || entry.id} (Rs.${parseFloat(entry.amount || 0).toLocaleString('en-IN')}) has been APPROVED by Admin.`,
-                        `The deduction has been reversed and your balance is fully restored.`
-                    ].join('\n');
-                    await sendWhatsAppMessage(staffPhone, staffNotice, req);
+                    await sendEventNotification('staff_cashout_reversed_staff', {
+                        staffName: entry.entityName || 'Staff',
+                        entryId: entry.entryId || entry.id,
+                        amount: parseFloat(entry.amount || 0).toLocaleString('en-IN'),
+                    }, [staffPhone], req);
                 } catch (_) {}
             }
 
@@ -991,10 +981,12 @@ router.post('/', async (req, res) => {
 
             const staffPhone = await lookupProfilePhone(entry.entityId || entry.entityName, req);
             if (staffPhone) {
-                await sendWhatsAppMessage(staffPhone,
-                    `*VIKAS GOODS TRANSPORT CO.* ℹ️\n\n` +
-                    `Dear *${entry.entityName || 'Staff'}*,\n` +
-                    `Your dispute for Cashout #${entry.entryId || entry.id} (Rs.${parseFloat(entry.amount || 0).toLocaleString('en-IN')}) was reviewed by Admin. The transaction remains active.`, req).catch(() => {});
+                await sendEventNotification('staff_cashout_dispute_rejected', {
+                    staffName: entry.entityName || 'Staff',
+                    entryId: entry.entryId || entry.id,
+                    amount: parseFloat(entry.amount || 0).toLocaleString('en-IN'),
+                    date: fmtDate(entry.date),
+                }, [staffPhone], req);
             }
             return;
         }

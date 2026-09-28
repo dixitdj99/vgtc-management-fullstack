@@ -26,7 +26,13 @@ router.post('/', async (req, res) => {
             createdByName: req.user?.name || req.user?.username || '',
             creatorPhone: req.user?.phone || req.user?.mobile || ''
         };
-        const result = await lrService.createLoadingReceipt(req.orgId, lrData, getCol(JKL_LR_COL, req), getCol(JKL_META_COL, req));
+        const result = await lrService.createLoadingReceipt(
+            req.orgId,
+            lrData,
+            getCol(JKL_LR_COL, req),
+            getCol(JKL_META_COL, req),
+            getCol('vehicles', req)
+        );
 
         // Real-time backup — runs whenever Google Drive is authorized
         const { backupLoadingReceipt } = require('../utils/realtimeBackup');

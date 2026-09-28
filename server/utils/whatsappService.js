@@ -235,6 +235,31 @@ const DEFAULT_TEMPLATES = {
       '✅ *DISPATCH READY:* You are cleared to leave for {destination}. Drive safe!'
     ].join('\n')
   },
+  // Transport bill copy. Kept separate from freight vouchers so the wording
+  // can be changed in WhatsApp Control without changing voucher messages.
+  bill_created_owner: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Transport Bill - Owner Copy*',
+      '*Bill:* #{billNo} | *LR:* #{lrNo} | *Date:* {date}',
+      '*Truck:* {truckNo} | *Party:* {partyName}',
+      '*Route:* {source} to {destination}',
+      '*Weight:* {totalWeight} MT | *Rate:* Rs.{rate}/MT',
+      '*Freight to be billed:* *Rs.{netBalance}*'
+    ].join('\n')
+  },
+  bill_created_driver: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Transport Bill - Driver Copy*',
+      '*Bill:* #{billNo} | *LR:* #{lrNo} | *Date:* {date}',
+      '*Truck:* {truckNo} | *Destination:* {destination}',
+      '*Party:* {partyName} | *Weight:* {totalWeight} MT',
+      'The attached image is the same bill prepared for printing.'
+    ].join('\n')
+  },
   // Notification to creator when an action is performed via webhook
   voucher_action_creator: {
     enabled: true,
@@ -291,6 +316,26 @@ const DEFAULT_TEMPLATES = {
       'Payment batch sent for processing.'
     ].join('\n')
   },
+  freight_payment_settled: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*FREIGHT PAYMENT SETTLED*',
+      '*Truck:* {truckNo} | *Owner:* {ownerName}',
+      '*Period:* {periodLabel} | *Trips:* {tripCount}',
+      '',
+      '*Trip Details:*',
+      '{tripLines}',
+      '',
+      '*Gross Freight:* Rs.{totalGross}',
+      '*Total Advances:* - Rs.{totalDeductions}',
+      '*Net Freight:* Rs.{totalNet}',
+      '*Amount Paid:* *Rs.{paymentAmount}* ({paymentMethod})',
+      '*Payment Date:* {paymentDate}',
+      '{remainingBalanceLine}',
+      '_Payment recorded in VGTC Management Portal._'
+    ].filter(Boolean).join('\n')
+  },
   cashout: {
     enabled: true,
     template: [
@@ -299,6 +344,17 @@ const DEFAULT_TEMPLATES = {
       '*Recipient:* {entityName} ({entityType})',
       '*Amount:* Rs.{amount} | *Date:* {date}',
       '*Remark:* {remark}'
+    ].join('\n')
+  },
+  cashout_returned: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Cashout Returned / Reversed*',
+      '*Recipient:* {entityName} ({entityType})',
+      '*Amount Restored:* Rs.{amount} | *Date:* {date}',
+      '*Remark:* {remark}',
+      'The linked deduction has been reversed in the portal.'
     ].join('\n')
   },
   deposit: {
@@ -345,6 +401,26 @@ const DEFAULT_TEMPLATES = {
       'Please confirm or decline using the buttons below:'
     ].join('\n')
   },
+  staff_cashout_confirmed: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Cash Advance Confirmed*',
+      'Dear *{staffName}*, you confirmed receipt of Cashout #{entryId}.',
+      '*Amount:* Rs.{amount} | *Date:* {date}',
+      'The transaction is confirmed in the VGTC portal.'
+    ].join('\n')
+  },
+  staff_cashout_dispute_received: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Cashout Dispute Received*',
+      'Dear *{staffName}*, your dispute for Cashout #{entryId} has been registered.',
+      '*Amount:* Rs.{amount} | *Date:* {date}',
+      'An approval request has been sent to the administrators.'
+    ].join('\n')
+  },
   staff_cashout_disputed_admin: {
     enabled: true,
     template: [
@@ -364,6 +440,16 @@ const DEFAULT_TEMPLATES = {
       'Dear *{staffName}*,',
       'Your decline for Cashout #{entryId} (Rs.{amount}) has been APPROVED by Admin.',
       'The deduction has been reversed and your balance is restored.'
+    ].join('\n')
+  },
+  staff_cashout_dispute_rejected: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Cashout Dispute Reviewed*',
+      'Dear *{staffName}*, your dispute for Cashout #{entryId} was not approved.',
+      '*Amount:* Rs.{amount} | *Date:* {date}',
+      'The original cashout remains active in the portal.'
     ].join('\n')
   },
   // Clerk/admin alert when a voucher with online advance is created
@@ -439,6 +525,45 @@ const DEFAULT_TEMPLATES = {
       '📅 *Payout Date:* {payoutDate}',
       '----------------------------------------',
       '_Vikas Goods Transport Co. Accounts Department_'
+    ].filter(Boolean).join('\n')
+  },
+  vehicle_document_expiry: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*FLEET DOCUMENT {alertType} ALERT*',
+      '*Truck:* {truckNo} (Own Fleet)',
+      '*Document:* {documentName}',
+      '*Expiry Date:* {expiryDate}',
+      '*Status:* *{expiryStatus}*',
+      '{expiryAction}'
+    ].filter(Boolean).join('\n')
+  },
+  attendance_duty_started: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Duty Started*',
+      'Hello *{staffName}*, your attendance has been punched in successfully.',
+      '*Date:* {date} | *Time:* {punchTime}',
+      '*Role:* {staffType}',
+      '{vehicleLine}',
+      '*Method:* {punchMethod}',
+      'You are now marked *PRESENT / ON DUTY*.'
+    ].filter(Boolean).join('\n')
+  },
+  attendance_punch_out: {
+    enabled: true,
+    template: [
+      '*VIKAS GOODS TRANSPORT CO.*',
+      '*Duty Punch Out*',
+      'Hello *{staffName}*, your duty punch-out has been recorded.',
+      '*Date:* {date} | *Time:* {punchTime}',
+      '*Role:* {staffType} | *Status:* {attendanceStatus}',
+      '{vehicleLine}',
+      '{durationLine}',
+      '{reasonLine}',
+      'Thank you. Your attendance timeline is updated.'
     ].filter(Boolean).join('\n')
   }
 };
@@ -1069,7 +1194,7 @@ async function sendOpenWATemplate(phone, templateName, variables = {}, req = nul
 
 // ─── Image Send Utility (Meta Media Upload + Message Dispatch) ────────────────
 
-async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
+async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null, options = {}) {
   const config = await getWhatsAppConfig(req);
   if (!config.enabled) {
     throw new Error('WhatsApp dispatch is disabled');
@@ -1087,7 +1212,7 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
     // 1. Upload media buffer to Meta Graph API
     const formData = new FormData();
     const blob = new Blob([imageBuffer], { type: 'image/png' });
-    formData.append('file', blob, 'loading_slip.png');
+    formData.append('file', blob, options.filename || 'loading_slip.png');
     formData.append('type', 'image/png');
     formData.append('messaging_product', 'whatsapp');
 
@@ -1130,8 +1255,8 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
     );
     return msgRes.data;
   } catch (err) {
-    console.warn(`[Meta-WA] Image dispatch failed (${err.response?.data?.error?.message || err.message}). Falling back to text caption...`);
-    if (caption) {
+    console.warn(`[Meta-WA] Image dispatch failed (${err.response?.data?.error?.message || err.message}).${options.fallbackToText === false ? '' : ' Falling back to text caption...'}`);
+    if (caption && options.fallbackToText !== false) {
       return await sendWhatsAppMessage(phone, caption, req);
     }
     throw err;
@@ -1764,6 +1889,21 @@ async function sendEventNotification(eventKey, data, phones, req) {
           actionButtons = [
             { id: `PAID_${voucherIdentifier}`, text: '✅ Mark PAID' }
           ];
+        } else if (eventKey === 'staff_cashout_prompt') {
+          actionButtons = [
+            { id: `STAFF_CONFIRM_CASHOUT_${data.entryId}`, text: '✅ Confirm Cashout' },
+            { id: `STAFF_DECLINE_CASHOUT_${data.entryId}`, text: '❌ Decline / Dispute' }
+          ];
+        } else if (eventKey === 'staff_cashout_disputed_admin') {
+          actionButtons = [
+            { id: `ADMIN_APPROVE_REVERSAL_${data.id || data.entryId}`, text: '✅ Approve Reversal' },
+            { id: `ADMIN_REJECT_DISPUTE_${data.id || data.entryId}`, text: '❌ Reject Dispute' }
+          ];
+        } else if (eventKey === 'vehicle_document_expiry') {
+          actionButtons = [
+            { id: `DOC_EXP_UPDATE_${data.vehicleId}_${data.documentKey}`, text: '🔄 Update Date' },
+            { id: `DOC_EXP_WAIT_${data.vehicleId}_${data.documentKey}`, text: '⏳ Wait / Snooze' }
+          ];
         }
 
         const message = interpolateTemplate(eventCfg.template || '', data);
@@ -2042,6 +2182,7 @@ function previewTemplate(eventKey, config) {
     lrNo: '1042',
     loadingNo: '14',
     voucherNo: '501',
+    billNo: 'B-501',
     challanNo: 'CH-8821',
     date: new Date().toLocaleDateString('en-IN'),
     paidDate: new Date().toLocaleDateString('en-IN'),
@@ -2055,6 +2196,7 @@ function previewTemplate(eventKey, config) {
     materialsText: '• OPC Cement: 300 Bags (18 MT)',
     totalWeight: '18',
     totalBags: '300',
+    rate: '5500',
     freight: '5500',
     totalFreight: '99000',
     grossFreight: '99000',
@@ -2069,6 +2211,14 @@ function previewTemplate(eventKey, config) {
     netBalance: '88900',
     paymentStatus: 'Balance Pending',
     tripCount: '3',
+    ownerName: 'Sample Vehicle Owner',
+    periodLabel: '01/09/2026 to 15/09/2026',
+    tripLines: '1. LR #1042 | Jhajjar to Rewari | Net: Rs.32,000\n2. LR #1043 | Jhajjar to Rohtak | Net: Rs.28,000',
+    totalGross: '75,000',
+    totalDeductions: '15,000',
+    totalNet: '60,000',
+    paymentAmount: '60,000',
+    remainingBalanceLine: '*Outstanding Balance:* Rs.0',
     totalAmount: '88900',
     periodFrom: '01/09/2026',
     periodTo: '15/09/2026',
@@ -2081,6 +2231,11 @@ function previewTemplate(eventKey, config) {
     currentBalance: '3200',
     staffName: 'Suresh Driver',
     staffType: 'Driver',
+    punchTime: '06:42 PM',
+    punchMethod: 'Face Verification',
+    attendanceStatus: 'PRESENT',
+    durationLine: '*Duty Duration:* 8.25 hours',
+    reasonLine: '',
     month: 'September 2026',
     vehicleLine: '🚚 Truck: HR55AC4586',
     daysInMonth: '30',
@@ -2094,10 +2249,19 @@ function previewTemplate(eventKey, config) {
     adjustedSalary: '28000',
     payoutAmount: '28000',
     paymentMethod: 'Cash',
+    paymentDate: '26/09/2026',
     payoutDate: '26/09/2026',
     entryId: 'CSH-901',
+    id: 'cashout-doc-901',
     totalAdvances: '12000',
-    remainingPay: '15000'
+    remainingPay: '15000',
+    vehicleId: 'vehicle-101',
+    documentKey: 'insurance',
+    documentName: 'Insurance Coverage',
+    expiryDate: '05/10/2026',
+    expiryStatus: 'Expires in 8 days',
+    alertType: 'EXPIRY',
+    expiryAction: 'Please renew this document or update the portal record.'
   };
 
   const eventCfg = (config.events || {})[eventKey] || DEFAULT_TEMPLATES[eventKey];
@@ -2135,5 +2299,6 @@ module.exports = {
   logWhatsAppActivity,
   getWhatsAppLogs,
   clearWhatsAppLogs,
+  interpolateTemplate,
   DEFAULT_TEMPLATES
 };

@@ -15,7 +15,7 @@
 
 const { db, isAvailable } = require('../firebase');
 const localStore = require('../utils/localStore');
-const { broadcastToAdmins, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, getWhatsAppConfig } = require('../utils/whatsappService');
 const { createNotification } = require('../utils/notificationService');
 
 const DOC_DEFINITIONS = [
@@ -145,6 +145,8 @@ async function checkAndSendVehicleDocExpiryReminders(options = {}) {
     let totalVehiclesChecked = 0;
     let alertsSent = 0;
     const alertedItems = [];
+    const waCfg = await getWhatsAppConfig();
+    const adminPhones = waCfg.adminPhones || [waCfg.adminPhone].filter(Boolean);
 
     for (const colName of cols) {
         let vehicles = [];
@@ -208,27 +210,19 @@ async function checkAndSendVehicleDocExpiryReminders(options = {}) {
                 const formattedExpiry = fmtDate(rawDate);
                 const isOverdue = alertCheck.reason === 'monthly_overdue';
 
-                const alertMsg = [
-                    `*VIKAS GOODS TRANSPORT CO.* 🚨`,
-                    `*FLEET DOCUMENT ${isOverdue ? 'OVERDUE' : 'EXPIRY'} ALERT*`,
-                    ``,
-                    `🚚 *Truck:* ${v.truckNo} (Own Fleet)`,
-                    `📄 *Document:* ${def.label}`,
-                    `🗓️ *Expiry Date:* ${formattedExpiry}`,
-                    `⚠️ *Status:* *${alertCheck.label}*`,
-                    ``,
-                    isOverdue
-                        ? `❌ This document is expired and needs immediate renewal!`
-                        : `Please renew this document or update the records in the portal.`
-                ].join('\n');
-
-                const buttons = [
-                    { id: `DOC_EXP_UPDATE_${v.id}_${def.key}`, text: '🔄 Update Date' },
-                    { id: `DOC_EXP_WAIT_${v.id}_${def.key}`, text: '⏳ Wait / Snooze' }
-                ];
-
                 try {
-                    await broadcastToAdmins('DOCUMENT EXPIRY ALERT', alertMsg, buttons);
+                    await sendEventNotification('vehicle_document_expiry', {
+                        vehicleId: v.id,
+                        documentKey: def.key,
+                        truckNo: v.truckNo,
+                        documentName: def.label,
+                        expiryDate: formattedExpiry,
+                        expiryStatus: alertCheck.label,
+                        alertType: isOverdue ? 'OVERDUE' : 'EXPIRY',
+                        expiryAction: isOverdue
+                            ? 'This document is expired and needs immediate renewal!'
+                            : 'Please renew this document or update the records in the portal.',
+                    }, adminPhones);
                     alertsSent++;
                     alertedItems.push({
                         truckNo: v.truckNo,

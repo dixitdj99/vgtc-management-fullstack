@@ -39,14 +39,14 @@ export const LEVEL_VALUES = LEVELS.map(l => l.value);
  * that remains reads through their APIs, so offering the permission would grant
  * a screen the user cannot reach.
  *
- * `vehicle`, `mileage` and `pay` stay, even though their modules are hidden too,
- * because the screens that remain depend on them and revoking would break real
- * work rather than tidy the menu:
+ * `vehicle`, `mileage` and `pay` stay because the screens that remain depend on
+ * them and revoking would break real work rather than tidy the menu:
  *   vehicle  — the truck list on every LR, voucher and balance sheet, market
- *              vehicles included; also Fleet Dashboard, which is still shown
+ *              vehicles included; the same Fleet Management module used at
+ *              Jharli is also shown at all three dump godowns
  *   mileage  — the voucher form's last-odometer lookup, /mileage/last-km
- *   pay      — the freight batches a balance sheet reads, and Vehicle Credit
- *              & Debit, which is still shown
+ *   pay      — the freight batches a balance sheet reads. The standalone
+ *              Vehicle Credit & Debit ledger is hidden at all three dumps.
  */
 const DUMP_SHARED = ['pay', 'balance_all', 'vehicle', 'mileage', 'sell'];
 

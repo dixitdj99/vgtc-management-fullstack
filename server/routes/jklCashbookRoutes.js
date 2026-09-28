@@ -151,7 +151,7 @@ router.post('/cash-out-linked', async (req, res) => {
         // WhatsApp — notify admin and recipient of linked cashout
         ;(async () => {
             try {
-                const phones = await getCashoutPhones(req, entityType, entityId, entityName);
+                const waCfg = await getWhatsAppConfig(req);
                 const tplData = {
                     entityName: entityName || 'N/A',
                     entityType: entityType || 'N/A',
@@ -159,7 +159,21 @@ router.post('/cash-out-linked', async (req, res) => {
                     remark: remark || '—',
                     date: date || new Date().toLocaleDateString('en-IN'),
                 };
-                await sendEventNotification('cashout', tplData, phones, req);
+                await sendEventNotification('cashout', tplData, waCfg.adminPhones || [waCfg.adminPhone], req);
+                if (entityType === 'staff' || entityType === 'driver') {
+                    const staffPhone = await lookupProfilePhone(entityId || entityName, req);
+                    if (staffPhone) {
+                        await sendEventNotification('staff_cashout_prompt', {
+                            entryId: doc.id,
+                            staffName: entityName || (entityType === 'driver' ? 'Driver' : 'Staff'),
+                            amount: tplData.amount,
+                            date: tplData.date,
+                            remark: tplData.remark,
+                            totalAdvances: 'See staff account',
+                            remainingPay: 'See staff account',
+                        }, [staffPhone], req);
+                    }
+                }
                 console.log(`[WA-Hook] JKL Linked cashout alert dispatched for ${tplData.entityName} (Rs.${tplData.amount})`);
             } catch (e) { console.error('[WA-Hook] JKL cashout-linked notify FAILED:', e.message); }
         })();
@@ -190,6 +204,21 @@ router.post('/:id/return', async (req, res) => {
         }
 
         res.json({ original: { ...original, isReturned: true, returnEntryId: refundDoc.id }, refund: refundDoc });
+
+        ;(async () => {
+            try {
+                const phones = await getCashoutPhones(req, original.entityType, original.entityId, original.entityName);
+                await sendEventNotification('cashout_returned', {
+                    entityName: original.entityName || 'Office Spend',
+                    entityType: original.entityType || 'Expense',
+                    amount: parseFloat(original.amount || 0).toLocaleString('en-IN'),
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                    remark: remark || 'Cash returned',
+                }, phones, req);
+            } catch (notifyErr) {
+                console.error('[WA-Hook] JKL cashout return notify FAILED:', notifyErr.message);
+            }
+        })();
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

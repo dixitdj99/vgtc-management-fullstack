@@ -13,6 +13,7 @@ const { db, isAvailable } = require('../firebase');
 const localStore = require('../utils/localStore');
 const { getEnvCol } = require('../utils/collectionUtils');
 const crypto = require('crypto');
+const { sendEventNotification } = require('../utils/whatsappService');
 
 const ATTENDANCE_EVENTS_COL = 'attendance_events';
 const ATTENDANCE_COL = 'attendance';
@@ -453,6 +454,30 @@ const attendanceDecisionEngine = {
             await insertDoc(ATTENDANCE_COL, { ...summaryDoc, id: `${date}_${person.id}` });
         } catch (attErr) {
             console.warn('[DecisionEngine] Failed to update daily attendance summary doc:', attErr.message);
+        }
+
+        // Notify the employee only for the beginning/end of a duty period. Gate
+        // passes and duplicate scans stay silent so WhatsApp does not become noisy.
+        const attendanceMessageKey = eventType === 'CHECK_IN'
+            ? 'attendance_duty_started'
+            : (['CHECK_OUT', 'EMERGENCY_EXIT', 'TRIP_RETURN'].includes(eventType)
+                ? 'attendance_punch_out'
+                : null);
+        if (attendanceMessageKey && person.phone) {
+            const duration = body.durationHours != null ? Number(body.durationHours) : summaryDoc?.durationHours;
+            void sendEventNotification(attendanceMessageKey, {
+                staffName: person.name,
+                staffType: isDriver ? 'Driver' : (person.department || 'Staff'),
+                date,
+                punchTime: punchTimeVal,
+                punchMethod: biometricMethod === 'FINGERPRINT' ? 'OTG Fingerprint' : 'Face Verification',
+                attendanceStatus: String(recordStatus || 'present').replace('_', ' ').toUpperCase(),
+                vehicleLine: (person.vehicleNo || person.assignedTruck)
+                    ? `*Vehicle:* ${person.vehicleNo || person.assignedTruck}`
+                    : '',
+                durationLine: Number.isFinite(duration) ? `*Duty Duration:* ${duration.toFixed(2)} hours` : '',
+                reasonLine: body.overrideReason ? `*Reason:* ${body.overrideReason}` : '',
+            }, [person.phone]);
         }
 
         return {

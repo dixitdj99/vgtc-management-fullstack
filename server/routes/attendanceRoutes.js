@@ -4,6 +4,7 @@ const attendanceService = require('../services/attendanceService');
 const auditService = require('../services/auditService');
 const { requirePermission } = require('../middleware/auth');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
+const { publishAttendanceChange, subscribeToAttendance } = require('../services/attendanceRealtime');
 
 const ATTENDANCE_COL = 'attendance';
 
@@ -57,6 +58,36 @@ router.get('/summary', async (req, res, next) => {
         if (/must be/.test(err.message)) return res.status(400).json({ error: err.message });
         next(err);
     }
+});
+
+/**
+ * GET /api/attendance/live
+ * Authenticated Server-Sent Events stream used by the portal. A heartbeat keeps
+ * proxies from closing an otherwise idle connection.
+ */
+router.get('/live', (req, res) => {
+    res.status(200);
+    res.set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+
+    const send = (event) => {
+        if (event.orgId && event.orgId !== req.orgId) return;
+        res.write(`event: attendance\ndata: ${JSON.stringify(event)}\n\n`);
+    };
+    send({ type: 'attendance.connected', occurredAt: new Date().toISOString() });
+
+    const unsubscribe = subscribeToAttendance(send);
+    const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 25000);
+    req.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+        res.end();
+    });
 });
 
 /**
@@ -122,6 +153,14 @@ router.post('/bulk', requirePermission('attendance', 'edit'), async (req, res, n
             date, records, user: req.user,
         });
 
+        publishAttendanceChange({
+            orgId: req.orgId,
+            source: 'portal',
+            action: 'bulk_updated',
+            date,
+            profileIds: saved.map(r => r.profileId),
+        });
+
         auditService.logAction({
             orgId: req.orgId,
             action: auditService.ACTIONS.ATTENDANCE_MARKED,
@@ -172,6 +211,14 @@ router.post('/off-duty', requirePermission('attendance', 'edit'), async (req, re
             profileId, outDate, outTime, reason, user: req.user,
         });
 
+        publishAttendanceChange({
+            orgId: req.orgId,
+            source: 'portal',
+            action: 'off_duty',
+            date: record.date,
+            profileId,
+        });
+
         auditService.logAction({
             orgId: req.orgId,
             action: auditService.ACTIONS.ATTENDANCE_MARKED,
@@ -206,6 +253,13 @@ router.post('/', requirePermission('attendance', 'edit'), async (req, res, next)
         const [saved] = await attendanceService.saveBulk(req.orgId, req, {
             date, records: [req.body], user: req.user,
         });
+        publishAttendanceChange({
+            orgId: req.orgId,
+            source: 'portal',
+            action: 'single_updated',
+            date,
+            profileId: saved.profileId,
+        });
         res.json(saved);
     } catch (err) {
         if (/required|invalid|must be/i.test(err.message)) {
@@ -224,6 +278,13 @@ router.delete('/:id', requirePermission('attendance', 'delete'), async (req, res
 
         if (!isAvailable()) localStore.delete(ATTENDANCE_COL, req.params.id);
         else await db.collection(getCol(ATTENDANCE_COL, req)).doc(req.params.id).delete();
+
+        publishAttendanceChange({
+            orgId: req.orgId,
+            source: 'portal',
+            action: 'deleted',
+            recordId: req.params.id,
+        });
 
         auditService.logAction({
             orgId: req.orgId,

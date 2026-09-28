@@ -282,7 +282,7 @@ const getRoster = async (orgId, req, date) => {
     const rows = profiles.map(p => {
         const existing = savedByProfile.get(p.id) || null;
         const dayEvidence = evidence[p.id]?.[date] || [];
-        const isDriver = p.type === 'Driver';
+        const isDriver = String(p.type || p.profileType || '').toLowerCase() === 'driver';
 
         let suggested;
         let suggestedBy;
@@ -359,8 +359,9 @@ const getRoster = async (orgId, req, date) => {
         return {
             profileId: p.id,
             name: p.name || '',
-            type: p.type || '',
+            type: p.type || p.profileType || 'Staff',
             department: p.department || '',
+            phone: p.phone || p.mobile || '',
             photo: p.photo || null,
             vehicleNo: p.vehicleNo || '',
             status: existing?.status || null,     // what is already saved

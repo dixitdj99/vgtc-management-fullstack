@@ -11,7 +11,8 @@ const {
   generateLrReceiptHtml,
   generateVoucherHtml,
   getWhatsAppLogs,
-  clearWhatsAppLogs
+  clearWhatsAppLogs,
+  DEFAULT_TEMPLATES
 } = require('../utils/whatsappService');
 
 router.use(requireAuth);
@@ -66,6 +67,31 @@ router.post('/config', async (req, res) => {
   }
 });
 
+// PATCH /api/whatsapp/events/:eventKey/toggle
+// Each alert has its own persisted switch. This endpoint intentionally updates
+// only one event so a quick toggle cannot overwrite unsaved template edits for
+// other events.
+router.patch('/events/:eventKey/toggle', async (req, res) => {
+  try {
+    const { eventKey } = req.params;
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_TEMPLATES, eventKey)) {
+      return res.status(404).json({ error: `Unknown WhatsApp event: ${eventKey}` });
+    }
+    const config = await getWhatsAppConfig(req);
+    const currentEvent = config.events?.[eventKey] || DEFAULT_TEMPLATES[eventKey];
+    const enabled = req.body?.enabled !== undefined ? !!req.body.enabled : currentEvent.enabled === false;
+    const events = {
+      ...config.events,
+      [eventKey]: { ...currentEvent, enabled },
+    };
+    await saveWhatsAppConfig({ ...config, events }, req);
+    res.json({ ok: true, eventKey, enabled });
+  } catch (err) {
+    console.error('whatsapp event toggle error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/whatsapp/toggle
 // Master toggle to turn automated WhatsApp messages ON or OFF in 1 click
 router.post('/toggle', async (req, res) => {
@@ -101,6 +127,41 @@ router.get('/status', async (req, res) => {
   } catch (err) {
     console.error('whatsapp status check error:', err);
     res.status(500).json({ connected: false, message: err.message });
+  }
+});
+
+// POST /api/whatsapp/send-voucher-receipt
+// Receives a PNG captured from the exact print HTML in the browser. This keeps
+// WhatsApp and the paper receipt visually identical instead of maintaining a
+// second, approximate server-side drawing.
+router.post('/send-voucher-receipt', async (req, res) => {
+  try {
+    const { voucher, imageDataUrl } = req.body || {};
+    if (!voucher || typeof voucher !== 'object') {
+      return res.status(400).json({ status: 'failed', error: 'Voucher data is required.' });
+    }
+    if (!voucher.truckNo) {
+      return res.status(400).json({ status: 'failed', error: 'Truck number is required.' });
+    }
+    const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(imageDataUrl || ''));
+    if (!match) {
+      return res.status(400).json({ status: 'failed', error: 'A valid PNG receipt image is required.' });
+    }
+    const imageBuffer = Buffer.from(match[1], 'base64');
+    if (!imageBuffer.length || imageBuffer.length > 5 * 1024 * 1024) {
+      return res.status(413).json({ status: 'failed', error: 'Receipt image is empty or larger than WhatsApp\'s 5 MB image limit.' });
+    }
+    if (imageBuffer[0] !== 0x89 || imageBuffer[1] !== 0x50 || imageBuffer[2] !== 0x4e || imageBuffer[3] !== 0x47) {
+      return res.status(400).json({ status: 'failed', error: 'Receipt image is not a PNG file.' });
+    }
+
+    const { dispatchVoucherReceiptImage } = require('../utils/voucherReceiptWhatsApp');
+    const result = await dispatchVoucherReceiptImage(voucher, imageBuffer, req);
+    res.json(result);
+  } catch (err) {
+    const message = err?.response?.data?.error?.message || err.message || 'WhatsApp receipt dispatch failed.';
+    console.error('whatsapp voucher receipt send error:', message);
+    res.status(500).json({ status: 'failed', error: message });
   }
 });
 
