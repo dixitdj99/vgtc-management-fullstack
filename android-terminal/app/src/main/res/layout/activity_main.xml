@@ -54,16 +54,6 @@
                     android:contentDescription="VGTC Official Logo"
                     android:scaleType="fitCenter" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="VGTC Terminal"
-                    android:textColor="@color/white"
-                    android:textSize="17sp"
-                    android:textStyle="bold"
-                    android:singleLine="true"
-                    android:fontFamily="sans-serif-medium" />
             </LinearLayout>
 
             <!-- Right: Language Toggle, Pencil Override, Admin Lock -->

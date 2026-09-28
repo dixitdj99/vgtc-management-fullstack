@@ -268,7 +268,9 @@ class MainActivity : AppCompatActivity() {
     private fun updateTtsLanguage() {
         val lang = prefs.language
         val locale = if (lang == "hi") Locale("hi", "IN") else Locale.US
-        textToSpeech?.language = locale
+        textToSpeech?.setLanguage(locale)
+        textToSpeech?.setSpeechRate(0.88f)
+        textToSpeech?.setPitch(1.0f)
     }
 
     private fun playPunchChime() {
@@ -286,15 +288,13 @@ class MainActivity : AppCompatActivity() {
         val now = System.currentTimeMillis()
 
         if (!force && textToSpeak == lastSpokenText && (now - lastSpokenTime) < 6000L) return
-        if (!force && textToSpeech?.isSpeaking == true) return
-
         lastSpokenText = textToSpeak
         lastSpokenTime = now
 
         updateTtsLanguage()
         textToSpeech?.speak(
             textToSpeak,
-            if (force) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD,
+            android.speech.tts.TextToSpeech.QUEUE_FLUSH,
             null,
             "vgtc_voice_${System.currentTimeMillis()}"
         )
@@ -312,12 +312,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLanguageUi() {
         val isHi = prefs.language == "hi"
+        binding.btnLanguageToggle.text = if (isHi) "HI" else "EN"
         binding.btnLanguageToggle.text = if (isHi) "🌐 HI" else "🌐 EN"
         binding.tvFaceDetectionHint.text = if (isHi) {
             "कैमरे की तरफ देखें या फिंगरप्रिंट सेंसर छुएं"
         } else {
             "Look at camera or touch fingerprint sensor"
         }
+    }
+
+    private fun normalizedPhotoUrl(photo: String?): String? {
+        if (photo.isNullOrBlank()) return null
+        if (photo.startsWith("data:") || photo.startsWith("http://") || photo.startsWith("https://")) return photo
+        val base = prefs.serverUrl.trimEnd('/')
+        return if (photo.startsWith('/')) "$base$photo" else "$base/$photo"
     }
 
     // ──────────────────────────────────────────────────
@@ -903,8 +911,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnEmergencyCheckout.visibility = View.GONE
 
-        if (!profile.photo.isNullOrBlank()) {
-            Glide.with(this).load(profile.photo).circleCrop()
+        if (normalizedPhotoUrl(profile.photo) != null) {
+            Glide.with(this).load(normalizedPhotoUrl(profile.photo)).circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(binding.ivSuccessPhoto)
         } else {
@@ -965,8 +973,8 @@ class MainActivity : AppCompatActivity() {
             executeEmergencyCheckout(profile, currentDuty)
         }
 
-        if (!profile.photo.isNullOrBlank()) {
-            Glide.with(this).load(profile.photo).circleCrop()
+        if (normalizedPhotoUrl(profile.photo) != null) {
+            Glide.with(this).load(normalizedPhotoUrl(profile.photo)).circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(binding.ivSuccessPhoto)
         } else {
@@ -1017,8 +1025,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnEmergencyCheckout.visibility = View.GONE
 
-        if (!profile.photo.isNullOrBlank()) {
-            Glide.with(this).load(profile.photo).circleCrop()
+        if (normalizedPhotoUrl(profile.photo) != null) {
+            Glide.with(this).load(normalizedPhotoUrl(profile.photo)).circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(binding.ivSuccessPhoto)
         } else {
