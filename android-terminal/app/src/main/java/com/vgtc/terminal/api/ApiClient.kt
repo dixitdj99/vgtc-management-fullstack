@@ -174,17 +174,26 @@ class ApiClient(context: Context) {
     }
 
     // ──────────────────────────────────────────────────
-    // POST /api/attendance & POST /api/terminal/event
+    // POST /api/terminal/event (legacy /api/attendance fallback)
     // ──────────────────────────────────────────────────
     fun markAttendance(
         record: AttendanceRecord,
         callback: (ApiResult<Boolean>) -> Unit = {}
     ) {
-        // 1. Always send rich event to Terminal Event Engine (handles events, per-punch logs, and consolidated daily summary)
-        sendTerminalEvent(record) { _ -> }
+        // The terminal event endpoint already writes the immutable punch log and
+        // consolidated portal summary. Only fall back to the legacy daily API if
+        // that richer request fails; posting both in parallel caused duplicate
+        // live updates and could overwrite punch-in/out fields out of order.
+        sendTerminalEvent(record) { terminalResult ->
+            if (terminalResult.isSuccess) callback(Result.success(true))
+            else sendDailyAttendanceFallback(record, callback)
+        }
+    }
 
-        // 2. Also write to daily attendance API for multi-system sync
-        // Use terminal token so this is accepted even without a user JWT with attendance permission.
+    private fun sendDailyAttendanceFallback(
+        record: AttendanceRecord,
+        callback: (ApiResult<Boolean>) -> Unit
+    ) {
         val body = gson.toJson(record)
         val request = Request.Builder()
             .url("${baseUrl()}/api/attendance")
@@ -194,14 +203,16 @@ class ApiClient(context: Context) {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success(true))
+                callback(Result.failure(Exception("Cannot sync attendance: ${e.message}")))
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (!response.isSuccessful) {
-                    android.util.Log.w("ApiClient", "Attendance POST ${response.code}: ${response.body?.string()?.take(200)}")
+                if (response.isSuccessful) {
+                    callback(Result.success(true))
+                } else {
+                    android.util.Log.w("ApiClient", "Attendance fallback POST ${response.code}: ${response.body?.string()?.take(200)}")
+                    callback(Result.failure(Exception("Attendance sync failed (${response.code})")))
                 }
-                callback(Result.success(true))
             }
         })
     }

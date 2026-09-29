@@ -419,7 +419,9 @@
     "targetMileage": 0,
     "createdAt": "2026-05-01T17:07:46.439Z",
     "updatedBy": "Vikas Admin",
-    "updatedAt": "2026-05-01T17:12:34.980Z",
-    "orgId": "vgtc"
+    "updatedAt": "2026-09-28T07:40:19.943Z",
+    "orgId": "vgtc",
+    "fuelType": "Diesel",
+    "ownerId": null
   }
 ]

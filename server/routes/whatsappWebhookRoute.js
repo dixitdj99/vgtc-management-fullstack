@@ -1,11 +1,11 @@
 /**
  * whatsappWebhookRoute.js
  *
- * Public (no-auth) express router for OpenWA webhook callbacks.
+ * Public Meta Cloud API webhook router. POST signatures are verified at mount.
  *
- * Register in OpenWA dashboard:
+ * Register in Meta App dashboard:
  *   URL  : https://<your-server>/api/whatsapp/webhook
- *   Event: message.received
+ *   Event: messages
  *
  * When the clerk replies "PAID {voucherNo}" to the online-advance alert,
  * this handler:
@@ -15,7 +15,7 @@
  *   4. Sends a confirmation reply back to the clerk
  *   5. Notifies the vehicle owner (market vehicles) and driver
  *
- * Always responds 200 OK to prevent OpenWA retry storms.
+ * Acknowledges valid callbacks before business processing.
  */
 
 const express = require('express');
@@ -38,6 +38,63 @@ const {
 } = require('../utils/whatsappService');
 const { createNotification } = require('../utils/notificationService');
 const { generateVehicleMonthlyPdf, generateVehicleMonthlyExcel, fetchVouchersForTruck, computeVoucherFinancials } = require('../services/reportService');
+const { isAiEnabled, generateAiReply } = require('../services/whatsappAiService');
+
+const seenMessageIds = new Map();
+function isDuplicateMessage(id) {
+    if (!id) return false;
+    const now = Date.now();
+    for (const [key, timestamp] of seenMessageIds) {
+        if (now - timestamp > 60 * 60 * 1000) seenMessageIds.delete(key);
+    }
+    if (seenMessageIds.has(id)) return true;
+    seenMessageIds.set(id, now);
+    if (seenMessageIds.size > 1000) seenMessageIds.delete(seenMessageIds.keys().next().value);
+    return false;
+}
+
+function samePhone(a, b) {
+    const left = String(a || '').replace(/\D/g, '').slice(-10);
+    const right = String(b || '').replace(/\D/g, '').slice(-10);
+    return left.length === 10 && right.length === 10 && left === right;
+}
+
+async function canReadVehicle(sender, truckNo, req) {
+    const config = await getWhatsAppConfig(req);
+    const officePhones = [config.clerkPhone, ...(config.adminPhones || []), config.adminPhone];
+    if (officePhones.some(phone => samePhone(sender, phone))) return true;
+    const vehicle = await lookupVehicleInfo(truckNo, req);
+    return !!vehicle && [vehicle.ownerContact, vehicle.driverContact].some(phone => samePhone(sender, phone));
+}
+
+async function ensureVehicleAccess(sender, truckNo, req) {
+    if (await canReadVehicle(sender, truckNo, req)) return true;
+    await sendWhatsAppMessage(sender, 'This number is not registered for that vehicle. Please contact VGTC office to update your contact details.', req);
+    return false;
+}
+
+async function canPerformAction(sender, action, req) {
+    const config = await getWhatsAppConfig(req);
+    const officePhones = [config.clerkPhone, ...(config.adminPhones || []), config.adminPhone];
+    const labourPhones = String(config.labourPhones || '').split(/[,;\s]+/).filter(Boolean);
+    const allowed = action === 'loaded' ? [...officePhones, ...labourPhones] : officePhones;
+    return allowed.some(phone => samePhone(sender, phone));
+}
+
+function readOnlyCommandFromQuestion(message) {
+    const text = String(message || '').trim();
+    const truck = text.match(/\b([A-Z]{2}[\s-]?\d{2}[\s-]?[A-Z]{1,2}[\s-]?\d{1,4})\b/i)?.[1];
+    const normalized = truck?.replace(/[\s-]/g, '').toUpperCase();
+    const asksForRecords = normalized || /\b(my|our|mera|mere|meri|show|check|send|share|download|need|want|give|recent|latest|current|pending|dikhao|batao|kitna)\b/i.test(text) || /मेरा|मेरी|मेरे|दिखाओ|भेजो|बताओ|पिछली|हाल की/.test(text);
+    if (!asksForRecords) return null;
+    if (/\b(excel|xlsx|spreadsheet)\b/i.test(text) || /एक्सेल/.test(text)) return `EXCEL ${normalized || ''}`.trim();
+    if (/\b(pdf|report|statement|history)\b/i.test(text) || /पीडीएफ|रिपोर्ट|स्टेटमेंट/.test(text)) return `REPORT ${normalized || ''}`.trim();
+    if (/\b(challans?|chalans?)\b/i.test(text) || /चालान/.test(text)) return `CHALLAN ${normalized || ''}`.trim();
+    if (/\b(balance|khata|hisab|hisaab|payable|trips?|ledger)\b/i.test(text) || /बैलेंस|हिसाब|खाता|ट्रिप/.test(text) || (normalized && /\bstatus\b/i.test(text))) {
+        return `BALANCE ${normalized || ''}`.trim();
+    }
+    return null;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -405,7 +462,7 @@ router.get('/', async (req, res) => {
     const challenge = req.query['hub.challenge'];
 
     if (mode && token) {
-        let expectedToken = 'vgtc_meta_verify_token_2026';
+        let expectedToken = '';
         try {
             const config = await getWhatsAppConfig(req);
             if (config?.webhookVerifyToken) {
@@ -413,11 +470,11 @@ router.get('/', async (req, res) => {
             }
         } catch (_) {}
 
-        if (mode === 'subscribe' && (token === expectedToken || token === 'vgtc_meta_verify_token_2026')) {
+        if (mode === 'subscribe' && expectedToken && token === expectedToken) {
             console.log('[WA-Webhook] ✅ Meta Webhook successfully verified with challenge token!');
             return res.status(200).send(challenge);
         } else {
-            console.warn(`[WA-Webhook] ❌ Meta Webhook verification mismatch: received="${token}", expected="${expectedToken}"`);
+            console.warn('[WA-Webhook] Meta webhook verification failed');
             return res.sendStatus(403);
         }
     }
@@ -446,6 +503,7 @@ router.post('/', async (req, res) => {
 
         let msgBody = '';
         let from = '';
+        let isTextMessage = false;
 
         if (metaMessage) {
             from = metaMessage.from || '';
@@ -463,6 +521,7 @@ router.post('/', async (req, res) => {
             // Handle regular text message reply
             else if (metaMessage.type === 'text') {
                 msgBody = (metaMessage.text?.body || '').trim();
+                isTextMessage = true;
             }
         }
 
@@ -483,12 +542,15 @@ router.post('/', async (req, res) => {
                 ''
             ).trim();
 
+            isTextMessage = !metaMessage && typeof (payload.body || payload.text) === 'string';
+
             if (!from) {
                 from = payload.from || payload.chatId || payload.author || '';
             }
         }
 
         if (!msgBody) return;
+        if (isDuplicateMessage(metaMessage?.id || body.payload?.id || body.data?.id)) return;
 
         logWhatsAppActivity({
             type: 'inbound_webhook',
@@ -499,13 +561,10 @@ router.post('/', async (req, res) => {
             details: msgBody.slice(0, 160)
         });
 
-        // Skip cancellation/negative poll options
-        if (/not ready/i.test(msgBody)) {
-            console.log(`[WA-Webhook] User selected "Not Ready" from ${from}`);
-            return;
-        }
-        if (/(?:later|pending)/i.test(msgBody) && !/mark\s+as\s+paid/i.test(msgBody)) {
-            console.log(`[WA-Webhook] User selected "Later / Pending" from ${from}`);
+        // Skip only the exact negative options; ordinary questions may contain
+        // words such as "pending" or "later".
+        if (/^(?:not ready|later(?:\s*\/\s*pending)?|pending)$/i.test(msgBody.trim())) {
+            console.log(`[WA-Webhook] User selected a negative option from ${from}`);
             return;
         }
 
@@ -520,9 +579,13 @@ router.post('/', async (req, res) => {
         const clerkRecipient = fromPhone || from;
 
         // ── Parse "LOADED {lrNo}" or button/poll reply response ──────
-        const isLoadedMatch = /LOADED/i.test(msgBody);
+        const isLoadedMatch = /^(?:LOADED_|(?:\/reply\s+)?(?:MARK\s+(?:AS\s+)?LOADED|LOADED)\b)/i.test(msgBody);
 
         if (isLoadedMatch) {
+            if (!await canPerformAction(fromPhone, 'loaded', req)) {
+                await sendWhatsAppMessage(clerkRecipient, 'This number is not authorized to mark loading complete.', req);
+                return;
+            }
             let lrNo = '';
             const lrExtract = (
                 msgBody.match(/^LOADED_([A-Za-z0-9_-]+)/i) ||
@@ -999,23 +1062,26 @@ router.post('/', async (req, res) => {
             return;
         }
 
+        // Natural-language read-only requests reuse existing verified vehicle
+        // handlers. Financial records are never sent to Gemini's free tier.
+        if (isTextMessage) msgBody = readOnlyCommandFromQuestion(msgBody) || msgBody;
+
         // ── Check Greeting / Menu / Help ──────────────────────────────
-        const isGreeting = /^(HI|HELLO|HEY|NAMASTE|START|MENU|HELP|BOT|OPTION|OPTIONS)\b/i.test(msgBody.trim());
+        const isGreeting = /^(?:hi|hello|hey|namaste|start|menu|help|bot|options?)(?:\s+there)?[\s.!?]*$/i.test(msgBody.trim());
         if (isGreeting) {
             const menuMsg = [
                 `*VIKAS GOODS TRANSPORT CO.* 🚛`,
-                `*Smart Logistics WhatsApp Assistant*`,
+                `*Your WhatsApp Assistant*`,
                 ``,
-                `Welcome! You can check vehicle balance, download statements, or track trips directly here:`,
+                `Welcome! Ask in English or Hindi, in your own words. I can help with vehicle balances, trips, challans and statements.`,
                 ``,
-                `📌 *Quick Commands:*`,
-                `• *Vehicle Balance:* Send \`BALANCE <TruckNo>\` (e.g. \`BALANCE HR55CD5678\`)`,
-                `• *Pending Challans:* Send \`CHALLAN <TruckNo>\` (e.g. \`CHALLAN HR55CD5678\`)`,
-                `• *PDF Statement:* Send \`REPORT <TruckNo>\` (e.g. \`REPORT HR55CD5678\`)`,
-                `• *Excel Statement:* Send \`EXCEL <TruckNo>\` (e.g. \`EXCEL HR55CD5678\`)`,
-                `• *Recent Trips:* Send \`TRIP <TruckNo>\` (e.g. \`TRIP HR55CD5678\`)`,
+                `*Try asking:*`,
+                `• “Show recent trips for HR55CD5678”`,
+                `• “What is my balance?”`,
+                `• “Send PDF statement for HR55CD5678”`,
                 ``,
-                `💡 _Tip: You can also just type any vehicle number (e.g. HR55CD5678) directly to get the live ledger!_`
+                `_For private vehicle details, message from the phone registered with VGTC._`,
+                `Send *HELP* anytime to see this guide.`
             ].join('\n');
             await sendWhatsAppMessage(clerkRecipient, menuMsg, req);
             return;
@@ -1080,6 +1146,8 @@ router.post('/', async (req, res) => {
                 } catch (_) {}
                 return;
             }
+
+            if (!await ensureVehicleAccess(fromPhone, resolvedTruck, req)) return;
 
             try {
                 // Determine month/year from message, e.g. "REPORT HR36AB1234 09 2026" or just current month
@@ -1169,6 +1237,8 @@ router.post('/', async (req, res) => {
                 } catch (_) {}
                 return;
             }
+
+            if (!await ensureVehicleAccess(fromPhone, resolvedTruck, req)) return;
 
             try {
                 const vouchers = await fetchVouchersForTruck(resolvedTruck, null, null, req);
@@ -1286,6 +1356,8 @@ router.post('/', async (req, res) => {
                 return;
             }
 
+            if (!await ensureVehicleAccess(fromPhone, resolvedTruck, req)) return;
+
             try {
                 const { getVehicleChallanBalances } = require('../utils/challanNotificationService');
                 const result = await getVehicleChallanBalances(req?.orgId || 'vgtc', resolvedTruck);
@@ -1342,9 +1414,26 @@ router.post('/', async (req, res) => {
         }
 
         // ── Parse "PAID {voucherNo}" or button/poll reply response ────
-        const isPaidMatch = /PAID/i.test(msgBody);
+        const isPaidMatch = /^(?:PAID_|(?:\/reply\s+)?(?:MARK\s+(?:AS\s+)?PAID|PAID)\b)/i.test(msgBody);
         if (!isPaidMatch) {
-            console.log(`[WA-Webhook] No-op message from ${from}: "${msgBody}"`);
+            if (isTextMessage && fromPhone && isAiEnabled()) {
+                try {
+                    const reply = await generateAiReply({ phone: fromPhone, message: msgBody });
+                    if (reply) await sendWhatsAppMessage(clerkRecipient, reply, req);
+                } catch (aiError) {
+                    console.error('[WA-Webhook] AI reply failed:', aiError.message);
+                    try {
+                        await sendWhatsAppMessage(clerkRecipient, 'Assistant busy right now. Please try again shortly or send HELP for commands.', req);
+                    } catch (sendError) {
+                        console.error('[WA-Webhook] AI fallback reply failed:', sendError.message);
+                    }
+                }
+            }
+            return;
+        }
+
+        if (!await canPerformAction(fromPhone, 'paid', req)) {
+            await sendWhatsAppMessage(clerkRecipient, 'This number is not authorized to mark online advances paid.', req);
             return;
         }
 
@@ -1501,4 +1590,3 @@ module.exports.findLrRecordByNo = findLrRecordByNo;
 module.exports.markLrLoaded = markLrLoaded;
 module.exports.todayString = todayString;
 module.exports.fmtDate = fmtDate;
-

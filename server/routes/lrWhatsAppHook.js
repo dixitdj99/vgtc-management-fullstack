@@ -237,6 +237,11 @@ async function dispatchLrNotification(lrData, req) {
         for (const [cleanP, info] of recipientMap.entries()) {
             const rawPhone = info.rawPhone;
             const eventKey = info.eventKey;
+            const eventConfig = waCfg.events?.[eventKey] || DEFAULT_TEMPLATES[eventKey];
+            if (!eventConfig || eventConfig.enabled === false) {
+                console.log(`[WA-Hook] ${eventKey} skipped because its event toggle is OFF`);
+                continue;
+            }
             try {
                 if (receiptImageBuffer) {
                     await sendWhatsAppImage(rawPhone, receiptImageBuffer, imageCaption, req);

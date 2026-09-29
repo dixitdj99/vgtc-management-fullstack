@@ -5,8 +5,9 @@ import {
   Eye, Smartphone, Plus, Trash2, Upload, ChevronLeft, ChevronRight, Cpu,
   Truck, UserCheck, UserX, Home, Check, CheckCheck, MapPin
 } from 'lucide-react';
-import ax from '../../api';
+import ax, { invalidateCache } from '../../api';
 import TableScroll from '../../components/TableScroll';
+import AttendanceTimelineModal from '../../components/AttendanceTimelineModal';
 import * as XLSX from 'xlsx';
 import './admin.css';
 
@@ -46,6 +47,8 @@ export default function TerminalBiometricsManager() {
   const [activeTab, setActiveTab] = useState('presence');
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [liveConnected, setLiveConnected] = useState(false);
+  const [timelineProfile, setTimelineProfile] = useState(null);
 
   // Common Date Selector
   const [selectedDate, setSelectedDate] = useState(getTodayIST);
@@ -70,9 +73,6 @@ export default function TerminalBiometricsManager() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [enrolledSearch, setEnrolledSearch] = useState('');
   const [viewingPhotoModal, setViewingPhotoModal] = useState(null);
-  const [viewingProfileDetails, setViewingProfileDetails] = useState(null);
-  const [profileTimeline, setProfileTimeline] = useState([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
 
   // ── Add Employee Modal State ──
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -150,8 +150,8 @@ export default function TerminalBiometricsManager() {
     if (!silent) setRosterLoading(true);
     try {
       const [rosRes, vehRes] = await Promise.all([
-        ax.get(`attendance/roster?date=${selectedDate}`),
-        ax.get('vehicles').catch(() => ({ data: [] })),
+        ax.get(`attendance/roster?date=${selectedDate}`, { _skipCache: true }),
+        ax.get('vehicles', { _skipCache: true }).catch(() => ({ data: [] })),
       ]);
       setRoster(rosRes.data || null);
       if (Array.isArray(vehRes.data)) setVehicles(vehRes.data);
@@ -165,7 +165,7 @@ export default function TerminalBiometricsManager() {
   const fetchLogs = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await ax.get(`attendance?from=${selectedDate}&to=${selectedDate}`);
+      const res = await ax.get(`attendance?from=${selectedDate}&to=${selectedDate}`, { _skipCache: true });
       const rawRecords = Array.isArray(res.data) ? res.data : [];
       setLogs(rawRecords);
     } catch (err) {
@@ -177,7 +177,7 @@ export default function TerminalBiometricsManager() {
 
   const fetchProfiles = async () => {
     try {
-      const res = await ax.get('profiles');
+      const res = await ax.get('profiles', { _skipCache: true });
       setProfiles(Array.isArray(res.data) ? res.data.filter(isBiometricPerson) : []);
     } catch (err) {
       console.error('Failed to load profiles:', err);
@@ -194,31 +194,82 @@ export default function TerminalBiometricsManager() {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       if (activeTab === 'presence') fetchRoster(true);
-      else if (activeTab === 'logs') { fetchLogs(true); fetchProfiles(); }
-      else if (activeTab === 'enrolled') fetchProfiles();
-    }, 2500);
+      else if (activeTab === 'logs') fetchLogs(true);
+    }, 10000);
     return () => clearInterval(interval);
   }, [selectedDate, autoRefresh, activeTab]);
 
-  const openProfileDetails = async (profile) => {
-    setViewingProfileDetails(profile);
-    setProfileTimeline([]);
-    setTimelineLoading(true);
-    try {
-      const { data } = await ax.get('attendance', {
-        params: { profileId: profile.id, from: '2020-01-01', to: '2099-12-31' },
-      });
-      setProfileTimeline((Array.isArray(data) ? data : []).sort((a, b) => {
-        const ta = new Date(a.markedAt || a.timestamp || a.punchTime || a.date || 0).getTime();
-        const tb = new Date(b.markedAt || b.timestamp || b.punchTime || b.date || 0).getTime();
-        return tb - ta;
-      }));
-    } catch (err) {
-      console.error('Failed to load attendance timeline:', err);
-    } finally {
-      setTimelineLoading(false);
+  // Server-sent events make Android terminal punches appear immediately. The
+  // uncached interval above remains as a cross-instance/network fallback.
+  useEffect(() => {
+    if (!autoRefresh) {
+      setLiveConnected(false);
+      return undefined;
     }
-  };
+
+    let active = true;
+    let reconnectTimer;
+    const controller = new AbortController();
+
+    const refreshAttendance = () => {
+      invalidateCache('/attendance');
+      fetchRoster(true);
+      fetchLogs(true);
+    };
+
+    const connect = async () => {
+      try {
+        const token = localStorage.getItem('vgtc-token');
+        const response = await fetch('/api/attendance/live', {
+          headers: {
+            Accept: 'text/event-stream',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) throw new Error(`Live stream unavailable (${response.status})`);
+        setLiveConnected(true);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (active) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const packets = buffer.split('\n\n');
+          buffer = packets.pop() || '';
+          packets.forEach(packet => {
+            const dataLine = packet.split('\n').find(line => line.startsWith('data:'));
+            if (!dataLine) return;
+            try {
+              const event = JSON.parse(dataLine.slice(5).trim());
+              if (event.type === 'attendance.changed') {
+                window.dispatchEvent(new CustomEvent('attendance-realtime', { detail: event }));
+                refreshAttendance();
+              }
+            } catch (_) { /* Ignore malformed keep-alive packets. */ }
+          });
+        }
+      } catch (err) {
+        if (active && err.name !== 'AbortError') console.warn('Attendance live sync reconnecting:', err.message);
+      } finally {
+        if (active) {
+          setLiveConnected(false);
+          reconnectTimer = setTimeout(connect, 4000);
+        }
+      }
+    };
+
+    connect();
+    return () => {
+      active = false;
+      clearTimeout(reconnectTimer);
+      controller.abort();
+      setLiveConnected(false);
+    };
+  }, [selectedDate, autoRefresh]);
 
   // ── Quick Mark Attendance ──
   const handleQuickMark = async (profile, newStatus) => {
@@ -1085,19 +1136,19 @@ export default function TerminalBiometricsManager() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 7, height: 38,
                 padding: '0 14px', borderRadius: 9,
-                border: `1px solid ${autoRefresh ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
-                background: autoRefresh ? 'rgba(16,185,129,0.1)' : 'var(--bg-th)',
-                color: autoRefresh ? '#10b981' : 'var(--text-muted)',
+                border: `1px solid ${autoRefresh ? (liveConnected ? 'rgba(16,185,129,0.35)' : 'rgba(245,158,11,0.35)') : 'var(--border)'}`,
+                background: autoRefresh ? (liveConnected ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)') : 'var(--bg-th)',
+                color: autoRefresh ? (liveConnected ? '#10b981' : '#f59e0b') : 'var(--text-muted)',
                 fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
               }}
             >
               <span style={{
                 width: 8, height: 8, borderRadius: '50%',
-                background: autoRefresh ? '#10b981' : 'var(--text-muted)',
-                boxShadow: autoRefresh ? '0 0 8px #10b981' : 'none',
+                background: autoRefresh ? (liveConnected ? '#10b981' : '#f59e0b') : 'var(--text-muted)',
+                boxShadow: autoRefresh ? `0 0 8px ${liveConnected ? '#10b981' : '#f59e0b'}` : 'none',
                 display: 'inline-block',
               }} />
-              {autoRefresh ? 'Live Sync (6s)' : 'Live Paused'}
+              {autoRefresh ? (liveConnected ? 'Live Sync Connected' : 'Live Sync Reconnecting') : 'Live Paused'}
             </button>
           )}
 
@@ -1178,7 +1229,12 @@ export default function TerminalBiometricsManager() {
                   const isBusy = markingId === row.profileId;
 
                   return (
-                    <tr key={row.profileId || idx} style={{ opacity: isBusy ? 0.6 : 1 }}>
+                    <tr
+                      key={row.profileId || idx}
+                      onClick={() => setTimelineProfile({ ...matchedProfile, ...row, id: row.profileId, name: row.name, profileType: row.type || matchedProfile?.profileType })}
+                      title="Open complete attendance timeline"
+                      style={{ opacity: isBusy ? 0.6 : 1, cursor: 'pointer' }}
+                    >
                       {/* Employee Details */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1296,7 +1352,7 @@ export default function TerminalBiometricsManager() {
                           <button
                             type="button"
                             disabled={isBusy}
-                            onClick={() => handleQuickMark(row, 'present')}
+                            onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'present'); }}
                             title="Mark Present in Yard"
                             style={{
                               padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
@@ -1311,7 +1367,7 @@ export default function TerminalBiometricsManager() {
                           <button
                             type="button"
                             disabled={isBusy}
-                            onClick={() => handleQuickMark(row, 'half_day')}
+                            onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'half_day'); }}
                             title="Mark Half Day"
                             style={{
                               padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
@@ -1326,7 +1382,7 @@ export default function TerminalBiometricsManager() {
                           <button
                             type="button"
                             disabled={isBusy}
-                            onClick={() => handleQuickMark(row, 'leave')}
+                            onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'leave'); }}
                             title="Mark On Leave"
                             style={{
                               padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
@@ -1341,7 +1397,7 @@ export default function TerminalBiometricsManager() {
                           <button
                             type="button"
                             disabled={isBusy}
-                            onClick={() => handleQuickMark(row, 'absent')}
+                            onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'absent'); }}
                             title="Mark Absent / At Home"
                             style={{
                               padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
@@ -1461,7 +1517,12 @@ export default function TerminalBiometricsManager() {
                   const isDriver = roleType.toLowerCase() === 'driver';
 
                   return (
-                    <tr key={log.id || idx}>
+                    <tr
+                      key={log.id || idx}
+                      onClick={() => setTimelineProfile({ ...matchedProfile, id: log.profileId, name: log.profileName || matchedProfile?.name, profileName: log.profileName, profileType: roleType, vehicleNo: assignedVeh })}
+                      title="Open complete attendance timeline"
+                      style={{ cursor: 'pointer' }}
+                    >
                       {/* Punch Time */}
                       <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -1677,7 +1738,11 @@ export default function TerminalBiometricsManager() {
                 <div
                   key={p.id}
                   className="adm-card"
-                  onClick={() => openProfileDetails(p)}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setTimelineProfile(p)}
+                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setTimelineProfile(p); }}
+                  title="Open complete attendance timeline"
                   style={{
                     padding: 18, display: 'flex', flexDirection: 'column', gap: 14,
                     border: '1px solid var(--border)', borderRadius: 12,
@@ -1737,6 +1802,11 @@ export default function TerminalBiometricsManager() {
                     </span>
                   </div>
 
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary, #6366f1)', fontSize: 11.5, fontWeight: 750 }}>
+                    <Calendar size={13} />
+                    Click card to view full attendance timeline
+                  </div>
+
                   {/* Action buttons */}
                   <div style={{ display: 'flex', gap: 8 }}>
                     {hasFace && (
@@ -1744,7 +1814,7 @@ export default function TerminalBiometricsManager() {
                         type="button"
                         className="adm-btn adm-btn--sm"
                         style={{ flex: 1, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }}
-                        onClick={(e) => { e.stopPropagation(); setViewingPhotoModal(p); }}
+                        onClick={(event) => { event.stopPropagation(); setViewingPhotoModal(p); }}
                       >
                         <Eye size={13} />
                         View Angles ({photoCount})
@@ -1754,7 +1824,7 @@ export default function TerminalBiometricsManager() {
                       type="button"
                       className="adm-btn adm-btn--sm"
                       style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5, color: 'var(--danger)', borderColor: 'rgba(180,35,24,0.3)' }}
-                      onClick={(e) => { e.stopPropagation(); handleDeleteProfile(p); }}
+                      onClick={(event) => { event.stopPropagation(); handleDeleteProfile(p); }}
                       title="Remove employee"
                     >
                       <Trash2 size={13} />
@@ -1767,47 +1837,11 @@ export default function TerminalBiometricsManager() {
         </div>
       )}
 
-      {viewingProfileDetails && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.68)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 18 }}>
-          <div className="adm-panel" style={{ maxWidth: 760, width: '100%', maxHeight: '90vh', overflow: 'auto', borderRadius: 16 }}>
-            <div className="adm-panel-hd" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {imageUrl(viewingProfileDetails.photo || viewingProfileDetails.facePhoto || viewingProfileDetails.photoUrl) ? (
-                  <img src={imageUrl(viewingProfileDetails.photo || viewingProfileDetails.facePhoto || viewingProfileDetails.photoUrl)} alt="" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover' }} />
-                ) : <UserCheck size={34} color="#10b981" />}
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: 'var(--text)' }}>{viewingProfileDetails.name}</h3>
-                  <div className="adm-sub">{viewingProfileDetails.profileType || 'Staff'}{viewingProfileDetails.vehicleNo ? ` · Truck ${viewingProfileDetails.vehicleNo}` : ''}</div>
-                </div>
-              </div>
-              <button type="button" className="adm-btn adm-btn--sm" onClick={() => setViewingProfileDetails(null)}>Close</button>
-            </div>
-            <div className="adm-panel-bd">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
-                <div className="adm-card" style={{ padding: 12 }}><b>{viewingProfileDetails.phone || '—'}</b><div className="adm-sub">Phone</div></div>
-                <div className="adm-card" style={{ padding: 12 }}><b>{viewingProfileDetails.fingerprintEnrolled ? 'Linked' : 'Not linked'}</b><div className="adm-sub">Fingerprint</div></div>
-                <div className="adm-card" style={{ padding: 12 }}><b>{viewingProfileDetails.faceEnrolled ? 'Enrolled' : 'Not enrolled'}</b><div className="adm-sub">Face biometric</div></div>
-              </div>
-              <h4 style={{ margin: '0 0 10px', color: 'var(--text)' }}>Attendance Timeline</h4>
-              {timelineLoading ? <div style={{ padding: 25, color: 'var(--text-muted)' }}>Loading full attendance timeline…</div> : profileTimeline.length === 0 ? <div style={{ padding: 25, color: 'var(--text-muted)' }}>No attendance records found.</div> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                  {profileTimeline.map((item, i) => {
-                    const driver = String(item.profileType || viewingProfileDetails.profileType || '').toLowerCase() === 'driver';
-                    const when = item.markedAt || item.timestamp || item.punchTime || item.createdAt || item.date;
-                    return <div key={item.id || `${item.date}-${i}`} style={{ display: 'grid', gridTemplateColumns: '18px 1fr auto', gap: 10, alignItems: 'start', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.status === 'present' ? '#10b981' : '#f59e0b', marginTop: 5 }} />
-                      <div><b>{item.terminalEvent || item.action || (item.isPunchLog ? 'Biometric punch' : 'Attendance mark')}</b><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{formatTimelineDate(when)} · {item.location || (driver ? 'Yard' : 'Office')} · {item.method || item.source || 'manual'}</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>Status: {item.status || 'present'}{item.inTime ? ` · In ${item.inTime}` : ''}{item.outTime ? ` · Out ${item.outTime}` : ''}{item.durationHours ? ` · ${item.durationHours} hrs` : ''}</div></div>
-                      <span className="adm-chip adm-chip--muted">{item.dutyState || '—'}</span>
-                    </div>;
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* ── Photo Preview Modal ── */}
+      {timelineProfile && (
+        <AttendanceTimelineModal profile={timelineProfile} onClose={() => setTimelineProfile(null)} />
       )}
 
-      {/* ── Photo Preview Modal ── */}
       {viewingPhotoModal && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',

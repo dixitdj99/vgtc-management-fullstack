@@ -88,8 +88,18 @@ env:
   - variable: GOOGLE_CREDENTIALS
     secret: GOOGLE_CREDENTIALS
   # Shared secret Cloud Scheduler sends as the X-Cron-Secret header when calling
-  # /api/jobs/*. To enable, create the secret in Secret Manager:
+  # /api/jobs/*. Must be set in Cloud Secret Manager before deploying:
   #   firebase apphosting:secrets:set CRON_SECRET --project vgtc-management
-  # - variable: CRON_SECRET
-  #   secret: CRON_SECRET
-
+  # Then update the X-Cron-Secret header in all Cloud Scheduler jobs to match.
+  - variable: CRON_SECRET
+    secret: CRON_SECRET
+  # WhatsApp AI replies and signed Meta webhook callbacks.
+  # Create both secrets in App Hosting before deploying this revision.
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+  - variable: META_APP_SECRET
+    secret: META_APP_SECRET
+  - variable: GEMINI_MODEL
+    value: "gemini-3.5-flash-lite"
+    availability:
+      - RUNTIME

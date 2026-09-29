@@ -15,6 +15,7 @@ import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import { useToast } from '../components/Toast';
 import { openReceiptWindow, printHtml } from '../utils/receiptPrint';
+import { showWhatsAppReceiptToast } from '../utils/whatsappReceipt';
 import { archiveName } from '../utils/archiveDoc';
 import { readExtras, extrasTotal, extrasPayload, printableExtras } from '../utils/voucherExtras';
 import TableScroll from '../components/TableScroll';
@@ -107,8 +108,13 @@ const getNet = (v) => {
 };
 
 /* ── Print ── */
-function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false) {
+function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false, whatsapp = null) {
     const orgName = org.name || 'VIKAS GOODS TRANSPORT CO.';
+    // Bill HTML is opened from a Blob URL. Root-relative image paths are not
+    // reliable from that document, so use the app's absolute asset URL.
+    const krishnaLogoUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/krishna-logo.jpg`
+        : '/krishna-logo.jpg';
     const isBill = v.type === 'Kosli_Bill' || v.type === 'Jajjhar_Bill' || v.type === 'Bahadurgarh_Bill';
     const isCngTrip = isCng || String(v.fuelType || '').toUpperCase() === 'CNG' || String(v.pump || '').toUpperCase() === 'CNG';
     const fuelAdvLabel = isCngTrip ? 'CNG Advance' : 'Diesel Advance';
@@ -179,6 +185,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false)
     if (brand === 'jklakshmi') {
         openReceiptWindow({
             archive,
+            whatsapp,
             title: `Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join(',') : '')}`,
             fontSize: '9.5pt',
             styles: `
@@ -485,7 +492,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false)
     <div class="receipt-container">
         <div class="header">
             <div class="header-left">
-               <img src="/krishna-logo.jpg" alt="Krishna Logo" style="max-width: 100%; max-height: 50px;">
+               <img src="${krishnaLogoUrl}" alt="Krishna Logo" style="display:block;max-width:100%;max-height:50px;width:auto;height:auto;object-fit:contain;">
             </div>
             <div class="header-center">
                 <div class="company-name">${orgName}</div>
@@ -512,7 +519,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false)
                 <div>Truck No. <span style="margin-left: 5px; font-weight: normal;">${v.truckNo || ''}</span>${v.truckNo ? '' : '<div class="dotted-fill"></div>'}</div>
                 <div>From : ${v.type === 'Kosli_Bill' ? 'Kosli' : (v.type === 'Jajjhar_Bill' ? 'Jhajjar' : 'Bahadurgarh')}</div>
                 <div>To <span style="margin-left: 5px; font-weight: normal;">${v.destination || ''}</span>${v.destination ? '' : '<div class="line-fill"></div>'}</div>
-                <div><span>ID: <span style="margin-left: 5px; font-weight: bold; font-size: 13px; color: #6366f1;">#${v.entryId || '—'}</span></span><span style="margin-left: 15px;">LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal; margin-left: 15px;">Date: ${v.date}</span></div>
+                <div><span>LR No. <span style="margin-left: 8px; font-weight: normal; font-size: 13px;">${v.lrNo || ''}</span></span><span style="font-weight: normal; margin-left: 15px;">Date: ${v.date}</span></div>
             </div>
         </div>
         <table class="main-table">
@@ -630,6 +637,7 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false)
 
         openReceiptWindow({
             archive,
+            whatsapp,
             title: `Voucher #${v.lrNo || (hasDeliveries ? v.deliveries.map(d => d.lrNo).join(',') : '')}`,
             fontSize: '10px',
             styles: `
@@ -739,7 +747,12 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false)
         return;
     }
 
-    printHtml(html, { width: 850, height: 600, archive });
+    printHtml(html, {
+        width: 850,
+        height: 600,
+        archive,
+        whatsapp: whatsapp ? { ...whatsapp, captureSelector: '.receipt-container', viewportWidth: 850, widthMm: 220 } : null,
+    });
 }
 
 /* ── Extra money ── */
@@ -1768,7 +1781,9 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             ...(hasMultiDelivery ? { deliveries: validDeliveries } : {}),
         };
         try {
-            const res = await ax.post(API_V, payload);
+            const res = await ax.post(API_V, payload, {
+                headers: { 'x-vgtc-whatsapp-receipt': 'client-image' },
+            });
             rememberSticky('voucher.date', form.date);
             if (!lockedType && !isGeneric) rememberSticky('voucher.type', vType);
 
@@ -1793,18 +1808,23 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             setDeliveries([{ ...EMPTY_DELIVERY }]);
             setShowVehicleExpenses(false);
 
-            // Auto-open print receipt in independent tab instead of asking user
-            printVoucher({ ...payload, ...newVoucher }, org, brand, signedBy, isCng);
-
+            const savedVoucher = { ...payload, ...newVoucher };
             const vNum = newVoucher.billNo || newVoucher.voucherNo || newVoucher.entryId || newVoucher.id || '';
             const docWord = isBill ? 'Bill' : 'Voucher';
             if (showToast) {
-                showToast(`✅ ${docWord} #${vNum} created & WhatsApp message sent successfully!`, 'success');
+                showToast(`${docWord} #${vNum} created. Preparing the printed image for WhatsApp...`, 'info');
             }
+
+            // Auto-open the print copy and capture that exact HTML for WhatsApp.
+            printVoucher(savedVoucher, org, brand, signedBy, isCng, {
+                voucher: savedVoucher,
+                onResult: result => showWhatsAppReceiptToast(showToast, docWord.toLowerCase(), result),
+                onError: error => showToast?.(`WhatsApp ${docWord.toLowerCase()} failed: ${error.message}`, 'error', 6500),
+            });
         } catch (err) {
             const msg = err.response?.data?.error || err.message || `Error saving ${isBill ? 'bill' : 'voucher'}`;
             if (showToast) {
-                showToast(`❌ ${isBill ? 'Bill' : 'Voucher'} creation / WhatsApp dispatch failed: ${msg}`, 'error');
+                showToast(`${isBill ? 'Bill' : 'Voucher'} creation failed: ${msg}`, 'error');
             } else {
                 alert(`Error saving ${isBill ? 'bill' : 'voucher'}: ` + msg);
             }

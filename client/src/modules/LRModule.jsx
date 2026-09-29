@@ -23,6 +23,25 @@ import { useToast } from '../components/Toast';
 
 const PAGE_SIZE = 20;
 
+const hasUsableMobile = value => String(value || '').replace(/\D/g, '').length >= 10;
+
+const getMaterialValidationError = (materials = []) => {
+  if (!Array.isArray(materials) || materials.length === 0) {
+    return 'Add at least one material before creating the loading receipt.';
+  }
+  for (let index = 0; index < materials.length; index += 1) {
+    const material = materials[index] || {};
+    const row = index + 1;
+    if (!String(material.type || '').trim()) return `Material #${row}: select a material type.`;
+    if (!String(material.loadingType || '').trim()) return `Material #${row}: select a loading type.`;
+    const bags = Number(material.bags);
+    if (!Number.isInteger(bags) || bags <= 0) return `Material #${row}: enter bags as a whole number above zero.`;
+    const weight = Number(material.weight);
+    if (!Number.isFinite(weight) || weight <= 0) return `Material #${row}: enter weight above zero.`;
+  }
+  return '';
+};
+
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ['PPC', 'OPC43', 'Adstar', 'Opc FS', 'Opc 53 FS', 'Weather'];
 const MATS_JKL_FALLBACK = ['PPC', 'OPC43', 'Pro+'];
@@ -1771,9 +1790,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const isVehicleContactComplete = Boolean(
     matchedVehicle &&
-    matchedVehicle.driverContact &&
-    matchedVehicle.ownerContact &&
-    matchedVehicle.driverName
+    (hasUsableMobile(matchedVehicle.driverContact) || hasUsableMobile(matchedVehicle.ownerContact))
   );
 
   const updMat = (i, field, val) => {
@@ -1788,6 +1805,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     if (markInvalidFields(createFormRef.current)) return;
     if (!validateTruckNo(form.truckNo)) {
       alert('Invalid truck number format. Please enter in GJ01AB1234 format (No spaces).');
+      return;
+    }
+    const materialError = getMaterialValidationError(form.materials);
+    if (materialError) {
+      alert(materialError);
+      return;
+    }
+    if (!hasUsableMobile(form.driverContact) && !hasUsableMobile(form.ownerContact)) {
+      alert(`Enter at least one valid 10-digit driver or owner mobile number for ${form.truckNo}. It will be saved in Fleet Management for future loading receipts.`);
       return;
     }
     // Validate physical stock
@@ -2547,13 +2573,13 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     </div>
                     <div className="fg" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', display: 'grid', gap: '12px' }}>
                       <div className="field-h"><label>Type</label>
-                        <select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
+                        <select className="fi" required value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
                           {MATERIALS.map(o => <option key={o}>{o}</option>)}
                         </select>
                       </div>
                       <div className="field-h">
                         <label>Loading</label>
-                        <select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
+                        <select className="fi" required value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
                           <option value="From Godown">From Godown</option>
                           <option value="Transfer">Transfer</option>
                           <option value="Crossing">Crossing</option>
@@ -2562,9 +2588,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       </div>
                       <div className="field-h">
                         <label>Bags</label>
-                        <input className="fi" type="number" placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
+                        <input className="fi" type="number" min="1" step="1" required placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
                       </div>
-                      <div className="field-h"><label>Weight</label><input className="fi" type="number" step="0.01" placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
+                      <div className="field-h"><label>Weight</label><input className="fi" type="number" min="0.01" step="0.01" required placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
                       <div className="field-h"><label>Party</label>
                         <input className="fi" type="text" placeholder={form.partyName || 'Party name'} value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
                       </div>

@@ -10,6 +10,38 @@ const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
 
 /**
+ * Creation invariant shared by every LR route (Jharli, JKL, Kosli, Jhajjar,
+ * Bahadurgarh and the legacy route). UI validation is helpful, but this is the
+ * final guard for mobile clients, imports and direct API calls.
+ */
+const validateLrMaterials = (materials) => {
+    const fail = (message) => {
+        const error = new Error(message);
+        error.status = 400;
+        throw error;
+    };
+    if (!Array.isArray(materials) || materials.length === 0) {
+        fail('At least one material with type, loading type, bags and weight is required');
+    }
+    materials.forEach((material, index) => {
+        const row = index + 1;
+        if (!material || typeof material !== 'object') fail(`Material #${row} details are required`);
+        if (!String(material.type || '').trim()) fail(`Material #${row}: material type is required`);
+        if (!String(material.loadingType || '').trim()) fail(`Material #${row}: loading type is required`);
+
+        const bags = Number(material.bags);
+        if (!Number.isInteger(bags) || bags <= 0) {
+            fail(`Material #${row}: bags must be a whole number above zero`);
+        }
+        const weight = Number(material.weight);
+        if (!Number.isFinite(weight) || weight <= 0) {
+            fail(`Material #${row}: weight must be above zero`);
+        }
+    });
+    return true;
+};
+
+/**
  * Party group for an LR collection. The collection name is the one thing every
  * caller already passes that identifies the location — routes and client need
  * no change. Names may carry an env prefix (dev_...), hence includes().
@@ -301,7 +333,14 @@ const localGetAll = (orgId, lrCollection = COLLECTION_LR) => {
 
 // ── Public API — auto-selects Firebase or local ────────────────────────────────
 
-const createLoadingReceipt = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = COLLECTION_METADATA) => {
+const createLoadingReceipt = async (
+    orgId,
+    data,
+    lrCollection = COLLECTION_LR,
+    counterCollection = COLLECTION_METADATA,
+    vehicleCollection = 'vehicles'
+) => {
+    validateLrMaterials(data?.materials);
     if (data && data.truckNo) {
         try {
             const vehicleService = require('./vehicleService');
@@ -311,7 +350,7 @@ const createLoadingReceipt = async (orgId, data, lrCollection = COLLECTION_LR, c
                 driverContact: data.driverContact,
                 ownerName: data.ownerName,
                 ownerContact: data.ownerContact
-            });
+            }, vehicleCollection);
         } catch (vehErr) {
             console.error('Error auto-updating vehicle contacts from LR create:', vehErr.message);
         }
@@ -494,6 +533,7 @@ const generateBulkInvoice = async (ids, invoiceNumber, invoiceDate, lrCollection
 };
 
 module.exports = {
+    validateLrMaterials,
     createLoadingReceipt,
     getAllLoadingReceipts,
     updateBillingStatus,

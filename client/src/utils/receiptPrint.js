@@ -1,3 +1,5 @@
+import { sendPrintedVoucherToWhatsApp } from './whatsappReceipt';
+
 /**
  * receiptPrint.js — the shared 79mm counter-receipt shell.
  *
@@ -272,6 +274,7 @@ export function openReceiptWindow({
     width = RECEIPT_WIDTH_MM,
     fitContent = false,
     archive = null,
+    whatsapp = null,
 }) {
     const opts = { width, minHeight: minHeightMm, padding, fontSize, lineHeight, fitContent };
 
@@ -291,6 +294,17 @@ ${body}
 <script>${autoHeightScript(opts)}<\/script>
 </body>
 </html>`;
+
+    if (whatsapp?.voucher) {
+      sendPrintedVoucherToWhatsApp({
+        html,
+        voucher: whatsapp.voucher,
+        captureSelector: whatsapp.captureSelector || 'body',
+        widthMm: width,
+        viewportWidth: whatsapp.viewportWidth,
+      }).then(result => whatsapp.onResult?.(result))
+        .catch(error => whatsapp.onError?.(error));
+    }
 
     /**
      * Sized for Chrome's print dialog, not for the slip.
@@ -349,7 +363,17 @@ export function fileCopy(html, archive) {
  * @param {number} [o.height] window height in px
  * @param {object} [o.archive] see archiveDoc(); omit to print without filing
  */
-export function printHtml(html, { width = 1000, height = 700, archive = null } = {}) {
+export function printHtml(html, { width = 1000, height = 700, archive = null, whatsapp = null } = {}) {
+    if (whatsapp?.voucher) {
+      sendPrintedVoucherToWhatsApp({
+        html,
+        voucher: whatsapp.voucher,
+        captureSelector: whatsapp.captureSelector || 'body',
+        viewportWidth: whatsapp.viewportWidth || width,
+        widthMm: whatsapp.widthMm || 79,
+      }).then(result => whatsapp.onResult?.(result))
+        .catch(error => whatsapp.onError?.(error));
+    }
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const blobUrl = URL.createObjectURL(blob);
     const w = window.open(blobUrl, '_blank');

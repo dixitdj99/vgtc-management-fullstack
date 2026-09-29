@@ -30,7 +30,8 @@ router.post('/', async (req, res) => {
             req.orgId,
             bodyWithMeta, 
             getCol(BASE_COL, req), 
-            getCol(META_COL, req)
+            getCol(META_COL, req),
+            getCol('vehicles', req)
         );
 
         // Real-time backup — runs whenever Google Drive is authorized

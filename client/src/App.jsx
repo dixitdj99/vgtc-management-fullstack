@@ -37,7 +37,6 @@ import {
   clearUpdate, clearAllUpdates, unreadUpdateCount,
 } from './utils/weatherAlerts';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
-import TruckDashboard from './modules/TruckDashboard';
 import DashboardHome from './modules/DashboardHome';
 import CommandPalette from './components/CommandPalette';
 import useViewport from './hooks/useViewport';
@@ -72,8 +71,10 @@ const ENV_BANNER = APP_ENV === 'production' ? null
  * for all three by one clerk working from Jharli, so putting them on these
  * sidebars only offers a screen nobody there is meant to use.
  *
- * This hides the nav entry and nothing else. The APIs behind these modules stay
- * reachable on purpose, because the screens that remain read through them: a
+ * This hides the nav entry and nothing else. Fleet Management itself is shared
+ * with these locations; only the separate Market Vehicles screen remains
+ * hidden. The APIs behind the other hidden modules stay reachable on purpose,
+ * because the screens that remain read through them: a
  * voucher and an LR need the vehicle list (which includes market vehicles), the
  * voucher form looks up the last odometer reading through /mileage, and the
  * balance sheet reads the freight batches. Hiding a module is not the same as
@@ -86,7 +87,6 @@ const HIDDEN_AT_DUMP_GODOWNS = new Set([
   'pay_dump',           // Pay
   'labour_dump',        // Labour Account
   'trip_profit_dump',   // Trip Profit Analysis
-  'vehicles_dump',      // Fleet Management
   'diesel_dump',        // Diesel Control
   'mileage_dump',       // Mileage Tracker
   'tyres_dump',         // Tyre Management
@@ -550,9 +550,7 @@ function AppInner() {
         { id: 'cash_out', label: 'Cash Outs' },
       ]
     },
-    { id: 'vehicle_credit_debit_dump', label: 'Vehicle Credit & Debit', Icon: CreditCard, color: '#10b981', section: 'jksuper', permKey: 'pay' },
     { id: 'vehicles_dump', label: 'Fleet Management', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
-    { id: 'truck_dashboard', label: 'Fleet Dashboard', Icon: BarChart3, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
     { id: 'tyres_dump', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
@@ -655,9 +653,9 @@ function AppInner() {
       if (nid.includes('kosli') && godown !== 'kosli') return false;
       if (nid.includes('jhajjar') && godown !== 'jhajjar') return false;
       if (nid.includes('bahadurgarh') && godown !== 'bahadurgarh') return false;
-      // Kosli, Jhajjar and Bahadurgarh are loading sites. The money and fleet
-      // side for all three is run by one clerk from Jharli, so those modules are
-      // not on the sidebar here — see HIDDEN_AT_DUMP_GODOWNS.
+      // Kosli, Jhajjar and Bahadurgarh share Jharli's Fleet Management module.
+      // The remaining head-office money, fuel and separate market-vendor
+      // screens stay off these sidebars — see HIDDEN_AT_DUMP_GODOWNS.
       if (DUMP_GODOWNS.has(godown) && HIDDEN_AT_DUMP_GODOWNS.has(n.id)) return false;
     }
     
@@ -751,7 +749,7 @@ function AppInner() {
 
   // Renders a module by id — shared by the desktop page-area and the mobile More tab.
   const renderModule = (id, sub = '') => (
-    <>
+    <React.Fragment key={`${plant || 'none'}:${godown || 'none'}:${id}:${sub}`}>
       {id === 'admin_settings' && <AdminPage />}
       {/* FILTERED_NAV carries the label, icon and colour of every module this
           user may open — the dashboard shows them as cards to navigate by. */}
@@ -770,13 +768,12 @@ function AppInner() {
       {(id === 'balance_all_dump' || id === 'balance_all_jharli') && <AllBalanceSheet role={user.role} permissions={user.permissions} />}
       {id === 'cashbook_dump' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="dump" />}
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
-      {(id === 'vehicle_credit_debit_dump' || id === 'vehicle_credit_debit_jharli') && <VehicleCreditDebitModule cashbookType={id === 'vehicle_credit_debit_jharli' ? 'jkl' : 'dump'} />}
+      {id === 'vehicle_credit_debit_jharli' && <VehicleCreditDebitModule cashbookType="jkl" />}
       {id === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="kosli" />}
       {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
       {id === 'stock_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="bahadurgarh" />}
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
       {(id === 'vehicles_dump' || id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
-      {id === 'truck_dashboard' && <TruckDashboard role={user.role} permissions={user.permissions} />}
       {/* Diesel Control covers exactly the sheets its own location has — the
           same mapping the Balance Sheet nav uses above. Without this it pulled
           Jharli's 'Dump' vouchers into every location.
@@ -830,7 +827,7 @@ function AppInner() {
       {id === 'pay_main' && <PayModule brand="main" role={user.role} permissions={user.permissions} />}
       {id === 'sell_main' && <SellModule brand="main" role={user.role} permissions={user.permissions} />}
       {id === 'realtime_main' && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
-    </>
+    </React.Fragment>
   );
 
   // ── Mobile / tablet: dedicated app-like UI ──
@@ -1038,7 +1035,7 @@ function AppInner() {
             const groupOf = (id) => {
               if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|realtime_|attendance_)/.test(id)) return 'Operations';
               if (/^(balance_|cashbook_|pay_|trip_profit_|vehicle_credit_debit_)/.test(id)) return 'Money';
-              if (/^(vehicles_|truck_dashboard|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
+              if (/^(vehicles_|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
               return null;
             };
             const GROUP_ORDER = ['Operations', 'Money', 'Fleet'];
@@ -1715,7 +1712,7 @@ function AppInner() {
 
         <div className="page-area">
           <AnimatePresence mode="wait">
-            <motion.div key={active + subActive} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            <motion.div key={`${plant || 'none'}:${godown || 'none'}:${active}:${subActive}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="page-content">
               {renderModule(active, subActive)}
             </motion.div>

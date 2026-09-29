@@ -31,7 +31,11 @@ router.post('/', async (req, res) => {
         res.status(201).json(result);
 
         // WhatsApp Notification — fire and forget
-        ;(async () => {
+        // Current clients send a PNG captured from the exact print document.
+        // Retain the text-only fallback for older API clients without sending
+        // a duplicate message when the receipt image is about to follow.
+        const receiptImageWillFollow = req.get('x-vgtc-whatsapp-receipt') === 'client-image';
+        if (!receiptImageWillFollow) (async () => {
             try {
                 const vData = { ...savedBody, ...savedResult };
 

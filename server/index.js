@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const jobs = require('./jobs');
 const { ENV, isProduction } = require('./utils/envConfig');
+const { captureMetaWebhookBody, verifyMetaWebhookSignature } = require('./middleware/metaWebhookSignature');
 
 const lrRoutes = require('./routes/lrRoutes'); // Legacy
 const axios = require('axios');
@@ -147,7 +148,7 @@ app.use(cors((req, done) => done(null, {
 })));
 
 // Reduced payload limit (was 50mb — unnecessary for this app)
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '10mb', verify: captureMetaWebhookBody }));
 
 const partyRoutes = require('./routes/partyRoutes');
 
@@ -227,13 +228,8 @@ app.use('/api/vendors', requireAuth, gate('vehicle'), require('./routes/vendorRo
 // already runs requireAuth — mounting it again here would verify the JWT twice.
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/settings', requireAuth, require('./routes/systemSettingsRoutes'));
-// Public (no-auth) webhook — Meta WhatsApp Cloud API sends challenge GET and message/button POST here.
-// Must be mounted BEFORE the requireAuth whatsapp routes so Meta's call is not rejected.
-app.use('/api/whatsapp/webhook', require('./routes/whatsappWebhookRoute'));
-// Public (no-auth) 1-Click quick action endpoints for WhatsApp links (paid, loaded)
-app.use('/api/action', require('./routes/quickActionRoutes'));
-// VGTC OS Terminal Biometric & Attendance API (kiosk devices authenticate via terminal token/id)
-app.use('/api/terminal', require('./routes/terminalRoutes'));
+// Meta signs POST bodies with the app secret. GET challenge remains public.
+app.use('/api/whatsapp/webhook', verifyMetaWebhookSignature, require('./routes/whatsappWebhookRoute'));
 app.use('/api/whatsapp', requireAuth, require('./routes/whatsappRoutes'));
 app.use('/api/notifications', requireAuth, require('./routes/notificationRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes')); // guarded by X-Cron-Secret

@@ -20,7 +20,7 @@ const localStore = require('../utils/localStore');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
 const auditService = require('../services/auditService');
-const { sendEventNotification, sendWhatsAppMessage, lookupVehiclePhone, lookupVehicleInfo, getWhatsAppConfig } = require('../utils/whatsappService');
+const { sendEventNotification, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
 
 router.use(requireAuth, tenancyMiddleware);
 
@@ -327,32 +327,26 @@ router.post('/notify-payout', async (req, res, next) => {
             ? `${fmtDate(periodFrom)} to ${fmtDate(periodTo)}`
             : fmtDate(paymentDate);
 
-        const message = [
-            `*VIKAS GOODS TRANSPORT CO.*`,
-            `💰 *FREIGHT PAYMENT SETTLED*`,
-            ``,
-            `*Truck:* ${String(truckNo).toUpperCase()}${ownerName ? ` | *Owner:* ${ownerName}` : ''}`,
-            `*Period:* ${periodLabel}`,
-            `*Trips Settled:* ${vouchers.length} trip${vouchers.length === 1 ? '' : 's'}`,
-            ``,
-            `*— Trip Details —*`,
-            ...tripLines,
-            ``,
-            `*— Payment Summary —*`,
-            `*Gross Freight:* ${fmtRs(totalGross)}`,
-            `*Total Advances:* - ${fmtRs(totalDeductions)}`,
-            `*Net Freight:* ${fmtRs(totalNet)}`,
-            ``,
-            `*Amount Paid:* *${fmtRs(paymentAmount)}*`,
-            `*Method:* ${paymentMethod || 'Cash'}`,
-            `*Date:* ${fmtDate(paymentDate)}`,
-            remainingBalance !== undefined ? `*Outstanding Balance:* ${fmtRs(remainingBalance)}` : '',
-            ``,
-            `_Payment recorded in VGTC Management Portal._`,
-            `_VIKAS GOODS TRANSPORT CO. | Jharli, Jhajjar_`
-        ].filter(l => l !== null && l !== undefined).join('\n');
-
-        await sendWhatsAppMessage(recipientPhone, message, req);
+        const numberText = (n) => parseFloat(n || 0).toLocaleString('en-IN', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        });
+        await sendEventNotification('freight_payment_settled', {
+            truckNo: String(truckNo).toUpperCase(),
+            ownerName: ownerName || '—',
+            periodLabel,
+            tripCount: vouchers.length,
+            tripLines: tripLines.join('\n'),
+            totalGross: numberText(totalGross),
+            totalDeductions: numberText(totalDeductions),
+            totalNet: numberText(totalNet),
+            paymentAmount: numberText(paymentAmount),
+            paymentMethod: paymentMethod || 'Cash',
+            paymentDate: fmtDate(paymentDate),
+            remainingBalanceLine: remainingBalance !== undefined
+                ? `*Outstanding Balance:* Rs.${numberText(remainingBalance)}`
+                : '',
+        }, [recipientPhone], req);
         console.log(`[Pay-Hook] Payment breakdown sent to ${recipientPhone} for ${truckNo} (${vouchers.length} trips, ${fmtRs(paymentAmount)})`);
 
         res.json({ ok: true, phone: recipientPhone, truckNo, trips: vouchers.length });

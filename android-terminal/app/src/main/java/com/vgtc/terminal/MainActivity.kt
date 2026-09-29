@@ -738,7 +738,7 @@ class MainActivity : AppCompatActivity() {
             // check. Do not create another PRESENT punch-log row.
             showActiveDutyInProgressCard(profile, currentDuty, elapsedMs, minHoursRequired)
         } else {
-            // 8+ hours elapsed! Complete shift (Punch-Out)
+            // 4+ hours elapsed! Complete shift (Punch-Out)
             completeShift(profile, currentDuty, method, elapsedMs)
         }
     }
@@ -1048,7 +1048,7 @@ class MainActivity : AppCompatActivity() {
             val elapsedHours = elapsedMs / (1000.0 * 60 * 60)
             val durationRounded = Math.round(elapsedHours * 10.0) / 10.0
 
-            val (status, days) = if (elapsedHours >= 4.0) {
+            val (status, days) = if (elapsedHours >= 2.0) {
                 Pair("half_day", 0.5)
             } else {
                 Pair("leave", 0.0)

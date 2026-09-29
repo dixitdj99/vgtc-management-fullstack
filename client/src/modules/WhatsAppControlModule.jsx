@@ -11,7 +11,7 @@ import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
 
 const DEFAULT_PHONE_NUMBER_ID = '1216388781567509';
-const DEFAULT_WABA_ID = '923120010444696';
+const DEFAULT_WABA_ID = '1552863822720100';
 const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
 const DEFAULT_VERIFY_TOKEN = 'vgtc_meta_verify_token_2026';
 const DEFAULT_ADMIN_PHONES = '8708032492, 9416319445, 9728954901, 9728284849';
@@ -187,12 +187,8 @@ export default function WhatsAppControlModule() {
     events: {}
   });
 
-  const [envInfo, setEnvInfo] = useState({
-    env: 'local',
-    envPrefix: 'dev_'
-  });
-
   const [loading, setLoading] = useState(true);
+  const [configLoadError, setConfigLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -202,9 +198,15 @@ export default function WhatsAppControlModule() {
   const [status, setStatus] = useState({
     checking: true,
     connected: false,
+    reason: '',
     message: '',
     verifiedName: '',
-    displayPhoneNumber: ''
+    displayPhoneNumber: '',
+    connectionScope: '',
+    accountMode: '',
+    phoneStatus: '',
+    qualityRating: '',
+    codeVerificationStatus: ''
   });
 
   // Template Management State
@@ -243,16 +245,20 @@ export default function WhatsAppControlModule() {
   useEffect(() => {
     fetchConfig();
     fetchLogs();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') checkConnection();
+    }, 60000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchConfig = async () => {
+  const fetchConfig = async (refreshStatus = true) => {
     setLoading(true);
+    setConfigLoadError('');
+    let loaded = false;
     try {
-      const res = await ax.get('/whatsapp/config');
+      const res = await ax.get('/whatsapp/config', { _skipCache: true });
+      if (!res.data || typeof res.data !== 'object') throw new Error('Invalid WhatsApp configuration response');
       if (res.data) {
-        if (res.data.env) {
-          setEnvInfo({ env: res.data.env, envPrefix: res.data.envPrefix || '' });
-        }
         setConfig(prev => ({
           ...prev,
           ...res.data,
@@ -270,36 +276,51 @@ export default function WhatsAppControlModule() {
           events: { ...(res.data.events || {}) }
         }));
       }
+      loaded = true;
+      return true;
     } catch (e) {
       console.error('Failed to fetch WhatsApp config', e);
+      setConfigLoadError('Could not load saved WhatsApp settings. Retry before making changes.');
+      return false;
     } finally {
       setLoading(false);
-      checkConnection();
+      if (loaded && refreshStatus) checkConnection();
     }
   };
 
   const checkConnection = async () => {
     setStatus(prev => ({ ...prev, checking: true, message: 'Validating Meta Cloud API credentials...' }));
     try {
-      const res = await ax.get('/whatsapp/status');
-      if (res.data?.env) {
-        setEnvInfo({ env: res.data.env, envPrefix: res.data.envPrefix || '' });
-      }
+      const res = await ax.get('/whatsapp/status', { _skipCache: true });
       setStatus({
         checking: false,
         connected: res.data?.connected || false,
-        message: res.data?.message || (res.data?.connected ? 'Meta Cloud API Online & Verified' : 'Setup Required'),
-        verifiedName: res.data?.verifiedName || 'Vikas Goods Transport Co.',
-        displayPhoneNumber: res.data?.displayPhoneNumber || config.phoneNumberId || DEFAULT_PHONE_NUMBER_ID
+        reason: res.data?.reason || '',
+        message: res.data?.message || (res.data?.connected ? 'Meta Cloud API Connected' : 'Setup Required'),
+        verifiedName: res.data?.verifiedName || '',
+        displayPhoneNumber: res.data?.displayPhoneNumber || '',
+        connectionScope: res.data?.connectionScope || '',
+        accountMode: res.data?.accountMode || '',
+        phoneStatus: res.data?.phoneStatus || '',
+        qualityRating: res.data?.qualityRating || '',
+        codeVerificationStatus: res.data?.codeVerificationStatus || ''
       });
+      return res.data;
     } catch (e) {
       setStatus({
         checking: false,
         connected: false,
+        reason: 'unreachable',
         message: e.response?.data?.message || 'Meta Cloud API Unreachable',
-        verifiedName: 'Vikas Goods Transport Co.',
-        displayPhoneNumber: config.phoneNumberId || DEFAULT_PHONE_NUMBER_ID
+        verifiedName: '',
+        displayPhoneNumber: '',
+        connectionScope: '',
+        accountMode: '',
+        phoneStatus: '',
+        qualityRating: '',
+        codeVerificationStatus: ''
       });
+      return { connected: false, reason: 'unreachable' };
     }
   };
 
@@ -335,13 +356,8 @@ export default function WhatsAppControlModule() {
     setToggling(true);
 
     try {
-      let res;
-      try {
-        res = await ax.post('/whatsapp/toggle', { enabled: nextState });
-      } catch (err) {
-        // Fallback to /config in case server has not reloaded /toggle route
-        res = await ax.post('/whatsapp/config', { ...config, enabled: nextState });
-      }
+      const res = await ax.post('/whatsapp/toggle', { enabled: nextState });
+      if (!res.data?.ok) throw new Error('WhatsApp toggle was not saved');
       const finalVal = res.data?.enabled !== undefined ? res.data.enabled : nextState;
       setConfig(prev => ({ ...prev, enabled: finalVal }));
       showToast(
@@ -374,7 +390,13 @@ export default function WhatsAppControlModule() {
         provider: 'meta',
         phoneNumberId: (config.phoneNumberId || DEFAULT_PHONE_NUMBER_ID).trim(),
         wabaId: (config.wabaId || DEFAULT_WABA_ID).trim(),
-        accessToken: (config.accessToken || DEFAULT_ACCESS_TOKEN).trim(),
+        accessToken: (() => {
+          let t = (config.accessToken || DEFAULT_ACCESS_TOKEN).trim().replace(/\s+/g, '');
+          if (t.length > 100 && t.length % 2 === 0 && t.slice(0, t.length / 2) === t.slice(t.length / 2)) {
+            t = t.slice(0, t.length / 2);
+          }
+          return t;
+        })(),
         webhookVerifyToken: (config.webhookVerifyToken || DEFAULT_VERIFY_TOKEN).trim(),
         adminPhone: adminPhonesArr[0] || '8708032492',
         adminPhones: adminPhonesArr,
@@ -382,9 +404,15 @@ export default function WhatsAppControlModule() {
         labourPhones: (config.labourPhones || DEFAULT_LABOUR_PHONE).trim(),
         payloadFormat: 'meta'
       };
-      await ax.post('/whatsapp/config', payload);
-      showToast('success', '✅ WhatsApp Configuration & Templates Saved Successfully!');
-      checkConnection();
+      const saved = await ax.post('/whatsapp/config', payload);
+      if (!saved.data?.ok) throw new Error('WhatsApp settings were not saved');
+      if (!await fetchConfig(false)) throw new Error('Saved settings could not be reloaded');
+      const metaStatus = await checkConnection();
+      showToast(metaStatus?.connected ? 'success' : 'info', metaStatus?.connected
+        ? 'WhatsApp settings saved. Meta connected.'
+        : metaStatus?.reason === 'invalid_token'
+          ? 'Settings saved, but Meta rejected the access token.'
+          : 'WhatsApp settings saved. Meta connection needs attention.');
       fetchLogs();
     } catch (err) {
       showToast('error', err.response?.data?.error || 'Failed to save configuration');
@@ -451,7 +479,17 @@ export default function WhatsAppControlModule() {
     );
   }
 
-  const isLocalDev = envInfo.env === 'local' || envInfo.envPrefix === 'dev_';
+  if (configLoadError) {
+    return (
+      <div className="adm adm-page" style={{ paddingTop: '32px' }}>
+        <div className="adm-card" style={{ padding: '24px', maxWidth: '520px' }}>
+          <h2 style={{ marginTop: 0 }}>WhatsApp settings unavailable</h2>
+          <p>{configLoadError}</p>
+          <button type="button" className="adm-btn adm-btn--sm" onClick={fetchConfig}>Retry loading</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="adm adm-page" style={{ paddingBottom: '60px' }}>
@@ -502,184 +540,87 @@ export default function WhatsAppControlModule() {
         </div>
       </div>
 
-      {/* ── TOP METADATA & META SENDER STATUS BAR ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-        gap: '14px',
-        marginBottom: '20px'
-      }}>
-        {/* Environment Tier Card */}
-        <div style={{
-          background: 'var(--bg-th)',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px'
-        }}>
-          <div style={{
-            background: isLocalDev ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-            color: isLocalDev ? '#f59e0b' : '#10b981',
-            borderRadius: '10px',
-            padding: '10px',
-            display: 'flex'
-          }}>
-            <Globe size={20} />
-          </div>
-          <div>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700 }}>
-              Active Environment
+      {/* Live Meta summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+        <div style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', minHeight: '70px' }}>
+          <Globe size={17} style={{ color: status.connected ? '#10b981' : 'var(--text-muted)', flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>META ENVIRONMENT</div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+              {status.checking ? 'Checking…' : status.connected ? 'Connected' : 'Not connected'}
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: isLocalDev ? '#f59e0b' : '#10b981', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>{isLocalDev ? '⚡ LOCAL DEV' : '🟢 PRODUCTION'}</span>
-              <span style={{ fontSize: '11px', background: 'var(--bg-inset)', padding: '2px 6px', borderRadius: '4px', color: 'var(--text-sub)' }}>
-                {envInfo.envPrefix ? `[${envInfo.envPrefix}*]` : '[bare col]'}
-              </span>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              {status.accountMode ? `Mode: ${status.accountMode}` : status.reason === 'invalid_token' ? 'Token rejected' : 'Mode unavailable'}
             </div>
           </div>
         </div>
 
-        {/* Meta Registered Message Number */}
-        <div style={{
-          background: 'var(--bg-th)',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px'
-        }}>
-          <div style={{
-            background: 'rgba(37, 211, 102, 0.12)',
-            color: '#25D366',
-            borderRadius: '10px',
-            padding: '10px',
-            display: 'flex'
-          }}>
-            <Phone size={20} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700 }}>
-              Meta Registered Sending Number
+        <div style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', minHeight: '70px' }}>
+          <Phone size={17} style={{ color: status.displayPhoneNumber ? '#25D366' : 'var(--text-muted)', flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>META SENDING NUMBER</div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {status.displayPhoneNumber || 'Unavailable'}
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {status.displayPhoneNumber || config.phoneNumberId || '+91 99019 00002'}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              {status.verifiedName || 'Vikas Goods Transport Co.'}
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {status.verifiedName || 'Shown after Meta confirms number'}
             </div>
           </div>
         </div>
 
-        {/* Meta Verification & Gate Status */}
-        <div style={{
-          background: 'var(--bg-th)',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px'
-        }}>
-          <div style={{
-            background: status.connected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-            color: status.connected ? '#10b981' : '#ef4444',
-            borderRadius: '10px',
-            padding: '10px',
-            display: 'flex'
-          }}>
-            <ShieldCheck size={20} />
-          </div>
-          <div>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700 }}>
-              Meta Cloud API Gateway
+        <div style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', minHeight: '70px' }}>
+          <ShieldCheck size={17} style={{ color: status.connected ? '#10b981' : 'var(--text-muted)', flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>META CLOUD API</div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: status.reason === 'invalid_token' ? '#f59e0b' : 'var(--text)' }}>
+              {status.checking ? 'Checking…' : status.reason === 'invalid_token' ? 'Token rejected' : status.connected ? 'Connected' : 'Not connected'}
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: status.connected ? '#10b981' : '#ef4444', marginTop: '2px' }}>
-              {status.connected ? 'Online & Authenticated' : 'Pending Verification'}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              WABA ID: {config.wabaId}
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={status.message}>
+              {status.reason === 'invalid_token' ? 'Replace token in Credentials' : status.reason === 'missing_credentials' ? 'Add token and Phone Number ID' : status.connected ? 'Meta API reachable' : 'Check credentials'}
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── PROMINENT MASTER ON / OFF TOGGLE BANNER ── */}
+      {/* Outbound message setting */}
       <div style={{
-        marginBottom: '24px',
-        borderRadius: '16px',
-        padding: '20px 24px',
-        background: config.enabled
-          ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(16, 185, 129, 0.05))'
-          : 'linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(239, 68, 68, 0.04))',
-        border: `2px solid ${config.enabled ? 'rgba(16, 185, 129, 0.45)' : 'rgba(239, 68, 68, 0.35)'}`,
+        marginBottom: '20px',
+        borderRadius: '10px',
+        padding: '11px 14px',
+        background: 'var(--bg-th)',
+        border: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '16px'
+        gap: '10px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, minWidth: '300px' }}>
-          <div style={{
-            background: config.enabled ? '#10b981' : '#ef4444',
-            color: '#fff',
-            borderRadius: '50%',
-            padding: '12px',
-            display: 'flex',
-            boxShadow: `0 4px 14px ${config.enabled ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`
-          }}>
-            {config.enabled ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <div style={{ color: config.enabled ? '#10b981' : 'var(--text-muted)', display: 'flex' }}>
+            {config.enabled ? <CheckCircle2 size={17} /> : <MessageSquare size={17} />}
           </div>
           <div>
-            <div style={{ fontSize: '16px', fontWeight: 800, color: config.enabled ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>WHATSAPP OUTBOUND MESSAGES:</span>
-              <span style={{ textTransform: 'uppercase', textDecoration: 'underline' }}>
-                {config.enabled ? 'LIVE (ACTIVE)' : 'MUTED (TURNED OFF)'}
-              </span>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+              Outbound WhatsApp messages <span style={{ color: config.enabled ? '#10b981' : 'var(--text-muted)' }}>· {config.enabled ? 'On' : 'Off'}</span>
             </div>
-            <div style={{ fontSize: '13px', color: 'var(--text-sub)', marginTop: '4px', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
               {config.enabled
-                ? 'Outbound notifications are LIVE. Messages will be dispatched to owners, drivers, clerk, and admin.'
-                : 'Meta Business verification is currently in progress. Outbound notifications are muted so daily operations proceed without errors. Credentials and 22 templates remain ready to turn on anytime.'}
+                ? 'Automatic notifications enabled.'
+                : 'Automatic notifications paused.'}
             </div>
           </div>
         </div>
-
-        {/* Big Clickable Switch & Toggle Action Button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <button
-            type="button"
-            className="adm-btn adm-btn--sm"
-            onClick={() => handleToggle()}
-            disabled={toggling}
-            style={{
-              fontWeight: 800,
-              padding: '10px 20px',
-              fontSize: '13px',
-              borderRadius: '8px',
-              background: config.enabled ? '#ef4444' : '#10b981',
-              color: '#ffffff',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: config.enabled ? '0 4px 12px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(16, 185, 129, 0.3)'
-            }}
-          >
-            {toggling ? <Loader2 size={15} className="adm-spin" /> : config.enabled ? 'Turn OFF Messages' : 'Turn ON Messages'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {toggling && <Loader2 size={14} className="adm-spin" />}
           <button
             type="button"
             role="switch"
             aria-checked={config.enabled}
+            aria-label="Outbound WhatsApp messages"
             disabled={toggling}
             className="adm-switch"
             onClick={() => handleToggle()}
-            title="Toggle WhatsApp On / Off"
-            style={{ transform: 'scale(1.2)' }}
+            title={config.enabled ? 'Pause outbound messages' : 'Enable outbound messages'}
           />
         </div>
       </div>

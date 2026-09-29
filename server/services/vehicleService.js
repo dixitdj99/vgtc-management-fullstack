@@ -16,6 +16,7 @@ const normalizeVehiclePayload = (data = {}) => ({
     ownerContact: String(data.ownerContact || '').trim(),
     driverName: String(data.driverName || '').trim(),
     driverContact: String(data.driverContact || '').trim(),
+    ownershipType: data.ownershipType || 'market',
     vehicleType: data.vehicleType || 'Trailer',
     make: data.make || 'Tata',
     model: data.model || '',

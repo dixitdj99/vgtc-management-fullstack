@@ -26,7 +26,13 @@ router.post('/', async (req, res) => {
             brand: 'jksuper',
             source: 'Jhajjar'
         };
-        const result = await lrService.createLoadingReceipt(req.orgId, bodyWithMeta, getCol(BASE_COL, req), getCol(META_COL, req));
+        const result = await lrService.createLoadingReceipt(
+            req.orgId,
+            bodyWithMeta,
+            getCol(BASE_COL, req),
+            getCol(META_COL, req),
+            getCol('vehicles', req)
+        );
 
         if (await driveService.isAuthorized()) {
             const sheetsService = require('../utils/sheetsService');

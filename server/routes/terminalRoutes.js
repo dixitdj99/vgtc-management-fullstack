@@ -6,10 +6,10 @@ const express = require('express');
 const router = express.Router();
 const attendanceDecisionEngine = require('../services/attendanceDecisionEngine');
 const localStore = require('../utils/localStore');
-const { db, isAvailable } = require('../firebase');
-const { admin } = require('../firebase');
+const { admin, db, isAvailable } = require('../firebase');
 const fs = require('fs');
 const path = require('path');
+const { publishAttendanceChange } = require('../services/attendanceRealtime');
 
 // Active terminals in-memory / storage registry
 let terminalRegistry = {
@@ -48,6 +48,15 @@ router.get('/roster', async (req, res) => {
 router.post('/event', async (req, res) => {
     try {
         const result = await attendanceDecisionEngine.processEvent(req.body);
+        if (result.status === 'SUCCESS') {
+            publishAttendanceChange({
+                source: 'terminal',
+                action: result.eventType,
+                date: result.date,
+                profileId: result.person?.id,
+                punchId: result.punchId,
+            });
+        }
         res.json(result);
     } catch (err) {
         console.error('[TerminalRoutes] Failed to process event:', err);
@@ -68,6 +77,15 @@ router.post('/sync', async (req, res) => {
             try {
                 const resItem = await attendanceDecisionEngine.processEvent(evt);
                 results.push({ eventId: evt.eventId, status: resItem.status, message: resItem.message });
+                if (resItem.status === 'SUCCESS') {
+                    publishAttendanceChange({
+                        source: 'terminal_sync',
+                        action: resItem.eventType,
+                        date: resItem.date,
+                        profileId: resItem.person?.id,
+                        punchId: resItem.punchId,
+                    });
+                }
             } catch (itemErr) {
                 results.push({ eventId: evt.eventId, status: 'FAILED', message: itemErr.message });
             }

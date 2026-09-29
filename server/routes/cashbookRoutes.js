@@ -8,9 +8,6 @@ const { db, isAvailable } = require('../firebase');
 const advanceService = require('../services/vehicleAdvanceService');
 const {
     sendEventNotification,
-    sendWhatsAppButtons,
-    sendWhatsAppMessage,
-    broadcastToAdmins,
     getWhatsAppConfig,
     lookupVehicleInfo,
     lookupProfilePhone
@@ -159,18 +156,14 @@ router.post('/deposit', async (req, res) => {
             try {
                 const newBal = await getCashbookRunningBalance(req.orgId, req);
                 const prevBal = newBal - numAmt;
-                const depositMsg = [
-                    `*VIKAS GOODS TRANSPORT CO.* 💰`,
-                    `*Deposit Received in Cashbook*`,
-                    ``,
-                    `• *Amount:* Rs.${numAmt.toLocaleString('en-IN')}`,
-                    `• *Date:* ${date || new Date().toLocaleDateString('en-IN')}`,
-                    `• *Remark:* ${remark || '—'}`,
-                    `• *Previous Balance:* Rs.${Math.round(prevBal).toLocaleString('en-IN')}`,
-                    `• *New Cashbook Balance:* *Rs.${Math.round(newBal).toLocaleString('en-IN')}*`
-                ].join('\n');
-
-                await broadcastToAdmins('DEPOSIT ALERT', depositMsg, null, req);
+                const waCfg = await getWhatsAppConfig(req);
+                await sendEventNotification('deposit_with_balance', {
+                    amount: numAmt.toLocaleString('en-IN'),
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                    remark: remark || '—',
+                    prevBalance: Math.round(prevBal).toLocaleString('en-IN'),
+                    newBalance: Math.round(newBal).toLocaleString('en-IN'),
+                }, waCfg.adminPhones || [waCfg.adminPhone], req);
                 console.log(`[WA-Hook] Deposit broadcast sent to admins (New Balance: Rs.${newBal})`);
             } catch (e) { console.error('[WA-Hook] deposit notify FAILED:', e.message); }
         })();
@@ -200,14 +193,10 @@ router.post('/cash-out', async (req, res) => {
 
                 // 1. Low Balance alert if balance drops below Rs.5000
                 if (newBal < 5000) {
-                    const lowBalMsg = [
-                        `*VIKAS GOODS TRANSPORT CO.* ⚠️`,
-                        `*LOW CASHBOOK BALANCE ALERT*`,
-                        ``,
-                        `Current Cashbook balance is *Rs.${Math.round(newBal).toLocaleString('en-IN')}* (Below Rs.5,000 threshold).`,
-                        `👉 Please deposit funds to maintain operational cash balance.`
-                    ].join('\n');
-                    await broadcastToAdmins('LOW BALANCE ALERT', lowBalMsg, null, req);
+                    const waCfg = await getWhatsAppConfig(req);
+                    await sendEventNotification('cashbook_low_balance', {
+                        currentBalance: Math.round(newBal).toLocaleString('en-IN'),
+                    }, waCfg.adminPhones || [waCfg.adminPhone], req);
                 }
 
                 const phones = await getCashoutPhones(req, entityType, entityId, entityName);
@@ -280,59 +269,40 @@ router.post('/cash-out-linked', async (req, res) => {
 
                 // 1. Low Balance Alert if balance < Rs.5000
                 if (newBal < 5000) {
-                    const lowBalMsg = [
-                        `*VIKAS GOODS TRANSPORT CO.* ⚠️`,
-                        `*LOW CASHBOOK BALANCE ALERT*`,
-                        ``,
-                        `Current Cashbook balance is *Rs.${Math.round(newBal).toLocaleString('en-IN')}* (Below Rs.5,000 threshold).`,
-                        `👉 Please deposit funds to maintain operational cash balance.`
-                    ].join('\n');
-                    await broadcastToAdmins('LOW BALANCE ALERT', lowBalMsg, null, req);
+                    const waCfg = await getWhatsAppConfig(req);
+                    await sendEventNotification('cashbook_low_balance', {
+                        currentBalance: Math.round(newBal).toLocaleString('en-IN'),
+                    }, waCfg.adminPhones || [waCfg.adminPhone], req);
                 }
 
-                // 2. If entityType is staff, send interactive prompt to staff phone with confirm/decline buttons
-                if (entityType === 'staff') {
+                // 2. Staff and drivers receive the independently-toggleable
+                // confirmation prompt with confirm/decline buttons.
+                if (entityType === 'staff' || entityType === 'driver') {
                     const staffPhone = await lookupProfilePhone(entityId || entityName, req);
                     if (staffPhone) {
                         const staffBal = await getStaffBalanceInfo(entityId || entityName, req.orgId, req);
-                        const staffPromptText = [
-                            `*VIKAS GOODS TRANSPORT CO.* 💸`,
-                            `*Cash Advance / Cashout Issued*`,
-                            ``,
-                            `Dear *${entityName || 'Staff'}*,`,
-                            `An amount of *Rs.${numAmt.toLocaleString('en-IN')}* has been issued to you from Cashbook.`,
-                            ``,
-                            `• *Date:* ${date || new Date().toLocaleDateString('en-IN')}`,
-                            `• *Remark:* ${remark || 'Cash Advance'}`,
-                            `• *Advance Deducted:* Rs.${numAmt.toLocaleString('en-IN')}`,
-                            `• *Total Advances Taken:* Rs.${Math.round(staffBal.totalAdvances).toLocaleString('en-IN')}`,
-                            `• *Remaining Net Pay:* *Rs.${Math.round(staffBal.remainingPay).toLocaleString('en-IN')}*`,
-                            ``,
-                            `_Please confirm whether you received this cash advance:_`
-                        ].join('\n');
-
-                        const staffButtons = [
-                            { id: `STAFF_CONFIRM_CASHOUT_${doc.id}`, text: '✅ Confirm Cashout' },
-                            { id: `STAFF_DECLINE_CASHOUT_${doc.id}`, text: '❌ Decline / Dispute' }
-                        ];
-
-                        await sendWhatsAppButtons(staffPhone, 'ACTION REQUIRED', staffPromptText, staffButtons, req);
+                        await sendEventNotification('staff_cashout_prompt', {
+                            entryId: doc.id,
+                            staffName: entityName || (entityType === 'driver' ? 'Driver' : 'Staff'),
+                            amount: numAmt.toLocaleString('en-IN'),
+                            date: date || new Date().toLocaleDateString('en-IN'),
+                            remark: remark || 'Cash Advance',
+                            totalAdvances: Math.round(staffBal.totalAdvances).toLocaleString('en-IN'),
+                            remainingPay: Math.round(staffBal.remainingPay).toLocaleString('en-IN'),
+                        }, [staffPhone], req);
                         console.log(`[WA-Hook] Interactive staff cashout prompt sent to ${staffPhone}`);
                     }
                 }
 
                 // 3. Notify Admins of the cashout
-                const adminMsg = [
-                    `*VIKAS GOODS TRANSPORT CO.* 💸`,
-                    `*Cashout Issued from Cashbook*`,
-                    ``,
-                    `• *Recipient:* ${entityName || 'N/A'} (${entityType || 'N/A'})`,
-                    `• *Amount:* Rs.${numAmt.toLocaleString('en-IN')}`,
-                    `• *Date:* ${date || new Date().toLocaleDateString('en-IN')}`,
-                    `• *Remark:* ${remark || '—'}`,
-                    `• *Remaining Cashbook Balance:* Rs.${Math.round(newBal).toLocaleString('en-IN')}`
-                ].join('\n');
-                await broadcastToAdmins('CASHOUT ALERT', adminMsg, null, req);
+                const waCfg = await getWhatsAppConfig(req);
+                await sendEventNotification('cashout', {
+                    entityName: entityName || 'N/A',
+                    entityType: entityType || 'N/A',
+                    amount: numAmt.toLocaleString('en-IN'),
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                    remark: `${remark || '—'} | Remaining balance: Rs.${Math.round(newBal).toLocaleString('en-IN')}`,
+                }, waCfg.adminPhones || [waCfg.adminPhone], req);
 
             } catch (e) { console.error('[WA-Hook] cashout-linked notify FAILED:', e.message); }
         })();
@@ -367,6 +337,21 @@ router.post('/:id/return', async (req, res) => {
         }
 
         res.json({ original: { ...original, isReturned: true, returnEntryId: refundDoc.id }, refund: refundDoc });
+
+        ;(async () => {
+            try {
+                const phones = await getCashoutPhones(req, original.entityType, original.entityId, original.entityName);
+                await sendEventNotification('cashout_returned', {
+                    entityName: original.entityName || 'Office Spend',
+                    entityType: original.entityType || 'Expense',
+                    amount: parseFloat(original.amount || 0).toLocaleString('en-IN'),
+                    date: date || new Date().toLocaleDateString('en-IN'),
+                    remark: remark || 'Cash returned',
+                }, phones, req);
+            } catch (notifyErr) {
+                console.error('[WA-Hook] cashout return notify FAILED:', notifyErr.message);
+            }
+        })();
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

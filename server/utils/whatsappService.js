@@ -457,7 +457,7 @@ function cleanEventsEmojis(eventsObj) {
 
 // ─── Config CRUD ───────────────────────────────────────────────────────────────
 
-const DEFAULT_VERIFY_TOKEN = 'vgtc_meta_verify_token_2026';
+const DEFAULT_VERIFY_TOKEN = '';
 
 async function getWhatsAppConfig(req = null) {
   try {
@@ -465,7 +465,7 @@ async function getWhatsAppConfig(req = null) {
     if (!isAvailable()) {
       cfg = localStore.getById(CONFIG_COL, CONFIG_DOC_ID);
     } else {
-      const colName = req ? getCol(CONFIG_COL, req) : getEnvCol(CONFIG_COL);
+      const colName = getEnvCol(CONFIG_COL);
       const doc = await db.collection(colName).doc(CONFIG_DOC_ID).get();
       if (doc.exists) cfg = doc.data();
     }
@@ -486,10 +486,7 @@ async function getWhatsAppConfig(req = null) {
     }
     const rawEvents = { ...DEFAULT_TEMPLATES, ...savedEvents };
     const cleanedEvents = cleanEventsEmojis(rawEvents);
-    let token = (finalCfg.accessToken || finalCfg.apiKey || process.env.META_ACCESS_TOKEN || '').trim();
-    if (token.startsWith('EAAi5P5cv9icdCe') || token.includes('TMkrg6UtaDyzH4TT3qnx6njnhEDBqsq4Hn')) {
-      token = '';
-    }
+    const token = (finalCfg.accessToken || finalCfg.apiKey || process.env.META_ACCESS_TOKEN || '').trim();
     let adminList = [];
     if (Array.isArray(finalCfg.adminPhones) && finalCfg.adminPhones.length > 0) {
       adminList = finalCfg.adminPhones.map(p => String(p).trim().replace(/\D/g, '')).filter(Boolean);
@@ -506,9 +503,9 @@ async function getWhatsAppConfig(req = null) {
     }
     const adminPhones = Array.from(new Set(adminList));
 
-const DEFAULT_PHONE_NUMBER_ID = '1216388781567509';
-const DEFAULT_WABA_ID = '923120010444696';
-const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
+const DEFAULT_PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID || '1216388781567509';
+const DEFAULT_WABA_ID = process.env.META_WABA_ID || '1552863822720100';
+const DEFAULT_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
 
     return {
       enabled: finalCfg.enabled !== undefined ? !!finalCfg.enabled : false,
@@ -525,21 +522,8 @@ const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5m
       events: cleanedEvents
     };
   } catch (e) {
-    const fallbackAdmins = [HARDCODED_ADMIN, '9416319445', '9728954901', '9728284849'];
-    return {
-      enabled: false,
-      provider: 'meta',
-      phoneNumberId: DEFAULT_PHONE_NUMBER_ID,
-      wabaId: DEFAULT_WABA_ID,
-      accessToken: DEFAULT_ACCESS_TOKEN,
-      webhookVerifyToken: DEFAULT_VERIFY_TOKEN,
-      adminPhone: HARDCODED_ADMIN,
-      adminPhones: fallbackAdmins,
-      clerkPhone: '8708032492',
-      labourPhones: DEFAULT_LABOUR_PHONE,
-      payloadFormat: 'meta',
-      events: cleanEventsEmojis(DEFAULT_TEMPLATES)
-    };
+    console.error('[WA-Config] Failed to read saved settings:', e.message);
+    throw e;
   }
 }
 
@@ -567,6 +551,19 @@ async function broadcastToAdmins(title, message, actionButtons = null, req = nul
   return results;
 }
 
+function sanitizeMetaToken(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  let token = raw.trim().replace(/\s+/g, '');
+  // If accidentally pasted twice end-to-end (common when copying from inputs)
+  if (token.length > 100 && token.length % 2 === 0) {
+    const half = token.length / 2;
+    if (token.slice(0, half) === token.slice(half)) {
+      token = token.slice(0, half);
+    }
+  }
+  return token;
+}
+
 async function saveWhatsAppConfig(config, req = null) {
   const payload = {
     ...config,
@@ -574,7 +571,7 @@ async function saveWhatsAppConfig(config, req = null) {
     provider: 'meta',
     phoneNumberId: (config.phoneNumberId || '').trim(),
     wabaId: (config.wabaId || '').trim(),
-    accessToken: (config.accessToken || config.apiKey || '').trim(),
+    accessToken: sanitizeMetaToken(config.accessToken || config.apiKey || ''),
     webhookVerifyToken: (config.webhookVerifyToken || DEFAULT_VERIFY_TOKEN).trim(),
     adminPhone: (config.adminPhone || HARDCODED_ADMIN).trim(),
     clerkPhone: (config.clerkPhone || '8708032492').trim(),
@@ -587,11 +584,29 @@ async function saveWhatsAppConfig(config, req = null) {
   }
   if (!isAvailable()) {
     localStore.upsert(CONFIG_COL, CONFIG_DOC_ID, payload);
+    const persisted = localStore.getById(CONFIG_COL, CONFIG_DOC_ID);
+    if (!persisted || ['accessToken', 'phoneNumberId', 'wabaId', 'webhookVerifyToken', 'enabled']
+      .some(key => persisted[key] !== payload[key])) {
+      throw new Error('WhatsApp settings were not persisted');
+    }
   } else {
-    const colName = req ? getCol(CONFIG_COL, req) : getEnvCol(CONFIG_COL);
+    const colName = getEnvCol(CONFIG_COL);
     await db.collection(colName).doc(CONFIG_DOC_ID).set(payload, { merge: true });
   }
   return payload;
+}
+
+async function setWhatsAppEnabled(enabled) {
+  const patch = { enabled: !!enabled, updatedAt: new Date().toISOString() };
+  if (!isAvailable()) {
+    localStore.upsert(CONFIG_COL, CONFIG_DOC_ID, patch);
+    if (localStore.getById(CONFIG_COL, CONFIG_DOC_ID)?.enabled !== patch.enabled) {
+      throw new Error('WhatsApp setting was not persisted');
+    }
+  } else {
+    await db.collection(getEnvCol(CONFIG_COL)).doc(CONFIG_DOC_ID).set(patch, { merge: true });
+  }
+  return patch.enabled;
 }
 
 // ─── Phone normalisation (Meta E.164: e.g. 918708032492) ────────────────────────
@@ -661,6 +676,7 @@ async function checkWhatsAppStatus(req = null) {
   if (!config.phoneNumberId || !config.accessToken) {
     return {
       connected: false,
+      reason: 'missing_credentials',
       message: 'Meta Cloud API credentials missing: Phone Number ID or Permanent Access Token not set in settings'
     };
   }
@@ -675,17 +691,40 @@ async function checkWhatsAppStatus(req = null) {
     });
 
     if (res.status >= 200 && res.status < 300 && res.data) {
+      let accountMode = '';
+      let phoneStatus = '';
+      try {
+        const modeRes = await axios.get(
+          `https://graph.facebook.com/v20.0/${encodeURIComponent(config.phoneNumberId)}?fields=account_mode,status`,
+          { headers: { 'Authorization': `Bearer ${config.accessToken}` }, timeout: 3000 }
+        );
+        accountMode = modeRes.data?.account_mode || '';
+        phoneStatus = modeRes.data?.status || '';
+      } catch (_) {
+        // Mode/status fields can be unavailable for some Meta accounts.
+      }
       return {
         connected: true,
-        message: 'Meta WhatsApp Cloud API Online & Verified',
-        verifiedName: res.data.verified_name || 'VGTC Business',
+        connectionScope: 'phone',
+        message: 'Meta phone number connected',
+        verifiedName: res.data.verified_name || '',
         displayPhoneNumber: res.data.display_phone_number || '',
-        qualityRating: res.data.quality_rating || 'UNKNOWN',
-        codeVerificationStatus: res.data.code_verification_status || 'VERIFIED',
+        qualityRating: res.data.quality_rating || '',
+        codeVerificationStatus: res.data.code_verification_status || '',
+        accountMode,
+        phoneStatus,
         id: res.data.id
       };
     }
   } catch (err) {
+    const metaErr = err.response?.data?.error;
+    if (Number(metaErr?.code) === 190) {
+      return {
+        connected: false,
+        reason: 'invalid_token',
+        message: 'Meta rejected the saved access token. Replace it in Credentials and check again.'
+      };
+    }
     // Fallback check for test numbers or temporary tokens that don't support field lookups
     try {
       if (config.wabaId) {
@@ -697,22 +736,25 @@ async function checkWhatsAppStatus(req = null) {
         if (fbRes.data && fbRes.data.id) {
           return {
             connected: true,
+            connectionScope: 'waba',
             message: 'Meta Cloud API Connected (WABA Active)',
-            verifiedName: fbRes.data.name || 'VGTC WhatsApp Account',
-            displayPhoneNumber: config.phoneNumberId || '',
-            qualityRating: 'GOOD',
-            codeVerificationStatus: 'VERIFIED',
+            verifiedName: '',
+            displayPhoneNumber: '',
+            qualityRating: '',
+            codeVerificationStatus: '',
+            accountMode: '',
+            phoneStatus: '',
             id: fbRes.data.id
           };
         }
       }
     } catch (_) {}
 
-    const metaErr = err.response?.data?.error;
     const errMsg = metaErr?.message || err.message || 'Failed to connect to Meta Cloud API';
     const isAuthErr = err.response && (err.response.status === 401 || err.response.status === 403);
     return {
       connected: false,
+      reason: isAuthErr ? 'access_denied' : 'meta_error',
       message: isAuthErr ? `Meta Authentication Failed: ${errMsg}` : `Meta API Error: ${errMsg}`,
       errorDetails: metaErr || null
     };
@@ -2110,6 +2152,7 @@ function previewTemplate(eventKey, config) {
 module.exports = {
   getWhatsAppConfig,
   saveWhatsAppConfig,
+  setWhatsAppEnabled,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
   sendWhatsAppButtons,

@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const {
   getWhatsAppConfig,
   saveWhatsAppConfig,
+  setWhatsAppEnabled,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
   sendEventNotification,
@@ -43,12 +44,7 @@ router.delete('/logs', async (req, res) => {
 router.get('/config', async (req, res) => {
   try {
     const config = await getWhatsAppConfig(req);
-    const { getAppEnv, getEnvPrefix } = require('../utils/envConfig');
-    res.json({
-      ...config,
-      env: getAppEnv(),
-      envPrefix: getEnvPrefix()
-    });
+    res.json(config);
   } catch (err) {
     console.error('get whatsapp config error:', err);
     res.status(500).json({ error: err.message });
@@ -70,13 +66,14 @@ router.post('/config', async (req, res) => {
 // Master toggle to turn automated WhatsApp messages ON or OFF in 1 click
 router.post('/toggle', async (req, res) => {
   try {
-    const config = await getWhatsAppConfig(req);
-    const newEnabled = req.body.enabled !== undefined ? !!req.body.enabled : !config.enabled;
-    const updated = await saveWhatsAppConfig({ ...config, enabled: newEnabled }, req);
+    const newEnabled = typeof req.body.enabled === 'boolean'
+      ? req.body.enabled
+      : !(await getWhatsAppConfig(req)).enabled;
+    const enabled = await setWhatsAppEnabled(newEnabled);
     res.json({
       ok: true,
-      enabled: updated.enabled,
-      message: updated.enabled
+      enabled,
+      message: enabled
         ? 'WhatsApp notifications enabled (Live)'
         : 'WhatsApp notifications turned OFF (Muted)'
     });
@@ -90,14 +87,7 @@ router.post('/toggle', async (req, res) => {
 router.get('/status', async (req, res) => {
   try {
     const status = await checkWhatsAppStatus(req);
-    const config = await getWhatsAppConfig(req);
-    const { getAppEnv, getEnvPrefix } = require('../utils/envConfig');
-    res.json({
-      ...status,
-      env: getAppEnv(),
-      envPrefix: getEnvPrefix(),
-      displayPhoneNumber: status.displayPhoneNumber || config.phoneNumberId || '1216388781567509'
-    });
+    res.json(status);
   } catch (err) {
     console.error('whatsapp status check error:', err);
     res.status(500).json({ connected: false, message: err.message });
