@@ -235,31 +235,6 @@ const DEFAULT_TEMPLATES = {
       '✅ *DISPATCH READY:* You are cleared to leave for {destination}. Drive safe!'
     ].join('\n')
   },
-  // Transport bill copy. Kept separate from freight vouchers so the wording
-  // can be changed in WhatsApp Control without changing voucher messages.
-  bill_created_owner: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Transport Bill - Owner Copy*',
-      '*Bill:* #{billNo} | *LR:* #{lrNo} | *Date:* {date}',
-      '*Truck:* {truckNo} | *Party:* {partyName}',
-      '*Route:* {source} to {destination}',
-      '*Weight:* {totalWeight} MT | *Rate:* Rs.{rate}/MT',
-      '*Freight to be billed:* *Rs.{netBalance}*'
-    ].join('\n')
-  },
-  bill_created_driver: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Transport Bill - Driver Copy*',
-      '*Bill:* #{billNo} | *LR:* #{lrNo} | *Date:* {date}',
-      '*Truck:* {truckNo} | *Destination:* {destination}',
-      '*Party:* {partyName} | *Weight:* {totalWeight} MT',
-      'The attached image is the same bill prepared for printing.'
-    ].join('\n')
-  },
   // Notification to creator when an action is performed via webhook
   voucher_action_creator: {
     enabled: true,
@@ -316,26 +291,6 @@ const DEFAULT_TEMPLATES = {
       'Payment batch sent for processing.'
     ].join('\n')
   },
-  freight_payment_settled: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*FREIGHT PAYMENT SETTLED*',
-      '*Truck:* {truckNo} | *Owner:* {ownerName}',
-      '*Period:* {periodLabel} | *Trips:* {tripCount}',
-      '',
-      '*Trip Details:*',
-      '{tripLines}',
-      '',
-      '*Gross Freight:* Rs.{totalGross}',
-      '*Total Advances:* - Rs.{totalDeductions}',
-      '*Net Freight:* Rs.{totalNet}',
-      '*Amount Paid:* *Rs.{paymentAmount}* ({paymentMethod})',
-      '*Payment Date:* {paymentDate}',
-      '{remainingBalanceLine}',
-      '_Payment recorded in VGTC Management Portal._'
-    ].filter(Boolean).join('\n')
-  },
   cashout: {
     enabled: true,
     template: [
@@ -344,17 +299,6 @@ const DEFAULT_TEMPLATES = {
       '*Recipient:* {entityName} ({entityType})',
       '*Amount:* Rs.{amount} | *Date:* {date}',
       '*Remark:* {remark}'
-    ].join('\n')
-  },
-  cashout_returned: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Cashout Returned / Reversed*',
-      '*Recipient:* {entityName} ({entityType})',
-      '*Amount Restored:* Rs.{amount} | *Date:* {date}',
-      '*Remark:* {remark}',
-      'The linked deduction has been reversed in the portal.'
     ].join('\n')
   },
   deposit: {
@@ -401,26 +345,6 @@ const DEFAULT_TEMPLATES = {
       'Please confirm or decline using the buttons below:'
     ].join('\n')
   },
-  staff_cashout_confirmed: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Cash Advance Confirmed*',
-      'Dear *{staffName}*, you confirmed receipt of Cashout #{entryId}.',
-      '*Amount:* Rs.{amount} | *Date:* {date}',
-      'The transaction is confirmed in the VGTC portal.'
-    ].join('\n')
-  },
-  staff_cashout_dispute_received: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Cashout Dispute Received*',
-      'Dear *{staffName}*, your dispute for Cashout #{entryId} has been registered.',
-      '*Amount:* Rs.{amount} | *Date:* {date}',
-      'An approval request has been sent to the administrators.'
-    ].join('\n')
-  },
   staff_cashout_disputed_admin: {
     enabled: true,
     template: [
@@ -440,16 +364,6 @@ const DEFAULT_TEMPLATES = {
       'Dear *{staffName}*,',
       'Your decline for Cashout #{entryId} (Rs.{amount}) has been APPROVED by Admin.',
       'The deduction has been reversed and your balance is restored.'
-    ].join('\n')
-  },
-  staff_cashout_dispute_rejected: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Cashout Dispute Reviewed*',
-      'Dear *{staffName}*, your dispute for Cashout #{entryId} was not approved.',
-      '*Amount:* Rs.{amount} | *Date:* {date}',
-      'The original cashout remains active in the portal.'
     ].join('\n')
   },
   // Clerk/admin alert when a voucher with online advance is created
@@ -526,45 +440,6 @@ const DEFAULT_TEMPLATES = {
       '----------------------------------------',
       '_Vikas Goods Transport Co. Accounts Department_'
     ].filter(Boolean).join('\n')
-  },
-  vehicle_document_expiry: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*FLEET DOCUMENT {alertType} ALERT*',
-      '*Truck:* {truckNo} (Own Fleet)',
-      '*Document:* {documentName}',
-      '*Expiry Date:* {expiryDate}',
-      '*Status:* *{expiryStatus}*',
-      '{expiryAction}'
-    ].filter(Boolean).join('\n')
-  },
-  attendance_duty_started: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Duty Started*',
-      'Hello *{staffName}*, your attendance has been punched in successfully.',
-      '*Date:* {date} | *Time:* {punchTime}',
-      '*Role:* {staffType}',
-      '{vehicleLine}',
-      '*Method:* {punchMethod}',
-      'You are now marked *PRESENT / ON DUTY*.'
-    ].filter(Boolean).join('\n')
-  },
-  attendance_punch_out: {
-    enabled: true,
-    template: [
-      '*VIKAS GOODS TRANSPORT CO.*',
-      '*Duty Punch Out*',
-      'Hello *{staffName}*, your duty punch-out has been recorded.',
-      '*Date:* {date} | *Time:* {punchTime}',
-      '*Role:* {staffType} | *Status:* {attendanceStatus}',
-      '{vehicleLine}',
-      '{durationLine}',
-      '{reasonLine}',
-      'Thank you. Your attendance timeline is updated.'
-    ].filter(Boolean).join('\n')
   }
 };
 
@@ -582,7 +457,7 @@ function cleanEventsEmojis(eventsObj) {
 
 // ─── Config CRUD ───────────────────────────────────────────────────────────────
 
-const DEFAULT_VERIFY_TOKEN = 'vgtc_meta_verify_token_2026';
+const DEFAULT_VERIFY_TOKEN = '';
 
 async function getWhatsAppConfig(req = null) {
   try {
@@ -590,7 +465,7 @@ async function getWhatsAppConfig(req = null) {
     if (!isAvailable()) {
       cfg = localStore.getById(CONFIG_COL, CONFIG_DOC_ID);
     } else {
-      const colName = req ? getCol(CONFIG_COL, req) : getEnvCol(CONFIG_COL);
+      const colName = getEnvCol(CONFIG_COL);
       const doc = await db.collection(colName).doc(CONFIG_DOC_ID).get();
       if (doc.exists) cfg = doc.data();
     }
@@ -611,10 +486,7 @@ async function getWhatsAppConfig(req = null) {
     }
     const rawEvents = { ...DEFAULT_TEMPLATES, ...savedEvents };
     const cleanedEvents = cleanEventsEmojis(rawEvents);
-    let token = (finalCfg.accessToken || finalCfg.apiKey || process.env.META_ACCESS_TOKEN || '').trim();
-    if (token.startsWith('EAAi5P5cv9icdCe') || token.includes('TMkrg6UtaDyzH4TT3qnx6njnhEDBqsq4Hn')) {
-      token = '';
-    }
+    const token = (finalCfg.accessToken || finalCfg.apiKey || process.env.META_ACCESS_TOKEN || '').trim();
     let adminList = [];
     if (Array.isArray(finalCfg.adminPhones) && finalCfg.adminPhones.length > 0) {
       adminList = finalCfg.adminPhones.map(p => String(p).trim().replace(/\D/g, '')).filter(Boolean);
@@ -631,9 +503,9 @@ async function getWhatsAppConfig(req = null) {
     }
     const adminPhones = Array.from(new Set(adminList));
 
-const DEFAULT_PHONE_NUMBER_ID = '1216388781567509';
-const DEFAULT_WABA_ID = '923120010444696';
-const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
+const DEFAULT_PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID || '1216388781567509';
+const DEFAULT_WABA_ID = process.env.META_WABA_ID || '1552863822720100';
+const DEFAULT_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
 
     return {
       enabled: finalCfg.enabled !== undefined ? !!finalCfg.enabled : false,
@@ -650,21 +522,8 @@ const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5m
       events: cleanedEvents
     };
   } catch (e) {
-    const fallbackAdmins = [HARDCODED_ADMIN, '9416319445', '9728954901', '9728284849'];
-    return {
-      enabled: false,
-      provider: 'meta',
-      phoneNumberId: DEFAULT_PHONE_NUMBER_ID,
-      wabaId: DEFAULT_WABA_ID,
-      accessToken: DEFAULT_ACCESS_TOKEN,
-      webhookVerifyToken: DEFAULT_VERIFY_TOKEN,
-      adminPhone: HARDCODED_ADMIN,
-      adminPhones: fallbackAdmins,
-      clerkPhone: '8708032492',
-      labourPhones: DEFAULT_LABOUR_PHONE,
-      payloadFormat: 'meta',
-      events: cleanEventsEmojis(DEFAULT_TEMPLATES)
-    };
+    console.error('[WA-Config] Failed to read saved settings:', e.message);
+    throw e;
   }
 }
 
@@ -692,6 +551,19 @@ async function broadcastToAdmins(title, message, actionButtons = null, req = nul
   return results;
 }
 
+function sanitizeMetaToken(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  let token = raw.trim().replace(/\s+/g, '');
+  // If accidentally pasted twice end-to-end (common when copying from inputs)
+  if (token.length > 100 && token.length % 2 === 0) {
+    const half = token.length / 2;
+    if (token.slice(0, half) === token.slice(half)) {
+      token = token.slice(0, half);
+    }
+  }
+  return token;
+}
+
 async function saveWhatsAppConfig(config, req = null) {
   const payload = {
     ...config,
@@ -699,7 +571,7 @@ async function saveWhatsAppConfig(config, req = null) {
     provider: 'meta',
     phoneNumberId: (config.phoneNumberId || '').trim(),
     wabaId: (config.wabaId || '').trim(),
-    accessToken: (config.accessToken || config.apiKey || '').trim(),
+    accessToken: sanitizeMetaToken(config.accessToken || config.apiKey || ''),
     webhookVerifyToken: (config.webhookVerifyToken || DEFAULT_VERIFY_TOKEN).trim(),
     adminPhone: (config.adminPhone || HARDCODED_ADMIN).trim(),
     clerkPhone: (config.clerkPhone || '8708032492').trim(),
@@ -712,11 +584,29 @@ async function saveWhatsAppConfig(config, req = null) {
   }
   if (!isAvailable()) {
     localStore.upsert(CONFIG_COL, CONFIG_DOC_ID, payload);
+    const persisted = localStore.getById(CONFIG_COL, CONFIG_DOC_ID);
+    if (!persisted || ['accessToken', 'phoneNumberId', 'wabaId', 'webhookVerifyToken', 'enabled']
+      .some(key => persisted[key] !== payload[key])) {
+      throw new Error('WhatsApp settings were not persisted');
+    }
   } else {
-    const colName = req ? getCol(CONFIG_COL, req) : getEnvCol(CONFIG_COL);
+    const colName = getEnvCol(CONFIG_COL);
     await db.collection(colName).doc(CONFIG_DOC_ID).set(payload, { merge: true });
   }
   return payload;
+}
+
+async function setWhatsAppEnabled(enabled) {
+  const patch = { enabled: !!enabled, updatedAt: new Date().toISOString() };
+  if (!isAvailable()) {
+    localStore.upsert(CONFIG_COL, CONFIG_DOC_ID, patch);
+    if (localStore.getById(CONFIG_COL, CONFIG_DOC_ID)?.enabled !== patch.enabled) {
+      throw new Error('WhatsApp setting was not persisted');
+    }
+  } else {
+    await db.collection(getEnvCol(CONFIG_COL)).doc(CONFIG_DOC_ID).set(patch, { merge: true });
+  }
+  return patch.enabled;
 }
 
 // ─── Phone normalisation (Meta E.164: e.g. 918708032492) ────────────────────────
@@ -786,6 +676,7 @@ async function checkWhatsAppStatus(req = null) {
   if (!config.phoneNumberId || !config.accessToken) {
     return {
       connected: false,
+      reason: 'missing_credentials',
       message: 'Meta Cloud API credentials missing: Phone Number ID or Permanent Access Token not set in settings'
     };
   }
@@ -800,17 +691,40 @@ async function checkWhatsAppStatus(req = null) {
     });
 
     if (res.status >= 200 && res.status < 300 && res.data) {
+      let accountMode = '';
+      let phoneStatus = '';
+      try {
+        const modeRes = await axios.get(
+          `https://graph.facebook.com/v20.0/${encodeURIComponent(config.phoneNumberId)}?fields=account_mode,status`,
+          { headers: { 'Authorization': `Bearer ${config.accessToken}` }, timeout: 3000 }
+        );
+        accountMode = modeRes.data?.account_mode || '';
+        phoneStatus = modeRes.data?.status || '';
+      } catch (_) {
+        // Mode/status fields can be unavailable for some Meta accounts.
+      }
       return {
         connected: true,
-        message: 'Meta WhatsApp Cloud API Online & Verified',
-        verifiedName: res.data.verified_name || 'VGTC Business',
+        connectionScope: 'phone',
+        message: 'Meta phone number connected',
+        verifiedName: res.data.verified_name || '',
         displayPhoneNumber: res.data.display_phone_number || '',
-        qualityRating: res.data.quality_rating || 'UNKNOWN',
-        codeVerificationStatus: res.data.code_verification_status || 'VERIFIED',
+        qualityRating: res.data.quality_rating || '',
+        codeVerificationStatus: res.data.code_verification_status || '',
+        accountMode,
+        phoneStatus,
         id: res.data.id
       };
     }
   } catch (err) {
+    const metaErr = err.response?.data?.error;
+    if (Number(metaErr?.code) === 190) {
+      return {
+        connected: false,
+        reason: 'invalid_token',
+        message: 'Meta rejected the saved access token. Replace it in Credentials and check again.'
+      };
+    }
     // Fallback check for test numbers or temporary tokens that don't support field lookups
     try {
       if (config.wabaId) {
@@ -822,22 +736,25 @@ async function checkWhatsAppStatus(req = null) {
         if (fbRes.data && fbRes.data.id) {
           return {
             connected: true,
+            connectionScope: 'waba',
             message: 'Meta Cloud API Connected (WABA Active)',
-            verifiedName: fbRes.data.name || 'VGTC WhatsApp Account',
-            displayPhoneNumber: config.phoneNumberId || '',
-            qualityRating: 'GOOD',
-            codeVerificationStatus: 'VERIFIED',
+            verifiedName: '',
+            displayPhoneNumber: '',
+            qualityRating: '',
+            codeVerificationStatus: '',
+            accountMode: '',
+            phoneStatus: '',
             id: fbRes.data.id
           };
         }
       }
     } catch (_) {}
 
-    const metaErr = err.response?.data?.error;
     const errMsg = metaErr?.message || err.message || 'Failed to connect to Meta Cloud API';
     const isAuthErr = err.response && (err.response.status === 401 || err.response.status === 403);
     return {
       connected: false,
+      reason: isAuthErr ? 'access_denied' : 'meta_error',
       message: isAuthErr ? `Meta Authentication Failed: ${errMsg}` : `Meta API Error: ${errMsg}`,
       errorDetails: metaErr || null
     };
@@ -1194,7 +1111,7 @@ async function sendOpenWATemplate(phone, templateName, variables = {}, req = nul
 
 // ─── Image Send Utility (Meta Media Upload + Message Dispatch) ────────────────
 
-async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null, options = {}) {
+async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
   const config = await getWhatsAppConfig(req);
   if (!config.enabled) {
     throw new Error('WhatsApp dispatch is disabled');
@@ -1212,7 +1129,7 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null, o
     // 1. Upload media buffer to Meta Graph API
     const formData = new FormData();
     const blob = new Blob([imageBuffer], { type: 'image/png' });
-    formData.append('file', blob, options.filename || 'loading_slip.png');
+    formData.append('file', blob, 'loading_slip.png');
     formData.append('type', 'image/png');
     formData.append('messaging_product', 'whatsapp');
 
@@ -1255,8 +1172,8 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null, o
     );
     return msgRes.data;
   } catch (err) {
-    console.warn(`[Meta-WA] Image dispatch failed (${err.response?.data?.error?.message || err.message}).${options.fallbackToText === false ? '' : ' Falling back to text caption...'}`);
-    if (caption && options.fallbackToText !== false) {
+    console.warn(`[Meta-WA] Image dispatch failed (${err.response?.data?.error?.message || err.message}). Falling back to text caption...`);
+    if (caption) {
       return await sendWhatsAppMessage(phone, caption, req);
     }
     throw err;
@@ -1889,21 +1806,6 @@ async function sendEventNotification(eventKey, data, phones, req) {
           actionButtons = [
             { id: `PAID_${voucherIdentifier}`, text: '✅ Mark PAID' }
           ];
-        } else if (eventKey === 'staff_cashout_prompt') {
-          actionButtons = [
-            { id: `STAFF_CONFIRM_CASHOUT_${data.entryId}`, text: '✅ Confirm Cashout' },
-            { id: `STAFF_DECLINE_CASHOUT_${data.entryId}`, text: '❌ Decline / Dispute' }
-          ];
-        } else if (eventKey === 'staff_cashout_disputed_admin') {
-          actionButtons = [
-            { id: `ADMIN_APPROVE_REVERSAL_${data.id || data.entryId}`, text: '✅ Approve Reversal' },
-            { id: `ADMIN_REJECT_DISPUTE_${data.id || data.entryId}`, text: '❌ Reject Dispute' }
-          ];
-        } else if (eventKey === 'vehicle_document_expiry') {
-          actionButtons = [
-            { id: `DOC_EXP_UPDATE_${data.vehicleId}_${data.documentKey}`, text: '🔄 Update Date' },
-            { id: `DOC_EXP_WAIT_${data.vehicleId}_${data.documentKey}`, text: '⏳ Wait / Snooze' }
-          ];
         }
 
         const message = interpolateTemplate(eventCfg.template || '', data);
@@ -2182,7 +2084,6 @@ function previewTemplate(eventKey, config) {
     lrNo: '1042',
     loadingNo: '14',
     voucherNo: '501',
-    billNo: 'B-501',
     challanNo: 'CH-8821',
     date: new Date().toLocaleDateString('en-IN'),
     paidDate: new Date().toLocaleDateString('en-IN'),
@@ -2196,7 +2097,6 @@ function previewTemplate(eventKey, config) {
     materialsText: '• OPC Cement: 300 Bags (18 MT)',
     totalWeight: '18',
     totalBags: '300',
-    rate: '5500',
     freight: '5500',
     totalFreight: '99000',
     grossFreight: '99000',
@@ -2211,14 +2111,6 @@ function previewTemplate(eventKey, config) {
     netBalance: '88900',
     paymentStatus: 'Balance Pending',
     tripCount: '3',
-    ownerName: 'Sample Vehicle Owner',
-    periodLabel: '01/09/2026 to 15/09/2026',
-    tripLines: '1. LR #1042 | Jhajjar to Rewari | Net: Rs.32,000\n2. LR #1043 | Jhajjar to Rohtak | Net: Rs.28,000',
-    totalGross: '75,000',
-    totalDeductions: '15,000',
-    totalNet: '60,000',
-    paymentAmount: '60,000',
-    remainingBalanceLine: '*Outstanding Balance:* Rs.0',
     totalAmount: '88900',
     periodFrom: '01/09/2026',
     periodTo: '15/09/2026',
@@ -2231,11 +2123,6 @@ function previewTemplate(eventKey, config) {
     currentBalance: '3200',
     staffName: 'Suresh Driver',
     staffType: 'Driver',
-    punchTime: '06:42 PM',
-    punchMethod: 'Face Verification',
-    attendanceStatus: 'PRESENT',
-    durationLine: '*Duty Duration:* 8.25 hours',
-    reasonLine: '',
     month: 'September 2026',
     vehicleLine: '🚚 Truck: HR55AC4586',
     daysInMonth: '30',
@@ -2249,19 +2136,10 @@ function previewTemplate(eventKey, config) {
     adjustedSalary: '28000',
     payoutAmount: '28000',
     paymentMethod: 'Cash',
-    paymentDate: '26/09/2026',
     payoutDate: '26/09/2026',
     entryId: 'CSH-901',
-    id: 'cashout-doc-901',
     totalAdvances: '12000',
-    remainingPay: '15000',
-    vehicleId: 'vehicle-101',
-    documentKey: 'insurance',
-    documentName: 'Insurance Coverage',
-    expiryDate: '05/10/2026',
-    expiryStatus: 'Expires in 8 days',
-    alertType: 'EXPIRY',
-    expiryAction: 'Please renew this document or update the portal record.'
+    remainingPay: '15000'
   };
 
   const eventCfg = (config.events || {})[eventKey] || DEFAULT_TEMPLATES[eventKey];
@@ -2274,6 +2152,7 @@ function previewTemplate(eventKey, config) {
 module.exports = {
   getWhatsAppConfig,
   saveWhatsAppConfig,
+  setWhatsAppEnabled,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
   sendWhatsAppButtons,
@@ -2299,6 +2178,5 @@ module.exports = {
   logWhatsAppActivity,
   getWhatsAppLogs,
   clearWhatsAppLogs,
-  interpolateTemplate,
   DEFAULT_TEMPLATES
 };

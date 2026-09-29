@@ -816,3 +816,152 @@ Backup" were simply invisible.
 - [x] `catalogue.test.js` updated: Jharli's own keys no longer include
       `invoice`, plus a new assertion that the key is offered nowhere.
       25 assertions, 106 across the suite.
+# Terminal and WhatsApp architecture review (2026-09-28)
+
+- [x] Trace Android terminal entry, identity, biometric, duty, and sync paths.
+- [x] Trace server attendance and profile persistence.
+- [x] Inventory WhatsApp outbound events and inbound webhook commands.
+- [x] Publish architecture map and verify event coverage.
+
+## Review
+
+Read-only source trace found 23 default WhatsApp template keys and mapped every
+one against dispatcher call sites. Canvas lists terminal stages, all template
+keys, inbound command branches, and operational gaps. Verified no WhatsApp
+reference exists in Android terminal source. No runtime API or device test was
+performed; conclusions describe checked-in code.
+
+# Gemini WhatsApp bot (2026-09-28)
+
+- [x] Add Gemini Flash-Lite service with environment configuration and bounded replies.
+- [x] Route unmatched inbound text to AI while preserving existing commands.
+- [x] Verify Meta webhook signature before processing POST callbacks.
+- [x] Add targeted tests and run server suite.
+- [x] Review diff and document deployment requirements.
+
+## Review
+
+Gemini fallback handles general inbound text; natural-language vehicle queries
+reuse existing read-only handlers after sender authorization. PAID/LOADED
+actions require configured sender numbers. Signed Meta webhook POSTs are
+verified before processing. Targeted tests: 17 passed. Full server suite:
+197 passed, 5 failed in unrelated pre-existing catalogue, archive, layout,
+and icon assertions. Live Gemini/Meta round-trip remains unverified until
+GEMINI_API_KEY and META_APP_SECRET are configured.
+
+# WhatsApp bot activation placeholders (2026-09-28)
+
+- [x] Add empty local and example credentials for Gemini and Meta.
+- [x] Remove embedded WhatsApp credential defaults and verify-token logging.
+- [x] Document Meta, Gemini, and App Hosting setup with a test path.
+- [x] Run focused tests and client build; record result.
+
+## Review
+
+Ignored `server/.env` now has eight setup keys, with credential values blank.
+Source no longer embeds Meta access token, verify token, Phone Number ID, or
+WABA ID defaults. Webhook GET checks configured verify token without printing it.
+Focused tests: 18 passed. Client build passed. Live WhatsApp and Gemini flow
+requires user-owned credentials, reachable Meta callback, and deployment.
+
+# WhatsApp Control header cleanup (2026-09-28)
+
+- [x] Show verified Meta sending phone separately from Phone Number ID.
+- [x] Show safe server environment configuration status in header.
+- [x] Replace large red outbound banner and duplicate controls with compact switch.
+- [x] Build client and verify server behavior; record result.
+
+## Review
+
+The sender card now shows only a phone number returned by Meta; it labels the
+Phone Number ID separately. Server environment flags show whether six relevant
+values are set, without sending their values. The gateway card distinguishes
+saved/effective token setup from server env flags. Outbound control is a compact
+neutral row with one accessible switch. Client build passed, 18 focused server
+tests passed, and edited server files passed syntax checks. A live Meta number
+cannot appear until credentials connect successfully.
+
+# Meta environment card correction (2026-09-28)
+
+- [x] Replace local/server environment card with Meta account status.
+- [x] Use only Meta phone lookup values for verification and quality.
+- [x] Remove server variable presence details added to WhatsApp config response.
+- [x] Verify build and focused tests; record result.
+
+## Review
+
+Meta environment card now displays Meta connection scope, account mode, phone
+status, quality rating, and code verification when Meta returns them. Unknown
+fields remain labeled unavailable. Local/server environment labels and server
+credential flags are gone. Client build and 18 focused server tests passed;
+edited server files passed syntax checks. Live Meta metadata requires a valid
+access token and Phone Number ID.
+
+# WhatsApp settings persistence fix (2026-09-28)
+
+- [x] Stop returning empty config when persistent storage read fails.
+- [x] Keep Meta gateway config in one environment collection across sessions.
+- [x] Make outbound toggle update only enabled flag.
+- [x] Block editing when config load fails; verify persistence with tests.
+
+## Review
+
+Existing local Firestore `dev_whatsapp_config/gateway` still contains access
+token, phone ID, WABA ID, and verify token. Both normal and sandbox reads now
+return those same saved values without printing secrets. A read failure returns
+an error instead of empty defaults, while the toggle writes only `enabled`.
+The client blocks edits when loading fails and reloads after save. Client build
+passed; 20 focused tests passed, including new persistence tests. Live Meta
+connection still depends on validity of the saved credentials.
+
+# WhatsApp settings route 500 fix (2026-09-29)
+
+- [x] Remove undefined environment helper from WhatsApp config/status routes.
+- [x] Add HTTP route regression test for saved config response.
+- [x] Restart local backend and verify browser can load settings.
+- [x] Run focused tests and build; record result.
+
+## Review
+
+Running backend returned HTTP 500 with `getAppEnv is not a function` before the
+fix. Removed unused server environment fields from WhatsApp config/status
+responses. Restarted local backend; authenticated requests through port 5000
+and Vite port 5173 now return HTTP 200 with saved credential fields populated.
+No credential values were printed. Client build passed and 21 focused tests
+passed, including route regression coverage.
+
+# Live Meta status and compact cards (2026-09-29)
+
+- [x] Show Meta authentication failure clearly without claiming number is unverified.
+- [x] Refresh connection status after save and periodically while dashboard is open.
+- [x] Shrink Meta environment, sending number, and gateway cards to key details.
+- [x] Verify build, focused tests, and live status response.
+
+## Review
+
+Status reads bypass client cache, refresh after save and every 60 seconds while
+the page is visible. Summary cards show only Meta environment, sending number,
+and gateway state. Invalid token receives a specific reason; focused regression
+test confirms no misleading phone status. Client build passed; 22 focused tests
+passed. Live local Meta status returned connected with a phone number present.
+Local webhook challenge passed. Full bot test remains blocked by Gemini HTTP 402
+(`RESOURCE_EXHAUSTED`) and absence of a public HTTPS tunnel for Meta callbacks.
+
+# WhatsApp first reply and natural language (2026-09-29)
+
+- [x] Replace greeting/help reply with concise, polished WhatsApp welcome.
+- [x] Route clear natural-language vehicle questions through existing authorized handlers, including requests without a truck number.
+- [x] Stop broad greeting and option filters from swallowing ordinary questions.
+- [x] Verify webhook dispatch tests, Gemini tests, and live local webhook flow.
+
+## Review
+
+Incoming Meta messages and outbound sends appeared in live logs. New greeting
+lists useful natural-language examples. Vehicle queries in English, Hindi, and
+transliterated Hindi reuse access-checked record handlers; missing truck number
+prompts for one. Exact negative option matching prevents ordinary “pending”
+questions being ignored. Gemini answered a live Hindi question but took about
+24 seconds, so timeout increased to 40 seconds. All 26 focused tests passed.
+After restart, Meta status remained connected and signed public webhook
+returned HTTP 200. A fresh user message is still needed to observe the new
+welcome and dispatch end to end on WhatsApp.

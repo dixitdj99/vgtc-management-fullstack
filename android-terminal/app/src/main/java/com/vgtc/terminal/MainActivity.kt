@@ -691,7 +691,7 @@ class MainActivity : AppCompatActivity() {
         // Case B: Currently on duty (dutyState == "IN_DUTY")
         val elapsedMs = now - currentDuty.inTimeMs
         val elapsedHours = elapsedMs / (1000.0 * 60 * 60)
-        val minHoursRequired = 8.0
+        val minHoursRequired = 4.0
 
         if (isDriver) {
             // For Drivers: Multi-day Tour Lifecycle.
@@ -709,7 +709,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (elapsedHours < minHoursRequired) {
-            // Cannot mark completed yet - minimum 8 hours required for staff!
+            // Cannot mark completed yet - minimum 4 hours required for staff!
             lastPunchedProfileId = profile.id
             lastPunchTime = now
 
@@ -732,7 +732,7 @@ class MainActivity : AppCompatActivity() {
 
             showActiveDutyInProgressCard(profile, currentDuty, elapsedMs, minHoursRequired)
         } else {
-            // 8+ hours elapsed! Complete shift (Punch-Out)
+            // 4+ hours elapsed! Complete shift (Punch-Out)
             completeShift(profile, currentDuty, method, elapsedMs)
         }
     }
@@ -893,7 +893,7 @@ class MainActivity : AppCompatActivity() {
         binding.tvSuccessDuration.text = if (isDriver) {
             if (isHi) "ड्यूटी चालू • वापसी तक प्रतिदिन उपस्थिति दर्ज" else "Duty tour active • Auto-present on all tour days"
         } else {
-            if (isHi) "ड्यूटी शुरू हुई • न्यूनतम 8 घंटे आवश्यक" else "Shift started • Min. 8 hours required to mark present"
+            if (isHi) "ड्यूटी शुरू हुई • न्यूनतम 4 घंटे आवश्यक" else "Shift started • Min. 4 hours required to mark present"
         }
         binding.tvSuccessDuration.setTextColor(getColor(R.color.text_secondary))
 
@@ -953,7 +953,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvSuccessDuration.visibility = View.VISIBLE
         binding.tvSuccessDuration.text =
-            "Elapsed: ${elapsedH}h ${elapsedM}m  |  Remaining: ${remH}h ${remM}m\n(Min. 8 hrs required to punch out)"
+            "Elapsed: ${elapsedH}h ${elapsedM}m  |  Remaining: ${remH}h ${remM}m\n(Min. 4 hrs required to punch out)"
         binding.tvSuccessDuration.setTextColor(getColor(R.color.primary))
 
         binding.btnEmergencyCheckout.visibility = View.VISIBLE
@@ -1036,7 +1036,7 @@ class MainActivity : AppCompatActivity() {
             val elapsedHours = elapsedMs / (1000.0 * 60 * 60)
             val durationRounded = Math.round(elapsedHours * 10.0) / 10.0
 
-            val (status, days) = if (elapsedHours >= 4.0) {
+            val (status, days) = if (elapsedHours >= 2.0) {
                 Pair("half_day", 0.5)
             } else {
                 Pair("leave", 0.0)
