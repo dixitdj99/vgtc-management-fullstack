@@ -5,7 +5,8 @@ import {
   MessageSquare, Send, RefreshCw, CheckCircle2, AlertTriangle,
   Loader2, Sparkles, Zap, Eye, EyeOff, Phone, Key,
   Copy, Check, FileText, Search, UserCheck, Activity,
-  Trash2, Globe, ShieldCheck, CheckCheck
+  Trash2, Globe, ShieldCheck, CheckCheck, Truck, Receipt,
+  CreditCard, Landmark, Users, RotateCcw, ChevronDown, ChevronUp
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
@@ -168,7 +169,43 @@ const ALL_EVENT_DEFINITIONS = [
   }
 ];
 
-const CATEGORIES = ['All', 'Loading & Drivers', 'Freight & Vouchers', 'Online Advances', 'Cashbook & Banking', 'Challan & Staff Khata'];
+const CATEGORIES = ['All', 'Loading & Drivers', 'Freight Vouchers', 'Online Advances', 'Cashbook & Banking', 'Challan & Staff Khata'];
+
+const getCategoryIcon = (category) => {
+  switch (category) {
+    case 'Loading & Drivers':
+      return <Truck size={17} />;
+    case 'Freight Vouchers':
+    case 'Freight & Vouchers':
+      return <Receipt size={17} />;
+    case 'Online Advances':
+      return <CreditCard size={17} />;
+    case 'Cashbook & Banking':
+      return <Landmark size={17} />;
+    case 'Challan & Staff Khata':
+      return <Users size={17} />;
+    default:
+      return <MessageSquare size={17} />;
+  }
+};
+
+const getCategoryColor = (category) => {
+  switch (category) {
+    case 'Loading & Drivers':
+      return { bg: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: 'rgba(59, 130, 246, 0.25)', accent: '#3b82f6' };
+    case 'Freight Vouchers':
+    case 'Freight & Vouchers':
+      return { bg: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: 'rgba(16, 185, 129, 0.25)', accent: '#10b981' };
+    case 'Online Advances':
+      return { bg: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: 'rgba(245, 158, 11, 0.25)', accent: '#f59e0b' };
+    case 'Cashbook & Banking':
+      return { bg: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', border: 'rgba(139, 92, 246, 0.25)', accent: '#8b5cf6' };
+    case 'Challan & Staff Khata':
+      return { bg: 'rgba(236, 72, 153, 0.1)', color: '#ec4899', border: 'rgba(236, 72, 153, 0.25)', accent: '#ec4899' };
+    default:
+      return { bg: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', border: 'rgba(99, 102, 241, 0.25)', accent: '#6366f1' };
+  }
+};
 
 export default function WhatsAppControlModule() {
   const [activeTab, setActiveTab] = useState('templates'); // 'templates' | 'credentials' | 'logs'
@@ -214,6 +251,7 @@ export default function WhatsAppControlModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [previews, setPreviews] = useState({});
   const [previewingKey, setPreviewingKey] = useState(null);
+  const [expandedTags, setExpandedTags] = useState({});
 
   // Test Dispatch Form
   const [testForm, setTestForm] = useState({
@@ -444,7 +482,15 @@ export default function WhatsAppControlModule() {
     }
   };
 
-  const handlePreviewTemplate = async (eventKey) => {
+  const handleTogglePreview = async (eventKey) => {
+    if (previews[eventKey]) {
+      setPreviews(p => {
+        const next = { ...p };
+        delete next[eventKey];
+        return next;
+      });
+      return;
+    }
     setPreviewingKey(eventKey);
     try {
       const res = await ax.get(`/whatsapp/preview/${eventKey}`);
@@ -458,8 +504,11 @@ export default function WhatsAppControlModule() {
 
   // Filter templates
   const filteredTemplates = ALL_EVENT_DEFINITIONS.filter(def => {
-    const matchesCategory = selectedCategory === 'All' || def.category === selectedCategory;
-    const matchesSearch = !searchQuery || def.title.toLowerCase().includes(searchQuery.toLowerCase()) || def.key.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'All' || def.category === selectedCategory || (selectedCategory === 'Freight Vouchers' && def.category === 'Freight Vouchers');
+    const matchesSearch = !searchQuery ||
+      def.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      def.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      def.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
 
@@ -709,187 +758,537 @@ export default function WhatsAppControlModule() {
         <section className="adm-panel">
           <header className="adm-panel-hd" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-              <span className="adm-icon-tile" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>
-                <Zap size={18} />
+              <span className="adm-icon-tile" style={{ background: 'rgba(37, 211, 102, 0.12)', color: '#25D366' }}>
+                <Zap size={19} />
               </span>
               <div>
                 <h2>Operational Message Templates</h2>
-                <p className="adm-sub">All 22 automated WhatsApp templates configured for logistics, billing &amp; advances</p>
+                <p className="adm-sub">All {ALL_EVENT_DEFINITIONS.length} automated WhatsApp templates configured for logistics, billing &amp; advances</p>
               </div>
             </div>
-            <button type="button" onClick={handleSaveConfig} className="adm-btn adm-btn--primary adm-btn--sm" disabled={saving}>
-              {saving ? <Loader2 size={14} className="adm-spin" /> : <><Sparkles size={14} /> Save Templates</>}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (Object.keys(previews).length > 0) {
+                    setPreviews({});
+                  } else {
+                    const samplePreviews = {};
+                    filteredTemplates.slice(0, 4).forEach(def => {
+                      handleTogglePreview(def.key);
+                    });
+                  }
+                }}
+                className="adm-btn adm-btn--sm"
+                title="Toggle sample previews"
+                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Eye size={13} />
+                <span>{Object.keys(previews).length > 0 ? 'Collapse Previews' : 'Preview Samples'}</span>
+              </button>
+
+              <button type="button" onClick={handleSaveConfig} className="adm-btn adm-btn--primary adm-btn--sm" disabled={saving}>
+                {saving ? <Loader2 size={14} className="adm-spin" /> : <><Sparkles size={14} /> Save Templates</>}
+              </button>
+            </div>
           </header>
 
           <div className="adm-panel-bd adm-sec" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             {/* Filter & Search Bar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              {/* Category Pills */}
+              {/* Category Pills with counts */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                {CATEGORIES.map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setSelectedCategory(cat)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      border: '1px solid var(--border)',
-                      background: selectedCategory === cat ? 'var(--primary)' : 'var(--bg-th)',
-                      color: selectedCategory === cat ? '#ffffff' : 'var(--text-sub)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {cat}
-                  </button>
-                ))}
+                {CATEGORIES.map(cat => {
+                  const count = cat === 'All'
+                    ? ALL_EVENT_DEFINITIONS.length
+                    : ALL_EVENT_DEFINITIONS.filter(d => d.category === cat).length;
+                  const isSelected = selectedCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
+                        background: isSelected ? 'var(--primary)' : 'var(--bg-th)',
+                        color: isSelected ? '#ffffff' : 'var(--text-sub)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>{cat}</span>
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '1px 6px',
+                        borderRadius: '999px',
+                        background: isSelected ? 'rgba(255,255,255,0.25)' : 'var(--bg-card)',
+                        color: isSelected ? '#ffffff' : 'var(--text-muted)'
+                      }}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Search Input */}
-              <div style={{ position: 'relative', width: '260px' }}>
+              {/* Search Input with quick clear */}
+              <div style={{ position: 'relative', width: '280px' }}>
                 <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
-                  placeholder="Search templates or tags..."
+                  placeholder="Search templates or variables..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="adm-input"
-                  style={{ paddingLeft: '32px', height: '34px', fontSize: '12px' }}
+                  style={{ paddingLeft: '32px', paddingRight: searchQuery ? '30px' : '12px', height: '34px', fontSize: '12px' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '8px',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      padding: 0
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Template List Cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {filteredTemplates.map(def => {
-                const evtConfig = config.events?.[def.key] || { enabled: true, template: '' };
-                const previewText = previews[def.key];
-                return (
-                  <div key={def.key} style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                    <div style={{
-                      padding: '12px 18px',
-                      background: 'var(--bg-card)',
-                      borderBottom: '1px solid var(--border)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '12px'
-                    }}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text)' }}>{def.title}</span>
-                          <span style={{ fontSize: '10px', background: 'var(--bg-inset)', padding: '2px 8px', borderRadius: '4px', color: 'var(--text-sub)', fontWeight: 600 }}>
-                            {def.category}
-                          </span>
-                          <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                            [{def.key}]
-                          </span>
-                        </div>
-                        {/* Tags list */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Tags:</span>
-                          {def.tags.map(t => (
-                            <span
-                              key={t}
-                              title="Click to copy tag"
-                              onClick={() => copyToClipboard(t, t)}
-                              style={{
-                                fontSize: '10.5px',
-                                fontFamily: 'monospace',
-                                background: 'rgba(59, 130, 246, 0.08)',
-                                color: '#3b82f6',
+            {/* Template Status Summary Bar */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px',
+              padding: '8px 14px',
+              background: 'var(--bg-th)',
+              borderRadius: '9px',
+              border: '1px solid var(--border)',
+              fontSize: '12px',
+              color: 'var(--text-muted)'
+            }}>
+              <div>
+                Showing <strong style={{ color: 'var(--text)' }}>{filteredTemplates.length}</strong> of {ALL_EVENT_DEFINITIONS.length} templates
+                {selectedCategory !== 'All' && <span> in <strong style={{ color: 'var(--text)' }}>{selectedCategory}</strong></span>}
+                {searchQuery && <span> matching "<em>{searchQuery}</em>"</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+                  {ALL_EVENT_DEFINITIONS.filter(d => (config.events?.[d.key]?.enabled !== false)).length} Enabled
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#94a3b8' }} />
+                  {ALL_EVENT_DEFINITIONS.filter(d => (config.events?.[d.key]?.enabled === false)).length} Paused
+                </span>
+              </div>
+            </div>
+
+            {/* ── TEMPLATES CARDS GRID ── */}
+            {filteredTemplates.length === 0 ? (
+              <div style={{
+                padding: '40px 20px',
+                textAlign: 'center',
+                background: 'var(--bg-th)',
+                borderRadius: '12px',
+                border: '1px dashed var(--border)'
+              }}>
+                <MessageSquare size={32} style={{ color: 'var(--text-muted)', opacity: 0.5, marginBottom: '8px' }} />
+                <h4 style={{ margin: '0 0 6px', color: 'var(--text)' }}>No templates found</h4>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+                  No notification templates match your search criteria.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedCategory('All'); setSearchQuery(''); }}
+                  className="adm-btn adm-btn--sm"
+                  style={{ marginTop: '12px' }}
+                >
+                  Reset filters
+                </button>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+                gap: '16px',
+                alignItems: 'stretch'
+              }}>
+                {filteredTemplates.map(def => {
+                  const evtConfig = config.events?.[def.key] || { enabled: true, template: '' };
+                  const isEnabled = evtConfig.enabled !== false;
+                  const previewText = previews[def.key];
+                  const catColors = getCategoryColor(def.category);
+                  const isTagsExpanded = !!expandedTags[def.key];
+                  const visibleTags = isTagsExpanded ? def.tags : def.tags.slice(0, 6);
+                  const hasMoreTags = def.tags.length > 6;
+
+                  return (
+                    <div
+                      key={def.key}
+                      style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderTop: `3px solid ${isEnabled ? catColors.accent : 'var(--border)'}`,
+                        borderRadius: '14px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
+                        opacity: isEnabled ? 1 : 0.82
+                      }}
+                    >
+                      {/* Card Header */}
+                      <div style={{
+                        padding: '13px 15px',
+                        background: 'var(--bg-th)',
+                        borderBottom: '1px solid var(--border)',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', gap: '10px', minWidth: 0, flex: 1 }}>
+                          <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '9px',
+                            background: catColors.bg,
+                            color: catColors.color,
+                            border: `1px solid ${catColors.border}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            {getCategoryIcon(def.category)}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                background: catColors.bg,
+                                color: catColors.color,
                                 padding: '1px 6px',
                                 borderRadius: '4px',
-                                cursor: 'pointer'
+                                border: `1px solid ${catColors.border}`
+                              }}>
+                                {def.category}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(def.key, `Key ${def.key}`)}
+                                title="Click to copy event key"
+                                style={{
+                                  fontSize: '10px',
+                                  fontFamily: 'monospace',
+                                  color: 'var(--text-muted)',
+                                  background: 'var(--bg-card)',
+                                  border: '1px solid var(--border)',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <span>{def.key}</span>
+                                {copiedField === `Key ${def.key}` ? <Check size={9} color="#10b981" /> : <Copy size={9} />}
+                              </button>
+                            </div>
+                            <h3 style={{
+                              margin: 0,
+                              fontSize: '13.5px',
+                              fontWeight: 800,
+                              color: 'var(--text)',
+                              lineHeight: 1.35
+                            }}>
+                              {def.title}
+                            </h3>
+                          </div>
+                        </div>
+
+                        {/* Switch + Status Badge */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isEnabled}
+                            className="adm-switch"
+                            onClick={() => {
+                              const updated = { ...config.events, [def.key]: { ...evtConfig, enabled: !isEnabled } };
+                              setConfig({ ...config, events: updated });
+                            }}
+                            title={isEnabled ? 'Click to disable' : 'Click to enable'}
+                          />
+                          <span style={{
+                            fontSize: '9.5px',
+                            fontWeight: 800,
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: isEnabled ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
+                            color: isEnabled ? '#10b981' : 'var(--text-muted)',
+                            border: `1px solid ${isEnabled ? 'rgba(16, 185, 129, 0.25)' : 'var(--border)'}`,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em'
+                          }}>
+                            {isEnabled ? 'Active' : 'Paused'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Body */}
+                      <div style={{ padding: '14px 15px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                        {/* Variables / Tags Cloud */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              Variables ({def.tags.length})
+                            </span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                              Click tag to copy
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {visibleTags.map(t => {
+                              const isTagCopied = copiedField === t;
+                              return (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => copyToClipboard(t, t)}
+                                  title={`Click to copy ${t}`}
+                                  style={{
+                                    fontSize: '10.5px',
+                                    fontFamily: 'monospace',
+                                    background: isTagCopied ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.08)',
+                                    color: isTagCopied ? '#10b981' : '#3b82f6',
+                                    border: `1px solid ${isTagCopied ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.2)'}`,
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    transition: 'all 0.12s ease'
+                                  }}
+                                >
+                                  <span>{t}</span>
+                                  {isTagCopied ? <Check size={9} /> : <Copy size={8} style={{ opacity: 0.5 }} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {hasMoreTags && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedTags(p => ({ ...p, [def.key]: !p[def.key] }))}
+                              style={{
+                                marginTop: '5px',
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                color: 'var(--primary)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
                               }}
                             >
-                              {t}
+                              {isTagsExpanded ? (
+                                <><ChevronUp size={11} /> Show fewer variables</>
+                              ) : (
+                                <><ChevronDown size={11} /> +{def.tags.length - 6} more variables</>
+                              )}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Textarea Template Editor */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              Custom Template
+                            </label>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                              {(evtConfig.template || '').length} chars
                             </span>
-                          ))}
+                          </div>
+                          <textarea
+                            className="adm-textarea"
+                            rows={4}
+                            placeholder={`Automated standard WhatsApp format will be sent. Type custom text with variables above to override...`}
+                            value={evtConfig.template || ''}
+                            onChange={e => {
+                              const updated = { ...config.events, [def.key]: { ...evtConfig, template: e.target.value } };
+                              setConfig({ ...config, events: updated });
+                            }}
+                            style={{
+                              fontFamily: 'monospace',
+                              fontSize: '11.5px',
+                              lineHeight: 1.5,
+                              minHeight: '84px',
+                              background: 'var(--bg-input)'
+                            }}
+                          />
                         </div>
-                      </div>
 
-                      {/* Enable / Disable Switch for specific event */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: evtConfig.enabled !== false ? '#10b981' : '#ef4444' }}>
-                          {evtConfig.enabled !== false ? 'Enabled' : 'Disabled'}
-                        </span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={evtConfig.enabled !== false}
-                          className="adm-switch"
-                          onClick={() => {
-                            const updated = { ...config.events, [def.key]: { ...evtConfig, enabled: evtConfig.enabled === false } };
-                            setConfig({ ...config, events: updated });
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ padding: '14px 18px' }}>
-                      <textarea
-                        className="adm-textarea"
-                        rows={4}
-                        placeholder={`Write custom WhatsApp template for ${def.title}...`}
-                        value={evtConfig.template || ''}
-                        onChange={e => {
-                          const updated = { ...config.events, [def.key]: { ...evtConfig, template: e.target.value } };
-                          setConfig({ ...config, events: updated });
-                        }}
-                        style={{ fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.5 }}
-                      />
-
-                      <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                        <button
-                          type="button"
-                          className="adm-btn adm-btn--sm"
-                          onClick={() => handlePreviewTemplate(def.key)}
-                          disabled={previewingKey === def.key}
-                          style={{ fontSize: '11px', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          {previewingKey === def.key ? <Loader2 size={12} className="adm-spin" /> : <Eye size={12} />}
-                          Preview Sample
-                        </button>
-                      </div>
-
-                      {previewText && (
+                        {/* Card Action Bar */}
                         <div style={{
-                          marginTop: '12px',
-                          background: '#075e54',
-                          border: '1px solid #128c7e',
-                          borderRadius: '10px',
-                          padding: '14px 16px',
-                          color: '#ffffff'
+                          marginTop: 'auto',
+                          paddingTop: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          borderTop: '1px solid var(--border)'
                         }}>
-                          <div style={{ fontSize: '11px', fontWeight: 800, color: '#25D366', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MessageSquare size={13} />
-                            WHATSAPP MESSAGE PREVIEW:
-                          </div>
-                          <div style={{
-                            background: '#dcf8c6',
-                            color: '#111827',
-                            padding: '12px 14px',
-                            borderRadius: '8px',
-                            fontSize: '12.5px',
-                            fontFamily: 'monospace',
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: 1.6,
-                            boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-                          }}>
-                            {previewText}
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn--sm"
+                            onClick={() => handleTogglePreview(def.key)}
+                            disabled={previewingKey === def.key}
+                            style={{
+                              fontSize: '11px',
+                              padding: '4px 10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              background: previewText ? 'rgba(7, 94, 84, 0.12)' : 'var(--bg-th)',
+                              borderColor: previewText ? '#075E54' : 'var(--border)',
+                              color: previewText ? '#075E54' : 'var(--text)'
+                            }}
+                          >
+                            {previewingKey === def.key ? (
+                              <Loader2 size={11} className="adm-spin" />
+                            ) : previewText ? (
+                              <EyeOff size={11} />
+                            ) : (
+                              <Eye size={11} />
+                            )}
+                            <span>{previewText ? 'Hide Preview' : 'Preview Message'}</span>
+                          </button>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            {evtConfig.template && (
+                              <button
+                                type="button"
+                                title="Reset to standard system default"
+                                className="adm-btn adm-btn--sm"
+                                style={{ padding: '4px 7px', fontSize: '11px', color: 'var(--text-muted)' }}
+                                onClick={() => {
+                                  const updated = { ...config.events, [def.key]: { ...evtConfig, template: '' } };
+                                  setConfig({ ...config, events: updated });
+                                  showToast('info', `Reset ${def.title} to default`);
+                                }}
+                              >
+                                <RotateCcw size={11} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              title="Copy template text"
+                              className="adm-btn adm-btn--sm"
+                              style={{ padding: '4px 7px', fontSize: '11px' }}
+                              onClick={() => copyToClipboard(evtConfig.template || 'Standard automated message', def.title)}
+                            >
+                              <Copy size={11} />
+                            </button>
                           </div>
                         </div>
-                      )}
+
+                        {/* In-Card WhatsApp Bubble Preview */}
+                        {previewText && (
+                          <div style={{
+                            marginTop: '4px',
+                            background: '#075E54',
+                            border: '1px solid #128C7E',
+                            borderRadius: '10px',
+                            overflow: 'hidden',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                          }}>
+                            {/* WhatsApp Header Strip */}
+                            <div style={{
+                              padding: '6px 10px',
+                              background: '#075E54',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              color: '#ffffff'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700 }}>
+                                <MessageSquare size={12} color="#25D366" />
+                                <span>WhatsApp Preview</span>
+                                <span style={{ fontSize: '9px', background: '#25D366', color: '#075E54', padding: '0 4px', borderRadius: '3px', fontWeight: 800 }}>LIVE</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPreviews(p => { const next = { ...p }; delete next[def.key]; return next; })}
+                                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '0 4px', fontSize: '11px' }}
+                                title="Close preview"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            {/* WhatsApp Chat Wallpaper & Bubble */}
+                            <div style={{
+                              background: '#E5DDD5',
+                              backgroundImage: 'radial-gradient(#d4cbbe 1px, transparent 1px)',
+                              backgroundSize: '16px 16px',
+                              padding: '10px'
+                            }}>
+                              <div style={{
+                                background: '#DCF8C6',
+                                color: '#111827',
+                                padding: '10px 12px',
+                                borderRadius: '8px 8px 2px 8px',
+                                fontSize: '11.5px',
+                                fontFamily: 'monospace',
+                                whiteSpace: 'pre-wrap',
+                                lineHeight: 1.55,
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                                maxWidth: '100%',
+                                wordBreak: 'break-word'
+                              }}>
+                                {previewText}
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '9.5px', color: '#6b7280' }}>
+                                  <span>Just now</span>
+                                  <CheckCheck size={12} color="#34B7F1" />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Bottom Save Action */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
