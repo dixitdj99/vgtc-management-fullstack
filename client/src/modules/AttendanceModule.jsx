@@ -515,6 +515,10 @@ export default function AttendanceModule() {
           savedAt={savedAt}
           pendingCount={pendingCount}
           unsavedCount={unsavedCount}
+          relieveModal={relieveModal}
+          setRelieveModal={setRelieveModal}
+          loadRoster={loadRoster}
+          loadPendingDays={loadPendingDays}
         />
       ) : (
         <MonthlyReport
@@ -536,6 +540,7 @@ function DailyRollCall({
   card, refreshing, rows, allRows, edits, touched, counts, canEdit, query, setQuery,
   selectedDate, setSelectedDate, shiftDate, cycleStatus, setStatus,
   markAllPresent, resetToSuggested, pendingDays = [], saving, savedAt, pendingCount, unsavedCount,
+  relieveModal, setRelieveModal, loadRoster, loadPendingDays,
 }) {
   const unresolved = allRows.filter(r => !edits[r.profileId]);
   const derivedCount = allRows.filter(r => r.suggestedBy === 'trip_data').length;

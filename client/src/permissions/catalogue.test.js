@@ -63,7 +63,11 @@ const sorted = (xs) => [...xs].sort();
 {
   check('the company-wide set is what the plants actually share',
     sorted(SHARED_KEYS),
-    sorted(['lr_dump', 'vehicle', 'mileage', 'pay', 'balance_all', 'sell']));
+    sorted(['lr_dump', 'vehicle', 'market_vehicle', 'mileage', 'pay', 'balance_all', 'sell']));
+
+  check('market vehicle registry covers every operating location',
+    sorted(locationsForKey('market_vehicle')),
+    sorted(['Jharli Dump & Plant', 'Kosli Dump', 'Jhajjar Dump', 'Bahadurgarh Dump']));
 
   check('lr_dump covers the three JK Super dumps',
     sorted(locationsForKey('lr_dump')),

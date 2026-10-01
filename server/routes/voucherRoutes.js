@@ -13,6 +13,19 @@ router.use(requireAuth, tenancyMiddleware);
 
 const BASE_COL = 'vouchers';
 const VEHICLE_COL = 'vehicles';
+const marketLocationForVoucher = (type) => type === 'Kosli_Bill' ? 'kosli'
+    : type === 'Jajjhar_Bill' ? 'jhajjar'
+        : type === 'Bahadurgarh_Bill' ? 'bahadurgarh'
+            : 'jharli';
+const syncVoucherVehicle = (req) => vehicleService.ensureOrUpdateVehicleContacts(req.orgId, {
+    truckNo: req.body.truckNo,
+    ownerName: req.body.ownerName,
+    ownerContact: req.body.ownerContact,
+    driverName: req.body.driverName,
+    driverContact: req.body.driverContact,
+    ownershipType: req.body.ownershipType,
+    marketLocation: marketLocationForVoucher(req.body.type),
+}, getCol(VEHICLE_COL, req));
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
@@ -21,7 +34,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Driver is required for own-fleet Jharli vouchers' });
         }
         const result = await voucherService.createVoucher(req.orgId, req.body, getCol(BASE_COL, req));
-        await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
+        await syncVoucherVehicle(req).catch((error) => {
             console.error('[Voucher-Hook] Vehicle ensure failed:', error.message);
         });
 
@@ -140,7 +153,7 @@ router.patch('/:id', async (req, res) => {
         const col = getCol(BASE_COL, req);
         await voucherService.updateVoucher(req.params.id, req.body, col);
         if (req.body.truckNo) {
-            await vehicleService.ensureVehicleByTruckNo(req.body.truckNo, getCol(VEHICLE_COL, req)).catch((error) => {
+            await syncVoucherVehicle(req).catch((error) => {
                 console.error('[Voucher-Hook] Vehicle ensure failed on update:', error.message);
             });
         }

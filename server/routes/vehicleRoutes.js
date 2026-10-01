@@ -10,6 +10,70 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
 const BASE_COL = 'vehicles';
+const MARKET_LOCATIONS = new Set(['jharli', 'kosli', 'jhajjar', 'bahadurgarh']);
+
+const getMarketLocation = (req) => {
+    const raw = String(req.query.location || req.body?.marketLocation || '').trim().toLowerCase();
+    const location = raw === 'jajjhar' ? 'jhajjar' : raw;
+    if (!MARKET_LOCATIONS.has(location)) return null;
+    const allowedPlants = req.user?.permissions?.allowedPlants;
+    const allowed = req.user?.permissions?.allowedGodowns;
+    if (req.user?.role !== 'admin') {
+        if (location === 'jharli' && Array.isArray(allowedPlants) && !allowedPlants.includes('jklakshmi')) return false;
+        if (location !== 'jharli' && Array.isArray(allowed) && !allowed.includes(location)) return false;
+    }
+    return location;
+};
+
+// Location-scoped market registry. Separate endpoints prevent market clerks
+// from editing an own-fleet row by changing only its ownership field.
+router.get('/market', requirePermission('market_vehicle', 'view'), async (req, res) => {
+    const location = getMarketLocation(req);
+    if (location === false) return res.status(403).json({ error: 'No access to this godown market fleet' });
+    if (!location) return res.status(400).json({ error: 'Valid market vehicle location required' });
+    try {
+        const vehicles = await vehicleService.getMarketVehicles(req.orgId, location, getCol(BASE_COL, req));
+        res.json(vehicles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/market', requirePermission('market_vehicle', 'edit'), async (req, res) => {
+    const location = getMarketLocation(req);
+    if (location === false) return res.status(403).json({ error: 'No access to this godown market fleet' });
+    if (!location) return res.status(400).json({ error: 'Valid market vehicle location required' });
+    try {
+        const result = await vehicleService.createMarketVehicle(req.orgId, { ...req.body, marketLocation: location }, getCol(BASE_COL, req));
+        res.status(201).json(result);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+router.patch('/market/:id', requirePermission('market_vehicle', 'edit'), async (req, res) => {
+    const location = getMarketLocation(req);
+    if (location === false) return res.status(403).json({ error: 'No access to this godown market fleet' });
+    if (!location) return res.status(400).json({ error: 'Valid market vehicle location required' });
+    try {
+        await vehicleService.updateMarketVehicle(req.orgId, req.params.id, { ...req.body, marketLocation: location }, getCol(BASE_COL, req));
+        res.json({ message: 'Market vehicle updated' });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+router.delete('/market/:id', requirePermission('market_vehicle', 'delete'), async (req, res) => {
+    const location = getMarketLocation(req);
+    if (location === false) return res.status(403).json({ error: 'No access to this godown market fleet' });
+    if (!location) return res.status(400).json({ error: 'Valid market vehicle location required' });
+    try {
+        await vehicleService.deleteMarketVehicle(req.orgId, req.params.id, location, getCol(BASE_COL, req));
+        res.json({ message: 'Market vehicle deleted' });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
 
 // Create
 router.post('/', requirePermission('vehicle', 'edit'), async (req, res) => {

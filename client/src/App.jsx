@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { LayoutDashboard, Receipt, FileText, BarChart3, BookOpen, Package, ChevronRight, Sun, Moon, Coffee, Shield, LogOut, Cloud, CloudRain, Menu, X, Search, Building2, TrendingUp, ClipboardList, Bell, Sparkles, FileCheck } from 'lucide-react';
 import TruckLoader from './components/TruckLoader';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import SheetRoute from './sheets/SheetRoute';
+import StatusRoute from './pages/StatusRoute';
 import ax from './api';
 import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -45,9 +47,11 @@ import BottomTabBar from './components/BottomTabBar';
 import { processSyncQueue, count as queueCount } from './utils/offlineQueue';
 import TyreModule from './modules/TyreModule';
 import VendorModule from './modules/VendorModule';
+import OwnFleetView from './modules/OwnFleetView';
 import TripProfitModule from './modules/TripProfitModule';
 import AttendanceModule from './modules/AttendanceModule';
 import VehicleCreditDebitModule from './modules/VehicleCreditDebitModule';
+import TerminalModule from './modules/TerminalModule';
 import { playNotificationSound } from './utils/soundUtils';
 import NotificationToast from './components/NotificationToast';
 import NotificationDetailModal from './components/NotificationDetailModal';
@@ -71,9 +75,9 @@ const ENV_BANNER = APP_ENV === 'production' ? null
  * for all three by one clerk working from Jharli, so putting them on these
  * sidebars only offers a screen nobody there is meant to use.
  *
- * This hides the nav entry and nothing else. Fleet Management itself is shared
- * with these locations; only the separate Market Vehicles screen remains
- * hidden. The APIs behind the other hidden modules stay reachable on purpose,
+ * This hides the nav entry and nothing else. Fleet Management is a permanent
+ * read-only own-fleet view here, while Market Vehicles is location-scoped.
+ * The APIs behind the other hidden modules stay reachable on purpose,
  * because the screens that remain read through them: a
  * voucher and an LR need the vehicle list (which includes market vehicles), the
  * voucher form looks up the last odometer reading through /mileage, and the
@@ -90,7 +94,6 @@ const HIDDEN_AT_DUMP_GODOWNS = new Set([
   'diesel_dump',        // Diesel Control
   'mileage_dump',       // Mileage Tracker
   'tyres_dump',         // Tyre Management
-  'vendors_dump',       // Market Vehicles
   'invoice_dump',       // Invoicing
 ]);
 
@@ -563,7 +566,7 @@ function AppInner() {
       ]
     },
     { id: 'sell_dump', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jksuper', permKey: 'sell' },
-    { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
+    { id: 'vendors_dump', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jksuper', permKey: 'market_vehicle' },
     { id: 'trip_profit_dump', label: 'Trip Profit Analysis', Icon: TrendingUp, color: '#10b981', section: 'jksuper', permKey: 'pay' },
 
     // ── Jharli Dump & Plant (Merged JKL + JK Super) ──
@@ -616,7 +619,7 @@ function AppInner() {
       ]
     },
     { id: 'sell_jharli', label: 'Sell', Icon: ShoppingCart, color: '#ec4899', section: 'jharli', permKey: 'sell' },
-    { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
+    { id: 'vendors_jharli', label: 'Market Vehicles', Icon: Truck, color: '#f59e0b', section: 'jharli', permKey: 'market_vehicle' },
     { id: 'admin_loading_status_jharli', label: 'Loading Realtime', Icon: LayoutDashboard, color: '#f59e0b', section: 'jharli', permKey: 'loading_status' },
   ];
 
@@ -638,7 +641,7 @@ function AppInner() {
         if (!pKey || user?.role === 'admin') return true;
         if (!user?.permissions || Object.keys(user.permissions).length === 0) return true;
         const p = user.permissions[pKey];
-        return p === 'view' || p === 'edit';
+        return p === 'view' || p === 'edit' || p === 'delete';
       });
       return { ...n, sub: allowedSubs };
     }
@@ -671,7 +674,7 @@ function AppInner() {
         effectiveKey = user.permissions['lr_kosli'] ? 'lr_kosli' : 'lr_jhajjar';
       }
       const p = user.permissions[effectiveKey];
-      return p === 'view' || p === 'edit';
+      return p === 'view' || p === 'edit' || p === 'delete';
     }
     return true;
   });
@@ -773,7 +776,8 @@ function AppInner() {
       {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
       {id === 'stock_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="bahadurgarh" />}
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
-      {(id === 'vehicles_dump' || id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule permissions={user.permissions} />}
+      {id === 'vehicles_dump' && (DUMP_GODOWNS.has(godown) ? <OwnFleetView /> : <VehicleModule role={user.role} permissions={user.permissions} />)}
+      {(id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule role={user.role} permissions={user.permissions} />}
       {/* Diesel Control covers exactly the sheets its own location has — the
           same mapping the Balance Sheet nav uses above. Without this it pulled
           Jharli's 'Dump' vouchers into every location.
@@ -806,7 +810,7 @@ function AppInner() {
       {(id === 'sell_dump' || id === 'sell_jkl' || id === 'sell_jharli') && <SellModule brand={id.includes('jkl') || id.includes('jharli') ? 'jkl' : 'dump'} role={user.role} permissions={user.permissions} />}
       {(id === 'admin_loading_status_dump' || id === 'admin_loading_status_jkl' || id === 'admin_loading_status_jharli') && <AdminLoadingStatus globalWeather={weather} role={user.role} userGodown={godown} userPlant={plant} />}
       {(id === 'party_master_dump' || id === 'party_master_jharli') && <PartyMaster />}
-      {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule />}
+      {(id === 'vendors_dump' || id === 'vendors_jharli' || id === 'vendors_main') && <VendorModule location={id === 'vendors_dump' ? godown : 'jharli'} role={user.role} permissions={user.permissions} />}
       {(id === 'trip_profit_dump' || id === 'trip_profit_jharli' || id === 'trip_profit_main') && <TripProfitModule />}
       {(id === 'attendance_jharli' || id === 'attendance_main' || id === 'attendance_dump' || id === 'terminal_biometrics' || id === 'terminal_biometrics_dump' || id === 'terminal_biometrics_jharli') && <TerminalBiometricsManager />}
       {(id === 'whatsapp_dump' || id === 'whatsapp_jkl' || id === 'whatsapp_jharli' || id === 'whatsapp_main') && <WhatsAppControlModule />}
@@ -1127,6 +1131,31 @@ function AppInner() {
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Jharli</span>
             </div>
+
+            {/* Observability & Status Link */}
+            <a
+              href="/status"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="System Observability & Status"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                marginRight: '10px',
+                padding: '5px 10px',
+                borderRadius: '8px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                color: '#10b981',
+                fontSize: '11.5px',
+                fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+              <span>Status</span>
+            </a>
 
             {/* Notifications Bell Icon */}
             <div ref={notifRef} style={{ position: 'relative', marginRight: '10px' }}>
@@ -1808,7 +1837,13 @@ export default function App() {
   // ── In the browser, use the full app with auth + routing.
   return (
     <AuthProvider>
-      <AppInner />
+      {window.location.pathname.startsWith('/sheet/') ? (
+        <SheetRoute />
+      ) : (window.location.pathname === '/status' || window.location.pathname.startsWith('/status')) ? (
+        <StatusRoute />
+      ) : (
+        <AppInner />
+      )}
     </AuthProvider>
   );
 }

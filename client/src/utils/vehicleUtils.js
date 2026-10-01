@@ -27,3 +27,36 @@ export const validateTruckNo = (no) => {
 export const cleanTruckNo = (no) => {
   return (no || '').toUpperCase().replace(/\s/g, '');
 };
+
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+/** Legacy fleet rows pre-date ownershipType, so owner label remains fallback. */
+export const isOwnFleetVehicle = (vehicle = {}) => {
+  const ownership = normalizeText(vehicle.ownershipType);
+  const owner = normalizeText(vehicle.ownerName);
+  return ownership === 'self'
+    || ownership === 'own'
+    || vehicle.isSelf === true
+    || owner.includes('(self)')
+    || owner.includes('vikas goods transport')
+    || owner.includes('vikas transport');
+};
+
+export const isTestVehicle = (vehicle = {}) => {
+  const truckNo = cleanTruckNo(vehicle.truckNo);
+  const owner = normalizeText(vehicle.ownerName);
+  return truckNo.startsWith('TEST') || /\b(test|dummy|sample|mock)\b/i.test(owner);
+};
+
+export const isMarketVehicle = (vehicle = {}) =>
+  normalizeText(vehicle.ownershipType) === 'market'
+  && !isOwnFleetVehicle(vehicle)
+  && !isTestVehicle(vehicle);
+
+export const normalizeMarketLocation = (value) => {
+  const location = normalizeText(value);
+  if (location === 'jajjhar') return 'jhajjar';
+  return ['jharli', 'kosli', 'jhajjar', 'bahadurgarh'].includes(location)
+    ? location
+    : 'jharli';
+};

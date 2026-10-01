@@ -6,7 +6,7 @@ import {
   Loader2, Sparkles, Zap, Eye, EyeOff, Phone, Key,
   Copy, Check, FileText, Search, UserCheck, Activity,
   Trash2, Globe, ShieldCheck, CheckCheck, Truck, Receipt,
-  CreditCard, Landmark, Users, RotateCcw, ChevronDown, ChevronUp
+  CreditCard, Landmark, Users, RotateCcw, ChevronDown, ChevronUp, ExternalLink
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
@@ -282,7 +282,6 @@ export default function WhatsAppControlModule() {
 
   useEffect(() => {
     fetchConfig();
-    fetchLogs();
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') checkConnection();
     }, 60000);
@@ -728,27 +727,29 @@ export default function WhatsAppControlModule() {
           <span>Credentials &amp; Routing Numbers</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('logs')}
+        <a
+          href="/status"
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
-            padding: '10px 18px',
-            fontSize: '13.5px',
+            marginLeft: 'auto',
+            padding: '7px 16px',
+            fontSize: '12.5px',
             fontWeight: 700,
-            borderRadius: '8px 8px 0 0',
-            border: 'none',
-            background: activeTab === 'logs' ? 'var(--bg-card)' : 'transparent',
-            color: activeTab === 'logs' ? 'var(--primary)' : 'var(--text-sub)',
-            borderBottom: activeTab === 'logs' ? '2.5px solid var(--primary)' : '2.5px solid transparent',
-            cursor: 'pointer',
+            borderRadius: '8px',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            background: 'rgba(16, 185, 129, 0.1)',
+            color: '#10b981',
+            textDecoration: 'none',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '7px'
           }}
+          title="View live WhatsApp logs, delivery audit, and system telemetry"
         >
-          <Activity size={16} />
-          <span>Live Activity &amp; Webhook Logs ({logs.length})</span>
-        </button>
+          <Activity size={14} />
+          <span>Observability &amp; Activity Logs ↗</span>
+        </a>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
@@ -1524,146 +1525,28 @@ export default function WhatsAppControlModule() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ── TAB 3: LIVE ACTIVITY & WEBHOOK LOGS ──────────────────────────── */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'logs' && (
-        <section className="adm-panel">
-          <header className="adm-panel-hd" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-              <span className="adm-icon-tile" style={{ background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1' }}>
-                <Activity size={18} />
-              </span>
-              <div>
-                <h2>WhatsApp Activity &amp; Webhook Logs</h2>
-                <p className="adm-sub">Live audit trail of outbound alerts and incoming webhooks</p>
-              </div>
+      {/* Note about centralized Observability & Logs */}
+      <div style={{ marginTop: '28px', padding: '16px 20px', borderRadius: '10px', background: 'var(--bg-th)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Activity size={20} style={{ color: '#10b981' }} />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Centralized WhatsApp Logs &amp; Observability</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Real-time delivery logs, webhook audit trails, and server telemetry are now managed on the Status page.
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button
-                type="button"
-                className="adm-btn adm-btn--secondary adm-btn--sm"
-                onClick={fetchLogs}
-                disabled={logsLoading}
-              >
-                <RefreshCw size={13} className={logsLoading ? 'adm-spin' : ''} />
-                {logsLoading ? 'Refreshing...' : 'Refresh Logs'}
-              </button>
-              <button
-                type="button"
-                className="adm-btn adm-btn--danger adm-btn--sm"
-                onClick={handleClearLogs}
-                disabled={logs.length === 0}
-              >
-                <Trash2 size={13} />
-                Clear Logs
-              </button>
-            </div>
-          </header>
-
-          <div className="adm-panel-bd adm-sec" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Filter Pills */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {[
-                { id: 'all', label: `All Logs (${logs.length})` },
-                { id: 'outbound', label: 'Outbound Dispatches' },
-                { id: 'inbound', label: 'Inbound Webhooks' },
-                { id: 'failed', label: 'Failed' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setLogsFilter(f.id)}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    border: '1px solid var(--border)',
-                    background: logsFilter === f.id ? 'var(--primary)' : 'var(--bg-th)',
-                    color: logsFilter === f.id ? '#ffffff' : 'var(--text-sub)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Logs Table */}
-            {filteredLogs.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-                <Activity size={32} style={{ opacity: 0.4, marginBottom: '10px' }} />
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>No WhatsApp Activity Logs Found</div>
-                <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                  Logs will automatically populate when test messages, loading receipts, or vouchers are created.
-                </div>
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-th)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                      <th style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>TIMESTAMP</th>
-                      <th style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>TYPE</th>
-                      <th style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>RECIPIENT / PHONE</th>
-                      <th style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>EVENT / TITLE</th>
-                      <th style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>STATUS</th>
-                      <th style={{ padding: '10px 14px', color: 'var(--text-muted)', fontWeight: 700 }}>DETAILS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLogs.map(log => {
-                      const dateStr = log.timestamp ? new Date(log.timestamp).toLocaleString('en-IN') : 'Just now';
-                      const isFailed = log.status === 'failed' || !!log.error;
-                      return (
-                        <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-sub)' }}>
-                            {dateStr}
-                          </td>
-                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              background: log.type === 'inbound_webhook' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                              color: log.type === 'inbound_webhook' ? '#6366f1' : '#10b981'
-                            }}>
-                              {log.type === 'inbound_webhook' ? 'WEBHOOK' : 'OUTBOUND'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text)' }}>
-                            {log.phone || '-'}
-                          </td>
-                          <td style={{ padding: '10px 14px', color: 'var(--text)', fontWeight: 600 }}>
-                            {log.title || log.category}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              background: isFailed ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                              color: isFailed ? '#ef4444' : '#10b981'
-                            }}>
-                              {isFailed ? 'FAILED' : 'SENT'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: isFailed ? '#ef4444' : 'var(--text-sub)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {log.error || log.details || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
-        </section>
-      )}
+        </div>
+        <a
+          href="/status"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="adm-btn adm-btn--primary adm-btn--sm"
+          style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <span>Open Status &amp; Logs Dashboard</span>
+          <ExternalLink size={12} />
+        </a>
+      </div>
     </div>
   );
 }

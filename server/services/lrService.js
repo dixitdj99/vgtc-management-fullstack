@@ -349,7 +349,12 @@ const createLoadingReceipt = async (
                 driverName: data.driverName,
                 driverContact: data.driverContact,
                 ownerName: data.ownerName,
-                ownerContact: data.ownerContact
+                ownerContact: data.ownerContact,
+                ownershipType: data.ownershipType,
+                marketLocation: lrCollection.includes('bahadurgarh_') ? 'bahadurgarh'
+                    : lrCollection.includes('jhajjar_') ? 'jhajjar'
+                        : lrCollection.includes('kosli_') ? 'kosli'
+                            : 'jharli'
             }, vehicleCollection);
         } catch (vehErr) {
             console.error('Error auto-updating vehicle contacts from LR create:', vehErr.message);

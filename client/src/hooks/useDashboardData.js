@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { Receipt, FileText } from 'lucide-react';
 import { calcOutstanding, checkExpiry } from '../utils/voucherCalc';
+import { isMarketVehicle, isOwnFleetVehicle, normalizeMarketLocation } from '../utils/vehicleUtils';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -143,7 +144,10 @@ export default function useDashboardData() {
 
     const marketVehicles = useMemo(() => {
         if (!vehicles.data) return { list: [], total: 0, trucksCount: 0, tractorsCount: 0 };
-        const marketList = (vehicles.data || []).filter(v => v.ownershipType !== 'self');
+        const location = plant === 'jksuper' && godown ? normalizeMarketLocation(godown) : 'jharli';
+        const marketList = (vehicles.data || []).filter(v =>
+            isMarketVehicle(v) && normalizeMarketLocation(v.marketLocation) === location
+        );
         const tractors = marketList.filter(v => (v.vehicleType || '').toLowerCase().includes('tractor'));
         const trucks = marketList.filter(v => !(v.vehicleType || '').toLowerCase().includes('tractor'));
         return {
@@ -152,7 +156,7 @@ export default function useDashboardData() {
             trucksCount: trucks.length,
             tractorsCount: tractors.length,
         };
-    }, [vehicles.data]);
+    }, [vehicles.data, plant, godown]);
 
     const vehicleMap = useMemo(() => {
         const m = {};
@@ -182,11 +186,7 @@ export default function useDashboardData() {
         const clean = s => String(s || '').toUpperCase().replace(/\s+/g, '');
         const today = todayStr();
 
-        const ownList = (vehicles.data || []).filter(v =>
-            v.ownershipType === 'self' ||
-            (v.ownershipType !== 'market' && String(v.ownerName || '').toLowerCase().includes('(self)')) ||
-            String(v.ownerName || '').toLowerCase().includes('vikas transport')
-        );
+        const ownList = (vehicles.data || []).filter(isOwnFleetVehicle);
 
         const list = ownList.map(v => {
             const t = clean(v.truckNo);

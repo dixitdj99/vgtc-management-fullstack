@@ -328,13 +328,33 @@ export default function AdminLayout() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <a
+              href="/status"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="adm-chip"
+              style={{
+                textDecoration: 'none',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                color: '#34d399',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer'
+              }}
+              title="Open System Observability & Telemetry Status"
+            >
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34d399' }} />
+              Observability ↗
+            </a>
             <span className="adm-chip adm-chip--success" title="The API responded on the last request">
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 8px #34d399' }} />
               Online
             </span>
             {!isMobile && (
               <span className="adm-avatar" style={{ width: 34, height: 34, fontSize: 13, background: 'rgba(129,140,248,0.2)', color: '#c7d2fe' }}>
-                {(user.name || 'A').charAt(0).toUpperCase()}
+                {(user?.name || 'A').charAt(0).toUpperCase()}
               </span>
             )}
           </div>

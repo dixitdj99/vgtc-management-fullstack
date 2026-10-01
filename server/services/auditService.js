@@ -13,7 +13,8 @@ const ACTIONS = {
     ROLE_CHANGED: 'ROLE_CHANGED',
     MODULE_TOGGLED: 'MODULE_TOGGLED',
     ATTENDANCE_MARKED: 'ATTENDANCE_MARKED',
-    ATTENDANCE_DELETED: 'ATTENDANCE_DELETED'
+    ATTENDANCE_DELETED: 'ATTENDANCE_DELETED',
+    SPREADSHEET_CELL_UPDATED: 'SPREADSHEET_CELL_UPDATED'
 };
 
 /**
@@ -35,7 +36,7 @@ const computeDiff = (before, after) => {
 /**
  * Log an audit action.
  */
-const logAction = async ({ orgId, action, performedBy, performedByName, targetId, targetType, before, after }) => {
+const logAction = async ({ orgId, action, performedBy, performedByName, targetId, targetType, before, after, metadata }) => {
     const entry = {
         orgId: orgId || 'vgtc',
         action,
@@ -44,7 +45,8 @@ const logAction = async ({ orgId, action, performedBy, performedByName, targetId
         targetId: targetId || null,
         targetType: targetType || null,
         diff: computeDiff(before, after),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        ...(metadata ? { metadata } : {})
     };
 
     try {

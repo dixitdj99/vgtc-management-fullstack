@@ -28,7 +28,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import {
   BarChart3, Loader2, Search, Banknote, AlertTriangle, X, Download, Printer,
-  Truck as TruckIcon, Trash2, RotateCcw,
+  Truck as TruckIcon, Trash2, RotateCcw, Table2,
 } from 'lucide-react';
 import ColumnFilter from '../components/ColumnFilter';
 import { columnValues } from '../components/ColumnFilter';
@@ -37,6 +37,7 @@ import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtil
 import { calcNet, calcGross, payBlockers, pumpNameOf, lrLabelOf, explodeAll, VoucherRow, VoucherEditModal, TH, TD } from './BalanceSheet';
 import TableScroll from '../components/TableScroll';
 import TruckLoader from '../components/TruckLoader';
+import { openSheet } from '../sheets/sheetLinks';
 
 const API_V = '/vouchers';
 
@@ -141,7 +142,24 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    fetchAll();
+    const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('vgtc-sheet-sync') : null;
+    const onSync = () => { fetchAll(); };
+    syncChannel?.addEventListener('message', onSync);
+    const onFocus = () => { fetchAll(); };
+    window.addEventListener('focus', onFocus);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') fetchAll();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      syncChannel?.removeEventListener('message', onSync);
+      syncChannel?.close();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [fetchAll]);
 
   /** voucherId -> the open batch holding it, so a row can show it has gone. */
   const sentIds = useMemo(() => {
@@ -517,6 +535,14 @@ export default function AllBalanceSheet({ role = 'user', permissions = {} }) {
             onChange={e => setTruckSearch(e.target.value)}
             style={{ paddingLeft: '28px', height: '32px', width: '190px', fontSize: '12px' }} />
         </div>
+        <button
+          className="btn btn-p btn-sm"
+          style={{ height: '32px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          onClick={() => openSheet('balance-all')}
+          title="Open in Google Sheet view"
+        >
+          <Table2 size={13} /> Open in Sheet
+        </button>
         {Object.values(filters).some(v => v?.length) && (
           <button className="btn btn-g btn-sm" onClick={() => setFilters({})}><X size={12} /> Clear filters</button>
         )}

@@ -1499,7 +1499,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     try {
       await ax.patch(`${API}/${statusTarget.lr.id}/status`, { status: statusTarget.nextStatus });
       setStatusTarget(null);
-      fetchData();
+      fetchLRData();
     } catch { alert('Status update failed'); }
     finally { setStatusSaving(false); }
   };

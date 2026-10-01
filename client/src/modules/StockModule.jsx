@@ -8,7 +8,7 @@ import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
   XCircle, AlertCircle, Clock, Trash2, RefreshCw, ChevronDown,
   ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight, ArrowRightLeft, Users,
-  PackageX, Droplets, Undo2
+  PackageX, Droplets, Undo2, Table2, Truck
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import StyledAutocomplete from '../components/StyledAutocomplete';
@@ -21,6 +21,7 @@ import EwayBillPanel from '../components/EwayBillPanel';
 import TableScroll from '../components/TableScroll';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TruckLoader from '../components/TruckLoader';
+import { challanSheetId, openSheet } from '../sheets/sheetLinks';
 
 const BASE_API = ``;
 const MATS_DUMP_FALLBACK = ["PPC", "OPC43", "Adstar", "OPC FS", "OPC53 FS", "Weather"];
@@ -431,6 +432,14 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       fetchAll();
     } catch (er) { alert(er.response?.data?.error || 'Failed to add material'); }
   };
+  const handleDeleteMaterial = async (id, name) => {
+    if (!window.confirm(`Delete material "${name}"?`)) return;
+    try {
+      await ax.delete(`${API}/materials/${id}`);
+      fetchAll();
+    } catch (er) { alert(er.response?.data?.error || 'Failed to delete material'); }
+  };
+
   const [delTransferTarget, setDelTransferTarget] = useState(null);
 
   const handleDeleteTransfer = async () => {
@@ -1427,6 +1436,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                 <div className="card-title-text" style={{ flex: 1 }}><h3>Challan List</h3><p>{filteredChallans.length} challans</p></div>
               </div>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {challanSheetId(brand) && <button className="btn btn-p btn-sm" onClick={() => openSheet(challanSheetId(brand))}><Table2 size={13} /> Open in Sheet</button>}
                 <button className="btn btn-g btn-sm" onClick={exportChallanExcel}><Download size={13} /> Excel</button>
                 <button className="btn btn-g btn-sm" onClick={exportChallanPDF}><Printer size={13} /> PDF</button>
                 <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 4px' }}></span>

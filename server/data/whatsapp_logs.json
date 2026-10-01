@@ -1,5 +1,71 @@
 [
   {
+    "id": "walog_1790796454179_fm8k5",
+    "timestamp": "2026-09-30T19:27:34.179Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #727997 Dispatched",
+    "details": "LR #727997 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790796453302_fwvn3",
+    "timestamp": "2026-09-30T19:27:33.302Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #970967 Dispatched",
+    "details": "LR #970967 (HR47G0975) → Unspecified | 0.25 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790796452571_24zdd",
+    "timestamp": "2026-09-30T19:27:32.571Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #957649 Dispatched",
+    "details": "LR #957649 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790794168297_4jjt3",
+    "timestamp": "2026-09-30T18:49:28.297Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #723241 Dispatched",
+    "details": "LR #723241 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790794167345_fesyx",
+    "timestamp": "2026-09-30T18:49:27.345Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #970966 Dispatched",
+    "details": "LR #970966 (HR47G0975) → Unspecified | 0.25 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790794166682_9xrjr",
+    "timestamp": "2026-09-30T18:49:26.682Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #970965 Dispatched",
+    "details": "LR #970965 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
     "id": "walog_1790622420278_elr0h",
     "timestamp": "2026-09-28T19:07:00.278Z",
     "type": "outbound",

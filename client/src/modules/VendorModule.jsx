@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
-import { cleanTruckNo } from '../utils/vehicleUtils';
+import { cleanTruckNo, isMarketVehicle, normalizeMarketLocation } from '../utils/vehicleUtils';
 import { Truck, Plus, Search, Phone, Edit3, Trash2, X as XIcon, CreditCard, Users, Loader2, ChevronDown, ChevronUp, FileText, Calendar, AlertTriangle, ShieldCheck, DollarSign, Compass, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TruckLoader from '../components/TruckLoader';
@@ -47,11 +47,16 @@ const EMPTY_VEHICLE_FORM = {
   gpsType: 'none',
   docs: JSON.stringify({ rc: '', pollution: '', permit: '', insurance: '', fitness: '', tax: '' }),
   fastag: '',
-  targetMileage: 0
+  targetMileage: 0,
+  marketLocation: 'jharli'
 };
 
-export default function VendorModule() {
+export default function VendorModule({ location = 'jharli', role = 'user', permissions = {} }) {
   const { user } = useAuth();
+  const marketLocation = normalizeMarketLocation(location);
+  const permissionLevel = permissions.market_vehicle;
+  const canEdit = role === 'admin' || user?.role === 'admin' || permissionLevel === 'edit' || permissionLevel === 'delete';
+  const canDelete = role === 'admin' || user?.role === 'admin' || permissionLevel === 'delete';
   const [vehicles, setVehicles] = useState([]);
   const [allVouchers, setAllVouchers] = useState([]);
   const [allTolls, setAllTolls] = useState([]);
@@ -73,20 +78,19 @@ export default function VendorModule() {
   const [formData, setFormData] = useState({ ...EMPTY_VEHICLE_FORM });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [marketLocation]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError('');
       const [vehRes, vocRes, tollRes] = await Promise.all([
-        ax.get('/vehicles'),
+        ax.get(`/vehicles/market?location=${encodeURIComponent(marketLocation)}`),
         ax.get('/vouchers').catch(() => ({ data: [] })),
         ax.get('/tolls').catch(() => ({ data: [] }))
       ]);
       
-      // Filter out self-owned fleet vehicles, keeping only market vehicles
-      const marketVehicles = (vehRes.data || []).filter(v => v.ownershipType !== 'self');
+      const marketVehicles = (vehRes.data || []).filter(isMarketVehicle);
       setVehicles(marketVehicles);
       setAllVouchers(vocRes.data || []);
       setAllTolls(tollRes.data || []);
@@ -236,11 +240,12 @@ export default function VendorModule() {
         docNumbers: docNumbersStr,
         bankDetails: bankDetailsStr,
         docs: docsStr,
-        ownershipType: 'market'
+        ownershipType: 'market',
+        marketLocation: normalizeMarketLocation(veh.marketLocation)
       });
     } else {
       setEditingId(null);
-      setFormData({ ...EMPTY_VEHICLE_FORM });
+      setFormData({ ...EMPTY_VEHICLE_FORM, marketLocation });
     }
     setError('');
     setIsModalOpen(true);
@@ -260,13 +265,14 @@ export default function VendorModule() {
       const payload = { 
         ...formData, 
         truckNo: cleanedNo, 
-        ownershipType: 'market' 
+        ownershipType: 'market',
+        marketLocation
       };
 
       if (editingId) {
-        await ax.patch(`/vehicles/${editingId}`, payload);
+        await ax.patch(`/vehicles/market/${editingId}`, payload);
       } else {
-        await ax.post('/vehicles', payload);
+        await ax.post('/vehicles/market', payload);
       }
       setIsModalOpen(false);
       fetchData();
@@ -282,7 +288,7 @@ export default function VendorModule() {
   const handleDelete = async () => {
     if (!delTarget) return;
     try {
-      await ax.delete(`/vehicles/${delTarget.id}`);
+      await ax.delete(`/vehicles/market/${delTarget.id}?location=${encodeURIComponent(marketLocation)}`);
       fetchData();
       setDelTarget(null);
     } catch {
@@ -311,11 +317,13 @@ export default function VendorModule() {
       <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>Market Fleet & Vehicles</h1>
-          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Monitor third-party/market vehicles, document expirations, drivers, trip logs, and outstanding balances.</p>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>{marketLocation.charAt(0).toUpperCase() + marketLocation.slice(1)} market vehicles, documents, drivers, trips, and balances.</p>
         </div>
-        <button className="btn btn-p" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', fontWeight: 800 }} onClick={() => openModal()}>
-          <Plus size={16} /> Register Market Vehicle
-        </button>
+        {canEdit && (
+          <button className="btn btn-p" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', fontWeight: 800 }} onClick={() => openModal()}>
+            <Plus size={16} /> Register Market Vehicle
+          </button>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -442,12 +450,12 @@ export default function VendorModule() {
                   </div>
                   
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
-                    <button className="btn" onClick={() => openModal(v)} style={{ padding: '7px 11px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', color: '#6366f1', borderRadius: '8px' }} title="Edit Specs">
+                    {canEdit && <button className="btn" onClick={() => openModal(v)} style={{ padding: '7px 11px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', color: '#6366f1', borderRadius: '8px' }} title="Edit Specs">
                       <Edit3 size={13} />
-                    </button>
-                    <button className="btn" onClick={() => setDelTarget(v)} style={{ padding: '7px 11px', background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', color: '#f43f5e', borderRadius: '8px' }} title="Delete Vehicle">
+                    </button>}
+                    {canDelete && <button className="btn" onClick={() => setDelTarget(v)} style={{ padding: '7px 11px', background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', color: '#f43f5e', borderRadius: '8px' }} title="Delete Vehicle">
                       <Trash2 size={13} />
-                    </button>
+                    </button>}
                     <button className="btn" onClick={() => setExpandedId(isExpanded ? null : v.id)} style={{ padding: '7px', background: 'transparent' }}>
                       {isExpanded ? <ChevronUp size={18} color="var(--text-muted)" /> : <ChevronDown size={18} color="var(--text-muted)" />}
                     </button>

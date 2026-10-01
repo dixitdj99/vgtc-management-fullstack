@@ -23,7 +23,7 @@ const ICONS = [
   [/^cashbook$/, Wallet],
   [/^pay$/, Banknote],
   [/^invoice$/, FileSpreadsheet],
-  [/^vehicle$/, Truck],
+  [/^(vehicle|market_vehicle)$/, Truck],
   [/^diesel$/, Fuel],
   [/^mileage$/, Gauge],
   [/^sell$/, ShoppingCart],

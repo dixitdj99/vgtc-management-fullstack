@@ -5,8 +5,28 @@ const partyService = require('./partyService');
 const { isDummyPartyName } = require('../utils/partyNameUtils');
 
 const COLLECTION_VEHICLES = 'vehicles';
+const MARKET_LOCATIONS = new Set(['jharli', 'kosli', 'jhajjar', 'bahadurgarh']);
 const normalizeTruckNo = (value) => String(value || '').toUpperCase().replace(/\s/g, '');
 const normalizeOwnerName = (value) => String(value || '').trim().toUpperCase();
+const normalizeMarketLocation = (value) => {
+    const location = String(value || '').trim().toLowerCase();
+    if (location === 'jajjhar') return 'jhajjar';
+    return MARKET_LOCATIONS.has(location) ? location : 'jharli';
+};
+const isOwnFleetVehicle = (vehicle = {}) => {
+    const ownership = String(vehicle.ownershipType || '').trim().toLowerCase();
+    const owner = String(vehicle.ownerName || '').trim().toLowerCase();
+    return ownership === 'self' || ownership === 'own' || vehicle.isSelf === true
+        || owner.includes('(self)') || owner.includes('vikas goods transport') || owner.includes('vikas transport');
+};
+const isTestVehicle = (vehicle = {}) => {
+    const owner = String(vehicle.ownerName || '').trim();
+    return normalizeTruckNo(vehicle.truckNo).startsWith('TEST') || (owner && isDummyPartyName(owner));
+};
+const isMarketVehicle = (vehicle = {}) =>
+    String(vehicle.ownershipType || '').trim().toLowerCase() === 'market'
+    && !isOwnFleetVehicle(vehicle)
+    && !isTestVehicle(vehicle);
 
 const normalizeVehiclePayload = (data = {}) => ({
     ...data,
@@ -17,6 +37,7 @@ const normalizeVehiclePayload = (data = {}) => ({
     driverName: String(data.driverName || '').trim(),
     driverContact: String(data.driverContact || '').trim(),
     ownershipType: data.ownershipType || 'market',
+    marketLocation: normalizeMarketLocation(data.marketLocation),
     vehicleType: data.vehicleType || 'Trailer',
     make: data.make || 'Tata',
     model: data.model || '',
@@ -42,6 +63,8 @@ const normalizeVehiclePatch = (data = {}) => {
     if (data.ownerContact !== undefined) patch.ownerContact = String(data.ownerContact || '').trim();
     if (data.driverName !== undefined) patch.driverName = String(data.driverName || '').trim();
     if (data.driverContact !== undefined) patch.driverContact = String(data.driverContact || '').trim();
+    if (data.ownershipType !== undefined) patch.ownershipType = data.ownershipType || 'market';
+    if (data.marketLocation !== undefined) patch.marketLocation = normalizeMarketLocation(data.marketLocation);
     if (data.vehicleType !== undefined) patch.vehicleType = data.vehicleType || 'Trailer';
     if (data.bankDetails !== undefined) patch.bankDetails = data.bankDetails || '';
     if (data.gpsType !== undefined) patch.gpsType = data.gpsType || 'none';
@@ -164,6 +187,43 @@ const getAllVehicles = async (orgId, col = COLLECTION_VEHICLES) => {
     return localGetAll(orgId, col);
 };
 
+const getMarketVehicles = async (orgId, location, col = COLLECTION_VEHICLES) => {
+    const target = normalizeMarketLocation(location);
+    const vehicles = await getAllVehicles(orgId, col);
+    return vehicles.filter(v => isMarketVehicle(v) && normalizeMarketLocation(v.marketLocation) === target);
+};
+
+const assertMarketVehicle = async (orgId, id, location, col = COLLECTION_VEHICLES) => {
+    const vehicle = (await getAllVehicles(orgId, col)).find(v => v.id === id);
+    if (!vehicle) throw new Error('Market vehicle not found');
+    if (!isMarketVehicle(vehicle)) throw new Error('Own-fleet vehicles cannot be changed from Market Vehicles');
+    if (normalizeMarketLocation(vehicle.marketLocation) !== normalizeMarketLocation(location)) {
+        throw new Error('Market vehicle belongs to another location');
+    }
+    return vehicle;
+};
+
+const createMarketVehicle = async (orgId, data, col = COLLECTION_VEHICLES) =>
+    createVehicle(orgId, {
+        ...data,
+        ownershipType: 'market',
+        marketLocation: normalizeMarketLocation(data.marketLocation)
+    }, col);
+
+const updateMarketVehicle = async (orgId, id, data, col = COLLECTION_VEHICLES) => {
+    await assertMarketVehicle(orgId, id, data.marketLocation, col);
+    return updateVehicle(orgId, id, {
+        ...data,
+        ownershipType: 'market',
+        marketLocation: normalizeMarketLocation(data.marketLocation)
+    }, col);
+};
+
+const deleteMarketVehicle = async (orgId, id, location, col = COLLECTION_VEHICLES) => {
+    await assertMarketVehicle(orgId, id, location, col);
+    return deleteVehicle(id, col);
+};
+
 const updateVehicle = async (orgId, id, data, col = COLLECTION_VEHICLES) => {
     const allowed = normalizeVehiclePatch(data);
     delete allowed.id;
@@ -263,6 +323,9 @@ const ensureOrUpdateVehicleContacts = async (orgId, data = {}, col = COLLECTION_
         if (ownerName && !existing.ownerName) {
             patch.ownerName = ownerName;
         }
+        if (data.marketLocation && isMarketVehicle(existing) && !existing.marketLocation) {
+            patch.marketLocation = normalizeMarketLocation(data.marketLocation);
+        }
 
         if (Object.keys(patch).length > 0) {
             if (firebaseAvailable()) {
@@ -282,6 +345,8 @@ const ensureOrUpdateVehicleContacts = async (orgId, data = {}, col = COLLECTION_
         ownerContact: data.ownerContact || '',
         driverName: data.driverName || '',
         driverContact: data.driverContact || '',
+        ownershipType: data.ownershipType || 'market',
+        marketLocation: normalizeMarketLocation(data.marketLocation),
         vehicleType: 'Trailer',
         bankDetails: '',
         source: data.source || 'lr_auto'
@@ -298,6 +363,13 @@ module.exports = {
     deleteVehicle,
     deleteOwnerWithVehicles,
     ensureVehicleByTruckNo,
-    ensureOrUpdateVehicleContacts
+    ensureOrUpdateVehicleContacts,
+    getMarketVehicles,
+    createMarketVehicle,
+    updateMarketVehicle,
+    deleteMarketVehicle,
+    isOwnFleetVehicle,
+    isMarketVehicle,
+    normalizeMarketLocation
 };
 

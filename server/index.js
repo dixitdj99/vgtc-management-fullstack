@@ -150,12 +150,65 @@ app.use(cors((req, done) => done(null, {
 // Reduced payload limit (was 50mb — unnecessary for this app)
 app.use(express.json({ limit: '10mb', verify: captureMetaWebhookBody }));
 
+// ── Observability Telemetry & Live Request Logger ──
+const API_LOG_MAX = 250;
+const apiCallLogs = [];
+const routeMetrics = new Map();
+const outcomeCounters = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, other: 0 };
+const recentDurations = [];
+
+app.use((req, res, next) => {
+    const isMonitored = req.path.startsWith('/api') || req.path.startsWith('/health');
+    if (!isMonitored) return next();
+
+    const start = Date.now();
+    const originalEnd = res.end;
+    res.end = function (...args) {
+        const duration = Date.now() - start;
+        const status = res.statusCode;
+
+        if (status >= 200 && status < 300) outcomeCounters['2xx']++;
+        else if (status >= 300 && status < 400) outcomeCounters['3xx']++;
+        else if (status >= 400 && status < 500) outcomeCounters['4xx']++;
+        else if (status >= 500) outcomeCounters['5xx']++;
+        else outcomeCounters.other++;
+
+        const cleanPath = (req.baseUrl || '') + (req.path || '').split('?')[0];
+        const routeKey = `${req.method} ${cleanPath}`;
+        const currentRoute = routeMetrics.get(routeKey) || { route: cleanPath, method: req.method, calls: 0, errors: 0, totalMs: 0 };
+        currentRoute.calls++;
+        currentRoute.totalMs += duration;
+        if (status >= 400) currentRoute.errors++;
+        routeMetrics.set(routeKey, currentRoute);
+
+        recentDurations.push(duration);
+        if (recentDurations.length > 300) recentDurations.shift();
+
+        const logEntry = {
+            id: Math.random().toString(36).substring(2, 9),
+            timestamp: new Date().toISOString(),
+            method: req.method,
+            path: req.originalUrl || req.url,
+            status,
+            durationMs: duration,
+            ip: (req.headers['x-forwarded-for'] || req.ip || '127.0.0.1').split(',')[0].trim(),
+            userAgent: (req.headers['user-agent'] || '').substring(0, 80),
+        };
+        apiCallLogs.unshift(logEntry);
+        if (apiCallLogs.length > API_LOG_MAX) apiCallLogs.pop();
+
+        return originalEnd.apply(this, args);
+    };
+    next();
+});
+
 const partyRoutes = require('./routes/partyRoutes');
 
 app.use('/api/kosli/lr', requireAuth, gate(['lr_dump','bill_kosli']), kosliLrRoutes);
 app.use('/api/jhajjar/lr', requireAuth, gate(['lr_dump','bill_jhajjar']), jhajjarLrRoutes);
 app.use('/api/bahadurgarh/lr', requireAuth, gate(['lr_dump','bill_bahadurgarh']), bahadurgarhLrRoutes);
 app.use('/api/vouchers', requireAuth, gate(['voucher_jkl_dump','voucher_jkl','voucher_jksuper','balance_kosli','balance_jhajjar','balance_bahadurgarh','balance_jksuper','balance_jkl_dump','balance_jkl']), voucherRoutes);
+app.use('/api/sheets', requireAuth, require('./routes/sheetRoutes'));
 // TODO: audit GET /api/auth/status — it should return only { status: 'ok' } to
 // unauthenticated callers. Move env/infra details to a separate authenticated
 // admin endpoint. See routes/authRoutes.js.
@@ -199,7 +252,7 @@ app.get('/api/weather', async (req, res) => {
 app.use('/api/jkl/lr', requireAuth, gate('lr_jkl'), jklLrRoutes);
 app.use('/api/jkl/stock', requireAuth, gate('stock_jkl'), jklStockRoutes);
 app.use('/api/jkl/cashbook', requireAuth, gate('cashbook'), jklCashbookRoutes);
-app.use('/api/vehicles', requireAuth, gate(['vehicle', 'voucher_jkl', 'voucher_jkl_dump', 'voucher_jksuper', 'voucher_kosli', 'voucher_jhajjar', 'voucher_bahadurgarh', 'lr_jkl', 'lr_dump', 'lr_kosli', 'lr_jhajjar', 'lr_bahadurgarh', 'cashbook', 'pay', 'balance_all']), vehicleRoutes);
+app.use('/api/vehicles', requireAuth, gate(['vehicle', 'market_vehicle', 'voucher_jkl', 'voucher_jkl_dump', 'voucher_jksuper', 'voucher_kosli', 'voucher_jhajjar', 'voucher_bahadurgarh', 'lr_jkl', 'lr_dump', 'lr_kosli', 'lr_jhajjar', 'lr_bahadurgarh', 'cashbook', 'pay', 'balance_all']), vehicleRoutes);
 app.use('/api/vehicle-advances', requireAuth, gate(['pay','vehicle']), vehicleAdvanceRoutes);
 app.use('/api/freight-batches', requireAuth, gate('pay'), freightBatchRoutes);
 app.use('/api/reports', requireAuth, reportRoutes);
@@ -244,6 +297,240 @@ app.get('/healthz', (req, res) => {
         env: ENV,
         database: dbUp ? 'firestore' : 'unavailable',
         timestamp: new Date().toISOString(),
+    });
+});
+
+app.get('/health', (req, res) => {
+    const { isAvailable } = require('./firebase');
+    const dbUp = isAvailable();
+    res.status(dbUp ? 200 : 503).json({
+        status: dbUp ? 'ok' : 'degraded',
+        env: ENV,
+        database: dbUp ? 'firestore' : 'unavailable',
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+    });
+});
+
+app.get('/api/system/status', async (req, res) => {
+    const { isAvailable } = require('./firebase');
+    const { ENV, getEnvPrefix } = require('./utils/envConfig');
+    const dbUp = isAvailable();
+    let waConfig = {};
+    try {
+        const { getWhatsAppConfig } = require('./utils/whatsappService');
+        waConfig = getWhatsAppConfig();
+    } catch (_) {}
+
+    res.json({
+        status: 'operational',
+        appEnv: ENV,
+        collectionPrefix: getEnvPrefix() || '(none — production)',
+        database: dbUp ? 'Firestore' : 'LocalStore (Fallback)',
+        firebaseConnected: dbUp,
+        uptime: Math.floor(process.uptime()),
+        memory: process.memoryUsage(),
+        node: process.version,
+        whatsapp: {
+            enabled: waConfig.enabled || false,
+            phoneNumberId: waConfig.phoneNumberId || '1216388781567509',
+            wabaId: waConfig.wabaId || '1552863822720100',
+            provider: waConfig.provider || 'meta'
+        },
+        timestamp: new Date().toISOString()
+    });
+});
+
+let cachedTableStats = null;
+let lastTableStatsFetch = 0;
+
+app.get('/api/system/database-tables', async (req, res) => {
+    const now = Date.now();
+    if (cachedTableStats && (now - lastTableStatsFetch < 10000)) {
+        return res.json(cachedTableStats);
+    }
+
+    const { db, isAvailable } = require('./firebase');
+    const { ENV, getEnvPrefix } = require('./utils/envConfig');
+    const prefix = getEnvPrefix();
+
+    const TABLE_DEFS = [
+        { name: 'vouchers', category: 'Accounting', desc: 'Trip vouchers, billing & freight balances' },
+        { name: 'kosli_challans', category: 'Logistics', desc: 'Kosli Godown outward challan records' },
+        { name: 'jhajjar_challans', category: 'Logistics', desc: 'Jhajjar Godown outward challan records' },
+        { name: 'vehicles', category: 'Fleet', desc: 'Own & Market fleet vehicle registration & tyres' },
+        { name: 'profiles', category: 'Operations', desc: 'Staff, Munshi, Drivers and Cleaner profiles' },
+        { name: 'labour_workers', category: 'Labour', desc: 'Registered godown labour roster' },
+        { name: 'labour_attendance', category: 'Labour', desc: 'Daily attendance and wage entries' },
+        { name: 'fuel_logs', category: 'Fleet', desc: 'Diesel dispense and fuel pump records' },
+        { name: 'cash_advances', category: 'Accounting', desc: 'Driver road cash advances and settlement' },
+        { name: 'lr_records', category: 'Logistics', desc: 'Consignment lorry receipts and goods metadata' },
+        { name: 'audit_logs', category: 'Security', desc: 'User activity, ledger modifications & logins' },
+        { name: 'parties', category: 'Accounting', desc: 'Client billing parties and vendor ledger' },
+        { name: 'tyre_inventory', category: 'Fleet', desc: 'Tyre serial numbers, positions & history' },
+        { name: 'backups', category: 'System', desc: 'Automated Google Drive snapshots' }
+    ];
+
+    if (!isAvailable()) {
+        const tables = TABLE_DEFS.map(t => ({
+            ...t,
+            collectionName: prefix + t.name,
+            count: 0,
+            status: 'offline',
+            engine: 'Fallback Store',
+            lastSync: new Date().toISOString()
+        }));
+        return res.json({ tables, totalDocs: 0, totalTables: tables.length, env: ENV, prefix });
+    }
+
+    try {
+        const results = await Promise.allSettled(
+            TABLE_DEFS.map(async (t) => {
+                const colKey = prefix + t.name;
+                try {
+                    const snap = await db.collection(colKey).count().get();
+                    return {
+                        ...t,
+                        collectionName: colKey,
+                        count: snap.data().count,
+                        status: 'healthy',
+                        engine: 'Firestore NoSQL',
+                        lastSync: new Date().toISOString()
+                    };
+                } catch (e) {
+                    return {
+                        ...t,
+                        collectionName: colKey,
+                        count: 0,
+                        status: 'healthy',
+                        engine: 'Firestore NoSQL',
+                        lastSync: new Date().toISOString()
+                    };
+                }
+            })
+        );
+
+        const tables = results.map((r, i) => r.status === 'fulfilled' ? r.value : {
+            ...TABLE_DEFS[i],
+            collectionName: prefix + TABLE_DEFS[i].name,
+            count: 0,
+            status: 'error',
+            engine: 'Firestore NoSQL',
+            lastSync: new Date().toISOString()
+        });
+
+        const totalDocs = tables.reduce((sum, t) => sum + (t.count || 0), 0);
+
+        cachedTableStats = {
+            tables,
+            totalDocs,
+            totalTables: tables.length,
+            env: ENV,
+            prefix: prefix || '(none — production)',
+            updatedAt: new Date().toISOString()
+        };
+        lastTableStatsFetch = now;
+        res.json(cachedTableStats);
+    } catch (err) {
+        console.error('Failed to query database table stats:', err);
+        res.status(500).json({ error: 'Failed to query table stats' });
+    }
+});
+
+app.get('/api/system/api-logs', (req, res) => {
+    const limit = parseInt(req.query.limit) || 150;
+    const filter = (req.query.filter || 'all').toLowerCase();
+    const search = (req.query.search || '').toLowerCase();
+
+    let filtered = apiCallLogs;
+    if (filter === '2xx') filtered = filtered.filter(l => l.status >= 200 && l.status < 300);
+    else if (filter === '3xx') filtered = filtered.filter(l => l.status >= 300 && l.status < 400);
+    else if (filter === '4xx') filtered = filtered.filter(l => l.status >= 400 && l.status < 500);
+    else if (filter === '5xx') filtered = filtered.filter(l => l.status >= 500);
+
+    if (search) {
+        filtered = filtered.filter(l =>
+            (l.path && l.path.toLowerCase().includes(search)) ||
+            (l.method && l.method.toLowerCase().includes(search)) ||
+            (l.ip && l.ip.includes(search)) ||
+            String(l.status).includes(search)
+        );
+    }
+
+    res.json({
+        logs: filtered.slice(0, limit),
+        totalBuffered: apiCallLogs.length,
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.delete('/api/system/api-logs', (req, res) => {
+    apiCallLogs.length = 0;
+    res.json({ success: true, message: 'API call logs cleared' });
+});
+
+app.get('/api/system/telemetry', (req, res) => {
+    const sortedDurations = [...recentDurations].sort((a, b) => a - b);
+    const n = sortedDurations.length;
+    const p50 = n > 0 ? sortedDurations[Math.floor(n * 0.5)] : 0;
+    const p90 = n > 0 ? sortedDurations[Math.floor(n * 0.9)] : 0;
+    const p99 = n > 0 ? sortedDurations[Math.floor(n * 0.99)] : 0;
+    const max = n > 0 ? sortedDurations[n - 1] : 0;
+
+    const totalRequests = Object.values(outcomeCounters).reduce((a, b) => a + b, 0);
+    const errorCount = outcomeCounters['5xx'];
+    const errorRate = totalRequests > 0 ? ((errorCount / totalRequests) * 100).toFixed(1) : '0';
+
+    const busiest = Array.from(routeMetrics.values())
+        .sort((a, b) => b.calls - a.calls)
+        .slice(0, 8)
+        .map(r => ({
+            ...r,
+            avgMs: r.calls > 0 ? Math.round(r.totalMs / r.calls) : 0
+        }));
+
+    const slowest = Array.from(routeMetrics.values())
+        .filter(r => r.calls > 0)
+        .sort((a, b) => (b.totalMs / b.calls) - (a.totalMs / a.calls))
+        .slice(0, 8)
+        .map(r => ({
+            ...r,
+            avgMs: Math.round(r.totalMs / r.calls)
+        }));
+
+    const now = Date.now();
+    const buckets = [];
+    for (let i = 14; i >= 0; i--) {
+        const bucketStart = now - (i + 1) * 60000;
+        const bucketEnd = now - i * 60000;
+        const bucketLogs = apiCallLogs.filter(l => {
+            const t = new Date(l.timestamp).getTime();
+            return t >= bucketStart && t < bucketEnd;
+        });
+
+        const timeLabel = new Date(bucketEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        buckets.push({
+            time: timeLabel,
+            total: bucketLogs.length,
+            '2xx': bucketLogs.filter(l => l.status >= 200 && l.status < 300).length,
+            '3xx': bucketLogs.filter(l => l.status >= 300 && l.status < 400).length,
+            '4xx': bucketLogs.filter(l => l.status >= 400 && l.status < 500).length,
+            '5xx': bucketLogs.filter(l => l.status >= 500).length,
+        });
+    }
+
+    res.json({
+        totalRequests,
+        requestsPerMinute: (totalRequests / Math.max(1, process.uptime() / 60)).toFixed(1),
+        errorRate: `${errorRate}%`,
+        outcomes: outcomeCounters,
+        latency: { p50, p90, p99, max },
+        buckets,
+        busiestRoutes: busiest,
+        slowestRoutes: slowest,
+        memory: process.memoryUsage(),
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
     });
 });
 

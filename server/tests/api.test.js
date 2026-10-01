@@ -21,7 +21,7 @@ const SECRET = process.env.JWT_SECRET || 'vgtc-secret-2026';
 // which reach Drive directly rather than through the spawned server.
 process.env.VGTC_DISABLE_DRIVE = '1';
 const TOKEN = jwt.sign(
-  { id: 'test-user', role: 'admin', orgId: 'vgtc', name: 'Test Admin' },
+  { id: 'test-user', role: 'admin', orgId: 'vgtc', name: 'Test Admin', isSandbox: true },
   SECRET,
   { expiresIn: '1h' }
 );
@@ -38,6 +38,10 @@ const portOpen = (host, port) => new Promise((resolve) => {
 
 async function ensureServer() {
   const url = new URL(BASE);
+  const loopback = ['127.0.0.1', 'localhost', '::1'].includes(url.hostname);
+  if (!loopback && process.env.ALLOW_REMOTE_API_TESTS !== 'true') {
+    throw new Error('Refusing to run mutating API tests against a remote server. Set ALLOW_REMOTE_API_TESTS=true only for an isolated sandbox.');
+  }
   const port = Number(url.port || 80);
   if (await portOpen(url.hostname, port)) return;
 
@@ -48,6 +52,7 @@ async function ensureServer() {
       PORT: String(port),
       // The token above is signed with SECRET, so the server has to verify with it.
       JWT_SECRET: SECRET,
+      APP_ENV: 'local',
       // The voucher and LR routes back themselves up to Drive on create, so a
       // test run was filing invented records into the real customer folder.
       // Nothing asked for that — it came free with the hooks.
@@ -56,7 +61,7 @@ async function ensureServer() {
     stdio: 'ignore',
   });
 
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 240; i++) {
     await new Promise(r => setTimeout(r, 250));
     if (await portOpen(url.hostname, port)) return;
   }
@@ -1151,11 +1156,13 @@ test('dump godowns hide the head-office modules but keep the permissions behind 
 
   const hidden = new Set([...app.matchAll(/^\s*'([a-z_]+)',\s*\/\/ /gm)].map(m => m[1]));
   for (const id of ['cashbook_dump', 'pay_dump', 'trip_profit_dump',
-    'diesel_dump', 'mileage_dump', 'tyres_dump', 'vendors_dump', 'invoice_dump']) {
+    'diesel_dump', 'mileage_dump', 'tyres_dump', 'invoice_dump']) {
     assert(hidden.has(id), `${id} should be hidden at the dump godowns`);
   }
   assert(!hidden.has('vehicles_dump'),
     'the shared Jharli Fleet Management module should be visible at dump godowns');
+  assert(!hidden.has('vendors_dump'),
+    'location-scoped Market Vehicles should be visible at dump godowns');
 
   assert(!/id:\s*'vehicle_credit_debit_dump'/.test(app),
     'the Vehicle Credit & Debit ledger must not exist in Kosli/Jhajjar/Bahadurgarh navigation');
@@ -2596,19 +2603,47 @@ test('lr: prompted mobile numbers persist in the fleet collection the UI reads',
   }
 });
 
-test('dump godowns reuse Jharli Fleet Management without a duplicate dashboard', async () => {
+test('dump godowns show read-only own fleet plus location-scoped market vehicles', async () => {
   const fs = require('fs');
   const source = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'App.jsx'), 'utf8');
   assert(!/TruckDashboard/.test(source), 'the duplicate fleet dashboard is still imported or rendered');
   assert(/id:\s*'vehicles_dump',\s*label:\s*'Fleet Management'/.test(source),
     'dump navigation does not offer Fleet Management');
-  assert(/id === 'vehicles_dump'[\s\S]{0,160}<VehicleModule/.test(source),
-    'dump Fleet Management does not render the same VehicleModule as Jharli');
+  assert(/id === 'vehicles_dump'[\s\S]{0,220}<OwnFleetView/.test(source),
+    'dump Fleet Management is not the permanent read-only own-fleet view');
+  assert(/id === 'vendors_dump'[\s\S]{0,240}<VendorModule[^>]+godown/.test(source),
+    'dump Market Vehicles is not scoped to the selected godown');
 
   const hiddenStart = source.indexOf('const HIDDEN_AT_DUMP_GODOWNS');
   const hiddenBlock = source.slice(hiddenStart, source.indexOf(']);', hiddenStart));
   assert(!hiddenBlock.includes("'vehicles_dump'"), 'Fleet Management is still hidden at dump godowns');
-  assert(hiddenBlock.includes("'vendors_dump'"), 'the separate Market Vehicles module should remain hidden');
+  assert(!hiddenBlock.includes("'vendors_dump'"), 'Market Vehicles is still hidden at dump godowns');
+});
+
+test('market vehicle classification excludes test and legacy own-fleet rows', async () => {
+  const service = require('../services/vehicleService');
+  assert(service.isOwnFleetVehicle({ ownerName: 'Vikas Goods Transport (Self)' }),
+    'legacy company owner name must classify as own fleet');
+  assert(!service.isMarketVehicle({ ownershipType: 'market', ownerName: 'Vikas Goods Transport (Self)' }),
+    'legacy own fleet leaked into market classification');
+  assert(!service.isMarketVehicle({ ownershipType: 'market', ownerName: 'Test Owner', truckNo: 'TEST0000' }),
+    'test vehicle leaked into market classification');
+  assert(service.isMarketVehicle({ ownershipType: 'market', ownerName: 'Rajesh Kumar', truckNo: 'HR471234' }),
+    'valid market vehicle was rejected');
+  assert(service.normalizeMarketLocation('Jajjhar') === 'jhajjar', 'Jhajjar alias did not normalize');
+});
+
+test('market vehicle routes have independent permission and ownership guard', async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'vehicleRoutes.js'), 'utf8');
+  for (const route of ["get('/market'", "post('/market'", "patch('/market/:id'", "delete('/market/:id'"]) {
+    assert(source.includes(route), `missing market route ${route}`);
+  }
+  assert(/requirePermission\('market_vehicle',\s*'view'\)/.test(source), 'market read permission is not enforced');
+  assert(/requirePermission\('market_vehicle',\s*'edit'\)/.test(source), 'market edit permission is not enforced');
+  assert(/requirePermission\('market_vehicle',\s*'delete'\)/.test(source), 'market delete permission is not enforced');
+  assert(/deleteMarketVehicle/.test(source), 'market delete does not use ownership guard');
 });
 
 test('lr: a clerk can type the LR number instead of taking the next one', async () => {

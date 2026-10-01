@@ -113,11 +113,21 @@ export default function AdminPage() {
     <div className="adm" style={{ padding: '0 20px 48px' }}>
       <div className="adm-page">
 
-        <header className="adm-head">
+        <header className="adm-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
           <div>
             <h1><Settings size={22} color="var(--primary)" /> Admin hub</h1>
             <p>Accounts and permissions, master data, and the system settings behind them.</p>
           </div>
+          <a
+            href="/status"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="adm-btn adm-btn--secondary adm-btn--sm"
+            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(16, 185, 129, 0.3)', background: 'rgba(16, 185, 129, 0.08)', color: '#10b981' }}
+          >
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+            <span style={{ fontWeight: 700 }}>System Observability &amp; Status ↗</span>
+          </a>
         </header>
 
         {/* ── Tab bar ── */}

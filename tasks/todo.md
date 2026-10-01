@@ -965,3 +965,161 @@ questions being ignored. Gemini answered a live Hindi question but took about
 After restart, Meta status remained connected and signed public webhook
 returned HTTP 200. A fresh user message is still needed to observe the new
 welcome and dispatch end to end on WhatsApp.
+
+# Vehicle module separation and dump access (2026-09-30)
+
+- [x] Force integration-test writes into sandbox collections.
+- [x] Exclude dummy/test and legacy own-fleet records from Market Vehicles.
+- [x] Scope market vehicles by Kosli, Jhajjar, and Bahadurgarh.
+- [x] Show Market Vehicles at all three dumps with its own permission.
+- [x] Make dump Fleet Management a read-only own-fleet view.
+- [x] Keep Tractor available in Market Vehicles.
+- [x] Add regression coverage and run client/server tests plus client build.
+- [x] Review final diff and document results.
+
+## Review
+
+Cause confirmed: API integration tests signed a normal admin token. An interrupted
+run against a production-configured listener could write test rows into the normal
+vehicle collection. Tests now use sandbox identity, spawned servers force local
+collections, and remote mutation is refused unless explicitly opted in.
+
+Market Vehicles now uses strict classification and dedicated permission-checked,
+location-scoped routes. Test/dummy rows and legacy company-owned rows cannot appear
+or be mutated there. LR and voucher auto-registration stamps Kosli, Jhajjar,
+Bahadurgarh, or Jharli so new market records land in the correct list. Tractor was
+already present in both filter and form and is regression-checked.
+
+Dump Fleet Management now renders a separate own-fleet information table with no
+edit controls. Permission catalogue exposes `market_vehicle` separately from
+`vehicle`.
+
+Data repair: verified `dev_vehicles/x0zympG0f13Y60azDi4u` was own truck HR63E3914
+misclassified as `TEST OWNER / market`; restored it to `Vikas Transport (Self) /
+self` after exact-value guard. No record was deleted.
+
+Verification: 123 client assertions pass, production client build passes, edited
+server files pass syntax checks, focused server classification assertions pass,
+and 26 WhatsApp/server node tests pass. Full legacy API suite was started against
+an isolated sandbox server but exceeded the 180-second command window; spawned
+processes were identified and stopped. `git diff --check` passes (line-ending
+warnings only).
+
+# VGTC Smart Sheet (2026-09-30)
+
+## Architecture constraints
+
+- Same Firestore collections and existing APIs; no spreadsheet database.
+- Existing permission keys control view/edit/delete.
+- Calculated accounting fields remain read-only and use current VGTC business logic.
+- Sorting/filtering stays client-side view state and never changes record order.
+- Existing normal modules remain unchanged except for "Open in Sheet" entry points.
+
+## Phase 1/2 foundation
+
+- [x] Audit Balance Sheet and Challan schemas, APIs, validation, permissions, and mutations.
+- [x] Add reusable sheet definitions/adapters for Balance Sheet and Challans.
+- [x] Add authenticated `/sheet/:sheetId` dedicated new-tab route.
+- [x] Build virtualized grid, sticky headers, selection, keyboard navigation, resizing.
+- [x] Add formula bar, search, column filters, sorting, copy/paste, undo/redo.
+- [x] Add permission-aware cell autosave through existing APIs.
+- [x] Add refresh, focus refresh, and cross-tab synchronization.
+- [x] Add "Open in Sheet" to Balance Sheet and Challan views.
+- [x] Add tests, build, diff review, and Phase 3+ follow-up notes.
+
+## Review
+
+Created branch `spreadsheet-module`. Added dedicated authenticated smart-sheet
+route backed by existing voucher/challan collections, exact source permissions,
+validated field allowlists, optimistic conflict detection, and audit entries.
+No duplicate spreadsheet database was introduced.
+
+Balance and location-specific challan screens now open the correct sheet in a
+new tab. Grid includes virtualization, frozen first column, resize, selection,
+keyboard editing, copy/paste, search, per-column filtering, sorting, formula
+preview (`SUM`, `AVERAGE`, `MIN`, `MAX`), undo/redo, autosave state, polling,
+focus refresh, and BroadcastChannel refresh after sheet writes.
+
+Safety scope: calculated balance fields, freight inputs, and vehicle identity are
+read-only until all normal-module side effects can be shared. Challans allow only
+validated status edits. Phase 3 should extract canonical mutation services, then
+add full-row creation, richer dropdown editors, persistent formulas, bulk paste
+transactions, imports/exports, and server-side pagination for very large sheets.
+
+Verification: production client build passes; new formula assertions and three
+sheet-definition/security assertions pass; edited server files pass syntax
+checks; `git diff --check` passes (line-ending warnings only).
+
+# VGTC Google Sheets UI & Full Editing Overhaul (2026-10-01)
+
+- [x] Fix editing restriction: enable full cell editing for all primary voucher and challan fields (Date, Truck, Driver, Owner, Weight, Rate, Diesel, Cash, Online, Munshi, Shortage, Commission, Remarks, Status).
+- [x] Auto-calculate dependent accounting fields (Gross Freight = Weight × Rate, Net Balance = Gross − Deductions) live in state and server.
+- [x] Authentic Google Sheets UI & Options matching real Google Sheets:
+  - Official Google Sheets branding, star button, status pill ("Saved to cloud" / "Saving...").
+  - Menus: File, Edit, View, Insert, Format, Data, Tools, Extensions, Help with complete dropdown menus.
+  - Ribbon Toolbar: Menus search input, Undo, Redo, Print, Paint format, Zoom (50%-150%), Currency (₹), Percent (%), Decimals (.0, .00), Font Family, Font Size stepper, Bold, Italic, Strikethrough, Text Color palette, Fill Color palette, Borders, Alignment, Filter, Formulas Σ, Find (Ctrl+F).
+  - Blue Google-style "Share" button and Profile Avatar circle. No Google Meet / video icon.
+  - Formula bar with active cell coordinate box (e.g. A1) and live formula evaluation.
+  - Endless Full Grid: renders rows out to at least 60-100 rows and columns out to Z (A to Z), eliminating blank white spaces.
+  - Theme Synchronization: reads `vgtc-theme` from portal, automatically adapts to Light, Dark, or Sepia modes.
+  - Google Sheets Column Filter: sort A-Z, sort Z-A, search filter values, checklist with counts, Select All / Clear, OK / Cancel.
+  - Enforced Limitations:
+    - User cannot delete rows or columns (delete options removed everywhere).
+    - User cannot rename columns (column headers locked).
+    - User can only edit entries.
+    - Adding new rows is restricted on Balance Sheets (vouchers must be created in Voucher module).
+    - Adding new rows is enabled on Challans (creates records in respective challan collection: `kosli_challans`, `jhajjar_challans`, etc.).
+- [x] Dedicated System Observability & Status Dashboard (`/status` and `./status`):
+  - Accessible via `/status`, `./status`, topbar status indicator, and admin hub.
+  - Environment selector / status: Local Dev (Port 5000) and Production (Live backend).
+  - Real-time service cards: Server & API runtime (uptime, latency ms, 200 OK), Firestore database connection, WhatsApp Cloud API telemetry, and Google Drive backup health.
+  - Performance & Core Ledger entity counts (Fleet Vehicles, Staff & Labour, Backups).
+  - Centralized WhatsApp Activity & Webhook Logs:
+    - Live delivery audit trail with Outbound, Inbound, and Failed message filters.
+    - Search by phone, recipient, event title, or payload.
+    - Clear logs and Refresh logs.
+    - Removed logs from WhatsAppControlModule in admin and linked directly to the Status page.
+- [x] Verification: client production build passes (2,173 modules), client test suite (124 passed), sheet definitions tests (3 passed), server status endpoint probed successfully.
+
+# Full-Width Observability Dashboard, Usage Graphs, Database Tables & Live API Stream (2026-10-01)
+
+- [x] Full-Width Layout:
+  - Removed fixed-width container caps (`max-width: none`, `width: 100%`) for edge-to-edge layout across ultra-wide and high-resolution displays.
+  - Secondary sticky navigation bar with environment selector (`dev (local)` vs `production`) and active partition indicator.
+- [x] Usage Graphs & Service Overview Dashboard (Image 2 Alignment):
+  - Top 6-KPI metrics row: Total Requests throughput & rate/min with sparklines, 5XX Error Rate, P50, P90, P99 latency percentiles, and 100% Trace/DB coverage.
+  - Pipeline Ingestion banner: freshness, queue volume, dropped count, 5xx errors, last flush time, and records in window.
+  - Request Outcomes Stacked Bar Chart: dynamic SVG timeline chart rendering 1m buckets with color-coded status codes (2xx Success in emerald, 3xx in sky blue, 4xx in amber, 5xx in crimson) and interactive hover tooltip.
+  - Latency Percentiles Distribution Chart: horizontal progression bars for p50, p90, p99, and max peak latency.
+  - Busiest Routes Table: ranked endpoints with call counts, 5xx errors, and average latency.
+  - Slowest Routes Ranking Bar Chart: horizontal duration bars visualizing peak response times independent of traffic rank.
+  - Node.js Runtime & Memory Pool: live Heap Used vs Total Heap vs RSS memory gauges and server uptime.
+- [x] Database Collections & Tables Inspector:
+  - Added `GET /api/system/database-tables` with cached TTL queries across all 14 Firestore collections: `vouchers`, `kosli_challans`, `jhajjar_challans`, `vehicles`, `profiles`, `labour_workers`, `labour_attendance`, `fuel_logs`, `cash_advances`, `lr_records`, `audit_logs`, `parties`, `tyre_inventory`, `backups`.
+  - Displays table names, category tags, descriptions, partition keys (e.g. `dev_vouchers`), storage engine (`Firestore NoSQL`), live document counts (1,373+ total records), health status, and sync timestamps.
+  - Real-time search filter and category pills (Accounting, Logistics, Fleet, Operations, Labour, Security, System).
+- [x] Live API Call Logs & Traffic Stream:
+  - Added in-memory circular buffer (250 items) in `server/index.js` capturing incoming requests, response status, duration, client IP, and user agent.
+  - Endpoints `GET /api/system/api-logs` and `DELETE /api/system/api-logs`.
+  - Real-time polling stream with Pause / Resume live controls.
+  - Filters by HTTP status (All, 2xx Success, 4xx Client Errors, 5xx Server Errors), search by route/method/IP.
+  - Badges for HTTP methods (GET, POST, PUT, DELETE), status codes, and latency tiers (<50ms, <200ms, >200ms).
+- [x] Verification: client tests pass (124 passed), sheet definitions pass (3 passed), client production bundle built cleanly in 13.15s.
+
+# Admin Crash Hotfix (2026-10-01)
+- [x] Fixed `ReferenceError: fetchLogs is not defined` in [WhatsAppControlModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/WhatsAppControlModule.jsx) line 285 (`useEffect` invoked removed handler).
+- [x] Fixed missing `ExternalLink` icon import from `lucide-react` in [WhatsAppControlModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/WhatsAppControlModule.jsx).
+- [x] Fixed potential null dereference on `user?.name` in [AdminLayout.jsx](file:///b:/VGTC%20Managemet/client/src/pages/admin/AdminLayout.jsx) line 357.
+- [x] Verified `/admin` and `/admin/*` render cleanly without errors (200 OK, client tests 124 passed, production build passed).
+
+# Production Crash & Undefined Identifier Hotfix (2026-10-01)
+- [x] Fixed `ReferenceError: Truck is not defined` in [StockModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/StockModule.jsx) by importing `Truck` from `lucide-react` (crashed when opening Create Challan in Bahadurgarh, Jhajjar, Kosli).
+- [x] Fixed missing `handleDeleteMaterial` in [StockModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/StockModule.jsx).
+- [x] Fixed `ReferenceError: RotateCcw is not defined` in [TerminalModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/TerminalModule.jsx) by importing `RotateCcw` from `lucide-react`.
+- [x] Fixed `ReferenceError: TerminalModule is not defined` in [App.jsx](file:///b:/VGTC%20Managemet/client/src/App.jsx) by adding import for `TerminalModule`.
+- [x] Fixed `ReferenceError: setRelieveModal is not defined` in [AttendanceModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/AttendanceModule.jsx) by passing `relieveModal`, `setRelieveModal`, `loadRoster`, `loadPendingDays` props to `DailyRollCall`.
+- [x] Fixed `ReferenceError: isBillType is not defined` in [BalanceSheet.jsx](file:///b:/VGTC%20Managemet/client/src/modules/BalanceSheet.jsx) inside `VoucherEditModal`.
+- [x] Fixed `ReferenceError: fetchData is not defined` in [LRModule.jsx](file:///b:/VGTC%20Managemet/client/src/modules/LRModule.jsx) by calling `fetchLRData()`.
+- [x] Fixed unbound `e` in [SmartSheet.jsx](file:///b:/VGTC%20Managemet/client/src/sheets/SmartSheet.jsx) filter button `onClick`.
+- [x] AST Scope Analysis across entire `client/src`: 0 unbound identifiers remain.
+- [x] Verification: client tests pass (124 passed), sheet definitions pass (3 passed), Vite production bundle builds in 6.16s without errors.

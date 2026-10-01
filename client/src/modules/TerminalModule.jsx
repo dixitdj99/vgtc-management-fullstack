@@ -5,7 +5,7 @@ import {
     Wifi, WifiOff, Battery, Shield, Settings, X, ArrowLeft,
     Volume2, VolumeX, Lock, Clock, Calendar, Check, Fingerprint, MapPin,
     Plus, Trash2, Search, ChevronDown, Sparkles, Sun, Moon, AlertTriangle,
-    CloudOff, KeyRound, LogOut, CheckCheck
+    CloudOff, KeyRound, LogOut, CheckCheck, RotateCcw
 } from 'lucide-react';
 import ax from '../api';
 import VgtcBootScreen from '../components/VgtcBootScreen';

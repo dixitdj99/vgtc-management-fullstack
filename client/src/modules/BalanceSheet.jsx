@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, MessageCircle, TrendingDown, Clock, ArrowRight, CornerDownRight
+  CheckCircle2, AlertCircle, Pencil, X, Save, Printer, Calendar, BarChart3, ChevronLeft, ChevronUp, ChevronDown, Check, Download, Truck, Search, Loader2, Trash2, AlertTriangle, Plus, MessageCircle, TrendingDown, Clock, ArrowRight, CornerDownRight, Table2
 } from 'lucide-react';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
@@ -15,6 +15,7 @@ import { columnValues } from '../components/ColumnFilter';
 import TableScroll from '../components/TableScroll';
 import Pagination from '../components/Pagination';
 import { fmtDate } from '../utils/format';
+import { balanceSheetId, openSheet } from '../sheets/sheetLinks';
 
 const API_V = `/vouchers`;
 const TYPES = ['Kosli_Bill', 'Jajjhar_Bill', 'Bahadurgarh_Bill', 'Dump', 'JK_Lakshmi', 'JK_Super'];
@@ -421,6 +422,7 @@ export function VoucherEditModal({ v, vehicle, onClose, onSaved }) {
   // Multi-delivery vouchers price each drop, so weight and rate here would be
   // meaningless — the sheet shows the per-delivery breakdown instead.
   const multiDrop = v.deliveries?.length > 0;
+  const isBillType = v?.type === 'Kosli_Bill' || v?.type === 'Jajjhar_Bill' || v?.type === 'Bahadurgarh_Bill';
 
   const preview = { ...v, ...form, extras: form.extras, deliveries: form.deliveries };
   const net = calcNet(preview, vehicle);
@@ -1315,7 +1317,27 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
   }, []);
 
   useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
-  useEffect(() => { fetchVouchers(); setSelTruck(null); setTruckSearch(''); setSelected(new Set()); }, [tab]);
+  useEffect(() => {
+    fetchVouchers();
+    setSelTruck(null);
+    setTruckSearch('');
+    setSelected(new Set());
+    const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('vgtc-sheet-sync') : null;
+    const onSync = () => { fetchVouchers(); };
+    syncChannel?.addEventListener('message', onSync);
+    const onFocus = () => { fetchVouchers(); };
+    window.addEventListener('focus', onFocus);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') fetchVouchers();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      syncChannel?.removeEventListener('message', onSync);
+      syncChannel?.close();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [tab]);
   useEffect(() => { setSelected(new Set()); }, [selTruck, filters]);
   useEffect(() => {
     if (selTruck) {
@@ -1913,6 +1935,7 @@ export default function BalanceSheet({ initialTab, lockedType, role = 'user', pe
               </div>
             </div>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              {balanceSheetId(tab) && <button className="btn btn-p btn-sm" onClick={() => openSheet(balanceSheetId(tab))}><Table2 size={13} /> Open in Sheet</button>}
               {Object.keys(filters).length > 0 && (
                 <button className="btn btn-sm btn-g" style={{ height: '32px', fontSize: '10px' }} onClick={() => setFilters({})}>Clear Filters</button>
               )}

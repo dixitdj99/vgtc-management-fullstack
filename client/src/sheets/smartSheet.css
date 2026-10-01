@@ -1,0 +1,1255 @@
+/* ── GOOGLE SHEETS AUTHENTIC STYLING ── */
+
+:root {
+  --gsq-bg: #f8fafd;
+  --gsq-surface: #ffffff;
+  --gsq-surface-subtle: #f8f9fa;
+  --gsq-toolbar-bg: #edf2fa;
+  --gsq-text: #1f1f1f;
+  --gsq-text-sub: #444746;
+  --gsq-text-muted: #70757a;
+  --gsq-border: #dadce0;
+  --gsq-border-grid: #e0e0e0;
+  --gsq-border-header: #c0c0c0;
+  --gsq-hover: #f1f3f4;
+  --gsq-hover-header: #edf2fa;
+  --gsq-primary: #1a73e8;
+  --gsq-primary-subtle: #d3e3fd;
+  --gsq-google-green: #0f9d58;
+  --gsq-selected-border: #1a73e8;
+  --gsq-selected-bg: rgba(26, 115, 232, 0.08);
+  --gsq-tab-active-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+  --gsq-bg: #121212;
+  --gsq-surface: #1e1e1e;
+  --gsq-surface-subtle: #282a2d;
+  --gsq-toolbar-bg: #282a2d;
+  --gsq-text: #e8eaed;
+  --gsq-text-sub: #bdc1c6;
+  --gsq-text-muted: #9aa0a6;
+  --gsq-border: #3c4043;
+  --gsq-border-grid: #34373b;
+  --gsq-border-header: #4a4d51;
+  --gsq-hover: #35373b;
+  --gsq-hover-header: #35383c;
+  --gsq-primary: #8ab4f8;
+  --gsq-primary-subtle: #1f3b5c;
+  --gsq-google-green: #34a853;
+  --gsq-selected-border: #8ab4f8;
+  --gsq-selected-bg: rgba(138, 180, 248, 0.15);
+  --gsq-tab-active-bg: #1e1e1e;
+}
+
+[data-theme="sepia"] {
+  --gsq-bg: #f5f0e6;
+  --gsq-surface: #fbf7ee;
+  --gsq-surface-subtle: #f0e8db;
+  --gsq-toolbar-bg: #ece3d3;
+  --gsq-text: #3c352a;
+  --gsq-text-sub: #5c5344;
+  --gsq-text-muted: #807664;
+  --gsq-border: #dcd2bf;
+  --gsq-border-grid: #dfd6c5;
+  --gsq-border-header: #cec3ad;
+  --gsq-hover: #ebd9c3;
+  --gsq-hover-header: #e6dac6;
+  --gsq-primary: #966127;
+  --gsq-primary-subtle: #f2e2cb;
+  --gsq-google-green: #2e7d32;
+  --gsq-selected-border: #966127;
+  --gsq-selected-bg: rgba(150, 97, 39, 0.12);
+  --gsq-tab-active-bg: #fbf7ee;
+}
+
+.gsq-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--gsq-bg);
+  color: var(--gsq-text);
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  user-select: none;
+}
+
+/* ── 1. Top Bar ── */
+.gsq-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px 4px;
+  background: var(--gsq-surface);
+  border-bottom: 1px solid var(--gsq-border);
+  min-height: 56px;
+  box-sizing: border-box;
+}
+
+.gsq-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gsq-app-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.gsq-app-icon:hover {
+  background: var(--gsq-hover);
+}
+
+.gsq-doc-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.gsq-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gsq-title {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--gsq-text);
+  line-height: 22px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.gsq-title:hover {
+  border-color: var(--gsq-border);
+}
+
+.gsq-star-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--gsq-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.gsq-star-btn:hover {
+  background: var(--gsq-hover);
+  color: #fbbc04;
+}
+
+.gsq-star-btn.active {
+  color: #fbbc04;
+}
+
+.gsq-cloud-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--gsq-text-muted);
+  margin-left: 4px;
+}
+
+.gsq-cloud-status.gsq-saved {
+  color: var(--gsq-google-green);
+}
+
+.gsq-cloud-status.gsq-saving {
+  color: #ea8600;
+}
+
+.gsq-cloud-status.gsq-error {
+  color: #d93025;
+}
+
+.gsq-spin {
+  animation: gsqSpin 1s linear infinite;
+}
+
+@keyframes gsqSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Menu Bar */
+.gsq-menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 1px;
+}
+
+.gsq-menu-trigger {
+  position: relative;
+  font-size: 13px;
+  color: var(--gsq-text-sub);
+  padding: 3px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.gsq-menu-trigger:hover {
+  background: var(--gsq-hover);
+  color: var(--gsq-text);
+}
+
+/* Dropdown Menus */
+.gsq-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  background: var(--gsq-surface);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  min-width: 220px;
+  padding: 6px 0;
+  margin-top: 4px;
+  border: 1px solid var(--gsq-border);
+}
+
+.gsq-dropdown button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 16px;
+  font-size: 13px;
+  color: var(--gsq-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.gsq-dropdown button:hover:not(:disabled) {
+  background: var(--gsq-hover);
+}
+
+.gsq-dropdown button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gsq-dropdown button .gsq-kbd-shortcut {
+  font-size: 11px;
+  color: var(--gsq-text-muted);
+  font-family: inherit;
+}
+
+.gsq-dropdown-divider {
+  height: 1px;
+  background: var(--gsq-border);
+  margin: 6px 0;
+}
+
+.gsq-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gsq-icon-circle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--gsq-text-sub);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.gsq-icon-circle-btn:hover {
+  background: var(--gsq-hover);
+  color: var(--gsq-text);
+}
+
+/* Google-style Blue Share Button */
+.gsq-btn-share-google {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #c2e7ff;
+  color: #001d35;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.gsq-btn-share-google:hover {
+  background: #b3defa;
+}
+
+[data-theme="dark"] .gsq-btn-share-google {
+  background: #a8c7fa;
+  color: #041e49;
+}
+
+/* User Avatar */
+.gsq-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e37400;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ── 2. Action Toolbar Ribbon ── */
+.gsq-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px;
+  background: var(--gsq-toolbar-bg);
+  border-radius: 24px;
+  margin: 5px 12px 4px;
+  overflow: visible;
+  min-height: 38px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 50;
+  border: 1px solid var(--gsq-border);
+}
+
+.gsq-search-menus-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gsq-surface);
+  border: 1px solid var(--gsq-border);
+  border-radius: 18px;
+  padding: 3px 10px;
+  height: 26px;
+  box-sizing: border-box;
+}
+
+.gsq-search-menus-input input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--gsq-text);
+  width: 70px;
+  transition: width 0.2s;
+}
+
+.gsq-search-menus-input input:focus {
+  width: 120px;
+}
+
+.gsq-tb-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--gsq-text-sub);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+}
+
+.gsq-tb-btn:hover:not(:disabled) {
+  background: var(--gsq-hover);
+  color: var(--gsq-text);
+}
+
+.gsq-tb-btn.active {
+  background: var(--gsq-primary-subtle);
+  color: var(--gsq-primary);
+}
+
+.gsq-tb-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.gsq-tb-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--gsq-border);
+  margin: 0 3px;
+}
+
+.gsq-tb-select {
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--gsq-text-sub);
+  font-size: 12px;
+  padding: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.gsq-tb-select:hover {
+  background: var(--gsq-hover);
+  color: var(--gsq-text);
+}
+
+.gsq-color-bar {
+  width: 14px;
+  height: 3px;
+  border-radius: 1px;
+  margin-top: 1px;
+}
+
+.gsq-tb-popover-wrap {
+  position: relative;
+}
+
+.gsq-palette-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: var(--gsq-surface);
+  border: 1px solid var(--gsq-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.22);
+  padding: 10px;
+  width: 224px;
+  box-sizing: border-box;
+}
+
+.gsq-palette-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gsq-text-muted);
+  margin-bottom: 8px;
+}
+
+.gsq-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 16px);
+  gap: 4px;
+}
+
+.gsq-palette-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+
+.gsq-palette-swatch:hover {
+  transform: scale(1.2);
+}
+
+.gsq-palette-reset {
+  margin-top: 8px;
+  width: 100%;
+  padding: 5px 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--gsq-primary);
+  background: var(--gsq-surface-subtle);
+  border: 1px solid var(--gsq-border);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.gsq-palette-reset:hover {
+  background: var(--gsq-hover);
+}
+
+.gsq-fn-popover {
+  width: 210px;
+}
+
+.gsq-fn-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.gsq-fn-item strong {
+  font-size: 12.5px;
+  color: var(--gsq-text);
+}
+
+.gsq-fn-item span {
+  font-size: 10.5px;
+  color: var(--gsq-text-muted);
+  font-family: monospace;
+}
+
+.gsq-fn-item:hover {
+  background: var(--gsq-hover);
+}
+
+.gsq-add-row-pill {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--gsq-google-green);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.gsq-add-row-pill:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.gsq-add-row-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── 3. Formula Bar ── */
+.gsq-formula-bar {
+  display: flex;
+  align-items: center;
+  background: var(--gsq-surface);
+  border-bottom: 1px solid var(--gsq-border);
+  min-height: 29px;
+  padding: 0 10px;
+}
+
+.gsq-name-box {
+  width: 65px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--gsq-text-sub);
+  text-align: center;
+  border-right: 1px solid var(--gsq-border);
+  padding-right: 8px;
+}
+
+.gsq-fx-icon {
+  width: 32px;
+  text-align: center;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--gsq-text-muted);
+  border-right: 1px solid var(--gsq-border);
+}
+
+.gsq-formula-input {
+  flex: 1;
+  height: 27px;
+  border: none;
+  outline: none;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--gsq-text);
+  background: transparent;
+}
+
+/* ── 4. Main Grid Viewport ── */
+.gsq-grid-viewport {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: var(--gsq-surface);
+  transform-origin: top left;
+}
+
+.gsq-grid-table {
+  display: inline-block;
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+.gsq-row {
+  display: flex;
+}
+
+/* Headers */
+.gsq-header-row {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--gsq-surface-subtle);
+  border-bottom: 1px solid var(--gsq-border-header);
+}
+
+.gsq-corner-cell {
+  position: sticky;
+  left: 0;
+  z-index: 40;
+  width: 48px;
+  min-width: 48px;
+  height: 38px;
+  background: var(--gsq-surface-subtle);
+  border-right: 1px solid var(--gsq-border-header);
+  border-bottom: 1px solid var(--gsq-border-header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.gsq-corner-triangle {
+  width: 0;
+  height: 0;
+  border-bottom: 7px solid var(--gsq-text-muted);
+  border-left: 7px solid transparent;
+}
+
+.gsq-col-header {
+  position: relative;
+  background: var(--gsq-surface-subtle);
+  border-right: 1px solid var(--gsq-border-grid);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 38px;
+  padding: 2px 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.gsq-col-header:hover {
+  background: var(--gsq-hover-header);
+}
+
+.gsq-col-letter {
+  font-size: 10.5px;
+  color: var(--gsq-text-muted);
+  text-align: center;
+  font-weight: 500;
+}
+
+.gsq-col-title-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.gsq-col-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gsq-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gsq-filter-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--gsq-text-muted);
+  padding: 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.gsq-col-header:hover .gsq-filter-trigger-btn,
+.gsq-filter-trigger-btn.active {
+  opacity: 1;
+}
+
+.gsq-filter-trigger-btn.active {
+  color: var(--gsq-google-green);
+}
+
+.gsq-sort-indicator {
+  font-size: 9px;
+  color: var(--gsq-primary);
+  margin-left: 2px;
+}
+
+.gsq-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.gsq-col-resizer:hover {
+  background: var(--gsq-primary);
+}
+
+/* ── Google Sheets Style Filter Popover ── */
+.gsq-filter-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  width: 240px;
+  background: var(--gsq-surface);
+  border: 1px solid var(--gsq-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+  padding: 8px 0;
+  color: var(--gsq-text);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.gsq-filter-opt-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  font-size: 12.5px;
+  color: var(--gsq-text);
+  cursor: pointer;
+}
+
+.gsq-filter-opt-btn:hover {
+  background: var(--gsq-hover);
+}
+
+.gsq-filter-divider {
+  height: 1px;
+  background: var(--gsq-border);
+  margin: 6px 0;
+}
+
+.gsq-filter-search-box {
+  padding: 4px 10px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gsq-filter-search-input {
+  width: 100%;
+  height: 26px;
+  border: 1px solid var(--gsq-border);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 12px;
+  background: var(--gsq-surface-subtle);
+  color: var(--gsq-text);
+  outline: none;
+}
+
+.gsq-filter-search-input:focus {
+  border-color: var(--gsq-primary);
+}
+
+.gsq-filter-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 12px 6px;
+  font-size: 11px;
+}
+
+.gsq-filter-link {
+  color: var(--gsq-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.gsq-filter-link:hover {
+  text-decoration: underline;
+}
+
+.gsq-filter-checklist {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 2px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gsq-filter-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.gsq-filter-check-item:hover {
+  background: var(--gsq-hover);
+}
+
+.gsq-filter-check-item input {
+  cursor: pointer;
+}
+
+.gsq-filter-check-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gsq-filter-check-count {
+  font-size: 10px;
+  color: var(--gsq-text-muted);
+}
+
+.gsq-filter-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px 2px;
+  border-top: 1px solid var(--gsq-border);
+  margin-top: 6px;
+}
+
+.gsq-filter-footer button {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.gsq-filter-btn-cancel {
+  background: transparent;
+  border: 1px solid var(--gsq-border);
+  color: var(--gsq-text-sub);
+}
+
+.gsq-filter-btn-ok {
+  background: var(--gsq-primary);
+  border: 1px solid var(--gsq-primary);
+  color: #fff;
+}
+
+/* Data & Blank Rows */
+.gsq-data-row,
+.gsq-blank-row {
+  border-bottom: 1px solid var(--gsq-border-grid);
+}
+
+.gsq-row-header-cell {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  width: 48px;
+  min-width: 48px;
+  height: 26px;
+  line-height: 26px;
+  background: var(--gsq-surface-subtle);
+  border-right: 1px solid var(--gsq-border-header);
+  font-size: 11.5px;
+  color: var(--gsq-text-muted);
+  text-align: center;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.gsq-row-header-cell:hover,
+.gsq-row-header-cell.active-row {
+  background: var(--gsq-hover-header);
+  color: var(--gsq-text);
+  font-weight: 600;
+}
+
+/* Grid Cells */
+.gsq-cell {
+  position: relative;
+  height: 26px;
+  line-height: 24px;
+  padding: 0 6px;
+  border-right: 1px solid var(--gsq-border-grid);
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+  background: var(--gsq-surface);
+  color: var(--gsq-text);
+  cursor: cell;
+}
+
+.gsq-cell-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.gsq-align-right {
+  text-align: right;
+}
+
+.gsq-cell.gsq-selected {
+  outline: 2px solid var(--gsq-selected-border);
+  outline-offset: -2px;
+  background: var(--gsq-selected-bg) !important;
+  z-index: 15;
+}
+
+/* Corner Handle */
+.gsq-corner-handle {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
+  background: var(--gsq-selected-border);
+  border: 1px solid #fff;
+  cursor: crosshair;
+  z-index: 25;
+}
+
+.gsq-freeze-col {
+  position: sticky;
+  left: 48px;
+  z-index: 18;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.06);
+}
+
+.gsq-find-match {
+  background: #fff59d !important;
+  color: #000000 !important;
+}
+
+/* Inline Cell Editor */
+.gsq-inline-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--gsq-selected-border);
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  padding: 0 5px;
+  box-sizing: border-box;
+  background: var(--gsq-surface);
+  color: var(--gsq-text);
+  z-index: 25;
+}
+
+/* ── 5. Bottom Tabs & Stats Bar ── */
+.gsq-bottombar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--gsq-surface-subtle);
+  border-top: 1px solid var(--gsq-border);
+  min-height: 38px;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+.gsq-tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.gsq-add-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--gsq-text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.gsq-add-tab-btn:hover {
+  background: var(--gsq-hover);
+}
+
+.gsq-tab-scroller {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.gsq-sheet-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--gsq-text-muted);
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+}
+
+.gsq-sheet-tab:hover {
+  background: var(--gsq-hover);
+  color: var(--gsq-text);
+}
+
+.gsq-sheet-tab.active {
+  background: var(--gsq-tab-active-bg);
+  color: var(--gsq-primary);
+  box-shadow: 0 -1px 3px rgba(0,0,0,0.08);
+}
+
+.gsq-tab-indicator {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  background: var(--gsq-google-green);
+}
+
+.gsq-sheet-tab.active .gsq-tab-indicator {
+  display: block;
+}
+
+.gsq-status-pills {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gsq-calc-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--gsq-text-sub);
+  background: var(--gsq-primary-subtle);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--gsq-border);
+}
+
+/* ── Floating Find Dialog ── */
+.gsq-find-dialog {
+  position: absolute;
+  top: 96px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gsq-surface);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  padding: 6px 10px;
+  border: 1px solid var(--gsq-border);
+}
+
+.gsq-find-dialog input {
+  border: none;
+  outline: none;
+  font-size: 13px;
+  width: 140px;
+  background: transparent;
+  color: var(--gsq-text);
+}
+
+.gsq-find-count {
+  font-size: 11px;
+  color: var(--gsq-text-muted);
+  min-width: 48px;
+}
+
+.gsq-find-dialog button {
+  background: transparent;
+  border: none;
+  color: var(--gsq-text-muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+}
+
+.gsq-find-dialog button:hover {
+  background: var(--gsq-hover);
+  color: var(--gsq-text);
+}
+
+/* ── Alert Banner ── */
+.gsq-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #fce8e6;
+  color: #c5221f;
+  font-size: 12.5px;
+  border-bottom: 1px solid #fad2cf;
+}
+
+/* ── Context Menu ── */
+.gsq-context-menu {
+  position: fixed;
+  z-index: 2000;
+  background: var(--gsq-surface);
+  border: 1px solid var(--gsq-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  min-width: 180px;
+  padding: 6px 0;
+}
+
+.gsq-context-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  color: var(--gsq-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.gsq-context-menu button:hover {
+  background: var(--gsq-hover);
+}
+
+/* ── Loader Screen ── */
+.gsq-loader-screen {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--gsq-bg);
+  gap: 16px;
+  color: var(--gsq-text-sub);
+  font-size: 14px;
+}
+
+.gsq-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid var(--gsq-border);
+  border-top-color: var(--gsq-google-green);
+  border-radius: 50%;
+  animation: gsqSpin 0.8s linear infinite;
+}
+
+/* ── Modal Dialog ── */
+.gsq-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.gsq-modal-card {
+  background: var(--gsq-surface);
+  border-radius: 10px;
+  width: 440px;
+  max-width: 90vw;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+  overflow: hidden;
+  border: 1px solid var(--gsq-border);
+}
+
+.gsq-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--gsq-border);
+}
+
+.gsq-modal-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--gsq-text);
+}
+
+.gsq-modal-head button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--gsq-text-muted);
+}
+
+.gsq-modal-body {
+  padding: 14px 18px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.gsq-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--gsq-border);
+  color: var(--gsq-text);
+}
+
+.gsq-shortcut-row kbd {
+  background: var(--gsq-surface-subtle);
+  border: 1px solid var(--gsq-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11.5px;
+  font-family: monospace;
+}

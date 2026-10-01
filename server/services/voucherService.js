@@ -54,7 +54,7 @@ const createVoucher = async (orgId, data, col = COLLECTION_VOUCHERS) => {
         await ref.set({ ...finalData, createdAt: admin.firestore.FieldValue.serverTimestamp() });
         return { id: ref.id, ...finalData };
     }
-    return localStore.insert(COLLECTION_VOUCHERS, finalData);
+    return localStore.insert(col, finalData);
 };
 
 const getVouchersByType = async (orgId, type, col = COLLECTION_VOUCHERS) => {
@@ -72,7 +72,7 @@ const getVouchersByType = async (orgId, type, col = COLLECTION_VOUCHERS) => {
             return bTime - aTime;
         });
     }
-    return localStore.getAll(COLLECTION_VOUCHERS)
+    return localStore.getAll(col)
         .filter(v => v.orgId === orgId && v.type === type)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
@@ -88,7 +88,7 @@ const getAllVouchers = async (orgId, col = COLLECTION_VOUCHERS) => {
             return bTime - aTime;
         });
     }
-    return localStore.getAll(COLLECTION_VOUCHERS)
+    return localStore.getAll(col)
         .filter(v => v.orgId === orgId)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
@@ -103,7 +103,7 @@ const getVouchersByTruckAndDate = async (orgId, truckNo, paymentClearedDate, col
             .filter(d => d.truckNo === truckNo && d.paymentClearedDate === paymentClearedDate);
         return docs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     }
-    return localStore.getAll(COLLECTION_VOUCHERS)
+    return localStore.getAll(col)
         .filter(v => v.orgId === orgId && v.truckNo === truckNo && v.paymentClearedDate === paymentClearedDate)
         .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 };
@@ -152,7 +152,7 @@ const updateVoucher = async (id, data, col = COLLECTION_VOUCHERS) => {
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
     } else {
-        localStore.update(COLLECTION_VOUCHERS, id, payload);
+        localStore.update(col, id, payload);
     }
 };
 
@@ -160,7 +160,7 @@ const deleteVoucher = async (id, col = COLLECTION_VOUCHERS) => {
     if (firebaseAvailable()) {
         await db.collection(col).doc(id).delete();
     } else {
-        localStore.delete(COLLECTION_VOUCHERS, id);
+        localStore.delete(col, id);
     }
 };
 
@@ -170,7 +170,7 @@ const getVoucherById = async (id, col = COLLECTION_VOUCHERS) => {
         if (doc.exists) return { id: doc.id, ...doc.data() };
         return null;
     }
-    const all = localStore.getAll(COLLECTION_VOUCHERS);
+    const all = localStore.getAll(col);
     return all.find(v => v.id === id) || null;
 };
 

@@ -39,16 +39,16 @@ export const LEVEL_VALUES = LEVELS.map(l => l.value);
  * that remains reads through their APIs, so offering the permission would grant
  * a screen the user cannot reach.
  *
- * `vehicle`, `mileage` and `pay` stay because the screens that remain depend on
+ * `vehicle`, `market_vehicle`, `mileage` and `pay` stay because the screens that remain depend on
  * them and revoking would break real work rather than tidy the menu:
  *   vehicle  — the truck list on every LR, voucher and balance sheet, market
- *              vehicles included; the same Fleet Management module used at
- *              Jharli is also shown at all three dump godowns
+ *              the permanent read-only own-fleet view at all three dumps
+ *   market_vehicle — each location's separate third-party vehicle registry
  *   mileage  — the voucher form's last-odometer lookup, /mileage/last-km
  *   pay      — the freight batches a balance sheet reads. The standalone
  *              Vehicle Credit & Debit ledger is hidden at all three dumps.
  */
-const DUMP_SHARED = ['pay', 'balance_all', 'vehicle', 'mileage', 'sell'];
+const DUMP_SHARED = ['pay', 'balance_all', 'vehicle', 'market_vehicle', 'mileage', 'sell'];
 
 export const LOCATIONS = [
   {
@@ -63,7 +63,7 @@ export const LOCATIONS = [
       // Cashbook and Diesel are offered here and nowhere else — they are hidden
       // at the three dump godowns. The rest of this row is company-wide and now
       // lives in SHARED_GROUPS instead of being repeated per location.
-      { id: 'jharli_shared', label: 'Cash & Fuel', modules: ['cashbook', 'pay', 'balance_all', 'vehicle', 'diesel', 'mileage', 'sell', 'attendance'] },
+      { id: 'jharli_shared', label: 'Cash & Fuel', modules: ['cashbook', 'pay', 'balance_all', 'vehicle', 'market_vehicle', 'diesel', 'mileage', 'sell', 'attendance'] },
     ],
   },
   {
@@ -143,7 +143,8 @@ export const MODULES = [
   // modules/InvoiceModule.jsx both stay, and any account still carrying an
   // `invoice` grant keeps it untouched — put the key back here and in the
   // jharli_shared group above to bring the module back.
-  { key: 'vehicle', label: 'Fleet', hint: 'Vehicles, tyres, maintenance and market vehicles' },
+  { key: 'vehicle', label: 'Own Fleet', hint: 'Company-owned fleet details; dump locations receive a permanent read-only view' },
+  { key: 'market_vehicle', label: 'Market Vehicles', hint: 'Location-specific third-party vehicle registry for Jharli, Kosli, Jhajjar and Bahadurgarh' },
   { key: 'diesel', label: 'Diesel Control', hint: 'Fuel issues, pump ledgers and diesel rates' },
   { key: 'mileage', label: 'Mileage Tracker', hint: 'Odometer readings and kilometres per litre' },
   { key: 'sell', label: 'Sell', hint: 'Material sale entries and the buyer ledger' },
@@ -200,7 +201,7 @@ export const locationsForKey = (key) =>
  */
 export const SHARED_GROUPS = [
   { id: 'shared_lr', label: 'Loading Receipts', modules: ['lr_dump'] },
-  { id: 'shared_fleet', label: 'Fleet & People', modules: ['vehicle', 'mileage'] },
+  { id: 'shared_fleet', label: 'Fleet & People', modules: ['vehicle', 'market_vehicle', 'mileage'] },
   { id: 'shared_money', label: 'Money & Trading', modules: ['pay', 'balance_all', 'sell'] },
 ];
 
