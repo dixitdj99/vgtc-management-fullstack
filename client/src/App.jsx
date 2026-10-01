@@ -148,7 +148,8 @@ function AppInner() {
   const [expanded, setExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem('vgtc-expanded');
-      return saved ? JSON.parse(saved) : { [localStorage.getItem('vgtc-active')]: true };
+      const open = saved ? JSON.parse(saved) : {};
+      return open?.[active] ? { [active]: true } : {};
     } catch { return {}; }
   });
   const [col, setCol] = useState(false);
@@ -358,6 +359,14 @@ function AppInner() {
     localStorage.setItem('vgtc-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    const handleCustomTheme = (e) => {
+      if (e?.detail && e.detail !== theme) setTheme(e.detail);
+    };
+    window.addEventListener('vgtc-theme-change', handleCustomTheme);
+    return () => window.removeEventListener('vgtc-theme-change', handleCustomTheme);
+  }, [theme]);
+
     // Persist navigation state
     useEffect(() => {
         localStorage.setItem('vgtc-active', active);
@@ -371,10 +380,9 @@ function AppInner() {
             const { active: newActive, subActive: newSubActive, search } = e.detail || {};
             if (newActive) {
                 setActive(newActive);
+                setExpanded(newSubActive ? { [newActive]: true } : {});
                 if (newSubActive !== undefined) {
                     setSubActive(newSubActive);
-                    // Expand the parent's sub-menu so the sidebar reflects the jump
-                    if (newSubActive) setExpanded(prev => ({ ...prev, [newActive]: true }));
                 }
                 if (search) {
                     // Store search term in localStorage for the target module to pick up
@@ -515,36 +523,36 @@ function AppInner() {
     {
       id: 'stock_kosli', label: 'Kosli Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli', sub: [
         { id: 'overview', label: 'Overview' },
-        { id: 'migo', label: 'MIGO (Stock Entry)' },
-        { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
         { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
+    { id: 'migo_kosli', label: 'Kosli MIGO', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli' },
+    { id: 'challan_kosli', label: 'Kosli Challan', Icon: FileCheck, color: '#6366f1', section: 'jksuper', permKey: 'stock_kosli' },
     {
       id: 'stock_jhajjar', label: 'Jhajjar Stock', Icon: Package, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar', sub: [
         { id: 'overview', label: 'Overview' },
-        { id: 'migo', label: 'MIGO (Stock Entry)' },
-        { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
         { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
+    { id: 'migo_jhajjar', label: 'Jhajjar MIGO', Icon: ClipboardList, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar' },
+    { id: 'challan_jhajjar', label: 'Jhajjar Challan', Icon: FileCheck, color: '#6366f1', section: 'jksuper', permKey: 'stock_jhajjar' },
     {
-      id: 'stock_bahadurgarh', label: 'Bahadurgarh Stock', Icon: Package, color: '#d97706', section: 'jksuper', permKey: 'stock_bahadurgarh', sub: [
+      id: 'stock_bahadurgarh', label: 'Bahadurgarh Stock', Icon: Package, color: '#2563eb', section: 'jksuper', permKey: 'stock_bahadurgarh', sub: [
         { id: 'overview', label: 'Overview' },
-        { id: 'migo', label: 'MIGO (Stock Entry)' },
-        { id: 'challan', label: 'Create Challan' },
         { id: 'history', label: 'History' },
         { id: 'transfer', label: 'Transfer Stock' },
         { id: 'set_bags', label: 'Set Bags' },
         { id: 'party_summary', label: 'Party Summary' },
       ]
     },
+    { id: 'migo_bahadurgarh', label: 'Bahadurgarh MIGO', Icon: ClipboardList, color: '#2563eb', section: 'jksuper', permKey: 'stock_bahadurgarh' },
+    { id: 'challan_bahadurgarh', label: 'Bahadurgarh Challan', Icon: FileCheck, color: '#2563eb', section: 'jksuper', permKey: 'stock_bahadurgarh' },
     {
       id: 'cashbook_dump', label: 'Cashbook', Icon: BookOpen, color: '#10b981', section: 'jksuper', permKey: 'cashbook', sub: [
         { id: 'ledger', label: 'Full Ledger' },
@@ -697,6 +705,21 @@ function AppInner() {
    */
   const navKey = FULL_NAV.map(n => n.id).join(',');
   useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/receipt/')) { document.title = 'VGTC : Receipt'; return; }
+    if (path.startsWith('/admin')) { document.title = 'VGTC : Admin'; return; }
+    if (path === '/loading-status') { document.title = 'VGTC : Loading Status'; return; }
+    if (path === '/labour') { document.title = 'VGTC : Labour'; return; }
+    if (path === '/terminal' || path === '/vgtc-os' || path === '/kiosk') { document.title = 'VGTC : Terminal'; return; }
+    const module = FULL_NAV.find(n => n.id === active);
+    if (active === 'dashboard') {
+      document.title = 'Vikas Goods Transport';
+      return;
+    }
+    const section = module?.sub?.find(s => s.id === subActive)?.label;
+    document.title = `VGTC : ${module?.label || 'Module'}${section ? ` - ${section}` : ''}`;
+  }, [active, subActive, navKey]);
+  useEffect(() => {
     if (!ready || !user) return;                       // nav is empty until both land
     if (active === 'dashboard' || active === 'admin_settings') return;
     if (!filteredNavIds.has(active)) setActive('dashboard');
@@ -773,8 +796,14 @@ function AppInner() {
       {id === 'cashbook_jharli' && <CashbookModule role={user.role} permissions={user.permissions} initialTab={sub || 'ledger'} moduleType="jkl" />}
       {id === 'vehicle_credit_debit_jharli' && <VehicleCreditDebitModule cashbookType="jkl" />}
       {id === 'stock_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="kosli" />}
+      {id === 'migo_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab="migo" standaloneTab="migo" brand="kosli" />}
+      {id === 'challan_kosli' && <StockModule role={user.role} permissions={user.permissions} initialTab="challan" standaloneTab="challan" brand="kosli" />}
       {id === 'stock_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jhajjar" />}
+      {id === 'migo_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab="migo" standaloneTab="migo" brand="jhajjar" />}
+      {id === 'challan_jhajjar' && <StockModule role={user.role} permissions={user.permissions} initialTab="challan" standaloneTab="challan" brand="jhajjar" />}
       {id === 'stock_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="bahadurgarh" />}
+      {id === 'migo_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab="migo" standaloneTab="migo" brand="bahadurgarh" />}
+      {id === 'challan_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab="challan" standaloneTab="challan" brand="bahadurgarh" />}
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
       {id === 'vehicles_dump' && (DUMP_GODOWNS.has(godown) ? <OwnFleetView /> : <VehicleModule role={user.role} permissions={user.permissions} />)}
       {(id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule role={user.role} permissions={user.permissions} />}
@@ -890,7 +919,7 @@ function AppInner() {
               const dumpSites = [
                 { id: 'kosli', label: 'Kosli', color: '#6366f1' },
                 { id: 'jhajjar', label: 'Jhajjar', color: '#14b8a6' },
-                { id: 'bahadurgarh', label: 'Bahadurgarh', color: '#d97706' },
+                { id: 'bahadurgarh', label: 'Bahadurgarh', color: '#2563eb' },
               ].filter(s => canAccess(s.id));
 
               const handleGodownSwitch = (targetGodown) => {
@@ -900,6 +929,7 @@ function AppInner() {
                 // If currently viewing a godown-specific stock module, switch to the new godown's stock module
                 if (active === 'stock_kosli' || active === 'stock_jhajjar' || active === 'stock_bahadurgarh') {
                   setActive(`stock_${targetGodown}`);
+                  setExpanded({ [`stock_${targetGodown}`]: true });
                 }
               };
 
@@ -907,7 +937,7 @@ function AppInner() {
                 <div style={{ padding: '8px 10px 6px' }}>
                   <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>Active Site / Godown</span>
-                    <span style={{ color: godown === 'jhajjar' ? '#14b8a6' : godown === 'bahadurgarh' ? '#d97706' : '#6366f1', fontWeight: 900 }}>
+                    <span style={{ color: godown === 'jhajjar' ? '#14b8a6' : godown === 'bahadurgarh' ? '#2563eb' : '#6366f1', fontWeight: 900 }}>
                       ● {godown ? godown.toUpperCase() : 'KOSLI'}
                     </span>
                   </div>
@@ -952,8 +982,8 @@ function AppInner() {
             }
 
             return (
-              <div style={{ padding: '8px 14px 6px', fontSize: '9px', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#f59e0b', opacity: 0.85, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+              <div style={{ padding: '8px 14px 6px', fontSize: '9px', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#2563eb', opacity: 0.85, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563eb', display: 'inline-block' }} />
                 Jharli Dump & Plant
               </div>
             );
@@ -970,12 +1000,13 @@ function AppInner() {
                       if (col) setCol(false);
                       setShowMobileMenu(false); // Close on click for mobile
                       if (sub) {
-                        setExpanded(e => ({ ...e, [id]: !e[id] }));
+                        setExpanded(e => e[id] ? {} : { [id]: true });
                         if (active !== id) {
                           setActive(id);
                           setSubActive(sub[0].id);
                         }
                       } else {
+                        setExpanded({});
                         setActive(id);
                         setSubActive('');
                       }
@@ -1015,7 +1046,7 @@ function AppInner() {
                     >
                       {sub.map(s => (
                         <button key={s.id}
-                          onClick={() => { setActive(id); setSubActive(s.id); setShowMobileMenu(false); }}
+                          onClick={() => { setActive(id); setSubActive(s.id); setExpanded({ [id]: true }); setShowMobileMenu(false); }}
                           style={{
                             background: active === id && subActive === s.id ? `${color}12` : 'transparent',
                             border: 'none', padding: '7px 12px', borderRadius: '6px', cursor: 'pointer',
@@ -1131,31 +1162,6 @@ function AppInner() {
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Jharli</span>
             </div>
-
-            {/* Observability & Status Link */}
-            <a
-              href="/status"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="System Observability & Status"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                marginRight: '10px',
-                padding: '5px 10px',
-                borderRadius: '8px',
-                background: 'rgba(16, 185, 129, 0.1)',
-                border: '1px solid rgba(16, 185, 129, 0.25)',
-                color: '#10b981',
-                fontSize: '11.5px',
-                fontWeight: 700,
-                textDecoration: 'none',
-              }}
-            >
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-              <span>Status</span>
-            </a>
 
             {/* Notifications Bell Icon */}
             <div ref={notifRef} style={{ position: 'relative', marginRight: '10px' }}>
@@ -1826,6 +1832,15 @@ function nativeExitApp() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/sheet/')) document.title = 'VGTC : Sheet';
+    else if (path.startsWith('/status')) document.title = 'VGTC : Status';
+    else if (path.startsWith('/receipt/')) document.title = 'VGTC : Receipt';
+    else if (path.startsWith('/admin')) document.title = 'VGTC : Admin';
+    else if (path === '/loading-status') document.title = 'VGTC : Loading Status';
+    else if (path === '/labour') document.title = 'VGTC : Labour';
+  }, []);
   // ── When running as the Android APK (Capacitor), go straight to the
   // attendance terminal — skip auth, routing, management UI entirely.
   // window.Capacitor is always set by the Capacitor WebView bridge.

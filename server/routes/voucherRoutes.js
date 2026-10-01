@@ -7,6 +7,9 @@ const driveService = require('../utils/driveService');
 const { tenancyMiddleware } = require('../middleware/tenancyMiddleware');
 const { requireAuth } = require('../middleware/auth');
 const { sendEventNotification, lookupVehicleInfo, lookupVehiclePhone, getWhatsAppConfig } = require('../utils/whatsappService');
+const { db, isAvailable } = require('../firebase');
+const localStore = require('../utils/localStore');
+const { validateBillDetails, billLrNumbers } = require('../services/lrBillService');
 
 // Apply tenancy to all routes in this router
 router.use(requireAuth, tenancyMiddleware);
@@ -27,9 +30,46 @@ const syncVoucherVehicle = (req) => vehicleService.ensureOrUpdateVehicleContacts
     marketLocation: marketLocationForVoucher(req.body.type),
 }, getCol(VEHICLE_COL, req));
 
+const LR_COLLECTION_FOR_BILL = {
+    Kosli_Bill: 'kosli_loading_receipts',
+    Jajjhar_Bill: 'jhajjar_loading_receipts',
+    Bahadurgarh_Bill: 'bahadurgarh_loading_receipts',
+};
+
+async function validateBillHasReceipt(req) {
+    if (req.user?.isSandbox) return;
+    const base = LR_COLLECTION_FOR_BILL[req.body?.type];
+    if (!base) return;
+    const lrNo = String(req.body?.lrNo || '').trim();
+    if (!lrNo) { const error = new Error('Select an existing loading receipt before creating a bill'); error.status = 400; throw error; }
+    const lrCollection = getCol(base, req);
+    const receipts = isAvailable()
+        ? (await db.collection(lrCollection).where('orgId', '==', req.orgId).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        : localStore.getAll(lrCollection).filter(row => row.orgId === req.orgId);
+    const receipt = receipts.find(row => String(row.lrNo) === lrNo);
+    if (!receipt) {
+        const error = new Error(`Loading receipt #${lrNo} does not exist for this godown. Manual bill creation only works if a loading receipt has already been created for that LR.`);
+        error.status = 400;
+        throw error;
+    }
+    req.body.lrEntryId = receipt.entryId;
+    req.body.entryId = receipt.entryId;
+    req.body.sourceLrId = receipt.id;
+    if (req.body.hasCommission === undefined) req.body.hasCommission = true;
+    if ((req.body.commission === undefined || req.body.commission === '') && req.body.bags) {
+        req.body.commission = Number((Number(req.body.bags) * 1.5).toFixed(2));
+    }
+    if (req.body.rate === undefined) req.body.rate = '';
+    const existing = await voucherService.getVouchersByType(req.orgId, req.body.type, getCol(BASE_COL, req));
+    if (existing.some(v => billLrNumbers(v).includes(lrNo))) {
+        const error = new Error(`Bill for LR #${lrNo} already exists`); error.status = 409; throw error;
+    }
+}
+
 // ─── Create ───────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
+        await validateBillHasReceipt(req);
         if (req.body?.plant === 'jharli' && req.body?.ownershipType === 'self' && !String(req.body?.driverId || '').trim()) {
             return res.status(400).json({ error: 'Driver is required for own-fleet Jharli vouchers' });
         }
@@ -120,7 +160,7 @@ router.post('/', async (req, res) => {
         const { backupVoucher } = require('../utils/realtimeBackup');
         backupVoucher({ ...savedBody, ...savedResult }, { brand: savedBody.brand, type: savedBody.type });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 

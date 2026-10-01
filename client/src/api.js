@@ -135,7 +135,9 @@ ax.interceptors.request.use(async (config) => {
         invalidateCache(base);
         // Invoice generate/edit/delete also mark/unmark balance-sheet vouchers
         // server-side — a stale voucher cache would mis-filter the next upload.
-        if (base === '/invoices') invalidateCache('/vouchers');
+        if (base === '/invoices' || config.url.includes('/lr') || config.url.includes('/stock')) {
+            invalidateCache('/vouchers');
+        }
     }
 
     // ── Offline write queue ───────────────────────────────────────────────

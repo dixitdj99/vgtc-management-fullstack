@@ -97,14 +97,19 @@ const localStore = {
         writeCollection(collection, filtered);
     },
 
-    getCounter(name) {
+    getCounter(name, base = 0) {
         ensureDir();
         const file = path.join(DATA_DIR, '_counters.json');
         let counters = {};
         if (fs.existsSync(file)) {
             try { counters = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { }
         }
-        counters[name] = (counters[name] || 0) + 1;
+        const current = counters[name];
+        if (current === undefined || (base > 0 && (current < base || current > 9999))) {
+            counters[name] = base > 0 ? base + 1 : 1;
+        } else {
+            counters[name] = current + 1;
+        }
         try {
             fs.writeFileSync(file, JSON.stringify(counters, null, 2), 'utf8');
         } catch (e) {

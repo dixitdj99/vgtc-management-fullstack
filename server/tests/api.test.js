@@ -1903,13 +1903,25 @@ test('labour: a Direct load earns nothing, and the other two earn their own rate
     'the two loading rates must differ — that is why they are separate keys');
 });
 
-test('labour: at MIGO only a godown unload is charged', async () => {
-  // Deliberately different from the loading side: a crossing at the gate is
-  // bags moved between trucks, a crossing arriving is a truck passing through.
+test('labour: MIGO crossing unload is charged only for dump locations', async () => {
   const svc = require('../utils/labourAccountService');
   assert(svc.UNLOADING_ACTIVITY['Godown Unload'] === 'godown_unload', 'a godown unload must be paid');
-  assert(svc.UNLOADING_ACTIVITY['Crossing'] === null, 'a crossing on the way in earns nothing');
+  assert(svc.unloadingActivity('Crossing', 'dump') === 'crossing_unload', 'dump crossing must be paid');
+  assert(svc.unloadingActivity('Crossing', 'jharli') === null, 'Jharli crossing must retain its rule');
   assert(svc.UNLOADING_ACTIVITY['Direct'] === null, 'a direct delivery earns nothing');
+  assert(svc.unloadingActivity(undefined, 'dump') === 'godown_unload', 'older MIGO entries remain godown unloads');
+});
+
+test('labour: old dump rates fund crossing unload until separately priced', async () => {
+  const svc = require('../utils/labourAccountService');
+  const migrated = svc.sanitiseRates(RATES);
+  assert(svc.rateFor(migrated, 'dump', 'PPC', 'crossing_unload') === 1.5,
+    'crossing unload must use the existing dump unload rate before a new rate is set');
+  assert(svc.rateFor(migrated, 'jharli', 'PPC', 'crossing_unload') === 0,
+    'Jharli rates must not be changed');
+  const custom = svc.sanitiseRates({ groups: { dump: { default: { godown_unload: 1.5, crossing_unload: 2.5 } } } });
+  assert(svc.rateFor(custom, 'dump', 'PPC', 'crossing_unload') === 2.5,
+    'explicit crossing unload rate must replace fallback');
 });
 
 test('labour: a priced material beats the default, and one without falls back', async () => {
@@ -3315,7 +3327,7 @@ test('migo: the arrival list shows how it was unloaded', async () => {
     'the "no arrivals" row spans the wrong number of columns');
 });
 
-test('migo: only a godown unload is charged to labour', async () => {
+test('migo: dump crossings are charged and Jharli crossings are not', async () => {
   // The colour on the list is a claim about money, so it has to agree with the
   // service that actually bills it.
   const svc = require('fs').readFileSync(
@@ -3330,8 +3342,8 @@ test('migo: only a godown unload is charged to labour', async () => {
   const ui = require('fs').readFileSync(
     require('path').join(__dirname, '..', '..', 'client', 'src', 'modules', 'StockModule.jsx'), 'utf8');
   const table = ui.slice(ui.indexOf('Stock Arrival History (MIGO)'));
-  assert(/paid = t === 'Godown Unload'/.test(table),
-    'the list decides "paid" on something other than a godown unload');
+  assert(/paid = t === 'Godown Unload' \|\| \(brand !== 'jkl' && t === 'Crossing'\)/.test(table),
+    'the list must show dump crossings as charged without changing Jharli');
 });
 
 /** Width, height and colour type straight out of the PNG header. */

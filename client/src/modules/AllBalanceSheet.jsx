@@ -45,7 +45,7 @@ const API_V = '/vouchers';
 export const TYPE_META = {
   Kosli_Bill: { label: 'Kosli Bill', short: 'Kosli', permKey: 'balance_kosli', color: '#6366f1' },
   Jajjhar_Bill: { label: 'Jhajjar Bill', short: 'Jhajjar', permKey: 'balance_jhajjar', color: '#0ea5e9' },
-  Bahadurgarh_Bill: { label: 'Bahadurgarh Bill', short: 'Bahadurgarh', permKey: 'balance_bahadurgarh', color: '#d97706' },
+  Bahadurgarh_Bill: { label: 'Bahadurgarh Bill', short: 'Bahadurgarh', permKey: 'balance_bahadurgarh', color: '#2563eb' },
   JK_Super: { label: 'JK Super', short: 'JK Super', permKey: 'balance_jksuper', color: '#10b981' },
   Dump: { label: 'JKL Dump', short: 'JKL Dump', permKey: 'balance_jkl_dump', color: '#f59e0b' },
   JK_Lakshmi: { label: 'JK Lakshmi', short: 'JK Lakshmi', permKey: 'balance_jkl', color: '#f43f5e' },

@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "node --test tests/whatsappAiService.test.js tests/whatsappAiWebhook.test.js tests/metaWebhookSignature.test.js tests/whatsappConfigPersistence.test.js tests/sheetDefinitions.test.js && node tests/api.test.js"
+    "test": "node --test tests/whatsappAiService.test.js tests/whatsappAiWebhook.test.js tests/metaWebhookSignature.test.js tests/whatsappConfigPersistence.test.js tests/sheetDefinitions.test.js tests/sheetEditApi.test.js tests/lrBillService.test.js tests/lrBillWorkflow.test.js tests/challanNumber.test.js tests/challanNumberTransaction.test.js && node tests/api.test.js"
   },
   "dependencies": {
     "axios": "^1.13.6",

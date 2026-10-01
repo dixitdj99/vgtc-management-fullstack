@@ -91,7 +91,7 @@ export const LOCATIONS = [
   {
     id: 'bahadurgarh',
     label: 'Bahadurgarh Dump',
-    color: '#d97706',
+    color: '#2563eb',
     plantKey: 'jksuper',
     godownKey: 'bahadurgarh',
     groups: [

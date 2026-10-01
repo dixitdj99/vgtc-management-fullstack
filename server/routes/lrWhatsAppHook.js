@@ -305,6 +305,48 @@ async function linkChallanToLr({ lrId, challanNo, quantity, material, lrCollecti
         await stockService.syncLRWithChallans(orgId, '', cleanCNo, material || receipt.material, deductQty, cCol);
     }
 
+    // 3b. Update linked Bill with challan billNo and partyCode if missing
+    try {
+        const { voucherCollectionForLr } = require('../services/lrBillService');
+        const voucherCol = voucherCollectionForLr(lrCollection);
+        if (voucherCol) {
+            const { db, isAvailable } = require('../firebase');
+            const localStore = require('../utils/localStore');
+            const challanRows = isAvailable()
+                ? (await db.collection(cCol).where('orgId', '==', orgId).get()).docs.map(d => ({ id: d.id, ...d.data() }))
+                : localStore.getAll(cCol).filter(c => c.orgId === orgId);
+            const chDoc = challanRows.find(c => String(c.challanNo).trim() === cleanCNo);
+
+            const voucherRows = isAvailable()
+                ? (await db.collection(voucherCol).where('orgId', '==', orgId).get()).docs.map(d => ({ id: d.id, ...d.data() }))
+                : localStore.getAll(voucherCol).filter(v => v.orgId === orgId);
+            const matchedVoucher = voucherRows.find(v =>
+                v.id === lrId ||
+                v.sourceLrId === lrId ||
+                (v.lrNo && String(v.lrNo).split(',').map(s => s.trim()).includes(String(receipt.lrNo)))
+            );
+
+            if (matchedVoucher) {
+                const patch = {};
+                if (chDoc?.billNo && (!matchedVoucher.billNo || !String(matchedVoucher.billNo).trim())) {
+                    patch.billNo = chDoc.billNo;
+                }
+                if (chDoc?.partyCode && (!matchedVoucher.partyCode || !String(matchedVoucher.partyCode).trim())) {
+                    patch.partyCode = chDoc.partyCode;
+                }
+                if (Object.keys(patch).length > 0) {
+                    if (isAvailable()) {
+                        await db.collection(voucherCol).doc(matchedVoucher.id).update(patch);
+                    } else {
+                        localStore.update(voucherCol, matchedVoucher.id, patch);
+                    }
+                }
+            }
+        }
+    } catch (billSyncErr) {
+        console.warn('[linkChallanToLr] Bill update warning:', billSyncErr.message);
+    }
+
     // 4. Send WhatsApp notifications
     const chBags = deductQty;
     const chWeight = (chBags * 0.05).toFixed(2);

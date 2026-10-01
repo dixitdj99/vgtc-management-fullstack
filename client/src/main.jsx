@@ -12,12 +12,21 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', color: '#f43f5e', background: '#0f0f0f', minHeight: '100vh' }}>
-          <h2>Something went wrong</h2>
-          <p style={{ fontSize: '14px', marginTop: '8px', color: '#9ca3af' }}>An unexpected error occurred. Please try reloading the page.</p>
-          <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            Reload Page
-          </button>
+        <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', color: '#f43f5e', background: 'var(--bg, #0f0f0f)', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ maxWidth: '480px', background: 'var(--bg-card, #1e293b)', padding: '32px', borderRadius: '16px', border: '1px solid rgba(244,63,94,0.3)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+            <h2 style={{ margin: '0 0 10px 0', fontSize: '20px', color: '#f43f5e' }}>Something went wrong</h2>
+            <p style={{ fontSize: '13px', margin: '0 0 16px 0', color: 'var(--text-sub, #9ca3af)' }}>
+              {this.state.error?.message || 'An unexpected display error occurred.'}
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button onClick={() => this.setState({ error: null })} style={{ padding: '9px 18px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}>
+                Try Again
+              </button>
+              <button onClick={() => window.location.reload()} style={{ padding: '9px 18px', background: 'transparent', color: 'var(--text, #fff)', border: '1px solid var(--border, #475569)', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '12px' }}>
+                Reload Page
+              </button>
+            </div>
+          </div>
         </div>
       );
     }

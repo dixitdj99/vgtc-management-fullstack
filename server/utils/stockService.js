@@ -10,6 +10,17 @@ const CCOL = 'challans';
 const MCOL = 'materials';
 const SETCOL = 'set_stock';
 
+const isFiveDigitChallanCollection = cCol => /(?:^|_)(kosli|jhajjar|bahadurgarh)_challans$/.test(cCol);
+
+const nextFiveDigitChallanNo = (challans, lastNumber = 0) => {
+    const highest = challans.reduce((max, challan) => {
+        const match = /^(?:CH-)?(\d{1,5})$/.exec(String(challan.challanNo || '').trim());
+        return match ? Math.max(max, Number(match[1])) : max;
+    }, Number(lastNumber) || 0);
+    if (highest >= 99999) throw new Error('Five-digit challan number range exhausted');
+    return String(highest + 1).padStart(5, '0');
+};
+
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
 const firestoreAddStock = async (orgId, data, sCol) => {
@@ -40,10 +51,34 @@ const firestoreCreateChallan = async (orgId, data, cCol) => {
     return { id: ref.id, ...data };
 };
 
+// Counter and challan document commit together. The first transaction reads
+// existing challans so an upgraded godown continues beyond legacy CH-0001 data.
+const firestoreCreateFiveDigitChallan = async (orgId, data, cCol) => {
+    const collection = db.collection(cCol);
+    const ref = collection.doc();
+    const counterRef = db.collection('challan_counters').doc(`${cCol}_${orgId}`);
+    return db.runTransaction(async transaction => {
+        const counter = await transaction.get(counterRef);
+        let seed = [];
+        if (!counter.exists) {
+            const existing = await transaction.get(collection.where('orgId', '==', orgId));
+            seed = existing.docs.map(doc => doc.data());
+        }
+        const number = nextFiveDigitChallanNo(seed, counter.exists ? counter.data().lastNumber : 0);
+        transaction.set(counterRef, { lastNumber: Number(number), orgId, collection: cCol });
+        transaction.set(ref, {
+            ...data, challanNo: number, orgId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return { id: ref.id, ...data, challanNo: number };
+    });
+};
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 module.exports = {
     MATERIALS,
+    nextFiveDigitChallanNo,
     
     getMaterialsList: async (orgId, col = MCOL) => {
         if (firebaseAvailable()) {
@@ -290,7 +325,12 @@ module.exports = {
     },
 
     createChallan: async (orgId, data, cCol = CCOL, allowedMaterialsCol = MCOL) => {
-        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity, factoryCode } = data;
+        let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity, factoryCode, lrNo } = data;
+        // An optional LR link is separate from the challan's own number.
+        const fiveDigit = isFiveDigitChallanCollection(cCol);
+        const lrLink = fiveDigit
+            ? { lrNo: String(lrNo || '').trim() }
+            : {};
         const normalizedPartyName = normalizePartyName(partyName || '');
         // The loading gate the bags came off — FC1, FC5 and so on. Typed by
         // hand off the slip, so it is upper-cased and trimmed here rather than
@@ -318,26 +358,28 @@ module.exports = {
         if (!truckNo) throw new Error('Truck number required');
 
         if (firebaseAvailable()) {
-            let finalChallanNo = challanNo;
-            if (!finalChallanNo) {
-                const snap = await db.collection(cCol).where('orgId', '==', orgId).get();
-                finalChallanNo = 'CH-' + String(snap.size + 1).padStart(4, '0');
-            }
-            return await firestoreCreateChallan(orgId, {
-                challanNo: finalChallanNo, truckNo, materials: cleanMaterials,
+            const payload = {
+                truckNo, materials: cleanMaterials,
                 partyName: normalizedPartyName,
                 partyCode: partyCode || '',
                 billNo: billNo || '',
                 destination: destination || '',
                 factoryCode: cleanFactoryCode,
                 date: date || new Date().toISOString().slice(0, 10),
-                remark: remark || '', status: 'open'
-            }, cCol);
+                remark: remark || '', status: 'open', ...lrLink
+            };
+            if (fiveDigit) return firestoreCreateFiveDigitChallan(orgId, payload, cCol);
+            let finalChallanNo = challanNo;
+            if (!finalChallanNo) {
+                const snap = await db.collection(cCol).where('orgId', '==', orgId).get();
+                finalChallanNo = 'CH-' + String(snap.size + 1).padStart(4, '0');
+            }
+            return await firestoreCreateChallan(orgId, { challanNo: finalChallanNo, ...payload }, cCol);
         }
 
         const existing = localStore.getAll(cCol).filter(c => c.orgId === orgId);
-        let finalChallanNo = challanNo;
-        if (!finalChallanNo) {
+        let finalChallanNo = fiveDigit ? nextFiveDigitChallanNo(existing) : challanNo;
+        if (!fiveDigit && !finalChallanNo) {
             finalChallanNo = 'CH-' + String(existing.length + 1).padStart(4, '0');
         }
         return localStore.insert(cCol, {
@@ -349,7 +391,7 @@ module.exports = {
             destination: destination || '',
             factoryCode: cleanFactoryCode,
             date: date || new Date().toISOString().slice(0, 10),
-            remark: remark || '', status: 'open'
+            remark: remark || '', status: 'open', ...lrLink
         });
     },
 

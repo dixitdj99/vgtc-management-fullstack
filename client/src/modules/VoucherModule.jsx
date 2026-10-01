@@ -4,7 +4,8 @@ import ax from '../api';
 import { cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Search, MapPin, Building2, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation } from 'lucide-react';
+import { FileText, Search, MapPin, Building2, Fuel, CreditCard, Wallet, Pencil, Trash2, Printer, Check, X, AlertTriangle, Plus, Filter, ChevronDown, ChevronUp, Download, Droplet, ArrowRight, Printer as PrinterIcon, Loader2, Gauge, Navigation, Moon, Sun } from 'lucide-react';
+import './lrEntryForm.css';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import StyledAutocomplete from '../components/StyledAutocomplete';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
@@ -542,21 +543,32 @@ function printVoucher(v, org = {}, brand = '', signedBy = 'VGTC', isCng = false,
             </thead>
             <tbody>
                 ${(() => {
-                const mats = (v.materials && v.materials.length > 0)
-                    ? v.materials
-                    : [{ type: v.materialName || 'CEMENT', bags: v.bags, weight: v.weight }];
+                const mats = (v.deliveries && v.deliveries.length > 0)
+                    ? v.deliveries.map((delivery, index) => ({
+                        type: delivery.material || v.materials?.[index]?.type || v.materialName || 'CEMENT',
+                        bags: delivery.bags,
+                        weight: delivery.weight,
+                        lrNo: delivery.lrNo,
+                        destination: delivery.destination,
+                        rate: delivery.rate,
+                    }))
+                    : (v.materials && v.materials.length > 0)
+                        ? v.materials
+                        : [{ type: v.materialName || 'CEMENT', bags: v.bags, weight: v.weight }];
                 const rowspan = mats.length;
                 return mats.map((mat, idx) => `
                     <tr class="body-row" style="height: ${Math.max(80, Math.floor(160 / rowspan))}px;">
                         <td style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${mat.bags || ''}</td>
                         <td class="desc-text" style="border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">
                             CEMENT${mat.type ? ' - ' + mat.type : ''}<br>
+                            ${mat.lrNo ? 'LR No. ' + mat.lrNo + '<br>' : ''}
+                            ${mat.destination ? 'To ' + mat.destination + '<br>' : ''}
                             Grade<br>
                             <b><i>J.K. Super Cement</i></b><br>
                             ${idx === 0 ? 'Bill No. : ' + (v.billNo || '') + '<br>Shipment No. :<br>D.I. No.' : ''}
                         </td>
                         <td colspan="2" style="text-align: center; font-size: 13px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${parseFloat(mat.weight || 0).toFixed(2)} MT</td>
-                        <td style="text-align: center; font-size: 12px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${idx === 0 ? (v.rate || '') : ''}</td>
+                        <td style="text-align: center; font-size: 12px; border-bottom: ${idx < rowspan - 1 ? '1px dashed #ccc' : 'none'};">${mat.rate || (idx === 0 ? (v.rate || '') : '')}</td>
                         ${idx === 0 ? `
                         <td colspan="2" class="advance-cell" rowspan="${rowspan}">Advance = <br/>${isBill ? '—' : (n.dieselPending ? 'FULL (Pending)' : (!n.totalDeductions ? '—' : 'Rs.' + Math.round(n.totalDeductions).toLocaleString()))}</td>
                         <td class="billed-cell" rowspan="${rowspan}">To<br>be<br>Billed<br/><br/>
@@ -1248,6 +1260,37 @@ function DeleteConfirm({ v, onClose, onConfirm }) {
     );
 }
 
+class ModuleErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+    componentDidCatch(error, errorInfo) {
+        console.error('[ModuleErrorBoundary caught]:', error, errorInfo);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: '24px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '12px', margin: '16px 0', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#f43f5e', fontWeight: 800, fontSize: '15px', marginBottom: '8px' }}>
+                        <AlertTriangle size={18} /> Error Displaying Form
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginBottom: '16px' }}>
+                        {this.state.error?.message || 'A display error occurred. Please try again.'}
+                    </div>
+                    <button className="btn btn-p" onClick={() => this.setState({ hasError: false, error: null })}>
+                        Try Again
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 /* ══════════════════════════════════════════════════
    MAIN COMPONENT
    ══════════════════════════════════════════════════ */
@@ -1276,6 +1319,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     const [saving, setSaving] = useState(false);
     const [lrMaterials, setLrMaterials] = useState([]);
     const [lrAlreadyUsed, setLrAlreadyUsed] = useState(false);
+    const [lrNotFound, setLrNotFound] = useState(false);
     const [editVoucher, setEditVoucher] = useState(null);
     const [delVoucher, setDelVoucher] = useState(null);
     // Opens on the list. The form was taking the whole first screen on a module
@@ -1298,7 +1342,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
     const [profiles, setProfiles] = useState([]);
     const pumpOptions = useMemo(() => {
-        const names = profiles
+        const names = (Array.isArray(profiles) ? profiles : [])
             .filter(p => p.type?.toLowerCase() === 'pump')
             .map(p => p.name);
         return [NONE_PUMP, ...new Set(names)];
@@ -1307,7 +1351,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     // Recording who actually drove is what lets attendance be derived instead of
     // marked by hand — see server/services/attendanceService.js.
     const driverOptions = useMemo(
-        () => profiles
+        () => (Array.isArray(profiles) ? profiles : [])
             .filter(p => p.type === 'Driver' && !p.dateExit)
             .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
         [profiles]
@@ -1518,8 +1562,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
     };
 
     const knownPartyNames = useMemo(() => buildPartySuggestions(
-        vouchers.map(v => v.partyName),
-        lrMaterials.map(m => m.partyName)
+        (Array.isArray(vouchers) ? vouchers : []).map(v => v.partyName),
+        (Array.isArray(lrMaterials) ? lrMaterials : []).map(m => m.partyName)
     ), [vouchers, lrMaterials]);
 
     // Collect ALL used LR numbers from existing vouchers (top-level + delivery rows)
@@ -1626,6 +1670,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
             const all = (await ax.get(lrEndpoint)).data;
             const rows = all.filter(l => lrNumbers.includes(String(l.lrNo)));
             if (rows.length > 0) {
+                setLrNotFound(false);
                 setLrMaterials(rows);
                 const tw = rows.reduce((s, r) => s + (parseFloat(r.weight) || 0), 0);
                 const tb = rows.reduce((s, r) => s + (parseInt(r.totalBags) || 0), 0);
@@ -1643,10 +1688,13 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
 
                 const assignedDriver = defaultDriverForTruck(truck);
                 const fetchedDate = rows[0].date || form.date;
-                const autoRate = (rows[0].freightRate || rows[0].rate)
-                    ? String(rows[0].freightRate || rows[0].rate)
-                    : (combinedDestination ? String(lookupDestinationRate(combinedDestination, fetchedDate) || '') : '');
                 const isCng = isCngTruck(truck);
+                const isBillType = isBillVoucherType(vType);
+                const billCommission = isBillType ? Number((tb * 1.5).toFixed(2)) : undefined;
+
+                const autoRate = isBillType ? '' : ((rows[0].freightRate || rows[0].rate)
+                    ? String(rows[0].freightRate || rows[0].rate)
+                    : (combinedDestination ? String(lookupDestinationRate(combinedDestination, fetchedDate) || '') : ''));
 
                 setForm(f => ({
                     ...f,
@@ -1662,12 +1710,20 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                     partyCode: combinedPartyCode || f.partyCode,
                     materialName: combinedMaterialName,
                     materials: materialsData,
-                    ...(autoRate && autoRate !== '0' ? { rate: autoRate } : {})
+                    rate: isBillType ? '' : (autoRate && autoRate !== '0' ? autoRate : f.rate),
+                    ...(isBillType ? { hasCommission: true, commission: billCommission } : {})
                 }));
                 // Fetch last km for the auto-filled truck
                 if (truck) fetchLastKm(truck);
+            } else {
+                setLrMaterials([]);
+                if (isBillVoucherType(vType)) setLrNotFound(true);
             }
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(err);
+            setLrMaterials([]);
+            if (isBillVoucherType(vType)) setLrNotFound(true);
+        }
     };
 
 
@@ -1699,6 +1755,14 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
         if (markInvalidFields(voucherFormRef.current)) return;
         if (isBillVoucherType(vType) && !String(form.billNo || '').trim()) {
             alert('Bill No is required for bills');
+            return;
+        }
+        if (isBillVoucherType(vType) && !String(form.partyCode || '').trim()) {
+            alert('Party Code is required for bills');
+            return;
+        }
+        if (isBillVoucherType(vType) && (!form.lrNo || lrNotFound || !lrMaterials.length)) {
+            alert(`Loading receipt #${form.lrNo || ''} does not exist for this godown. Manual bill creation only works if a loading receipt has already been created for that LR.`);
             return;
         }
         if (isFactory && !form.truckNo) {
@@ -1979,22 +2043,40 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                 </div>
 
                 {/* ── Entry Form — hidden until asked for ── */}
+                <ModuleErrorBoundary>
                 {formOpen && (
-                    <div className="card" style={{ marginBottom: '18px' }}>
-                        <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setFormOpen(o => !o)}>
-                            <div className="card-title-block">
-                                <div className="card-icon ci-green"><Plus size={17} /></div>
-                                <div className="card-title-text"><h3>New {isGeneric ? 'Voucher' : (isBill ? (lockedType || vType).replace('_', ' ') : vType.replace('_', ' ') + ' Voucher')}</h3><p>{form.date}</p></div>
+                    <div className={isBill ? "vgtc-dump-theme lr-entry-card" : "card"} style={{ marginBottom: '18px' }}>
+                        {isBill ? (
+                            <div className="vgtc-dump-header">
+                                <div className="vgtc-dump-title-area">
+                                    <div className="vgtc-dump-title-row">
+                                        <h2 className="vgtc-dump-title">New {(lockedType || vType).replace('_', ' ')}</h2>
+                                        <span className="vgtc-dump-draft-badge">Draft</span>
+                                    </div>
+                                    <div className="vgtc-dump-subtitle">Loading Godown: {vType === 'Kosli_Bill' ? 'Kosli Godown (Sector-4)' : vType === 'Jajjhar_Bill' ? 'Jhajjar Godown' : 'Bahadurgarh Godown'}</div>
+                                </div>
+                                <div className="vgtc-dump-header-actions">
+                                    <button type="button" className="vgtc-dump-close-btn" onClick={() => setFormOpen(false)}>
+                                        <X size={13} /> Close
+                                    </button>
+                                </div>
                             </div>
-                            <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700 }}>
-                                <X size={15} /> Close
-                            </button>
-                        </div>
+                        ) : (
+                            <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setFormOpen(o => !o)}>
+                                <div className="card-title-block">
+                                    <div className="card-icon ci-green"><Plus size={17} /></div>
+                                    <div className="card-title-text"><h3>New {isGeneric ? 'Voucher' : (isBill ? (lockedType || vType).replace('_', ' ') : vType.replace('_', ' ') + ' Voucher')}</h3><p>{form.date}</p></div>
+                                </div>
+                                <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700 }}>
+                                    <X size={15} /> Close
+                                </button>
+                            </div>
+                        )}
 
                         <AnimatePresence initial={false}>
                             {formOpen && (
                                 <motion.div key="form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeInOut' }} style={{ overflow: 'hidden' }}>
-                                    <div className="card-body">
+                                    <div className={isBill ? "" : "card-body"}>
                                         <form onSubmit={handleFormRequest} ref={voucherFormRef}>
                                             <div className="fg fg-2">
                                                 {!isFactory && (
@@ -2080,8 +2162,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 {(vType === 'Kosli_Bill' || vType === 'Jajjhar_Bill' || vType === 'Bahadurgarh_Bill') && (
                                                     <>
                                                         <div className="field-h">
-                                                            <label>Party Code</label>
-                                                            <input className="fi" type="text" placeholder="Optional" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} />
+                                                            <label>Party Code *</label>
+                                                            <input className="fi" type="text" placeholder="Enter party code" value={form.partyCode} onChange={e => set('partyCode', e.target.value)} required />
                                                         </div>
                                                         <div className="field-h">
                                                             <label>Bill No *</label>
@@ -2105,14 +2187,23 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                     </div>
                                                 )}
 
-                                                {lrMaterials.length > 0 && (
+                                                {isBill && lrNotFound && form.lrNo && (
+                                                    <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: '9px', padding: '9px 14px' }}>
+                                                        <AlertTriangle size={15} color="#f43f5e" style={{ flexShrink: 0 }} />
+                                                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#f43f5e' }}>
+                                                            Loading receipt #{form.lrNo} does not exist for this godown. Manual bill creation only works if a loading receipt has already been created for that LR.
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {Array.isArray(lrMaterials) && lrMaterials.length > 0 && (
                                                     <div style={{ gridColumn: '1 / -1', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: '10px', padding: '10px 14px' }}>
                                                         <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '7px' }}>Materials — LR #{form.lrNo}</div>
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                                             {lrMaterials.map((m, i) => (
                                                                 <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-input)', borderRadius: '8px', padding: '5px 10px' }}>
                                                                     <span className="badge badge-tag">{m.material}</span>
-                                                                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-sub)' }}>{m.totalBags} bags · {Number(m.weight).toFixed(2)} MT</span>
+                                                                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-sub)' }}>{m.totalBags} bags · {Number(m.weight || 0).toFixed(2)} MT</span>
                                                                 </div>
                                                             ))}
                                                             {lrMaterials.length > 1 && (
@@ -2353,11 +2444,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 {form.truckNo && (
                                                     <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                         <button type="button" onClick={() => setShowVehicleExpenses(s => !s)}
-                                                            style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(245,158,11,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#f59e0b' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
+                                                            style={{ display: 'flex', alignItems: 'center', gap: '8px', background: showVehicleExpenses ? 'rgba(37,99,235,0.06)' : 'none', border: '1px dashed var(--border)', borderRadius: '8px', padding: '10px 14px', cursor: 'pointer', width: '100%', color: showVehicleExpenses ? '#2563eb' : 'var(--text-muted)', fontSize: '12px', fontWeight: 700, transition: 'all 0.15s' }}>
                                                             <span style={{ transform: showVehicleExpenses ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
                                                             {isSelfTruck ? '🔧 Vehicle Expenses (Tyre, Extra Money)' : '💰 Extra Money'}
                                                             {formExpenseTotal > 0 && (
-                                                                <span style={{ color: '#f59e0b', marginLeft: 'auto' }}>₹{formExpenseTotal.toLocaleString('en-IN')}</span>
+                                                                <span style={{ color: '#2563eb', marginLeft: 'auto' }}>₹{formExpenseTotal.toLocaleString('en-IN')}</span>
                                                             )}
                                                         </button>
                                                         {showVehicleExpenses && (
@@ -2389,8 +2480,8 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 {isVGTCTruck(form.truckNo) && (
                                                     <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'inherit', gap: 'inherit' }}>
                                                         <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <Gauge size={14} color="#f59e0b" />
-                                                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odometer / Mileage</span>
+                                                            <Gauge size={14} color="#2563eb" />
+                                                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Odometer / Mileage</span>
                                                         </div>
                                                         <div className="field-h">
                                                             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -2421,10 +2512,27 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 )}
                                             </div>
 
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
-                                                <button type="submit" className="btn btn-p" style={{ minWidth: '160px', padding: '11px 24px' }} disabled={saving || lrAlreadyUsed} title="Save Voucher">
-                                                    {saving ? <Loader2 size={15} className="spin" /> : <><Check size={15} /> Save Voucher</>}
-                                                </button>
+                                            <div style={{ display: 'flex', justifyContent: isBill ? 'space-between' : 'flex-end', alignItems: 'center', marginTop: '16px', paddingTop: isBill ? '16px' : 0, borderTop: isBill ? '1px solid var(--dump-border)' : 'none', flexWrap: 'wrap', gap: '12px' }}>
+                                                {isBill && (() => {
+                                                    const billGross = (parseFloat(form.weight) || 0) * (parseFloat(form.rate) || 0);
+                                                    const billComm = form.hasCommission ? (parseFloat(form.bags) || ((parseFloat(form.weight) || 0) * 20)) * 1.5 : 0;
+                                                    const calcNet = Math.max(0, Math.round(billGross - billComm));
+                                                    return (
+                                                        <div className="vgtc-dump-metrics">
+                                                            <span>Weight: <span className="vgtc-dump-metric-val">{form.weight || '0.00'} MT</span></span>
+                                                            <span style={{ color: 'var(--dump-border)' }}>|</span>
+                                                            <span>Rate: <span className="vgtc-dump-metric-val">₹{form.rate || '0'}</span></span>
+                                                            <span style={{ color: 'var(--dump-border)' }}>|</span>
+                                                            <span>Net Freight: <span className="vgtc-dump-metric-val" style={{ color: '#10b981' }}>₹{Number(calcNet || 0).toLocaleString()}</span></span>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                    {isBill && <button type="button" className="vgtc-dump-cancel-btn" onClick={() => setFormOpen(false)}>Cancel</button>}
+                                                    <button type="submit" className={isBill ? "vgtc-dump-save-btn" : "btn btn-p"} style={!isBill ? { minWidth: '160px', padding: '11px 24px' } : undefined} disabled={saving || lrAlreadyUsed || (isBill && (!form.lrNo || lrNotFound || !(lrMaterials?.length)))} title={isBill ? "Save Bill" : "Save Voucher"}>
+                                                        {saving ? <><Loader2 size={15} className="spin" /> Saving...</> : isBill ? <><Check size={15} /> Save Bill</> : <><Check size={15} /> Save Voucher</>}
+                                                    </button>
+                                                </div>
                                             </div>
                                         </form>
                                     </div>
@@ -2433,6 +2541,7 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                         </AnimatePresence>
                     </div>
                 )}
+                </ModuleErrorBoundary>
 
                 {/* ── Voucher Sheet ── */}
                 <div className="card">
@@ -2546,6 +2655,11 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                     <th style={{ ...TH, position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', width: '40px', textAlign: 'center' }}>#</th>
                                     {[
                                         { key: 'entryId', label: 'ID' },
+                                        ...(isBill ? [
+                                            { key: 'billNo', label: 'Bill No.' },
+                                            { key: 'partyCode', label: 'Party Code' },
+                                            { key: 'partyName', label: 'Party' },
+                                        ] : []),
                                         { key: 'lrNo', label: 'LR No.' },
                                         { key: 'date', label: 'Date' },
                                         { key: 'truckNo', label: 'Truck' },
@@ -2558,10 +2672,10 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                             { key: 'advanceDiesel', label: 'Diesel / CNG Adv.' },
                                             { key: 'advanceCash', label: 'Cash Adv.' },
                                             { key: 'advanceOnline', label: 'Online Adv.' },
+                                            { key: 'munshi', label: 'Munshi' },
                                         ] : []),
-                                        { key: 'munshi', label: 'Munshi' },
                                         { key: 'extraCash', label: 'Extra Cash' },
-                                        { key: 'total', label: 'Total (Rs)' },
+                                        { key: 'total', label: isBill ? 'Net Freight (Rs)' : 'Total (Rs)' },
                                         { key: 'remark', label: 'Remarks' },
                                         ...(role === 'admin' ? [
                                             { key: 'createdBy', label: 'Created By' },
@@ -2607,6 +2721,25 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 #{v.entryId || '—'}
                                             </span>
                                         </td>
+                                        {isBill && (
+                                            <>
+                                                <td data-label="Bill No." style={{ ...TD, fontWeight: 800 }}>
+                                                    {v.billNo ? (
+                                                        <span style={{ fontFamily: 'monospace', color: 'var(--primary)', background: 'rgba(37,99,235,0.08)', padding: '2px 7px', borderRadius: '5px' }}>
+                                                            {v.billNo}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontStyle: 'italic' }}>Auto Created</span>
+                                                    )}
+                                                </td>
+                                                <td data-label="Party Code" style={{ ...TD, fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                                    {v.partyCode || '—'}
+                                                </td>
+                                                <td data-label="Party" style={{ ...TD, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                    {v.partyName || '—'}
+                                                </td>
+                                            </>
+                                        )}
                                         <td className="t-card-title" style={{ ...TD }}>
                                             {v.deliveries?.length > 0
                                                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -2690,18 +2823,18 @@ export default function VoucherModule({ role = 'user', initialTab, lockedType, p
                                                 <td data-label={isCngTruck(v.truckNo) || String(v.fuelType || '').toUpperCase() === 'CNG' ? "CNG Adv." : "Diesel Adv."} style={{ ...TD, textAlign: 'right' }}>{v.advanceDiesel || '—'}</td>
                                                 <td data-label="Cash Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceCash || '—'}</td>
                                                 <td data-label="Online Adv." style={{ ...TD, textAlign: 'right' }}>{v.advanceOnline || '—'}</td>
+                                                <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>
+                                                    {v.munshi || 0}
+                                                </td>
                                             </>
                                         )}
-                                        <td data-label="Munshi" style={{ ...TD, textAlign: 'right' }}>
-                                            {isBill || isBillVoucherType(v?.type) ? '' : (v.munshi || 0)}
-                                        </td>
                                         <td data-label="Extra Cash" style={{ ...TD, textAlign: 'right' }}>
                                             {(() => {
                                                 const extraVal = parseFloat(v.extraCash) || 0;
                                                 const extrasListVal = Array.isArray(v.extras) ? v.extras.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0) : 0;
                                                 const totalExtra = extraVal || extrasListVal;
                                                 return totalExtra > 0 ? (
-                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '5px' }}>
+                                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#2563eb', background: 'rgba(37,99,235,0.1)', padding: '2px 6px', borderRadius: '5px' }}>
                                                         ₹{totalExtra.toLocaleString('en-IN')}
                                                     </span>
                                                 ) : '—';

@@ -8,9 +8,11 @@ import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
   XCircle, AlertCircle, Clock, Trash2, RefreshCw, ChevronDown,
   ChevronUp, X, Save, Check, Tag, Search, Download, Printer, Filter, ChevronRight, ArrowRightLeft, Users,
-  PackageX, Droplets, Undo2, Table2, Truck
+  PackageX, Droplets, Undo2, Table2, Truck, Moon, Sun
 } from 'lucide-react';
+import './lrEntryForm.css';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
+import ChallanFormFields from '../components/ChallanFormFields';
 import StyledAutocomplete from '../components/StyledAutocomplete';
 import { exportToExcel, exportToPDF, buildExportRows } from '../utils/exportUtils';
 import { printHtml, receiptLogoCss, receiptLogoHtml } from '../utils/receiptPrint';
@@ -32,7 +34,8 @@ const getMatCol = (mat) => {
   if (BASE_MCOL[mat]) return BASE_MCOL[mat];
   // Deterministic color generation for custom materials
   let hash = 0;
-  for (let i = 0; i < mat.length; i++) hash = mat.charCodeAt(i) + ((hash << 5) - hash);
+  const name = String(mat || 'Unknown');
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   const hue = Math.abs(hash % 360);
   return `hsl(${hue}, 75%, 50%)`;
 };
@@ -41,6 +44,7 @@ const getMatCol = (mat) => {
 
 const STATUS_META = {
   open: { label: 'Challan Created', color: 'var(--warn)', Icon: Clock },
+  partially_loaded: { label: 'Partially Loaded', color: 'var(--primary)', Icon: Clock },
   loaded: { label: 'Loaded', color: 'var(--accent)', Icon: CheckCircle2 },
   cancelled: { label: 'Cancelled', color: 'var(--danger)', Icon: XCircle },
 };
@@ -220,9 +224,30 @@ function MatCard({ mat, added, lrUsed, sold, held, pendingChallan, setFromGodown
 /* ═════════════════════════════════════════════════
    MAIN
 ═════════════════════════════════════════════════ */
-export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {} }) {
+export default function StockModule({ initialTab, brand = 'dump', role = 'user', permissions = {}, standaloneTab = null }) {
   const { user } = useAuth();
+  const isDumpGodown = brand === 'kosli' || brand === 'jhajjar' || brand === 'bahadurgarh';
   const orgName = user?.org?.name || 'VIKAS GOODS TRANSPORT CO.';
+
+  const [themeMode, setThemeMode] = useState(() => {
+    return document.documentElement.getAttribute('data-theme') || localStorage.getItem('vgtc-theme') || 'dark';
+  });
+
+  const toggleTheme = () => {
+    const nextTheme = themeMode === 'dark' ? 'light' : 'dark';
+    setThemeMode(nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    localStorage.setItem('vgtc-theme', nextTheme);
+    window.dispatchEvent(new CustomEvent('vgtc-theme-change', { detail: nextTheme }));
+  };
+
+  const dumpGodownLabel = brand === 'kosli'
+    ? 'Kosli Godown (Sector-4)'
+    : brand === 'jhajjar'
+    ? 'Jhajjar Godown'
+    : brand === 'bahadurgarh'
+    ? 'Bahadurgarh Godown'
+    : 'Godown';
   // canEdit: checks brand-specific key first, then generic 'stock' key
   const stockKey = brand === 'kosli' ? 'stock_kosli' : brand === 'jhajjar' ? 'stock_jhajjar' : brand === 'bahadurgarh' ? 'stock_bahadurgarh' : 'stock_jkl';
   const canEdit = role === 'admin' || permissions?.[stockKey] === 'edit' || permissions?.stock === 'edit';
@@ -260,7 +285,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [showChallanForm, setShowChallanForm] = useState(false);
   const [showMatManager, setShowMatManager] = useState(false);
   const [newMatName, setNewMatName] = useState('');
-  const [challanFilter, setChallanFilter] = useState('open'); // open|loaded|cancelled|all
+  const [challanFilter, setChallanFilter] = useState(isDumpGodown ? 'all' : 'open');
   const [delTarget, setDelTarget] = useState(null);
 
   /* Stock Transfer state */
@@ -278,7 +303,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '', unloadingType: 'Godown Unload' });
-  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', factoryCode: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
+  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', factoryCode: '', destination: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
@@ -304,6 +329,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   useEffect(() => {
     setMigoForm(f => ({ ...f, material: MATS[0] }));
     setChalForm(f => ({ ...f, material: MATS[0] }));
+    setChallanFilter(isDumpGodown ? 'all' : 'open');
     // Plants do not share a material list, so a half-filled set-bag entry must
     // not carry another plant's material across.
     setSetBagForm(f => ({ ...f, material: MATS[0] }));
@@ -673,7 +699,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const applyEwbDraft = (ewbNo, draft) => {
     setChalForm(f => ({
       ...f,
-      // LR number is VGTC's own and is deliberately left for the operator.
+      // Challan number is allocated when saved; retain any separate LR link.
       truckNo: draft.truckNo ? cleanTruckNo(draft.truckNo) : f.truckNo,
       material: draft.material || f.material,
       quantity: draft.quantity ? String(draft.quantity) : f.quantity,
@@ -686,12 +712,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
     setEwbSource(ewbNo);
     setErr('');
     // The form sits below the panel; on a phone it is off screen entirely.
-    setTimeout(() => document.getElementById('challan-lr-input')?.focus(), 50);
+    setTimeout(() => document.getElementById(isDumpGodown ? 'challan-truck-input' : 'challan-lr-input')?.focus(), 50);
   };
 
   const triggerChallan = e => {
     e.preventDefault(); setErr('');
-    if (!chalForm.lrNo) { setErr('LR Number required'); return; }
+    if (!isDumpGodown && !chalForm.lrNo) { setErr('LR Number required'); return; }
     if (!chalForm.truckNo) { setErr('Truck number required'); return; }
     if (!validateTruckNo(chalForm.truckNo)) { setErr('Invalid truck format (e.g. RJ07GA1234 or HR161234)'); return; }
     if (!chalForm.quantity || parseFloat(chalForm.quantity) <= 0) { setErr('Enter valid quantity'); return; }
@@ -968,12 +994,30 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           </div>
         )}
       </AnimatePresence>
+      {standaloneTab && (
+        <div className="page-hd" style={{ marginBottom: '12px' }}>
+          <div>
+            <h1>
+              {standaloneTab === 'migo'
+                ? <><Plus size={20} color="#2563eb" style={{ verticalAlign: 'middle', marginRight: 6 }} />MIGO — Stock Entry</>
+                : <><Tag size={20} color="#2563eb" style={{ verticalAlign: 'middle', marginRight: 6 }} />Create Challan</>}
+            </h1>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+              {brand === 'kosli' ? 'Kosli Godown' : brand === 'jhajjar' ? 'Jhajjar Godown' : brand === 'bahadurgarh' ? 'Bahadurgarh Godown' : brand === 'jkl' ? 'JK Lakshmi' : 'Dump'} ·{' '}
+              {standaloneTab === 'migo' ? 'Record new material delivery into stock' : 'Issue a new loading challan'}
+            </p>
+          </div>
+          <button className="btn btn-g btn-sm" onClick={fetchAll}><RefreshCw size={13} /> Refresh</button>
+        </div>
+      )}
 
+      {!standaloneTab && (
+        <>
       {/* Header */}
       <div className="page-hd">
         <div>
           <h1><Package size={20} color="#a855f7" /> {brand === 'jkl' ? 'JK Lakshmi' : brand === 'kosli' ? 'Kosli' : brand === 'jhajjar' ? 'Jhajjar' : brand === 'bahadurgarh' ? 'Bahadurgarh' : 'Dump'} Stock</h1>
-          <p>Material inventory & challan management</p>
+          <p>Material inventory &amp; challan management</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {role === 'admin' && (
@@ -1040,6 +1084,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
         );
       })}
       </div>
+      </>
+      )}
       
       {/* ── OVERVIEW TAB ── */}
       {tab === 'overview' && (
@@ -1135,15 +1181,27 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* ── MIGO TAB ── */}
       {tab === 'migo' && (
         <div>
-          <div className="card" style={{ marginBottom: '14px' }}>
-            <div className="card-header"><div className="card-title-block">
-              <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent)' }}><Plus size={17} /></div>
-              <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi MIGO (Stock Entry)' : 'MIGO — Stock Entry'}</h3><p>Record new material delivery into inventory</p></div>
-            </div></div>
+          <div className={isDumpGodown ? "vgtc-dump-theme lr-entry-card" : "card"} style={{ marginBottom: '14px' }}>
+            {isDumpGodown ? (
+              <div className="vgtc-dump-header">
+                <div className="vgtc-dump-title-area">
+                  <div className="vgtc-dump-title-row">
+                    <h2 className="vgtc-dump-title">MIGO — Stock Entry</h2>
+                    <span className="vgtc-dump-draft-badge">Draft</span>
+                  </div>
+                  <div className="vgtc-dump-subtitle">Loading Godown: {dumpGodownLabel}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="card-header"><div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent)' }}><Plus size={17} /></div>
+                <div className="card-title-text"><h3>{brand === 'jkl' ? 'JK Lakshmi MIGO (Stock Entry)' : 'MIGO — Stock Entry'}</h3><p>Record new material delivery into inventory</p></div>
+              </div></div>
+            )}
             <form onSubmit={triggerMigo} style={{ padding: '18px 20px' }}>
-              <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
+              <div className="fg fg-2" style={{ gap: '14px', width: '100%', ...(isDumpGodown ? {} : { maxWidth: '800px' }) }}>
                 <div className="field-h">
-                  <label>Truck Number *</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Truck Number *</label>
                   <div style={{ position: 'relative', width: '100%' }}>
                     <input className="fi" type="text" placeholder="Enter truck number" required list="migo-truck-list"
                       value={migoForm.truckNo} onChange={e => setMigoForm(f => ({ ...f, truckNo: cleanTruckNo(e.target.value) }))} />
@@ -1153,13 +1211,13 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   </div>
                 </div>
                 <div className="field-h">
-                  <label>Material</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Material</label>
                   <select className="fi" value={migoForm.material} onChange={e => setMigoForm(f => ({ ...f, material: e.target.value }))}>
                     {MATS.map(m => <option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div className="field-h">
-                  <label>Quantity (Bags) *</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Quantity (Bags) *</label>
                   <div style={{ position: 'relative', width: '100%' }}>
                     <input className="fi" type="number" step="1" min="1" required placeholder="Enter quantity in bags" style={{ paddingRight: migoForm.quantity ? '70px' : '12px' }}
                       value={migoForm.quantity} onChange={e => setMigoForm(f => ({ ...f, quantity: e.target.value }))} />
@@ -1167,32 +1225,48 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   </div>
                 </div>
                 <div className="field-h">
-                  <label>Date</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Date</label>
                   <input className="fi" type="date" value={migoForm.date} onChange={e => setMigoForm(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="field-h">
-                  <label>Unloading Type</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Unloading Type</label>
                   <select className="fi" value={migoForm.unloadingType} onChange={e => setMigoForm(f => ({ ...f, unloadingType: e.target.value }))}>
                     <option value="Godown Unload">Godown Unload</option>
-                    <option value="Crossing">Crossing (no labour)</option>
+                    <option value="Crossing">Crossing{brand === 'jkl' ? ' (no labour)' : ' (labour charged)'}</option>
                     <option value="Direct">Direct (no labour)</option>
                   </select>
                   <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Only a godown unload is charged to the labour account.
+                    {brand === 'jkl' ? 'Only a godown unload is charged to the labour account.' : 'Godown unload and crossing are charged to the labour account.'}
                   </span>
                 </div>
                 <div className="field-h" style={{ gridColumn: '1 / -1' }}>
-                  <label>Remark</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Remark</label>
                   <input className="fi" type="text" placeholder="Supplier name / note"
                     value={migoForm.remark} onChange={e => setMigoForm(f => ({ ...f, remark: e.target.value }))} />
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-                {err ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div> : <div />}
-                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px', padding: '11px 24px' }}>
-                  {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
-                </button>
-              </div>
+              {isDumpGodown ? (
+                <div className="vgtc-dump-footer" style={{ marginTop: '16px' }}>
+                  <div className="vgtc-dump-metrics">
+                    Total Bags: <strong>{migoForm.quantity || 0} Bags</strong>
+                    <span className="vgtc-dump-metrics-sep">|</span>
+                    Total Weight: <strong>{((Number(migoForm.quantity) || 0) * 0.05).toFixed(2)} MT</strong>
+                    {err && <span style={{ marginLeft: '14px', color: 'var(--dump-amber-text)', fontWeight: 700 }}>⚠ {err}</span>}
+                  </div>
+                  <div className="vgtc-dump-btn-group">
+                    <button type="submit" className="vgtc-dump-save-btn" disabled={saving || !canEdit}>
+                      {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                  {err ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div> : <div />}
+                  <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px', padding: '11px 24px' }}>
+                    {saving ? '…' : <><Check size={14} /> Post MIGO Entry</>}
+                  </button>
+                </div>
+              )}
             </form>
           </div>
           <ConfirmSaveModal
@@ -1243,14 +1317,12 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                        <div style={{ color: 'var(--accent)' }}>{(a.quantity || 0).toLocaleString()} bags</div>
                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{(a.quantity * 0.05).toFixed(2)} MT</div>
                     </td>
-                    {/* Whether the labour account was charged for this arrival
-                        is the whole point of the field, so the colour says it:
-                        only a godown unload is paid for. Older rows predate the
-                        field and were all godown unloads. */}
+                    {/* Older rows predate unloadingType and were godown unloads.
+                        Dump crossings earn labour; Jharli crossings do not. */}
                     <td style={{ ...TD }}>
                       {(() => {
                         const t = a.unloadingType || 'Godown Unload';
-                        const paid = t === 'Godown Unload';
+                        const paid = t === 'Godown Unload' || (brand !== 'jkl' && t === 'Crossing');
                         return (
                           <span style={{
                             padding: '2px 8px', borderRadius: '5px', fontSize: '10.5px', fontWeight: 800,
@@ -1284,12 +1356,30 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {tab === 'challan' && (
         <div>
           <EwayBillPanel materials={MATS} onApply={applyEwbDraft} refreshKey={ewbRefresh} />
-          <div className="card" style={{ marginBottom: '14px' }}>
-            <div className="card-header"><div className="card-title-block">
-              <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}><Tag size={17} /></div>
-              <div className="card-title-text"><h3>Dispatch New Challan</h3><p>Assign stock to a vehicle (Challan Created status)</p></div>
-            </div></div>
+          <div className={isDumpGodown ? "vgtc-dump-theme lr-entry-card" : "card"} style={{ marginBottom: '14px' }}>
+            {isDumpGodown ? (
+              <div className="vgtc-dump-header">
+                <div className="vgtc-dump-title-area">
+                  <div className="vgtc-dump-title-row">
+                    <h2 className="vgtc-dump-title">Dispatch New Challan</h2>
+                    <span className="vgtc-dump-draft-badge">Draft</span>
+                  </div>
+                  <div className="vgtc-dump-subtitle">Loading Godown: {dumpGodownLabel}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="card-header"><div className="card-title-block">
+                <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}><Tag size={17} /></div>
+                <div className="card-title-text"><h3>Dispatch New Challan</h3><p>Assign stock to a vehicle (Challan Created status)</p></div>
+              </div></div>
+            )}
             <form onSubmit={triggerChallan} style={{ padding: '18px 20px' }}>
+              {isDumpGodown ? (
+              <ChallanFormFields
+                form={chalForm} onChange={setChalForm} materials={MATS} vehicles={vehicles}
+                partySuggestions={partySuggestions} ewbSource={ewbSource}
+              />
+              ) : (
               <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
                 <div className="field-h">
                   <label>LR Number *{ewbSource && <span style={{ color: '#10b981', marginLeft: '6px', textTransform: 'none', fontWeight: 700 }}>— rest filled from EWB {ewbSource}</span>}</label>
@@ -1364,19 +1454,42 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     value={chalForm.remark} onChange={e => setChalForm(f => ({ ...f, remark: e.target.value }))} />
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
-                  {chalForm.material && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, padding: '4px 12px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                      📦 {chalForm.material}: <strong style={{ color: 'var(--text)' }}>{(stockMap[chalForm.material]?.available || 0).toLocaleString()}</strong> bags available
-                    </div>
-                  )}
-                  {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div>}
+              )}
+              {isDumpGodown ? (
+                <div className="vgtc-dump-footer" style={{ marginTop: '16px' }}>
+                  <div className="vgtc-dump-metrics">
+                    Total Bags: <strong>{chalForm.quantity || 0} Bags</strong>
+                    <span className="vgtc-dump-metrics-sep">|</span>
+                    Total Weight: <strong>{((Number(chalForm.quantity) || 0) * 0.05).toFixed(2)} MT</strong>
+                    {chalForm.material && stockMap[chalForm.material] && (
+                      <>
+                        <span className="vgtc-dump-metrics-sep">|</span>
+                        <span>Available: <strong>{(stockMap[chalForm.material]?.available || 0).toLocaleString()}</strong> bags</span>
+                      </>
+                    )}
+                    {err && <span style={{ marginLeft: '14px', color: 'var(--dump-amber-text)', fontWeight: 700 }}>⚠ {err}</span>}
+                  </div>
+                  <div className="vgtc-dump-btn-group">
+                    <button type="submit" className="vgtc-dump-save-btn" disabled={saving || !canEdit}>
+                      {saving ? '…' : <><Tag size={14} /> Create Challan</>}
+                    </button>
+                  </div>
                 </div>
-                <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px', padding: '11px 24px' }}>
-                  {saving ? '…' : <><Tag size={14} /> Create Challan</>}
-                </button>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
+                    {chalForm.material && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, padding: '4px 12px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        📦 {chalForm.material}: <strong style={{ color: 'var(--text)' }}>{(stockMap[chalForm.material]?.available || 0).toLocaleString()}</strong> bags available
+                      </div>
+                    )}
+                    {err && <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 700, padding: '4px 12px', background: 'rgba(187,0,0,0.06)', borderRadius: '6px' }}>{err}</div>}
+                  </div>
+                  <button type="submit" className="btn btn-p" disabled={saving || !canEdit} style={{ minWidth: '160px', padding: '11px 24px' }}>
+                    {saving ? '…' : <><Tag size={14} /> Create Challan</>}
+                  </button>
+                </div>
+              )}
             </form>
           </div>
           <ConfirmSaveModal
@@ -1390,24 +1503,24 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
           {/* ── Vehicle Challan Balances Summary Card ── */}
           {vehicleChallanBalances.length > 0 && (
-            <div className="card" style={{ marginBottom: '14px', padding: '14px 18px', background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(99,102,241,0.04))', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px' }}>
+            <div className="card" style={{ marginBottom: '14px', padding: '14px 18px', background: 'linear-gradient(135deg, rgba(37,99,235,0.06), rgba(99,102,241,0.04))', border: '1px solid rgba(37,99,235,0.25)', borderRadius: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Truck size={16} color="#d97706" />
+                  <Truck size={16} color="#2563eb" />
                   <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>Vehicle Challan Balances</span>
-                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: 'rgba(245,158,11,0.15)', color: '#b45309' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: 'rgba(37,99,235,0.15)', color: '#1d4ed8' }}>
                     {vehicleChallanBalances.length} Vehicles Pending Loading
                   </span>
                 </div>
                 <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  Total: <strong style={{ color: '#d97706' }}>{vehicleChallanBalances.reduce((s, v) => s + v.bags, 0)} Bags</strong> ({vehicleChallanBalances.reduce((s, v) => s + v.mt, 0).toFixed(2)} MT)
+                  Total: <strong style={{ color: '#2563eb' }}>{vehicleChallanBalances.reduce((s, v) => s + v.bags, 0)} Bags</strong> ({vehicleChallanBalances.reduce((s, v) => s + v.mt, 0).toFixed(2)} MT)
                 </div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {vehicleChallanBalances.map(v => (
                   <div
                     key={v.truckNo}
-                    onClick={() => { setChallanFilter('open'); handleFilterChange('truckNo', [v.truckNo]); }}
+                    onClick={() => { setChallanFilter(isDumpGodown ? 'all' : 'open'); handleFilterChange('truckNo', [v.truckNo]); }}
                     title={`Click to filter by ${v.truckNo}`}
                     style={{
                       padding: '6px 10px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px',
@@ -1417,7 +1530,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   >
                     <span style={{ fontWeight: 800, color: 'var(--text)' }}>{v.truckNo}</span>
                     <span style={{ height: '12px', width: '1px', background: 'var(--border)' }}></span>
-                    <span style={{ fontWeight: 800, color: '#d97706' }}>{v.bags} bags</span>
+                    <span style={{ fontWeight: 800, color: '#2563eb' }}>{v.bags} bags</span>
                     <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({v.mt} MT)</span>
                     <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}>
                       {v.count} chal
@@ -1432,15 +1545,15 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '8px' }}>
               <div className="card-title-block">
-                <div className="card-icon" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}><FileText size={17} /></div>
+                <div className="card-icon" style={{ background: 'rgba(37,99,235,0.1)', color: '#2563eb' }}><FileText size={17} /></div>
                 <div className="card-title-text" style={{ flex: 1 }}><h3>Challan List</h3><p>{filteredChallans.length} challans</p></div>
               </div>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 {challanSheetId(brand) && <button className="btn btn-p btn-sm" onClick={() => openSheet(challanSheetId(brand))}><Table2 size={13} /> Open in Sheet</button>}
                 <button className="btn btn-g btn-sm" onClick={exportChallanExcel}><Download size={13} /> Excel</button>
                 <button className="btn btn-g btn-sm" onClick={exportChallanPDF}><Printer size={13} /> PDF</button>
-                <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 4px' }}></span>
-                {['open', 'loaded', 'cancelled', 'all'].map(s => (
+                {!isDumpGodown && <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 4px' }}></span>}
+                {!isDumpGodown && ['open', 'loaded', 'cancelled', 'all'].map(s => (
                   <button key={s} onClick={() => setChallanFilter(s)}
                     style={{
                       padding: '5px 11px', borderRadius: '7px', border: '1px solid', cursor: 'pointer', fontFamily: 'inherit',
@@ -1463,21 +1576,25 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   <th style={TH}><ColumnFilter label="Challan #" colKey="challanNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}><ColumnFilter label="Date" colKey="date" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}><ColumnFilter label="Truck" colKey="truckNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  {isDumpGodown && <th style={TH}>LR #</th>}
                   <th style={TH}><ColumnFilter label="Material" colKey="material" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Qty (bags)</th>
                   <th style={TH}><ColumnFilter label="Party" colKey="partyName" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
+                  {isDumpGodown && <th style={TH}><ColumnFilter label="Party Code" colKey="partyCode" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
+                  {isDumpGodown && <th style={TH}><ColumnFilter label="Bill No" colKey="billNo" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
+                  {isDumpGodown && <th style={TH}><ColumnFilter label="Destination" colKey="destination" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
                   {/* Filterable, since "everything off FC5 today" is the
                       question a gate code gets asked. */}
                   <th style={TH}><ColumnFilter label="Factory Code" colKey="factoryCode" data={challans} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                   <th style={TH}>Remark</th>
                   <th style={TH}>Status</th>
-                  <th style={TH}>Sold</th>
+                  {!isDumpGodown && <th style={TH}>Sold</th>}
                   {role === 'admin' && <th style={TH}>Created By</th>}
                   {role === 'admin' && <th style={TH}>Updated By</th>}
                   <th style={TH}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {filteredChallans.length === 0 && <tr><td colSpan={11} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No challans</td></tr>}
+                  {filteredChallans.length === 0 && <tr><td colSpan={(isDumpGodown ? 14 : 11) + (role === 'admin' ? 2 : 0)} style={{ ...TD, textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>No challans</td></tr>}
                   {[...filteredChallans].sort((a, b) => a.date > b.date ? -1 : 1).map((c, i) => {
                     const sm = STATUS_META[c.status] || STATUS_META.open;
                     const isTransferred = (c.loadedByVehicle && c.loadedByVehicle !== c.truckNo) || c.isTransferred;
@@ -1488,13 +1605,14 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                         <td style={{ ...TD, fontWeight: 700, color: 'var(--text)' }}>
                           <div>{c.truckNo}</div>
                           {isTransferred && (
-                            <div style={{ fontSize: '10px', color: '#d97706', fontWeight: 800, marginTop: '2px' }}>
+                            <div style={{ fontSize: '10px', color: '#2563eb', fontWeight: 800, marginTop: '2px' }}>
                               🔄 Loaded: {c.loadedByVehicle} {c.lrNo ? `(LR #${c.lrNo})` : ''}
                             </div>
                           )}
                         </td>
+                        {isDumpGodown && <td style={TD}>{c.lrNo || lrs.find(l => String(l.billing || '').split(',').some(no => no.trim() === c.challanNo))?.lrNo || '—'}</td>}
                         <td style={{ ...TD }}>
-                          {c.materials ? (
+                          {Array.isArray(c.materials) && c.materials.length > 0 ? (
                             c.materials.map((m, idx) => (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
                                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getMatCol(m.type) || '#ccc', display: 'inline-block' }} />
@@ -1509,7 +1627,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                           )}
                         </td>
                         <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
-                          {c.materials ? (
+                          {Array.isArray(c.materials) && c.materials.length > 0 ? (
                             c.materials.map((m, idx) => (
                               <div key={idx} style={{ marginBottom: '6px' }}>
                                 {m.loadedBags > 0 ? (
@@ -1527,6 +1645,9 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                           )}
                         </td>
                         <td style={{ ...TD }}>{c.partyName || '—'}</td>
+                        {isDumpGodown && <td style={TD}>{c.partyCode || '—'}</td>}
+                        {isDumpGodown && <td style={TD}>{c.billNo || '—'}</td>}
+                        {isDumpGodown && <td style={TD}>{c.destination || '—'}</td>}
                         <td style={{ ...TD, fontWeight: 700, fontFamily: 'monospace', color: c.factoryCode ? 'var(--text)' : 'var(--text-muted)' }}>{c.factoryCode || '—'}</td>
                         <td style={{ ...TD, color: 'var(--text-muted)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.remark || '—'}</td>
                         <td style={{ ...TD }}>
@@ -1590,59 +1711,87 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
       {/* ── TRANSFER STOCK TAB ── */}
       {tab === 'transfer' && (
         <div>
-          <div className="card" style={{ marginBottom: '14px' }}>
-            <div className="card-header">
-              <div className="card-title-block">
-                <div className="card-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}><ArrowRightLeft size={17} /></div>
-                <div className="card-title-text"><h3>Transfer Stock</h3><p>Convert material types within {STOCK_LOCATIONS.find(l => l.key === brand)?.label || brand}</p></div>
+          <div className={isDumpGodown ? "vgtc-dump-theme lr-entry-card" : "card"} style={{ marginBottom: '14px' }}>
+            {isDumpGodown ? (
+              <div className="vgtc-dump-header">
+                <div className="vgtc-dump-title-area">
+                  <div className="vgtc-dump-title-row">
+                    <h2 className="vgtc-dump-title">Transfer Stock</h2>
+                    <span className="vgtc-dump-draft-badge">Draft</span>
+                  </div>
+                  <div className="vgtc-dump-subtitle">Loading Godown: {dumpGodownLabel}</div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="card-header">
+                <div className="card-title-block">
+                  <div className="card-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}><ArrowRightLeft size={17} /></div>
+                  <div className="card-title-text"><h3>Transfer Stock</h3><p>Convert material types within {STOCK_LOCATIONS.find(l => l.key === brand)?.label || brand}</p></div>
+                </div>
+              </div>
+            )}
             <form onSubmit={handleTransfer} style={{ padding: '16px 18px' }}>
-              <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>
+              <div className="fg fg-2" style={{ gap: '14px', width: '100%', ...(isDumpGodown ? {} : { maxWidth: '800px' }) }}>
                 <div className="field-h">
-                  <label>Convert From *</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Convert From *</label>
                   <select className="fi" value={transferForm.sourceMaterial} onChange={e => setTransferForm(f => ({ ...f, sourceMaterial: e.target.value }))} required>
                     <option value="">Select source material...</option>
                     {MATS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 <div className="field-h">
-                  <label>Convert To *</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Convert To *</label>
                   <select className="fi" value={transferForm.destMaterial} onChange={e => setTransferForm(f => ({ ...f, destMaterial: e.target.value }))} required>
                     <option value="">Select destination material...</option>
                     {MATS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 <div className="field-h">
-                  <label>Quantity (bags) *</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Quantity (bags) *</label>
                   <input className="fi" type="number" min="1" placeholder="Bags" value={transferForm.quantity} onChange={e => setTransferForm(f => ({ ...f, quantity: e.target.value }))} required />
                 </div>
                 <div className="field-h">
-                  <label>Party Name</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Party Name</label>
                   <div style={{ position: 'relative', width: '100%' }}>
                     <input className="fi" type="text" placeholder="Party" value={transferForm.partyName} onChange={e => setTransferForm(f => ({ ...f, partyName: e.target.value }))} list="transfer-party-list" />
                     <datalist id="transfer-party-list">{partySuggestions.map(p => <option key={p} value={p} />)}</datalist>
                   </div>
                 </div>
                 <div className="field-h">
-                  <label>Challan No.</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Challan No.</label>
                   <input className="fi" type="text" placeholder="CH-XXXX" value={transferForm.challanNo} onChange={e => setTransferForm(f => ({ ...f, challanNo: e.target.value }))} />
                 </div>
                 <div className="field-h">
-                  <label>Date</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Date</label>
                   <input className="fi" type="date" value={transferForm.date} onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="field-h" style={{ gridColumn: '1 / -1' }}>
-                  <label>Remark</label>
+                  <label className={isDumpGodown ? "vgtc-dump-label" : ""}>Remark</label>
                   <input className="fi" type="text" placeholder="Note" value={transferForm.remark} onChange={e => setTransferForm(f => ({ ...f, remark: e.target.value }))} />
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-                {transferErr ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600 }}>{transferErr}</div> : <div />}
-                <button type="submit" className="btn btn-p" disabled={transferSaving} style={{ minWidth: '160px', padding: '11px 24px' }}>
-                  {transferSaving ? '...' : <><ArrowRightLeft size={13} /> Transfer</>}
-                </button>
-              </div>
+              {isDumpGodown ? (
+                <div className="vgtc-dump-footer" style={{ marginTop: '16px' }}>
+                  <div className="vgtc-dump-metrics">
+                    Total Bags: <strong>{transferForm.quantity || 0} Bags</strong>
+                    <span className="vgtc-dump-metrics-sep">|</span>
+                    Total Weight: <strong>{((Number(transferForm.quantity) || 0) * 0.05).toFixed(2)} MT</strong>
+                    {transferErr && <span style={{ marginLeft: '14px', color: 'var(--dump-amber-text)', fontWeight: 700 }}>⚠ {transferErr}</span>}
+                  </div>
+                  <div className="vgtc-dump-btn-group">
+                    <button type="submit" className="vgtc-dump-save-btn" disabled={transferSaving}>
+                      {transferSaving ? '...' : <><ArrowRightLeft size={13} /> Transfer</>}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                  {transferErr ? <div style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 600 }}>{transferErr}</div> : <div />}
+                  <button type="submit" className="btn btn-p" disabled={transferSaving} style={{ minWidth: '160px', padding: '11px 24px' }}>
+                    {transferSaving ? '...' : <><ArrowRightLeft size={13} /> Transfer</>}
+                  </button>
+                </div>
+              )}
             </form>
           </div>
 
@@ -1756,13 +1905,25 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
           {/* Entry form */}
           {canEdit && (
-            <div className="card">
-              <div className="card-header">
-                <div className="card-title-block">
-                  <div className="card-icon" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}><Droplets size={17} /></div>
-                  <div className="card-title-text"><h3>Record Set Bags</h3><p>Found set in the godown, returned by a party, or written off</p></div>
+            <div className={isDumpGodown ? "vgtc-dump-theme lr-entry-card" : "card"}>
+              {isDumpGodown ? (
+                <div className="vgtc-dump-header">
+                  <div className="vgtc-dump-title-area">
+                    <div className="vgtc-dump-title-row">
+                      <h2 className="vgtc-dump-title">Record Set Bags</h2>
+                      <span className="vgtc-dump-draft-badge">Draft</span>
+                    </div>
+                    <div className="vgtc-dump-subtitle">Loading Godown: {dumpGodownLabel}</div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="card-header">
+                  <div className="card-title-block">
+                    <div className="card-icon" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}><Droplets size={17} /></div>
+                    <div className="card-title-text"><h3>Record Set Bags</h3><p>Found set in the godown, returned by a party, or written off</p></div>
+                  </div>
+                </div>
+              )}
               <form onSubmit={handleSetSubmit} style={{ padding: '16px' }}>
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
                   {[
@@ -1845,11 +2006,26 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                   ), 2)}
                 </div>
                 {setBagErr && <div style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: 700, marginTop: '10px' }}>{setBagErr}</div>}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
-                  <button type="submit" className="btn btn-a" disabled={setBagSaving} style={{ fontWeight: 800 }}>
-                    {setBagSaving ? 'Saving…' : <><Save size={14} /> Save Entry</>}
-                  </button>
-                </div>
+                {isDumpGodown ? (
+                  <div className="vgtc-dump-footer" style={{ marginTop: '16px' }}>
+                    <div className="vgtc-dump-metrics">
+                      Total Bags: <strong>{setBagForm.quantity || 0} Bags</strong>
+                      <span className="vgtc-dump-metrics-sep">|</span>
+                      Total Weight: <strong>{((Number(setBagForm.quantity) || 0) * 0.05).toFixed(2)} MT</strong>
+                    </div>
+                    <div className="vgtc-dump-btn-group">
+                      <button type="submit" className="vgtc-dump-save-btn" disabled={setBagSaving}>
+                        {setBagSaving ? 'Saving…' : <><Save size={14} /> Save Entry</>}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
+                    <button type="submit" className="btn btn-a" disabled={setBagSaving} style={{ fontWeight: 800 }}>
+                      {setBagSaving ? 'Saving…' : <><Save size={14} /> Save Entry</>}
+                    </button>
+                  </div>
+                )}
               </form>
             </div>
           )}
@@ -1884,7 +2060,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                     const meta = s.direction === 'out'
                       ? { label: 'Written off', color: 'var(--text-muted)' }
                       : s.source === 'party_return'
-                        ? { label: 'Party return', color: '#f59e0b' }
+                        ? { label: 'Party return', color: '#2563eb' }
                         : { label: 'From godown', color: '#f43f5e' };
                     return (
                       <tr key={s.id}>
@@ -1956,7 +2132,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
                       <td style={TD}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                           {[...p.trucks].map(tn => (
-                            <span key={tn} style={{ padding: '2px 6px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: '10px', fontWeight: 700 }}>{tn}</span>
+                            <span key={tn} style={{ padding: '2px 6px', borderRadius: '4px', background: 'rgba(37,99,235,0.1)', color: '#2563eb', fontSize: '10px', fontWeight: 700 }}>{tn}</span>
                           ))}
                         </div>
                       </td>
@@ -2010,7 +2186,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Tag size={18} color="#f59e0b" /> Manage Materials
+                    <Tag size={18} color="#2563eb" /> Manage Materials
                   </h3>
                   <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>Add or remove material types for `{brand.toUpperCase()}`</p>
                 </div>

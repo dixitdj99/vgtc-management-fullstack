@@ -1,0 +1,606 @@
+/* ─────────────────────────────────────────────────────────────
+   VGTC DUMP THEME — Light, Dark & Sepia Support
+   Styled for Kosli, Jhajjar, and Bahadurgarh forms
+   Full-width layout matching user design reference
+   Colors strictly matched to app's 3 themes (Light, Dark, Sepia)
+   Button color persisted to new blue design
+───────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="light"] {
+  --dump-bg: var(--bg);
+  --dump-card-bg: var(--bg-card);
+  --dump-border: var(--border);
+  --dump-border-focus: #2563eb;
+  --dump-text-title: var(--text);
+  --dump-text-sub: var(--text-muted);
+  --dump-text-label: var(--text-muted);
+  --dump-input-bg: var(--bg);
+  --dump-input-border: var(--border);
+  --dump-input-text: var(--text);
+  --dump-input-placeholder: var(--text-muted);
+  --dump-mat-bg: var(--bg);
+  --dump-mat-border: var(--border);
+  --dump-amber-bg: rgba(37, 99, 235, 0.06);
+  --dump-amber-border: rgba(37, 99, 235, 0.3);
+  --dump-amber-title: #2563eb;
+  --dump-amber-label: #1d4ed8;
+  --dump-btn-primary-bg: #2563eb;
+  --dump-btn-primary-hover: #1d4ed8;
+  --dump-btn-primary-text: #ffffff;
+  --dump-btn-ghost-border: var(--border);
+  --dump-btn-ghost-text: var(--text-sub);
+  --dump-btn-ghost-hover: var(--bg-hover);
+  --dump-badge-bg: var(--bg-hover);
+  --dump-badge-border: var(--border);
+  --dump-badge-text: var(--text-muted);
+  --dump-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] {
+  --dump-bg: var(--bg);
+  --dump-card-bg: var(--bg-card);
+  --dump-border: var(--border);
+  --dump-border-focus: #3b82f6;
+  --dump-text-title: var(--text);
+  --dump-text-sub: var(--text-muted);
+  --dump-text-label: var(--text-muted);
+  --dump-input-bg: var(--bg-row-odd, #161A22);
+  --dump-input-border: var(--border);
+  --dump-input-text: var(--text);
+  --dump-input-placeholder: var(--text-muted);
+  --dump-mat-bg: var(--bg-row-odd, #161A22);
+  --dump-mat-border: var(--border);
+  --dump-amber-bg: rgba(59, 130, 246, 0.1);
+  --dump-amber-border: rgba(59, 130, 246, 0.3);
+  --dump-amber-title: #60a5fa;
+  --dump-amber-label: #93c5fd;
+  --dump-btn-primary-bg: #2563eb;
+  --dump-btn-primary-hover: #1d4ed8;
+  --dump-btn-primary-text: #ffffff;
+  --dump-btn-ghost-border: var(--border);
+  --dump-btn-ghost-text: var(--text-sub);
+  --dump-btn-ghost-hover: var(--bg-hover);
+  --dump-badge-bg: rgba(255, 255, 255, 0.06);
+  --dump-badge-border: var(--border);
+  --dump-badge-text: var(--text-muted);
+  --dump-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="sepia"] {
+  --dump-bg: var(--bg);
+  --dump-card-bg: var(--bg-card);
+  --dump-border: var(--border);
+  --dump-border-focus: #2563eb;
+  --dump-text-title: var(--text);
+  --dump-text-sub: var(--text-muted);
+  --dump-text-label: var(--text-muted);
+  --dump-input-bg: var(--bg);
+  --dump-input-border: var(--border);
+  --dump-input-text: var(--text);
+  --dump-input-placeholder: var(--text-muted);
+  --dump-mat-bg: var(--bg);
+  --dump-mat-border: var(--border);
+  --dump-amber-bg: rgba(37, 99, 235, 0.08);
+  --dump-amber-border: rgba(37, 99, 235, 0.35);
+  --dump-amber-title: #2563eb;
+  --dump-amber-label: #1d4ed8;
+  --dump-btn-primary-bg: #2563eb;
+  --dump-btn-primary-hover: #1d4ed8;
+  --dump-btn-primary-text: #ffffff;
+  --dump-btn-ghost-border: var(--border);
+  --dump-btn-ghost-text: var(--text-sub);
+  --dump-btn-ghost-hover: var(--bg-hover);
+  --dump-badge-bg: var(--bg-hover);
+  --dump-badge-border: var(--border);
+  --dump-badge-text: var(--text-muted);
+  --dump-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+/* Card Container — Full Width */
+.lr-entry-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  background: var(--dump-card-bg) !important;
+  border: 1px solid var(--dump-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--dump-shadow) !important;
+  padding: 24px 28px !important;
+  box-sizing: border-box !important;
+  color: var(--dump-text-title) !important;
+  font-family: inherit;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  overflow: visible !important;
+}
+
+.vgtc-dump-theme {
+  color: var(--dump-text-title);
+  font-family: inherit;
+}
+
+.lr-entry-card .card-body {
+  padding: 0 !important;
+}
+
+/* Header */
+.vgtc-dump-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 16px;
+}
+
+.vgtc-dump-title-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vgtc-dump-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.vgtc-dump-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--dump-text-title);
+  letter-spacing: -0.01em;
+}
+
+.vgtc-dump-draft-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--dump-badge-bg);
+  border: 1px solid var(--dump-badge-border);
+  color: var(--dump-badge-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.vgtc-dump-subtitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dump-text-sub);
+}
+
+.vgtc-dump-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vgtc-dump-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--dump-border);
+  background: transparent;
+  color: var(--dump-text-sub);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vgtc-dump-icon-btn:hover {
+  background: var(--dump-btn-ghost-hover);
+  color: var(--dump-text-title);
+}
+
+.vgtc-dump-close-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--dump-border);
+  background: transparent;
+  color: var(--dump-text-sub);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vgtc-dump-close-btn:hover {
+  background: var(--dump-btn-ghost-hover);
+  color: var(--dump-text-title);
+}
+
+/* Fields & Grid */
+.vgtc-dump-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.vgtc-dump-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  width: 100%;
+}
+
+.vgtc-dump-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.vgtc-dump-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.vgtc-dump-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dump-text-label);
+}
+
+.vgtc-dump-req {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+/* Auto / Manual Segmented Toggle */
+.vgtc-dump-toggle {
+  display: inline-flex;
+  border-radius: 6px;
+  border: 1px solid var(--dump-border);
+  background: var(--dump-input-bg);
+  overflow: hidden;
+  padding: 2px;
+  gap: 2px;
+}
+
+.vgtc-dump-toggle-btn {
+  border: none;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  background: transparent;
+  color: var(--dump-text-sub);
+  transition: all 0.15s ease;
+}
+
+.vgtc-dump-toggle-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+/* Inputs, Selects, Textareas */
+.vgtc-dump-theme .fi,
+.vgtc-dump-input {
+  width: 100% !important;
+  min-height: 40px !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--dump-input-border) !important;
+  background: var(--dump-input-bg) !important;
+  color: var(--dump-input-text) !important;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.vgtc-dump-theme .fi:focus,
+.vgtc-dump-input:focus {
+  outline: none !important;
+  border-color: var(--dump-border-focus) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+
+.vgtc-dump-theme .fi::placeholder,
+.vgtc-dump-input::placeholder {
+  color: var(--dump-input-placeholder) !important;
+}
+
+/* Input with icon inside */
+.vgtc-dump-input-icon-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.vgtc-dump-input-icon-wrap input {
+  padding-right: 34px !important;
+}
+
+.vgtc-dump-input-icon {
+  position: absolute;
+  right: 10px;
+  color: var(--dump-text-sub);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+/* Contact Warning Box */
+.vgtc-dump-contact-box {
+  background: var(--dump-amber-bg) !important;
+  border: 1px solid var(--dump-amber-border) !important;
+  border-radius: 10px !important;
+  padding: 14px 16px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vgtc-dump-contact-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dump-amber-title);
+}
+
+.vgtc-dump-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vgtc-dump-contact-grid label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dump-amber-label);
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* Challan Button */
+.vgtc-dump-challan-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--dump-input-border);
+  background: var(--dump-input-bg);
+  color: var(--dump-input-text);
+  font-size: 13px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+.vgtc-dump-challan-btn:hover {
+  border-color: var(--dump-border-focus);
+}
+
+/* Materials Section */
+.vgtc-dump-mat-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+  width: 100%;
+}
+
+.vgtc-dump-mat-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vgtc-dump-mat-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dump-text-title);
+}
+
+.vgtc-dump-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--dump-border);
+  background: transparent;
+  color: var(--dump-text-title);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vgtc-dump-add-btn:hover {
+  background: var(--dump-btn-ghost-hover);
+}
+
+.vgtc-dump-mat-card {
+  background: var(--dump-mat-bg) !important;
+  border: 1px solid var(--dump-mat-border) !important;
+  border-radius: 10px !important;
+  padding: 12px 14px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vgtc-dump-mat-card-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vgtc-dump-mat-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dump-text-sub);
+}
+
+.vgtc-dump-mat-card-delete {
+  background: transparent;
+  border: none;
+  color: var(--dump-text-sub);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+.vgtc-dump-mat-card-delete:hover {
+  color: #ef4444;
+}
+
+.vgtc-dump-mat-grid {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1.5fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.vgtc-dump-mat-grid label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dump-text-sub);
+  margin-bottom: 4px;
+  display: block;
+}
+
+/* Footer Bar */
+.vgtc-dump-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dump-border);
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.vgtc-dump-metrics {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--dump-text-sub);
+}
+
+.vgtc-dump-metric-val {
+  font-weight: 700;
+  color: var(--dump-text-title);
+}
+
+.vgtc-dump-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vgtc-dump-cancel-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--dump-btn-ghost-border);
+  background: transparent;
+  color: var(--dump-btn-ghost-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vgtc-dump-cancel-btn:hover {
+  background: var(--dump-btn-ghost-hover);
+}
+
+.vgtc-dump-save-btn {
+  padding: 8px 24px;
+  border-radius: 8px;
+  border: none;
+  background: var(--dump-btn-primary-bg);
+  color: var(--dump-btn-primary-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vgtc-dump-save-btn:hover:not(:disabled) {
+  background: var(--dump-btn-primary-hover);
+}
+.vgtc-dump-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .vgtc-dump-contact-grid {
+    grid-template-columns: 1fr;
+  }
+  .vgtc-dump-mat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .vgtc-dump-row-2 {
+    grid-template-columns: 1fr;
+  }
+  .vgtc-dump-mat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Persistent Blue Buttons & Accents Across All Forms & Themes */
+.vgtc-dump-theme .btn-p,
+.lr-entry-card .btn-p,
+.lr-entry-card button[type="submit"],
+.vgtc-dump-save-btn,
+.vgtc-dump-toggle-btn.active {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.vgtc-dump-theme .btn-p:hover:not(:disabled),
+.lr-entry-card .btn-p:hover:not(:disabled),
+.lr-entry-card button[type="submit"]:hover:not(:disabled),
+.vgtc-dump-save-btn:hover:not(:disabled) {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .vgtc-dump-theme .btn-p:hover,
+[data-theme="dark"] .lr-entry-card .btn-p:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+}

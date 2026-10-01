@@ -57,3 +57,34 @@ test as proof.
 When provider returns an authentication error, show that cause and a next step;
 do not infer phone verification from failed authentication. Keep saved settings
 success separate from provider connection success.
+
+## Sheet cells must write the source schema (2026-10-01)
+
+User corrected initial Smart Sheet delivery: challan bag edits appeared to save,
+then reverted. The visible bag totals are derived from `materials[]`; writing a
+top-level `totalBags` field cannot change them. Before enabling an editable
+column, trace its source field through save and reload. Test PATCH followed by
+a fresh GET, including permissions and concurrent updates.
+
+## Production-only UI errors need production-path evidence (2026-10-01)
+
+An earlier missing-icon hotfix did not prove every Bahadurgarh challan crash
+was gone. Check optional and legacy record shapes, inspect production-only
+panels, and distinguish hardened code from a reproduced root cause. Verify
+after deployment before claiming a production issue is closed.
+
+## Form simplification follows user layout preference (2026-10-01)
+
+User corrected LR redesign: max-width card, colored site notice, section dividers,
+helper copy, and voice control made form feel narrower and busier. For a request
+to simplify, preserve full working width and remove decorative or redundant
+elements before adding visual hierarchy. Verify layout against user's stated
+preference, not only screenshot's field inventory.
+
+## LR row identity and bill status must follow location (2026-10-01)
+
+User corrected auto-billing: a bill record existing is insufficient if LR list
+shows other godowns' vouchers or repeated badges. Filter status by exact LR
+book and bill type. When one vehicle load contains multiple materials or
+destinations, do not reuse one LR number across rows; use one entry ID for the
+load and a unique LR number for each row, matching the operational workflow.

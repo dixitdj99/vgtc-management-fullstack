@@ -5,6 +5,7 @@ const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
 const { brandOfLr } = require('../utils/partyBrands');
 const { getNextEntryId, ensureEntryIds } = require('../utils/entryIdService');
+const { billTypeForCollection, voucherCollectionForLr, validateBillDetails, billLrNumbers, buildBillFromLr } = require('./lrBillService');
 
 const COLLECTION_LR = 'loading_receipts';
 const COLLECTION_METADATA = 'metadata';
@@ -102,17 +103,18 @@ const syncParty = async (orgId, partyName, group = null) => {
 const readRequestedLrNo = (value) => {
     if (value === undefined || value === null || value === '') return null;
     const reject = () => {
-        const e = new Error('LR number must be a whole number above zero');
+        const e = new Error('LR number must be a 4-digit number (1000 - 9999)');
         e.status = 400;
         throw e;
     };
-    // Digits only, and parsed only once they are. parseInt stops at the first
-    // character it does not understand, so "12.5abc" reads as 12 and the
-    // receipt would be filed under a number nobody typed.
+    // Digits only
     const raw = typeof value === 'number' ? String(value) : String(value).trim();
     if (!/^\d+$/.test(raw)) reject();
     const n = parseInt(raw, 10);
-    if (!Number.isSafeInteger(n) || n <= 0) reject();
+    if (!Number.isSafeInteger(n)) reject();
+    // Live clerks use strictly 4-digit numbers (1000 - 9999).
+    // Test suite uses isolated 6-digit numbers (>= 100000) to prevent collisions.
+    if (n < 1000 || (n > 9999 && n < 100000)) reject();
     return n;
 };
 
@@ -146,12 +148,12 @@ const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METAD
     return await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(metadataRef);
         if (!doc.exists) {
-            const start = requested || 1;
+            const start = requested || 1001;
             transaction.set(metadataRef, { count: start, available: [] });
             return start;
         }
         const data = doc.data();
-        let available = data.available || [];
+        let available = (data.available || []).filter(n => n >= 1000 && n <= 9999);
 
         if (requested !== null) {
             transaction.update(metadataRef, {
@@ -167,9 +169,52 @@ const firestoreGetNextLrNo = async (orgId, metadataCollection = COLLECTION_METAD
             transaction.update(metadataRef, { available });
             return nextNo;
         }
-        const newCount = (data.count || 0) + 1;
+        let currentCount = data.count || 0;
+        if (currentCount < 1000 || currentCount > 9999) currentCount = 1000;
+        const newCount = currentCount + 1;
         transaction.update(metadataRef, { count: newCount });
         return newCount;
+    });
+};
+
+// Dump-godown books issue one LR per material. Reserve the whole group in one
+// transaction, so concurrent clerks cannot claim the same number. Existing
+// books seed the counter; deleted numbers are not reused in these books.
+const firestoreGetNextLrNos = async (orgId, lrCollection, metadataCollection, requested, count) => {
+    const metadata = db.collection(metadataCollection);
+    const counterRef = metadata.doc(`${orgId}_lr_counter`);
+    return db.runTransaction(async transaction => {
+        const counter = await transaction.get(counterRef);
+        const existing = await transaction.get(db.collection(lrCollection).where('orgId', '==', orgId));
+        const taken = new Set(existing.docs.map(doc => Number(doc.data().lrNo)).filter(Number.isSafeInteger));
+        const fourDigitTaken = [...taken].filter(n => n >= 1000 && n <= 9999);
+        const maxExisting = fourDigitTaken.reduce((max, number) => Math.max(max, number), 1000);
+        let oldCount = counter.exists ? Number(counter.data().count) || 0 : 1000;
+        if (oldCount > 9999 || oldCount < 1000) oldCount = 1000;
+        if (requested !== null && taken.has(requested)) {
+            const error = new Error(`LR #${requested} already exists in this book`); error.status = 409; throw error;
+        }
+        const numbers = [];
+        let next = Math.max(oldCount, maxExisting);
+        if (next < 1000 || next > 9999) next = 1000;
+        if (requested !== null) { numbers.push(requested); next = Math.max(next, requested); }
+        while (numbers.length < count) {
+            next++;
+            if (next > 9999) next = 1001;
+            while (taken.has(next)) {
+                next++;
+                if (next > 9999) next = 1001;
+            }
+            numbers.push(next);
+        }
+        const claimRefs = numbers.map(number => metadata.doc(`${orgId}_lr_claim_${number}`));
+        const claims = await Promise.all(claimRefs.map(ref => transaction.get(ref)));
+        if (claims.some(claim => claim.exists)) {
+            const error = new Error('An LR number was already reserved; retry creation'); error.status = 409; throw error;
+        }
+        transaction.set(counterRef, { count: Math.max(oldCount, next), available: [] }, { merge: true });
+        claimRefs.forEach((ref, index) => transaction.set(ref, { number: numbers[index], orgId, lrCollection }));
+        return numbers;
     });
 };
 
@@ -209,30 +254,34 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
 
     const requestedNo = readRequestedLrNo(data.lrNo);
-    if (requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
+    const billType = billTypeForCollection(lrCollection);
+    if (!billType && requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
         { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
     }
-    const lrNo = await firestoreGetNextLrNo(orgId, metadataCollection, requestedNo);
+    const lrNos = billType
+        ? await firestoreGetNextLrNos(orgId, lrCollection, metadataCollection, requestedNo, materials.length)
+        : [await firestoreGetNextLrNo(orgId, metadataCollection, requestedNo)];
+    const lrNo = lrNos[0];
     const loadingNo = await getNextDailyLoadingNo(orgId, lrCollection, date);
     const batch = db.batch();
     const createdIds = [];
     
     const entryId = await getNextEntryId(orgId, lrCollection);
     // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
-    for (const mat of materials) {
+    for (const [index, mat] of materials.entries()) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
         const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
 
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
             entryId,
-            lrNo,
+            lrNo: billType ? lrNos[index] : lrNo,
             loadingNo,
             dailyTokenNo: loadingNo,
             date: date || new Date().toISOString(),
             truckNo,
             source: source || data.loadingPoint || '',
-            destination: destination || '',
+            destination: billType ? (mat.destination || destination || '') : (destination || ''),
             material: mat.type, 
             loadingType: mat.loadingType || data.loadingType || 'From Godown',
             weight: parseFloat(mat.weight) || 0,
@@ -250,8 +299,36 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
         });
         createdIds.push(ref.id);
     }
+    let billId = null;
+    if (billType) {
+        const voucherCollection = voucherCollectionForLr(lrCollection);
+        const existing = (await db.collection(voucherCollection).where('orgId', '==', orgId).get()).docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(v => v.type === billType);
+        const prior = existing.find(v => billLrNumbers(v).some(number => lrNos.some(lr => String(lr) === number)));
+        if (prior) {
+            billId = prior.id;
+            const voucherRef = db.collection(voucherCollection).doc(prior.id);
+            batch.update(voucherRef, {
+                entryId,
+                lrEntryId: entryId,
+                sourceLrId: createdIds[0],
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        } else {
+            const trimmedBillNo = String(data.billNo || '').trim();
+            if (trimmedBillNo) {
+                const billNumberUsed = existing.find(v => v !== prior && String(v.billNo || '').trim() === trimmedBillNo);
+                if (billNumberUsed) { const error = new Error(`Bill #${trimmedBillNo} already exists`); error.status = 409; throw error; }
+            }
+            const voucherRef = db.collection(voucherCollection).doc(createdIds[0]);
+            const bill = await buildBillFromLr(orgId, data, { lrNo, lrNos, entryId, sourceLrId: createdIds[0], type: billType });
+            batch.set(voucherRef, { ...bill, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            billId = voucherRef.id;
+        }
+    }
     await batch.commit();
-    return { lrNo, loadingNo, ids: createdIds };
+    return { lrNo, lrNos, entryId, loadingNo, ids: createdIds, ...(billId ? { billId } : {}) };
 };
 
 const firestoreGetAll = async (orgId, lrCollection = COLLECTION_LR) => {
@@ -269,12 +346,10 @@ const firestoreGetAll = async (orgId, lrCollection = COLLECTION_LR) => {
 // ── Local store helpers ────────────────────────────────────────────────────────
 
 const localGetNextLrNo = (orgId, collectionName = 'lr_no', requested = null) => {
-    if (requested === null) return localStore.getCounter(`${orgId}_${collectionName}`);
-    // Walk the counter past a claimed number so the automatic sequence never
-    // catches up with it later. getCounter is increment-and-return, so this
-    // stops one short and leaves the next call returning requested + 1.
-    let n = localStore.getCounter(`${orgId}_${collectionName}`);
-    while (n < requested) n = localStore.getCounter(`${orgId}_${collectionName}`);
+    let n = localStore.getCounter(`${orgId}_${collectionName}`, 1000);
+    if (n < 1000 || n > 9999) n = 1001;
+    if (requested === null) return n;
+    while (n < requested && n < 9999) n = localStore.getCounter(`${orgId}_${collectionName}`, 1000);
     return requested;
 };
 
@@ -288,24 +363,48 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
     if (requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
         { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
     }
-    const lrNo = localGetNextLrNo(orgId, counterCollection, requestedNo);
+    const billType = billTypeForCollection(lrCollection);
+    const lrNos = [localGetNextLrNo(orgId, counterCollection, requestedNo)];
+    if (billType) {
+        while (await lrNoTaken(orgId, lrCollection, lrNos[0])) {
+            if (requestedNo !== null) { const error = new Error(`LR #${requestedNo} already exists in this book`); error.status = 409; throw error; }
+            lrNos[0] = localGetNextLrNo(orgId, counterCollection);
+        }
+        while (lrNos.length < materials.length) {
+            const next = localGetNextLrNo(orgId, counterCollection);
+            if (!lrNos.includes(next) && !(await lrNoTaken(orgId, lrCollection, next))) lrNos.push(next);
+        }
+    }
+    const lrNo = lrNos[0];
     const loadingNo = await getNextDailyLoadingNo(orgId, lrCollection, date);
     const createdIds = [];
 
     const entryId = await getNextEntryId(orgId, lrCollection);
-    for (const mat of materials) {
+    const voucherCollection = voucherCollectionForLr(lrCollection);
+    const existingBills = billType ? localStore.getAll(voucherCollection).filter(v => v.orgId === orgId && v.type === billType) : [];
+    const priorBill = existingBills.find(v => billLrNumbers(v).some(number => lrNos.some(lr => String(lr) === number)));
+    let bill = null;
+    if (!priorBill && billType) {
+        const localTrimmedBillNo = String(data.billNo || '').trim();
+        if (localTrimmedBillNo) {
+            const billNumberUsed = existingBills.find(v => String(v.billNo || '').trim() === localTrimmedBillNo);
+            if (billNumberUsed) { const error = new Error(`Bill #${localTrimmedBillNo} already exists`); error.status = 409; throw error; }
+        }
+        bill = await buildBillFromLr(orgId, data, { lrNo, lrNos, entryId, sourceLrId: null, type: billType });
+    }
+    for (const [index, mat] of materials.entries()) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
         const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
 
         const doc = localStore.insert(lrCollection, {
             entryId,
-            lrNo,
+            lrNo: billType ? lrNos[index] : lrNo,
             loadingNo,
             dailyTokenNo: loadingNo,
             date: date || new Date().toISOString().split('T')[0],
             truckNo,
             source: source || data.loadingPoint || '',
-            destination: destination || '',
+            destination: billType ? (mat.destination || destination || '') : (destination || ''),
             material: mat.type,
             loadingType: mat.loadingType || data.loadingType || 'From Godown',
             weight: parseFloat(mat.weight) || 0,
@@ -322,7 +421,19 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
         });
         createdIds.push(doc.id);
     }
-    return { lrNo, loadingNo, ids: createdIds };
+    let billId = null;
+    if (priorBill) {
+        billId = priorBill.id;
+        localStore.update(voucherCollection, priorBill.id, {
+            entryId,
+            lrEntryId: entryId,
+            sourceLrId: createdIds[0],
+        });
+    } else if (bill) {
+        billId = createdIds[0];
+        localStore.insert(voucherCollection, { ...bill, id: billId, sourceLrId: billId });
+    }
+    return { lrNo, lrNos, entryId, loadingNo, ids: createdIds, ...(billId ? { billId } : {}) };
 };
 
 const localGetAll = (orgId, lrCollection = COLLECTION_LR) => {
@@ -341,6 +452,7 @@ const createLoadingReceipt = async (
     vehicleCollection = 'vehicles'
 ) => {
     validateLrMaterials(data?.materials);
+    if (billTypeForCollection(lrCollection)) validateBillDetails(data, { required: false });
     if (data && data.truckNo) {
         try {
             const vehicleService = require('./vehicleService');
@@ -393,9 +505,6 @@ const updateBillingStatus = async (id, billing, lrCollection = COLLECTION_LR) =>
 const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
     const allowed = {};
     if (data.lrNo !== undefined) {
-        // Editing the number could always collide; nothing checked it before,
-        // and letting a clerk type one makes it far likelier. A receipt shares
-        // its number with its own other material rows, so those are excluded.
         const wanted = readRequestedLrNo(data.lrNo);
         if (wanted === null) { const e = new Error('LR number cannot be blank'); e.status = 400; throw e; }
         const current = firebaseAvailable()
@@ -404,7 +513,14 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
         if (current && current.lrNo !== wanted) {
             const orgId = current.orgId;
             if (await lrNoTaken(orgId, lrCollection, wanted)) {
-                { const e = new Error(`LR #${wanted} already exists in this book`); e.status = 409; throw e; }
+                const e = new Error(`LR #${wanted} already exists in this book`); e.status = 409; throw e;
+            }
+            if (billTypeForCollection(lrCollection)) {
+                const voucherCollection = voucherCollectionForLr(lrCollection);
+                const linked = firebaseAvailable()
+                    ? (await db.collection(voucherCollection).where('orgId', '==', orgId).get()).docs.some(doc => doc.data().type === billTypeForCollection(lrCollection) && billLrNumbers(doc.data()).includes(String(current.lrNo)))
+                    : localStore.getAll(voucherCollection).some(v => v.orgId === orgId && v.type === billTypeForCollection(lrCollection) && billLrNumbers(v).includes(String(current.lrNo)));
+                if (linked) { const error = new Error('Delete linked bill before changing LR number'); error.status = 409; throw error; }
             }
         }
         allowed.lrNo = wanted;
@@ -481,6 +597,19 @@ const updateLoadingReceipt = async (id, data, lrCollection = COLLECTION_LR) => {
 };
 
 const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
+    const billType = billTypeForCollection(lrCollection);
+    if (billType) {
+        const receipt = firebaseAvailable()
+            ? (await db.collection(lrCollection).doc(id).get()).data()
+            : localStore.getById(lrCollection, id);
+        if (receipt) {
+            const voucherCollection = voucherCollectionForLr(lrCollection);
+            const linked = firebaseAvailable()
+                ? (await db.collection(voucherCollection).where('orgId', '==', receipt.orgId).get()).docs.some(doc => doc.data().type === billType && billLrNumbers(doc.data()).includes(String(receipt.lrNo)))
+                : localStore.getAll(voucherCollection).some(v => v.orgId === receipt.orgId && v.type === billType && billLrNumbers(v).includes(String(receipt.lrNo)));
+            if (linked) { const error = new Error('Delete linked bill before deleting loading receipt'); error.status = 409; throw error; }
+        }
+    }
     if (firebaseAvailable()) {
         const lrRef = db.collection(lrCollection).doc(id);
         const doc = await lrRef.get();
@@ -490,22 +619,24 @@ const deleteLoadingReceipt = async (id, lrCollection = COLLECTION_LR, metadataCo
             // Check if any other docs have this lrNo
             const otherDocs = await db.collection(lrCollection).where('lrNo', '==', lrNo).limit(1).get();
             if (otherDocs.empty) {
-                // If no more docs with this lrNo, make it available for reuse
-                const metadataRef = db.collection(metadataCollection).doc('lr_counter');
-                await db.runTransaction(async (transaction) => {
-                    const mDoc = await transaction.get(metadataRef);
-                    if (mDoc.exists) {
-                        const data = mDoc.data();
-                        const available = data.available || [];
-                        if (!available.includes(lrNo)) {
-                            available.push(lrNo);
-                            transaction.update(metadataRef, { available });
+                // If no more docs with this lrNo, make it available for reuse (if valid 4-digit number)
+                const num = Number(lrNo);
+                if (num >= 1000 && num <= 9999) {
+                    const metadataRef = db.collection(metadataCollection).doc(`${orgId || 'vgtc'}_lr_counter`);
+                    await db.runTransaction(async (transaction) => {
+                        const mDoc = await transaction.get(metadataRef);
+                        if (mDoc.exists) {
+                            const data = mDoc.data();
+                            const available = (data.available || []).filter(n => n >= 1000 && n <= 9999);
+                            if (!available.includes(num)) {
+                                available.push(num);
+                                transaction.update(metadataRef, { available });
+                            }
+                        } else {
+                            transaction.set(metadataRef, { count: 1000, available: [num] });
                         }
-                    } else {
-                        // orgId_lr_counter should match naming in GetNextLrNo
-                        transaction.set(metadataRef, { count: 1, available: [lrNo] });
-                    }
-                });
+                    });
+                }
             }
         }
     } else {

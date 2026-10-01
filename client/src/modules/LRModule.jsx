@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, Truck, User, Volume2, X, Loader2, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Download, Edit3, FileSpreadsheet, MapPin, MessageSquare, Mic, MicOff, Package, Pencil, Play, Pause, Plus, Printer, Receipt, Search, Tag, Trash2, Truck, User, Volume2, X, Loader2, ArrowRight, Moon, Sun, Lock, Link2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import StyledAutocomplete from '../components/StyledAutocomplete';
@@ -20,6 +20,8 @@ import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 import TableScroll from '../components/TableScroll';
 import { fmtDate } from '../utils/format';
 import { useToast } from '../components/Toast';
+import ChallanFormFields from '../components/ChallanFormFields';
+import './lrEntryForm.css';
 
 const PAGE_SIZE = 20;
 
@@ -779,6 +781,8 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
   };
 
   const S = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const isDump = ['kosli', 'jhajjar', 'bahadurgarh'].includes(brand);
+  const siteLabel = brand === 'kosli' ? 'Kosli Godown (Sector-4)' : brand === 'jhajjar' ? 'Jhajjar Godown' : 'Bahadurgarh Godown';
 
   return (
     <div style={{
@@ -788,26 +792,51 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
       <motion.div
         ref={modalRef}
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}
+        style={{
+          width: '95%',
+          maxWidth: isDump ? '980px' : '520px',
+          background: isDump ? 'var(--dump-card-bg)' : 'var(--bg-card)',
+          border: isDump ? '1px solid var(--dump-border)' : '1px solid var(--border)',
+          borderRadius: '16px',
+          boxShadow: isDump ? 'var(--dump-shadow)' : '0 24px 60px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '90vh'
+        }}
+        className={isDump ? 'vgtc-dump-theme' : ''}
       >
         {/* Modal header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Pencil size={16} color="#6366f1" />
+        {isDump ? (
+          <div className="vgtc-dump-header" style={{ marginBottom: 0, padding: '18px 24px', borderBottom: '1px solid var(--dump-border)' }}>
+            <div className="vgtc-dump-title-area">
+              <div className="vgtc-dump-title-row">
+                <h2 className="vgtc-dump-title">Edit Loading Receipt #{form.lrNo}</h2>
+                <span className="vgtc-dump-draft-badge">Draft</span>
+              </div>
+              <div className="vgtc-dump-subtitle">Loading Godown: {siteLabel}</div>
             </div>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Receipt</div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>ID: {row.id.slice(0, 10)}...</div>
-            </div>
+            <button type="button" className="vgtc-dump-close-btn" onClick={onClose}><X size={13} /> Close</button>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
-            <X size={18} />
-          </button>
-        </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Pencil size={16} color="#6366f1" />
+              </div>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Edit Receipt</div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>ID: {row.id.slice(0, 10)}...</div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
+              <X size={18} />
+            </button>
+          </div>
+        )}
 
         {/* Modal body */}
-        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '70vh', overflowY: 'auto' }}>
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', flex: 1 }}>
           <div className="fg fg-2">
             <div className="field-h"><label>LR Number</label><input className="fi" type="number" value={form.lrNo} onChange={e => S('lrNo', e.target.value)} /></div>
             <div className="field-h"><label><Calendar size={11} /> Date</label><input className="fi" type="date" value={form.date} onChange={e => S('date', e.target.value)} /></div>
@@ -873,14 +902,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
               <button type="button" onClick={() => setShowChalPopup(true)} style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px', fontWeight: 600, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Tag size={14} color="#f59e0b" />
+                  <Tag size={14} color="#2563eb" />
                   {form.usedChallans.length > 0 ? `${form.usedChallans.length} Challan(s) Selected` : '— Select —'}
                 </span>
                 <Pencil size={12} opacity={0.5} />
               </button>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {form.usedChallans.map(c => (
-                  <div key={c.challanNo} style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', padding: '4px 10px', borderRadius: '12px', fontSize: '10px', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div key={c.challanNo} style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.25)', padding: '4px 10px', borderRadius: '12px', fontSize: '10px', fontWeight: 700, color: '#2563eb', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {c.challanNo}
                     <X size={10} style={{ cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, usedChallans: f.usedChallans.filter(uc => uc.challanNo !== c.challanNo) }))} />
                   </div>
@@ -896,7 +925,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
             <textarea className="fi" rows={2} placeholder="Add instructions..." value={form.note} onChange={e => S('note', e.target.value)} style={{ resize: 'vertical', minHeight: '60px' }} />
           </div>
 
-          <div className="field-h">
+          {!['kosli', 'jhajjar', 'bahadurgarh'].includes(brand) && <div className="field-h">
             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice Message</label>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
               {!isRecording ? (
@@ -919,14 +948,14 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
               )}
               {isRecording && <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 700 }}>Recording...</span>}
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Modal footer */}
-        <div style={{ display: 'flex', gap: '10px', padding: '14px 22px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
-          <button className="btn btn-g" onClick={onClose} disabled={loading}>Cancel</button>
-          <button className="btn btn-p" onClick={() => setIsConfirming(true)} disabled={loading}>
-            {loading ? <Loader2 size={14} className="spin" /> : <><Check size={14} /> Save Changes</>}
+        <div style={{ display: 'flex', gap: '10px', padding: '14px 24px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end', background: isDump ? 'var(--dump-card-bg)' : undefined }}>
+          <button className={isDump ? 'vgtc-dump-cancel-btn' : 'btn btn-g'} onClick={onClose} disabled={loading}>Cancel</button>
+          <button className={isDump ? 'vgtc-dump-save-btn' : 'btn btn-p'} onClick={() => setIsConfirming(true)} disabled={loading}>
+            {loading ? <><Loader2 size={14} className="spin" /> Saving...</> : <><Check size={14} /> Save Changes</>}
           </button>
         </div>
 
@@ -1004,6 +1033,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     destination: preFill?.destination || '',
     remark: preFill?.remark || '',
     factoryCode: '',
+    partyCode: preFill?.partyCode || '',
+    billNo: preFill?.billNo || '',
+    lrNo: preFill?.lrNo || '',
     challanNo: ''
   });
 
@@ -1035,7 +1067,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
       const created = res.data;
       // Go back to select tab so user can see newly created challan
       setTab('select');
-      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', destination: '', remark: '', factoryCode: '', challanNo: '' });
+      setChalForm({ truckNo: '', date: new Date().toISOString().split('T')[0], material: MATERIALS[0], quantity: '', partyName: '', partyCode: '', billNo: '', lrNo: '', destination: '', remark: '', factoryCode: '', challanNo: '' });
       // Notify parent to refetch challans
       if (onRefetch) onRefetch();
       // Pass full challan object (with quantity) to parent
@@ -1063,6 +1095,8 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     onToggleSelect(c);
   };
 
+  const isDump = ['kosli', 'jhajjar', 'bahadurgarh'].includes(brand);
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1070,22 +1104,33 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
     }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        style={{ width: '94%', maxWidth: '580px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+        style={{
+          width: '95%',
+          maxWidth: '580px',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: '16px',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '90vh'
+        }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Tag size={16} color="#f59e0b" />
+            <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'rgba(37,99,235,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Tag size={16} color="#2563eb" />
             </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Select or Create Challan</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>Select or Create Challan</div>
               <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>
                 {cleanTargetTruck ? `Vehicle: ${cleanTargetTruck}` : 'Loading Receipt Attachment'}
               </div>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '6px', borderRadius: '8px' }}>
-            <X size={18} />
+            <X size={16} /> Close
           </button>
         </div>
 
@@ -1126,9 +1171,9 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       onClick={() => setScope('other')}
                       style={{
                         flex: 1, padding: '9px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '8px', cursor: 'pointer',
-                        border: scope === 'other' ? '2px solid #f59e0b' : '1px solid var(--border)',
-                        background: scope === 'other' ? 'rgba(245,158,11,0.1)' : 'var(--bg)',
-                        color: scope === 'other' ? '#d97706' : 'var(--text-muted)',
+                        border: scope === 'other' ? '2px solid #2563eb' : '1px solid var(--border)',
+                        background: scope === 'other' ? 'rgba(37,99,235,0.08)' : 'var(--bg)',
+                        color: scope === 'other' ? '#2563eb' : 'var(--text-muted)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
                       }}
                     >
@@ -1139,7 +1184,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
 
                 {/* Transfer Banner */}
                 {cleanTargetTruck && scope === 'other' && (
-                  <div style={{ padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '8px', marginBottom: '12px', fontSize: '11px', color: '#b45309', lineHeight: 1.4 }}>
+                  <div style={{ padding: '10px 14px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.25)', borderRadius: '8px', marginBottom: '12px', fontSize: '11px', color: '#1d4ed8', lineHeight: 1.4 }}>
                     <strong>Transfer Notice:</strong> Selecting another vehicle's challan will attribute all freight to <strong>{cleanTargetTruck}</strong>. WhatsApp alerts will be sent to both vehicle owners.
                   </div>
                 )}
@@ -1181,8 +1226,8 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                           onClick={() => handleChallanClick(c)}
                           style={{
                             padding: '12px',
-                            background: isSelected ? 'rgba(99,102,241,0.06)' : (isOther ? 'rgba(245,158,11,0.03)' : 'var(--bg)'),
-                            border: isSelected ? '2px solid var(--primary)' : (isOther ? '1px dashed #f59e0b' : '1px solid var(--border)'),
+                            background: isSelected ? 'rgba(99,102,241,0.06)' : (isOther ? 'rgba(37,99,235,0.04)' : 'var(--bg)'),
+                            border: isSelected ? '2px solid var(--primary)' : (isOther ? '1px dashed #2563eb' : '1px solid var(--border)'),
                             borderRadius: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.15s'
                           }}
                         >
@@ -1191,7 +1236,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                               <span style={{ fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace' }}>{c.challanNo}</span>
                               <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 700 }}>{c.truckNo}</span>
                               {isOther && (
-                                <span style={{ padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#d97706', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>
+                                <span style={{ padding: '2px 6px', background: 'rgba(37,99,235,0.1)', color: '#2563eb', borderRadius: '4px', fontSize: '9px', fontWeight: 800 }}>
                                   🔄 TRANSFER
                                 </span>
                               )}
@@ -1235,6 +1280,16 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
             {tab === 'create' && (
               <motion.div key="create" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
                 <form id="createChalForm" onSubmit={handleCreateRequest}>
+                  {['kosli', 'jhajjar', 'bahadurgarh'].includes(brand) ? (
+                    <ChallanFormFields
+                      form={chalForm}
+                      onChange={setChalForm}
+                      materials={MATERIALS}
+                      vehicles={vehicles.filter(v => v.truckNo)}
+                      partySuggestions={partySuggestions}
+                      requireLr={false}
+                    />
+                  ) : (
                   <div className="fg fg-2" style={{ gap: '14px' }}>
                     <div className="field" style={{ gridColumn: '1 / -1' }}>
                       <label>Challan No.</label>
@@ -1293,6 +1348,7 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       <input className="fi" type="text" placeholder="Optional notes" value={chalForm.remark} onChange={e => S('remark', e.target.value)} />
                     </div>
                   </div>
+                  )}
                   {err && <div style={{ fontSize: '12px', color: '#f43f5e', fontWeight: 600, marginTop: '10px' }}>{err}</div>}
                 </form>
               </motion.div>
@@ -1403,6 +1459,7 @@ function DeleteConfirm({ row, rows, apiUrl, onClose, onConfirm }) {
 
 /* ── Main LR Module ── */
 export default function LRModule({ role = 'user', brand = 'dump', permissions = {} }) {
+  const createsBill = brand === 'kosli' || brand === 'jhajjar' || brand === 'bahadurgarh';
   // Whoever is logged in signs the receipts they print.
   const { user } = useAuth();
   const { showToast } = useToast() || {};
@@ -1438,8 +1495,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const siteInfo = useMemo(() => {
     if (brand === 'jkl') return { label: 'JK Lakshmi', code: 'JKL', color: '#e53935', bg: 'rgba(229,57,53,0.08)', border: 'rgba(229,57,53,0.3)' };
     if (brand === 'jhajjar') return { label: 'Jhajjar Godown', code: 'JHAJJAR', color: '#14b8a6', bg: 'rgba(20,184,166,0.08)', border: 'rgba(20,184,166,0.3)' };
-    if (brand === 'bahadurgarh') return { label: 'Bahadurgarh Godown', code: 'BAHADURGARH', color: '#d97706', bg: 'rgba(217,119,6,0.08)', border: 'rgba(217,119,6,0.3)' };
-    return { label: 'Kosli Godown', code: 'KOSLI', color: '#6366f1', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.3)' };
+    if (brand === 'bahadurgarh') return { label: 'Bahadurgarh Godown', code: 'BAHADURGARH', color: '#2563eb', bg: 'rgba(37,99,235,0.08)', border: 'rgba(37,99,235,0.3)' };
+    return { label: 'Kosli Godown (Sector-4)', code: 'KOSLI', color: '#6366f1', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.3)' };
   }, [brand]);
 
   const [materialObjs, setMaterialObjs] = useState([]);
@@ -1512,12 +1569,42 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     ownerName: '',
     showContactOverride: false,
     partyName: '',
+    billNo: '',
+    partyCode: '',
     destination: '',
     note: '',
     voiceMessageBase64: '',
     usedChallans: [], // array of selected challan objects
     materials: [{ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }],
   });
+
+  const [themeMode, setThemeMode] = useState(() => {
+    return document.documentElement.getAttribute('data-theme') || localStorage.getItem('vgtc-theme') || 'light';
+  });
+
+  useEffect(() => {
+    const handleThemeChange = (e) => {
+      setThemeMode(e?.detail || document.documentElement.getAttribute('data-theme') || 'light');
+    };
+    window.addEventListener('vgtc-theme-change', handleThemeChange);
+    return () => window.removeEventListener('vgtc-theme-change', handleThemeChange);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = themeMode === 'dark' ? 'light' : 'dark';
+    setThemeMode(next);
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('vgtc-theme', next);
+    window.dispatchEvent(new CustomEvent('vgtc-theme-change', { detail: next }));
+  };
+
+  const lrTotalBags = useMemo(() => {
+    return (form.materials || []).reduce((acc, m) => acc + (parseInt(m.bags, 10) || 0), 0);
+  }, [form.materials]);
+
+  const lrTotalWeight = useMemo(() => {
+    return (form.materials || []).reduce((acc, m) => acc + (parseFloat(m.weight) || 0), 0).toFixed(2);
+  }, [form.materials]);
 
   /**
    * Has a voucher already been written on the number being typed?
@@ -1669,7 +1756,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       setReceipts([...dataRes.data].sort((a, b) => b.lrNo - a.lrNo));
       setParties(partiesRes.data);
       try {
-        const vRes = await ax.get(`/vouchers`);
+        const vRes = await ax.get(`/vouchers`, { _skipCache: true });
         setAllVouchers(vRes.data || []);
       } catch (e) { console.error('Failed to fetch vouchers', e); }
     } catch { }
@@ -1718,6 +1805,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   useEffect(() => {
     setLoading(true);
+    // Always clear any previously-saved truck number when switching godowns
+    // so the blank-truck guarantee holds even if something wrote it in the past.
+    try { localStorage.removeItem('vgtc.sticky.lr.truckNo'); } catch (_) {}
     Promise.all([fetchLRData(), fetchChallans(), fetchVehicles(), fetchAdditions(), fetchMaterials(), fetchFuelStations()]).finally(() => setLoading(false));
     setCurrentPage(1);
   }, [brand]);
@@ -1780,13 +1870,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     }));
   };
 
-  useEffect(() => {
-    const stickyTruck = getSticky('lr.truckNo', '');
-    if (stickyTruck && rawVehicles.length > 0) {
-      handleTruckChange(stickyTruck);
-      rememberSticky('lr.truckNo', '');
-    }
-  }, [rawVehicles]);
+  // NOTE: truck number is intentionally NOT restored from sticky defaults.
+  // The loading receipt form always opens with a blank truck field so the
+  // clerk must actively type the truck for every new receipt, preventing
+  // accidental re-use of the previous vehicle.
 
   const isVehicleContactComplete = Boolean(
     matchedVehicle &&
@@ -1979,6 +2066,15 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       fetchLRData(); fetchChallans(); fetchVehicles();
       clearVoice();
       rememberSticky('lr.date', form.date);
+      const savedLrNo = res.data?.lrNo || form.lrNo || '';
+      if (showToast) {
+        showToast(
+          createsBill
+            ? `Loading Receipt #${savedLrNo} & Bill created automatically!`
+            : `Loading Receipt #${savedLrNo} created successfully!`,
+          'success'
+        );
+      }
       setForm({
         date: form.date,
         truckNo: '',
@@ -1988,6 +2084,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         ownerName: '',
         showContactOverride: false,
         partyName: '',
+        billNo: '',
+        partyCode: '',
         destination: '',
         fuelStation: '',
         note: '',
@@ -2002,11 +2100,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       // field undefined. Rebuild the rows we just submitted instead; the shape
       // below mirrors lrService.createLoadingReceipt field for field, so this
       // slip is identical to one printed from the list afterwards.
-      const printedRows = materialsWithParty.map(m => ({
-        lrNo: res.data.lrNo,
+      const printedRows = materialsWithParty.map((m, index) => ({
+        lrNo: res.data.lrNos?.[index] ?? res.data.lrNo,
+        entryId: res.data.entryId,
         date: payload.date || new Date().toISOString().slice(0, 10),
         truckNo: payload.truckNo,
-        destination: payload.destination || '',
+        destination: createsBill ? (m.destination || payload.destination || '') : (payload.destination || ''),
         material: m.type,
         loadingType: m.loadingType || 'From Godown',
         weight: parseFloat(m.weight) || 0,
@@ -2014,9 +2113,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         billing: m.billing || payload.billing || 'No',
         partyName: m.partyName,
       }));
-      printReceipt(printedRows, res.data.lrNo, brand, signedBy, vehicles);
+      for (const number of (createsBill ? (res.data.lrNos || [res.data.lrNo]) : [res.data.lrNo])) {
+        printReceipt(printedRows, number, brand, signedBy, vehicles);
+      }
       if (showToast) {
-        showToast(`✅ Loading Receipt #${res.data.lrNo} created & WhatsApp message sent successfully!`, 'success');
+        const numberLabel = res.data.lrNos?.length > 1 ? res.data.lrNos.join(', ') : res.data.lrNo;
+        showToast(`Loading Receipt #${numberLabel} created`, 'success');
       }
 
     } catch (e) {
@@ -2096,7 +2198,17 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             openChallans={openChallans}
             vehicles={vehicles.length ? vehicles.map(v => ({ ...v, brandMats: MATERIALS })) : [{ brandMats: MATERIALS }]}
             selectedChallans={form.usedChallans}
-            preFill={chalPreFill}
+            preFill={chalPreFill || (createsBill ? {
+              truckNo: form.truckNo,
+              date: form.date,
+              material: form.materials[0]?.type,
+              quantity: form.materials[0]?.bags,
+              partyName: form.partyName,
+              partyCode: form.partyCode,
+              billNo: form.billNo,
+              destination: form.destination,
+              lrNo: form.lrNo,
+            } : null)}
             targetTruckNo={linkingLrId ? receipts.find(r => r.id === linkingLrId)?.truckNo : form.truckNo}
             partySuggestions={partySuggestions}
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
@@ -2184,7 +2296,16 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               if (combinedMaterials.length === 0 && newUsed.length === 0) {
                 combinedMaterials.push({ type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' });
               }
-              setForm({ ...form, usedChallans: newUsed, materials: combinedMaterials });
+              const firstChal = newUsed[0];
+              setForm(f => ({
+                ...f,
+                usedChallans: newUsed,
+                materials: combinedMaterials,
+                destination: f.destination || firstChal?.destination || '',
+                billNo: f.billNo || firstChal?.billNo || '',
+                partyCode: f.partyCode || firstChal?.partyCode || '',
+                partyName: f.partyName || firstChal?.partyName || ''
+              }));
             }}
           />
         )}
@@ -2243,409 +2364,520 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
               push the receipts off the first screen on every visit, when most
               visits are to look something up rather than to add one. */}
           {formOpen && (
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title-block">
-                <div className="card-icon ci-indigo"><Plus size={17} /></div>
-                <div className="card-title-text"><h3>New Entry</h3><p>Fill loading details</p></div>
-              </div>
-              <button className="btn btn-g btn-sm" onClick={() => setFormOpen(false)}><X size={13} /> Close</button>
-            </div>
-            <div className="card-body">
-              <form onSubmit={handleFormRequest} ref={createFormRef}>
-                {/* Active Loading Site Notice to prevent cross-godown mistakes */}
-                <div style={{
-                  background: siteInfo.bg,
-                  border: `1.5px solid ${siteInfo.border}`,
-                  borderRadius: '8px',
-                  padding: '10px 14px',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '12px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '16px' }}>📍</span>
-                    <div>
-                      <div style={{ fontWeight: 900, fontSize: '13px', color: siteInfo.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        ACTIVE LOADING GODOWN: {siteInfo.label}
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        This receipt will be generated and stock will be deducted from <strong>{siteInfo.label}</strong>.
-                      </div>
+            createsBill ? (
+              <div className="vgtc-dump-theme lr-entry-card">
+                <div className="vgtc-dump-header">
+                  <div className="vgtc-dump-title-area">
+                    <div className="vgtc-dump-title-row">
+                      <h2 className="vgtc-dump-title">New Loading Receipt</h2>
+                      <span className="vgtc-dump-draft-badge">Draft</span>
                     </div>
+                    <div className="vgtc-dump-subtitle">Loading Godown: {siteInfo.label}</div>
                   </div>
-                  <span style={{ fontSize: '11px', fontWeight: 900, padding: '3px 10px', borderRadius: '6px', background: siteInfo.color, color: '#fff' }}>
-                    {siteInfo.code} SITE
-                  </span>
+                  <div className="vgtc-dump-header-actions">
+                    <button type="button" className="vgtc-dump-close-btn" onClick={() => setFormOpen(false)}>
+                      <X size={13} /> Close
+                    </button>
+                  </div>
                 </div>
 
-                <div className="fg fg-2">
-                  {/*
-                    The number normally comes from the counter, which also
-                    reuses numbers freed by deleted receipts. Typing one is for
-                    the case the counter cannot know about: a paper bilty
-                    already written at the gate, or a book being caught up
-                    after the fact. The server refuses a number already in use
-                    and walks the counter past a manual one, so the automatic
-                    sequence never collides with it later.
-                  */}
-                  <div className="field-h">
-                    <label>LR Number</label>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
-                      {form.lrNo === undefined ? (
-                        <input className="fi" value="Next number, automatically" readOnly
-                          style={{ flex: 1, minWidth: 0, color: 'var(--text-muted)', fontStyle: 'italic' }} />
-                      ) : (
-                        <input className="fi" type="number" min="1" step="1" autoFocus
-                          placeholder="e.g. 1247" style={{ flex: 1, minWidth: 0 }}
-                          value={form.lrNo}
-                          onChange={e => setForm({ ...form, lrNo: e.target.value })} />
-                      )}
-                      {/* Auto is the default and stays first: the counter also
-                          reuses numbers freed by deleted receipts, which a
-                          person typing cannot know about. */}
-                      <div style={{
-                        display: 'flex', flexShrink: 0, borderRadius: '8px', overflow: 'hidden',
-                        border: '1px solid var(--border)',
-                      }}>
-                        {[
-                          { id: 'auto', label: 'Auto', on: form.lrNo === undefined },
-                          { id: 'manual', label: 'Manual', on: form.lrNo !== undefined },
-                        ].map(opt => (
-                          <button key={opt.id} type="button"
-                            onClick={() => setForm(f => ({ ...f, lrNo: opt.id === 'auto' ? undefined : (f.lrNo ?? '') }))}
-                            style={{
-                              padding: '0 14px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                              fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
-                              background: opt.on ? 'var(--primary)' : 'var(--bg-input)',
-                              color: opt.on ? '#fff' : 'var(--text-muted)',
-                              transition: 'background .12s, color .12s',
-                            }}>
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Advisory, not a block: a voucher on this number is
-                        evidence the receipt belongs to it, not against it. */}
-                    {form.lrNo !== undefined && lrCheck && !lrCheck.checking && (
-                      lrCheck.receiptExists ? (
-                        <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#f43f5e' }}>
-                          A receipt already uses LR #{lrCheck.lrNo} — pick another number.
-                        </span>
-                      ) : lrCheck.voucher ? (
-                        <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
-                          Voucher already created on LR #{lrCheck.lrNo}
-                          {lrCheck.voucher.truckNo ? ` · ${lrCheck.voucher.truckNo}` : ''}
-                          {lrCheck.voucher.date ? ` · ${lrCheck.voucher.date}` : ''}
-                          {lrCheck.voucher.destination ? ` · ${lrCheck.voucher.destination}` : ''}
-                          <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
-                            Receipt not created yet — carry on if this is that trip.
-                          </span>
-                        </span>
-                      ) : null
-                    )}
-                  </div>
-                  <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
-                  <div className="field-h">
-                    <label>Truck No. *</label>
-                    <StyledAutocomplete
-                      value={form.truckNo}
-                      onChange={handleTruckChange}
-                      options={vehicles}
-                      uppercase
-                      placeholder="ENTER TRUCK NUMBER E.G. HR47G1234"
-                      required
-                    />
-                    {!validateTruckNo(form.truckNo) && form.truckNo && <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '4px', display: 'block' }}>Invalid format</span>}
-                  </div>
-
-                  {/* Vehicle Contacts Section */}
-                  {form.truckNo && validateTruckNo(form.truckNo) && (
-                    isVehicleContactComplete && !form.showContactOverride ? (
-                      <div style={{
-                        gridColumn: '1 / -1',
-                        padding: '10px 14px',
-                        borderRadius: '10px',
-                        background: 'rgba(16, 185, 129, 0.08)',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                        flexWrap: 'wrap'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                          <Check size={15} color="#10b981" />
-                          <span style={{ fontWeight: 700, color: 'var(--text)' }}>
-                            Vehicle Contacts on Record:
-                          </span>
-                          <span style={{ color: 'var(--text-sub)' }}>
-                            Driver: <strong style={{ color: 'var(--text)' }}>{matchedVehicle.driverName || '—'}</strong> ({matchedVehicle.driverContact})
-                          </span>
-                          <span style={{ color: 'var(--text-muted)' }}>•</span>
-                          <span style={{ color: 'var(--text-sub)' }}>
-                            Owner: <strong style={{ color: 'var(--text)' }}>{matchedVehicle.ownerName || '—'}</strong> ({matchedVehicle.ownerContact})
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setForm(f => ({ ...f, showContactOverride: true }))}
-                          style={{
-                            background: 'none',
-                            border: '1px solid rgba(16, 185, 129, 0.4)',
-                            borderRadius: '6px',
-                            color: '#10b981',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            padding: '3px 8px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Edit Contacts
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{
-                        gridColumn: '1 / -1',
-                        padding: '12px 14px',
-                        borderRadius: '10px',
-                        background: 'rgba(245, 158, 11, 0.06)',
-                        border: '1px solid rgba(245, 158, 11, 0.25)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '10px'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#f59e0b' }}>
-                            <AlertTriangle size={14} color="#f59e0b" />
-                            <span>{matchedVehicle ? `Update Missing Contacts for ${form.truckNo}` : `New Vehicle Contacts (${form.truckNo})`}</span>
+                <form onSubmit={handleFormRequest} ref={createFormRef}>
+                  <div className="vgtc-dump-grid">
+                    {/* Row 1: LR Number + Date */}
+                    <div className="vgtc-dump-row-2">
+                      <div className="vgtc-dump-field">
+                        <div className="vgtc-dump-label-row">
+                          <label className="vgtc-dump-label">LR NUMBER</label>
+                          <div className="vgtc-dump-toggle">
+                            <button
+                              type="button"
+                              className={`vgtc-dump-toggle-btn ${form.lrNo === undefined ? 'active' : ''}`}
+                              onClick={() => setForm(f => ({ ...f, lrNo: undefined }))}
+                            >
+                              AUTO
+                            </button>
+                            <button
+                              type="button"
+                              className={`vgtc-dump-toggle-btn ${form.lrNo !== undefined ? 'active' : ''}`}
+                              onClick={() => setForm(f => ({ ...f, lrNo: f.lrNo ?? '' }))}
+                            >
+                              MANUAL
+                            </button>
                           </div>
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                            💾 Automatically saves to vehicle profile & dispatches WhatsApp slips
-                          </span>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                          <div className="field-h">
-                            <label style={{ fontSize: '11px' }}>Driver Name</label>
+                        <div className="vgtc-dump-input-icon-wrap">
+                          {form.lrNo === undefined ? (
+                            <>
+                              <input
+                                className="fi"
+                                value="Next number, automatically"
+                                readOnly
+                                style={{ color: 'var(--dump-input-placeholder)', fontStyle: 'italic', cursor: 'default' }}
+                              />
+                              <span className="vgtc-dump-input-icon"><Lock size={14} /></span>
+                            </>
+                          ) : (
                             <input
                               className="fi"
                               type="text"
-                              placeholder="e.g. Ramesh Kumar"
-                              value={form.driverName || ''}
-                              onChange={e => setForm(f => ({ ...f, driverName: e.target.value }))}
+                              inputMode="numeric"
+                              maxLength={4}
+                              autoFocus
+                              placeholder="e.g. 1001 (4 digits)"
+                              value={form.lrNo}
+                              onChange={e => {
+                                const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                setForm({ ...form, lrNo: digits });
+                              }}
                             />
+                          )}
+                        </div>
+                        {form.lrNo !== undefined && form.lrNo && form.lrNo.length > 0 && form.lrNo.length < 4 && (
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563eb', marginTop: '2px' }}>
+                            LR number must be 4 digits (e.g. 1001 - 9999).
+                          </span>
+                        )}
+                        {form.lrNo !== undefined && lrCheck && !lrCheck.checking && (
+                          lrCheck.receiptExists ? (
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#f43f5e', marginTop: '2px' }}>
+                              A receipt already uses LR #{lrCheck.lrNo} — pick another number.
+                            </span>
+                          ) : lrCheck.voucher ? (
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginTop: '2px' }}>
+                              Voucher already created on LR #{lrCheck.lrNo}
+                            </span>
+                          ) : null
+                        )}
+                      </div>
+
+                      <div className="vgtc-dump-field">
+                        <label className="vgtc-dump-label"><Calendar size={12} /> DATE <span className="vgtc-dump-req">*</span></label>
+                        <input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Truck No. */}
+                    <div className="vgtc-dump-field">
+                      <label className="vgtc-dump-label">TRUCK NO. <span className="vgtc-dump-req">*</span></label>
+                      <StyledAutocomplete
+                        value={form.truckNo}
+                        onChange={handleTruckChange}
+                        options={vehicles}
+                        uppercase
+                        placeholder="ENTER TRUCK NUMBER E.G. HR55EF9012"
+                        required
+                      />
+                      {!validateTruckNo(form.truckNo) && form.truckNo && (
+                        <span style={{ color: '#f43f5e', fontSize: '9px', fontWeight: 800, marginTop: '2px', display: 'block' }}>Invalid format</span>
+                      )}
+                    </div>
+
+                    {/* Row 3: Contacts Warning / Edit Panel */}
+                    {form.truckNo && validateTruckNo(form.truckNo) && (
+                      isVehicleContactComplete && !form.showContactOverride ? (
+                        <div style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          background: 'rgba(16, 185, 129, 0.08)',
+                          border: '1px solid rgba(16, 185, 129, 0.25)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap',
+                          boxSizing: 'border-box'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                            <Check size={15} color="#10b981" />
+                            <span style={{ fontWeight: 700, color: 'var(--dump-text-title)' }}>Contacts:</span>
+                            <span style={{ color: 'var(--dump-text-sub)' }}>
+                              Driver: <strong style={{ color: 'var(--dump-text-title)' }}>{matchedVehicle.driverName || '—'}</strong> ({matchedVehicle.driverContact})
+                            </span>
+                            <span style={{ color: 'var(--dump-text-sub)' }}>•</span>
+                            <span style={{ color: 'var(--dump-text-sub)' }}>
+                              Owner: <strong style={{ color: 'var(--dump-text-title)' }}>{matchedVehicle.ownerName || '—'}</strong> ({matchedVehicle.ownerContact})
+                            </span>
                           </div>
-                          <div className="field-h">
-                            <label style={{ fontSize: '11px' }}>Driver Mobile / WhatsApp</label>
-                            <input
-                              className="fi"
-                              type="tel"
-                              placeholder="10-digit mobile"
-                              value={form.driverContact || ''}
-                              onChange={e => setForm(f => ({ ...f, driverContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                            />
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, showContactOverride: true }))}
+                            style={{
+                              background: 'none',
+                              border: '1px solid rgba(16, 185, 129, 0.4)',
+                              borderRadius: '6px',
+                              color: '#10b981',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '3px 8px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Edit Contacts
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="vgtc-dump-contact-box">
+                          <div className="vgtc-dump-contact-header">
+                            <AlertTriangle size={14} color="#2563eb" />
+                            <span>Update Missing Contacts for {form.truckNo}</span>
                           </div>
-                          <div className="field-h">
-                            <label style={{ fontSize: '11px' }}>Owner Mobile / WhatsApp</label>
-                            <input
-                              className="fi"
-                              type="tel"
-                              placeholder="10-digit mobile"
-                              value={form.ownerContact || ''}
-                              onChange={e => setForm(f => ({ ...f, ownerContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                            />
-                          </div>
-                          {!matchedVehicle && (
-                            <div className="field-h">
-                              <label style={{ fontSize: '11px' }}>Owner Name</label>
+                          <div className="vgtc-dump-contact-grid">
+                            <div className="vgtc-dump-field">
+                              <label>Driver Name</label>
                               <input
                                 className="fi"
                                 type="text"
-                                placeholder="e.g. Suresh Transporter"
-                                value={form.ownerName || ''}
-                                onChange={e => setForm(f => ({ ...f, ownerName: e.target.value }))}
+                                placeholder="e.g. Ramesh Kumar"
+                                value={form.driverName || ''}
+                                onChange={e => setForm(f => ({ ...f, driverName: e.target.value }))}
                               />
                             </div>
-                          )}
+                            <div className="vgtc-dump-field">
+                              <label>Driver Mobile / WhatsApp</label>
+                              <input
+                                className="fi"
+                                type="tel"
+                                placeholder="10-digit mobile"
+                                value={form.driverContact || ''}
+                                onChange={e => setForm(f => ({ ...f, driverContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                              />
+                            </div>
+                            <div className="vgtc-dump-field">
+                              <label>Owner Mobile / WhatsApp</label>
+                              <input
+                                className="fi"
+                                type="tel"
+                                placeholder="10-digit mobile"
+                                value={form.ownerContact || ''}
+                                onChange={e => setForm(f => ({ ...f, ownerContact: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                              />
+                            </div>
+                          </div>
                         </div>
+                      )
+                    )}
+
+                    {/* Row 4: Party Name + Destination */}
+                    <div className="vgtc-dump-row-2">
+                      <div className="vgtc-dump-field">
+                        <label className="vgtc-dump-label"><User size={12} /> PARTY NAME</label>
+                        <StyledAutocomplete
+                          value={form.partyName}
+                          onChange={val => {
+                            const name = resolvePartyName(val, partySuggestions);
+                            setForm(f => ({
+                              ...f,
+                              partyName: name,
+                              materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
+                            }));
+                          }}
+                          options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                          uppercase
+                          placeholder="ENTER PARTY NAME"
+                        />
                       </div>
-                    )
-                  )}
-                  <div className="field-h">
-                    <label><User size={11} /> Party Name</label>
-                    <StyledAutocomplete
-                      value={form.partyName}
-                      onChange={val => {
-                        const name = resolvePartyName(val, partySuggestions);
-                        setForm(f => ({
-                          ...f,
-                          partyName: name,
-                          materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
-                        }));
-                      }}
-                      options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
-                      uppercase
-                      placeholder="ENTER PARTY NAME"
-                    />
-                    {(() => {
-                      const matParties = [...new Set(form.materials.map(m => m.partyName).filter(Boolean))];
-                      return matParties.length > 1 ? (
-                        <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {matParties.map(p => (
-                            <span key={p} style={{ fontSize: '9px', fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{p}</span>
-                          ))}
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                  <div className="field-h">
-                    <label><MapPin size={11} /> Destination</label>
-                    <StyledAutocomplete
-                      value={form.destination}
-                      onChange={val => setForm({ ...form, destination: val })}
-                      options={destinationOptions}
-                      uppercase
-                      placeholder="ENTER DELIVERY CITY OR LOCATION"
-                    />
-                  </div>
-                  <div className="field-h">
-                    <label><Tag size={11} /> Challan</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+
+                      <div className="vgtc-dump-field">
+                        <label className="vgtc-dump-label"><MapPin size={12} /> DESTINATION</label>
+                        <StyledAutocomplete
+                          value={form.destination}
+                          onChange={val => setForm({ ...form, destination: val })}
+                          options={destinationOptions}
+                          uppercase
+                          placeholder="ENTER DELIVERY CITY OR LOCATION"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 5: Bill Number + Party Code (Optional / Auto from Challan) */}
+                    <div className="vgtc-dump-row-2">
+                      <div className="vgtc-dump-field">
+                        <label className="vgtc-dump-label">BILL NUMBER <span style={{ fontSize: '10px', color: 'var(--dump-text-sub)', fontWeight: 600 }}>(OPTIONAL)</span></label>
+                        <input
+                          className="fi"
+                          type="text"
+                          maxLength={60}
+                          placeholder="Auto / optional"
+                          value={form.billNo || ''}
+                          onChange={e => setForm(f => ({ ...f, billNo: e.target.value }))}
+                        />
+                      </div>
+                      <div className="vgtc-dump-field">
+                        <label className="vgtc-dump-label">PARTY CODE <span style={{ fontSize: '10px', color: 'var(--dump-text-sub)', fontWeight: 600 }}>(OPTIONAL)</span></label>
+                        <input
+                          className="fi"
+                          type="text"
+                          maxLength={60}
+                          placeholder="Auto / optional"
+                          value={form.partyCode || ''}
+                          onChange={e => setForm(f => ({ ...f, partyCode: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 6: Challan */}
+                    <div className="vgtc-dump-field">
+                      <label className="vgtc-dump-label"><Link2 size={12} /> CHALLAN</label>
                       <button
                         type="button"
+                        className="vgtc-dump-challan-btn"
                         onClick={() => setShowChalPopup(true)}
-                        style={{
-                          padding: '8px 10px', background: form.usedChallans.length > 0 ? 'rgba(245,158,11,0.1)' : 'var(--bg-input)',
-                          border: form.usedChallans.length > 0 ? '1px solid rgba(245,158,11,0.3)' : '1px solid var(--border-input)',
-                          borderRadius: '8px', color: form.usedChallans.length > 0 ? '#f59e0b' : 'var(--text)',
-                          fontSize: '11px', fontWeight: 600, textAlign: 'left', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                        }}
                       >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Tag size={12} opacity={form.usedChallans.length > 0 ? 1 : 0.5} />
-                          {form.usedChallans.length > 0 ? `Selected ${form.usedChallans.length} Challan(s)` : '— Select / Create —'}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Tag size={13} style={{ color: form.usedChallans.length > 0 ? '#2563eb' : 'var(--dump-text-sub)' }} />
+                          <span style={{ color: form.usedChallans.length > 0 ? '#2563eb' : 'var(--dump-input-placeholder)' }}>
+                            {form.usedChallans.length > 0 ? `Selected ${form.usedChallans.length} Challan(s)` : '— Select / Create —'}
+                          </span>
                         </span>
-                        {form.usedChallans.length > 0 && <span style={{ fontSize: '10px', background: 'rgba(245,158,11,0.2)', padding: '2px 6px', borderRadius: '4px' }}>Edit Selection</span>}
+                        <span style={{ fontSize: '11px', color: 'var(--dump-text-sub)' }}>▼</span>
                       </button>
 
                       {form.usedChallans.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
                           {form.usedChallans.map(c => (
-                            <div key={c.challanNo} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-input)', border: '1px solid var(--border-input)', padding: '3px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 700 }}>
-                              <span style={{ color: '#f59e0b' }}>{c.challanNo}</span>
+                            <div key={c.challanNo} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--dump-mat-bg)', border: '1px solid var(--dump-border)', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                              <span style={{ color: '#2563eb' }}>{c.challanNo}</span>
                               <button type="button" onClick={() => {
                                 const newChals = form.usedChallans.filter(uc => uc.challanNo !== c.challanNo);
                                 setForm({ ...form, usedChallans: newChals });
-                              }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}><X size={10} /></button>
+                              }} style={{ background: 'none', border: 'none', color: 'var(--dump-text-sub)', cursor: 'pointer', display: 'flex' }}><X size={10} /></button>
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
-                <hr className="sep" />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Materials <span style={{ textTransform: 'none', color: '#10b981', marginLeft: '6px' }}>(You can edit quantities for partial loading)</span></span>
-                  <button type="button" className="btn btn-g btn-sm" onClick={addMat} title="Add Material"><Plus size={13} /> Add</button>
-                </div>
-                {form.materials.map((m, i) => (
-                  <motion.div key={i} className="mat-row" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
-                    <div className="mat-row-hd">
-                      <span className="mat-lbl">
-                        Material #{i + 1}
-                        {m.billing && m.billing !== 'No' && (
-                          <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '9px', textTransform: 'none', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                            CH: {m.billing}
-                          </span>
-                        )}
-                        {m.partyName && (
-                          <span style={{ color: '#6366f1', marginLeft: '6px', fontSize: '9px', textTransform: 'none', background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                            {m.partyName}
-                          </span>
-                        )}
-                      </span>
-                      {i > 0 && <button type="button" className="btn btn-d btn-sm btn-icon" onClick={() => removeMat(i)}><Trash2 size={13} /></button>}
-                    </div>
-                    <div className="fg" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', display: 'grid', gap: '12px' }}>
-                      <div className="field-h"><label>Type</label>
-                        <select className="fi" required value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
-                          {MATERIALS.map(o => <option key={o}>{o}</option>)}
-                        </select>
-                      </div>
-                      <div className="field-h">
-                        <label>Loading</label>
-                        <select className="fi" required value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
-                          <option value="From Godown">From Godown</option>
-                          <option value="Transfer">Transfer</option>
-                          <option value="Crossing">Crossing</option>
-                          <option value="Direct">Direct (no labour)</option>
-                        </select>
-                      </div>
-                      <div className="field-h">
-                        <label>Bags</label>
-                        <input className="fi" type="number" min="1" step="1" required placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
-                      </div>
-                      <div className="field-h"><label>Weight</label><input className="fi" type="number" min="0.01" step="0.01" required placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
-                      <div className="field-h"><label>Party</label>
-                        <input className="fi" type="text" placeholder={form.partyName || 'Party name'} value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
-                      </div>
-                    </div>
-                    {m.type && (
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#10b981', padding: '3px 8px', background: 'rgba(16,185,129,0.08)', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.2)' }}>
-                          Stock: {(stockMap[m.type]?.physical || 0).toLocaleString()} bags ({((stockMap[m.type]?.physical || 0) * 0.05).toFixed(2)} MT)
-                        </span>
-                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#f59e0b', padding: '3px 8px', background: 'rgba(245,158,11,0.08)', borderRadius: '4px', border: '1px solid rgba(245,158,11,0.2)' }}>
-                          Challan Pending: {(stockMap[m.type]?.pendingChallan || 0).toLocaleString()} bags ({((stockMap[m.type]?.pendingChallan || 0) * 0.05).toFixed(2)} MT)
-                        </span>
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-                <hr className="sep" style={{ margin: '8px 0' }} />
-                {/* Note */}
-                <div className="field-h" style={{ marginBottom: '10px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note</label>
-                  <textarea className="fi" rows={2} placeholder="e.g. Handle carefully, load from gate 2..." value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
-                    style={{ resize: 'vertical', minHeight: '60px' }} />
-                </div>
-                {/* Voice Message */}
-                <div className="field-h" style={{ marginBottom: '14px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Volume2 size={11} /> Voice</label>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-                    {!isRecording ? (
-                      <button type="button" onClick={startRecording} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
-                        <Mic size={13} /> {voicePreviewUrl ? 'Re-record' : 'Record Voice'}
-                      </button>
-                    ) : (
-                      <button type="button" onClick={stopRecording} className="btn btn-d btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '6px', animation: 'pulse 1s infinite' }}>
-                        <MicOff size={13} /> Stop Recording
-                      </button>
-                    )}
-                    {voicePreviewUrl && (
-                      <>
-                        <button type="button" onClick={playPreview} className="btn btn-g btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          {isPlayingPreview ? <><Pause size={12} /> Pause</> : <><Play size={12} /> Preview</>}
-                        </button>
-                        <button type="button" onClick={clearVoice} className="btn btn-d btn-sm" title="Remove voice">
-                          <X size={12} />
-                        </button>
-                        <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>✓ Voice recorded</span>
-                      </>
-                    )}
-                    {isRecording && <span style={{ fontSize: '11px', color: '#f43f5e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f43f5e', display: 'inline-block', animation: 'pulse 1s infinite' }} /> Recording...</span>}
-                  </div>
-                </div>
-                <button type="submit" className="btn btn-p btn-full" disabled={loading}>{loading ? 'Saving...' : 'Save Receipt'}</button>
 
-              </form>
-            </div>
-          </div>
+                    {/* Row 7 & 8: Materials */}
+                    <div className="vgtc-dump-mat-section">
+                      <div className="vgtc-dump-mat-title-row">
+                        <span className="vgtc-dump-mat-title">MATERIALS</span>
+                        <button type="button" className="vgtc-dump-add-btn" onClick={addMat}>
+                          <Plus size={13} /> Add
+                        </button>
+                      </div>
+
+                      {form.materials.map((m, i) => (
+                        <div key={i} className="vgtc-dump-mat-card">
+                          <div className="vgtc-dump-mat-card-hd">
+                            <span className="vgtc-dump-mat-card-label">MATERIAL #{i + 1}</span>
+                            {form.materials.length > 1 && (
+                              <button type="button" className="vgtc-dump-mat-card-delete" onClick={() => removeMat(i)} title="Remove material">
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="vgtc-dump-mat-grid">
+                            <div>
+                              <label>Type</label>
+                              <select className="fi" required value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>
+                                {MATERIALS.map(o => <option key={o}>{o}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label>Loading</label>
+                              <select className="fi" required value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}>
+                                <option value="From Godown">From Godown</option>
+                                <option value="Transfer">Transfer</option>
+                                <option value="Crossing">Crossing</option>
+                                <option value="Direct">Direct (no labour)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label>Bags</label>
+                              <input className="fi" type="number" min="1" step="1" required placeholder="0"
+                                value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} />
+                            </div>
+                            <div>
+                              <label>Weight (MT)</label>
+                              <input className="fi" type="number" min="0.01" step="0.01" required placeholder="0.00"
+                                value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} />
+                            </div>
+                            <div>
+                              <label>Party</label>
+                              <input className="fi" type="text" placeholder={form.partyName || 'Party name'}
+                                value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Row 9: Note */}
+                    <div className="vgtc-dump-field">
+                      <label className="vgtc-dump-label"><MessageSquare size={12} /> NOTE</label>
+                      <textarea
+                        className="fi"
+                        rows={2}
+                        placeholder="e.g. Handle carefully, load from gate 2..."
+                        value={form.note}
+                        onChange={e => setForm({ ...form, note: e.target.value })}
+                        style={{ resize: 'vertical', minHeight: '60px' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer Bar */}
+                  <div className="vgtc-dump-footer">
+                    <div className="vgtc-dump-metrics">
+                      <span>Total Bags: <span className="vgtc-dump-metric-val">{lrTotalBags} Bags</span></span>
+                      <span style={{ color: 'var(--dump-border)' }}>|</span>
+                      <span>Total Weight: <span className="vgtc-dump-metric-val">{lrTotalWeight} MT</span></span>
+                    </div>
+                    <div className="vgtc-dump-footer-actions">
+                      <button type="button" className="vgtc-dump-cancel-btn" onClick={() => setFormOpen(false)}>Cancel</button>
+                      <button type="submit" className="vgtc-dump-save-btn" disabled={loading}>
+                        {loading ? <><Loader2 size={13} className="spin" /> Saving...</> : 'Save Receipt'}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title-block">
+                    <div className="card-icon ci-indigo"><Plus size={17} /></div>
+                    <div className="card-title-text"><h3>New Loading Receipt</h3><p>Fill loading details</p></div>
+                  </div>
+                  <button className="btn btn-g btn-sm" onClick={() => setFormOpen(false)}><X size={13} /> Close</button>
+                </div>
+                <div className="card-body">
+                  <form onSubmit={handleFormRequest} ref={createFormRef}>
+                    <div style={{
+                      background: siteInfo.bg,
+                      border: `1.5px solid ${siteInfo.border}`,
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '16px' }}>📍</span>
+                        <div>
+                          <div style={{ fontWeight: 900, fontSize: '13px', color: siteInfo.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            ACTIVE LOADING GODOWN: {siteInfo.label}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            This receipt will be generated and stock will be deducted from <strong>{siteInfo.label}</strong>.
+                          </div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '11px', fontWeight: 900, padding: '3px 10px', borderRadius: '6px', background: siteInfo.color, color: '#fff' }}>
+                        {siteInfo.code} SITE
+                      </span>
+                    </div>
+
+                    <div className="fg fg-2">
+                      <div className="field-h">
+                        <label>LR Number</label>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                          {form.lrNo === undefined ? (
+                            <input className="fi" value="Next number, automatically" readOnly
+                              style={{ flex: 1, minWidth: 0, color: 'var(--text-muted)', fontStyle: 'italic' }} />
+                          ) : (
+                            <input className="fi" type="number" min="1" step="1" autoFocus
+                              placeholder="e.g. 1247" style={{ flex: 1, minWidth: 0 }}
+                              value={form.lrNo}
+                              onChange={e => setForm({ ...form, lrNo: e.target.value })} />
+                          )}
+                          <div style={{
+                            display: 'flex', flexShrink: 0, borderRadius: '8px', overflow: 'hidden',
+                            border: '1px solid var(--border)',
+                          }}>
+                            {[
+                              { id: 'auto', label: 'Auto', on: form.lrNo === undefined },
+                              { id: 'manual', label: 'Manual', on: form.lrNo !== undefined },
+                            ].map(opt => (
+                              <button key={opt.id} type="button"
+                                onClick={() => setForm(f => ({ ...f, lrNo: opt.id === 'auto' ? undefined : (f.lrNo ?? '') }))}
+                                style={{
+                                  padding: '0 14px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                  fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
+                                  background: opt.on ? 'var(--primary)' : 'var(--bg-input)',
+                                  color: opt.on ? '#fff' : 'var(--text-muted)',
+                                  transition: 'background .12s, color .12s',
+                                }}>
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="field-h"><label><Calendar size={11} /> Date <span style={{ color: 'var(--danger)' }}>*</span></label><input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required /></div>
+                      <div className="field-h">
+                        <label>Truck No. *</label>
+                        <StyledAutocomplete
+                          value={form.truckNo}
+                          onChange={handleTruckChange}
+                          options={vehicles}
+                          uppercase
+                          placeholder="ENTER TRUCK NUMBER E.G. HR47G1234"
+                          required
+                        />
+                      </div>
+                      <div className="field-h">
+                        <label><User size={11} /> Party Name</label>
+                        <StyledAutocomplete
+                          value={form.partyName}
+                          onChange={val => {
+                            const name = resolvePartyName(val, partySuggestions);
+                            setForm(f => ({
+                              ...f,
+                              partyName: name,
+                              materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
+                            }));
+                          }}
+                          options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
+                          uppercase
+                          placeholder="ENTER PARTY NAME"
+                        />
+                      </div>
+                      <div className="field-h">
+                        <label><MapPin size={11} /> Destination</label>
+                        <StyledAutocomplete
+                          value={form.destination}
+                          onChange={val => setForm({ ...form, destination: val })}
+                          options={destinationOptions}
+                          uppercase
+                          placeholder="ENTER DELIVERY CITY OR LOCATION"
+                        />
+                      </div>
+                      <div className="field-h">
+                        <label><Tag size={11} /> Challan</label>
+                        <button type="button" onClick={() => setShowChalPopup(true)} className="btn btn-s">Select Challan</button>
+                      </div>
+                    </div>
+                    <hr className="sep" />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>Materials</span>
+                      <button type="button" className="btn btn-g btn-sm" onClick={addMat}><Plus size={13} /> Add</button>
+                    </div>
+                    {form.materials.map((m, i) => (
+                      <div key={i} className="mat-row">
+                        <div className="fg fg-5">
+                          <div className="field-h"><label>Type</label><select className="fi" value={m.type} onChange={e => updMat(i, 'type', e.target.value)}>{MATERIALS.map(o => <option key={o}>{o}</option>)}</select></div>
+                          <div className="field-h"><label>Loading</label><select className="fi" value={m.loadingType} onChange={e => updMat(i, 'loadingType', e.target.value)}><option value="From Godown">From Godown</option><option value="Transfer">Transfer</option><option value="Crossing">Crossing</option><option value="Direct">Direct (no labour)</option></select></div>
+                          <div className="field-h"><label>Bags</label><input className="fi" type="number" min="1" step="1" required placeholder="0" value={m.bags} onChange={e => updMat(i, 'bags', e.target.value)} /></div>
+                          <div className="field-h"><label>Weight</label><input className="fi" type="number" min="0.01" step="0.01" required placeholder="0.00" value={m.weight} onChange={e => updMat(i, 'weight', e.target.value)} /></div>
+                          <div className="field-h"><label>Party</label><input className="fi" type="text" placeholder={form.partyName || 'Party name'} value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" /></div>
+                        </div>
+                      </div>
+                    ))}
+                    <hr className="sep" style={{ margin: '8px 0' }} />
+                    <div className="field-h" style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><MessageSquare size={11} /> Note</label>
+                      <textarea className="fi" rows={2} placeholder="e.g. Handle carefully, load from gate 2..." value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} style={{ resize: 'vertical', minHeight: '60px' }} />
+                    </div>
+                    <button type="submit" className="btn btn-p btn-full" disabled={loading}>{loading ? 'Saving...' : 'Save Receipt'}</button>
+                  </form>
+                </div>
+              </div>
+            )
           )}
 
           {/* LIST */}
@@ -2757,7 +2989,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                     <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Bags" colKey="totalBags" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                     <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Loading" colKey="loadingType" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                     <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Source Challan" colKey="billing" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
-                    <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}>Voucher Status</th>
+                    <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}>{createsBill ? 'Bill Status' : 'Voucher Status'}</th>
                     <th className="c" style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Trip Status" colKey="status" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>
                     {role === 'admin' && <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Created By" colKey="createdBy" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
                     {role === 'admin' && <th style={{ padding: '8px 10px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-th)', whiteSpace: 'nowrap' }}><ColumnFilter label="Updated By" colKey="updatedBy" data={receipts} activeFilters={filters} onFilterChange={handleFilterChange} /></th>}
@@ -2875,8 +3107,28 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             );
                           })()}
                         </td>
-                        <td className="c" data-label="Voucher Status" style={{ padding: '7px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                        <td className="c" data-label={createsBill ? 'Bill Status' : 'Voucher Status'} style={{ padding: '7px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                           {(() => {
+                            if (createsBill) {
+                              const billType = brand === 'kosli' ? 'Kosli_Bill' : brand === 'jhajjar' ? 'Jajjhar_Bill' : 'Bahadurgarh_Bill';
+                              const matchesLrNumber = v => {
+                                const numbers = [v.lrNo, ...(Array.isArray(v.deliveries) ? v.deliveries.map(d => d.lrNo) : [])]
+                                  .flatMap(value => String(value || '').split(',').map(number => number.trim()));
+                                return numbers.includes(String(lr.lrNo));
+                              };
+                              // New bills link by receipt ID. Legacy bills can only be matched by
+                              // LR number, guarded by both site-specific bill type and entry ID.
+                              const siteBills = allVouchers.filter(v => v.type === billType);
+                              const bill = siteBills.find(v => v.sourceLrId && String(v.sourceLrId) === String(lr.id))
+                                || siteBills.find(v => (!v.sourceLrId || (v.lrEntryId && lr.entryId && String(v.lrEntryId) === String(lr.entryId)))
+                                  && (!v.lrEntryId || !lr.entryId || String(v.lrEntryId) === String(lr.entryId))
+                                  && matchesLrNumber(v));
+                              if (!bill) return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)', fontSize: '10px', padding: '2px 6px', whiteSpace: 'nowrap' }}>Unbilled</span>;
+                              return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                                <strong style={{ fontSize: '10px', color: '#10b981' }}>{bill.type.replace(/_/g, ' ')}</strong>
+                                {bill.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>#{bill.billNo}</span>}
+                              </span>;
+                            }
                             const usedInVouchers = allVouchers.filter(v => {
                               const vLrs = [];
                               if (v.lrNo) String(v.lrNo).split(',').map(s => s.trim()).forEach(x => vLrs.push(x));

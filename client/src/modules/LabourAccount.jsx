@@ -22,11 +22,12 @@ const TH = {
 };
 const TD = { padding: '8px 12px', fontSize: '12.5px', color: 'var(--text-sub)', whiteSpace: 'nowrap' };
 
-/** Only these three earn. A Direct load, and a crossing on the way in, do not. */
+/** Direct loads do not earn; dump crossings arriving at MIGO do. */
 const ACTIVITY_TINT = {
   godown_load: '#10b981',
   crossing_load: '#f59e0b',
   godown_unload: '#3b82f6',
+  crossing_unload: '#f97316',
 };
 
 export default function LabourAccount({ canEdit }) {
@@ -438,6 +439,7 @@ function RatesDialog({ meta, rates, loadedMaterials, canEdit, saving, onClose, o
     ...(loadedMaterials?.[group] || []),
     ...Object.keys(g.materials || {}),
   ])].sort(), [meta.materials, loadedMaterials, group, g.materials]);
+  const activities = meta.activities.filter(a => group === 'dump' || a !== 'crossing_unload');
 
   const setDefault = (activity, value) => setDraft(d => ({
     ...d, [group]: { ...d[group], default: { ...d[group]?.default, [activity]: value } },
@@ -462,19 +464,21 @@ function RatesDialog({ meta, rates, loadedMaterials, canEdit, saving, onClose, o
       <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.5 }}>
         {meta.groups.find(gr => gr.key === group)?.hint} — {rows.length} material{rows.length === 1 ? '' : 's'} from
         their stock modules. A material left blank is charged at the default below.
-        A <b>Direct</b> load, and a crossing arriving at MIGO, are never charged.
+        A <b>Direct</b> load is never charged. {group === 'dump'
+          ? 'Crossing unload at MIGO is charged here.'
+          : 'Crossing arrivals at MIGO are not charged here.'}
       </div>
 
       <TableScroll>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>
             <th style={TH}>Material</th>
-            {meta.activities.map(a => <th key={a} style={{ ...TH, textAlign: 'right' }}>{meta.activityLabels[a]}</th>)}
+            {activities.map(a => <th key={a} style={{ ...TH, textAlign: 'right' }}>{meta.activityLabels[a]}</th>)}
           </tr></thead>
           <tbody>
             <tr style={{ background: 'var(--bg-row-even)' }}>
               <td style={{ ...TD, fontWeight: 800, color: 'var(--text)' }}>Default (all materials)</td>
-              {meta.activities.map(a => (
+              {activities.map(a => (
                 <td key={a} style={{ ...TD, textAlign: 'right' }}>
                   <input className="fi" type="number" step="any" min="0" disabled={!canEdit}
                     style={{ width: '90px', textAlign: 'right' }}
@@ -485,7 +489,7 @@ function RatesDialog({ meta, rates, loadedMaterials, canEdit, saving, onClose, o
             {rows.map((m, i) => (
               <tr key={m} style={{ background: i % 2 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
                 <td style={{ ...TD, fontWeight: 700 }}>{m}</td>
-                {meta.activities.map(a => (
+                {activities.map(a => (
                   <td key={a} style={{ ...TD, textAlign: 'right' }}>
                     <input className="fi" type="number" step="any" min="0" disabled={!canEdit}
                       placeholder={String(g.default?.[a] ?? 0)}

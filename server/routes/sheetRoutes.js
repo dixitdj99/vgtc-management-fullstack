@@ -5,6 +5,8 @@ const { permits } = require('../middleware/auth');
 const { getCol } = require('../utils/collectionUtils');
 const voucherService = require('../services/voucherService');
 const stockService = require('../utils/stockService');
+const { db, isAvailable } = require('../firebase');
+const localStore = require('../utils/localStore');
 const { logAction, ACTIONS } = require('../services/auditService');
 
 router.use(tenancyMiddleware);
@@ -45,13 +47,18 @@ const CHALLAN_COLUMNS = [
     { id: 'truckNo', title: 'Truck', width: 135, editable: true },
     { id: 'materialSummary', title: 'Materials', width: 230, editable: false },
     { id: 'totalBags', title: 'Total Bags', type: 'number', width: 110, editable: true },
-    { id: 'loadedBags', title: 'Loaded Bags', type: 'number', width: 115, editable: true },
+    { id: 'loadedBags', title: 'Loaded Bags', type: 'number', width: 115, editable: false },
     { id: 'partyName', title: 'Party', width: 190, editable: true },
+    { id: 'partyCode', title: 'Party Code', width: 120, editable: true },
+    { id: 'billNo', title: 'Bill No.', width: 120, editable: true },
     { id: 'destination', title: 'Destination', width: 180, editable: true },
     { id: 'factoryCode', title: 'Factory', width: 110, editable: true },
     { id: 'status', title: 'Status', width: 145, editable: true, options: ['open', 'partially_loaded', 'loaded', 'cancelled'] },
     { id: 'remark', title: 'Remark', width: 220, editable: true },
 ];
+const JKL_CHALLAN_COLUMNS = CHALLAN_COLUMNS
+    .filter(column => !['partyCode', 'billNo'].includes(column.id))
+    .map(column => column.id === 'loadedBags' ? { ...column, editable: true } : column);
 
 const DEFINITIONS = {
     'balance-all': { kind: 'balance', title: 'All Balance Sheet', permission: 'balance_all', type: 'all' },
@@ -66,6 +73,10 @@ const DEFINITIONS = {
     'challans-bahadurgarh': { kind: 'challan', title: 'Bahadurgarh Challans', permission: 'stock_bahadurgarh', collection: 'bahadurgarh_challans' },
     'challans-jkl': { kind: 'challan', title: 'JK Lakshmi Challans', permission: 'stock_jkl', collection: 'jkl_challans' },
 };
+
+const columnsFor = definition => definition.kind === 'balance'
+    ? BALANCE_COLUMNS
+    : definition.collection === 'jkl_challans' ? JKL_CHALLAN_COLUMNS : CHALLAN_COLUMNS;
 
 const TYPE_NAME_MAP = {
     Kosli_Bill: 'Kosli',
@@ -128,6 +139,53 @@ function challanRow(row) {
     };
 }
 
+function challanPatch(before, field, value) {
+    if (field !== 'totalBags') return { [field]: value };
+    const materials = before.materials || [];
+    if (materials.length !== 1) {
+        throw new Error('Edit bag quantities in the Challan form when a challan has multiple materials');
+    }
+    if (!Number.isInteger(value) || value <= 0) throw new Error('Total Bags must be a positive whole number');
+    if (value < asNumber(materials[0].loadedBags)) throw new Error('Total Bags cannot be less than Loaded Bags');
+    return { materials: [{ ...materials[0], totalBags: value }] };
+}
+
+function conflictFor(row) {
+    const error = new Error('Row changed in another window. Review latest values and retry.');
+    error.status = 409;
+    error.row = challanRow(row);
+    return error;
+}
+
+async function saveChallanEdit(collection, before, field, value, revision) {
+    const apply = latest => {
+        if (!latest || latest.orgId !== before.orgId) {
+            const error = new Error('Row not found');
+            error.status = 404;
+            throw error;
+        }
+        if (revision && revision !== revisionOf(latest)) throw conflictFor(latest);
+        const updates = challanPatch(latest, field, value);
+        if (field === 'truckNo') updates.truckNo = value.toUpperCase().replace(/\s/g, '');
+        if (field === 'factoryCode') updates.factoryCode = value.toUpperCase();
+        updates.updatedAt = new Date().toISOString();
+        return updates;
+    };
+    if (isAvailable()) {
+        const ref = db.collection(collection).doc(before.id);
+        return db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(ref);
+            const latest = snapshot.exists ? { id: snapshot.id, ...snapshot.data() } : null;
+            const updates = apply(latest);
+            transaction.update(ref, updates);
+            return { ...latest, ...updates };
+        });
+    }
+    const latest = localStore.getById(collection, before.id);
+    const updates = apply(latest);
+    return localStore.update(collection, before.id, updates);
+}
+
 function definitionFor(req, action = 'view') {
     const definition = DEFINITIONS[req.params.sheetId];
     if (!definition) return { error: [404, 'Unknown sheet'] };
@@ -173,7 +231,7 @@ router.get('/:sheetId', async (req, res) => {
             id: req.params.sheetId,
             title: definition.title,
             canEdit: req.user?.role === 'admin' || permits(req.user, definition.permission, 'edit'),
-            columns: definition.kind === 'balance' ? BALANCE_COLUMNS : CHALLAN_COLUMNS,
+            columns: columnsFor(definition),
             rows,
         });
     } catch (e) {
@@ -225,7 +283,7 @@ router.post('/:sheetId', async (req, res) => {
 router.patch('/:sheetId/:id', async (req, res) => {
     const { definition, error } = definitionFor(req, 'edit');
     if (error) return res.status(error[0]).json({ error: error[1] });
-    const columns = definition.kind === 'balance' ? BALANCE_COLUMNS : CHALLAN_COLUMNS;
+    const columns = columnsFor(definition);
     const column = columns.find(item => item.id === req.body.field);
     if (!column || column.editable === false) return res.status(400).json({ error: 'Field is read-only' });
     try {
@@ -257,6 +315,7 @@ router.patch('/:sheetId/:id', async (req, res) => {
             if (column.options && value && !column.options.includes(value)) {
                 const matched = column.options.find(opt => opt.toLowerCase() === value.toLowerCase());
                 if (matched) value = matched;
+                else return res.status(400).json({ error: `Choose one of: ${column.options.join(', ')}` });
             }
         }
 
@@ -283,16 +342,11 @@ router.patch('/:sheetId/:id', async (req, res) => {
             }
             await voucherService.updateVoucher(before.id, updates, collection);
         } else {
-            if (column.id === 'status') {
-                await stockService.updateChallanStatus(before.id, value, collection);
+            if (definition.collection === 'jkl_challans') {
+                if (column.id === 'status') await stockService.updateChallanStatus(before.id, value, collection);
+                else await stockService.updateChallan(before.id, { [column.id]: value }, collection);
             } else {
-                const { db, isAvailable } = require('../firebase');
-                const localStore = require('../utils/localStore');
-                if (isAvailable()) {
-                    await db.collection(collection).doc(before.id).update({ [column.id]: value });
-                } else {
-                    localStore.update(collection, before.id, { [column.id]: value });
-                }
+                await saveChallanEdit(collection, before, column.id, value, req.body.revision);
             }
         }
 
@@ -309,13 +363,13 @@ router.patch('/:sheetId/:id', async (req, res) => {
             performedByName: req.user.name,
             targetId: before.id,
             targetType: req.params.sheetId,
-            before: { [column.id]: before[column.id] },
-            after: { [column.id]: after?.[column.id] ?? value },
+            before: { [column.id]: (definition.kind === 'challan' ? challanRow(before) : balanceRow(before))[column.id] },
+            after: { [column.id]: (definition.kind === 'challan' ? challanRow(after || before) : balanceRow(after || before))[column.id] },
             metadata: { source: 'spreadsheet', field: column.id },
         });
         res.json({ row: definition.kind === 'balance' ? balanceRow(after || { ...before, [column.id]: value }) : challanRow(after || { ...before, [column.id]: value }) });
     } catch (e) {
-        res.status(400).json({ error: e.message });
+        res.status(e.status || 400).json({ error: e.message, ...(e.row ? { row: e.row } : {}) });
     }
 });
 
@@ -327,3 +381,5 @@ module.exports = router;
 module.exports.DEFINITIONS = DEFINITIONS;
 module.exports.BALANCE_COLUMNS = BALANCE_COLUMNS;
 module.exports.CHALLAN_COLUMNS = CHALLAN_COLUMNS;
+module.exports.challanPatch = challanPatch;
+module.exports.columnsFor = columnsFor;

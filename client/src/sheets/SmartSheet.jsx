@@ -81,6 +81,8 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
 
   // Cell Selection & Editing State
   const [activeCell, setActiveCell] = useState({ row: 0, col: 0 });
+  const [selection, setSelection] = useState(null); // range, rows, or columns; indices follow visible sort/filter order
+  const [printSelection, setPrintSelection] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [formulaValue, setFormulaValue] = useState('');
@@ -125,6 +127,11 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
   const cellInputRef = useRef(null);
   const formulaInputRef = useRef(null);
   const resizerRef = useRef({ colId: null, startX: 0, startWidth: 0 });
+  const editCommittedRef = useRef(false);
+  const pendingRowsRef = useRef(new Set());
+  const mutationEpochRef = useRef(0);
+  const loadRequestIdRef = useRef(0);
+  const draggingSelectionRef = useRef(false);
 
   const isChallan = sheet?.definition?.kind === 'challan';
   const isBalanceSheet = sheet?.definition?.kind === 'balance';
@@ -132,14 +139,18 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
   // Load Sheet Data
   const loadSheet = useCallback(async (sid = currentSheetId, { quiet = false } = {}) => {
     if (!quiet) setLoading(true);
+    const requestId = ++loadRequestIdRef.current;
+    const startedAtEpoch = mutationEpochRef.current;
     try {
       const response = await ax.get(`/sheets/${encodeURIComponent(sid)}`, { _skipCache: true });
-      setSheet(response.data);
-      if (!quiet) setError('');
+      if (requestId === loadRequestIdRef.current && startedAtEpoch === mutationEpochRef.current && pendingRowsRef.current.size === 0) {
+        setSheet(response.data);
+      }
+      if (!quiet && requestId === loadRequestIdRef.current) setError('');
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not load spreadsheet data');
+      if (requestId === loadRequestIdRef.current) setError(err.response?.data?.error || 'Could not load spreadsheet data');
     } finally {
-      if (!quiet) setLoading(false);
+      if (!quiet && requestId === loadRequestIdRef.current) setLoading(false);
     }
   }, [currentSheetId]);
 
@@ -225,6 +236,54 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
     return [...realColumns, ...fillerCols];
   }, [realColumns]);
 
+  useEffect(() => {
+    const stopDrag = () => { draggingSelectionRef.current = false; };
+    window.addEventListener('mouseup', stopDrag);
+    return () => window.removeEventListener('mouseup', stopDrag);
+  }, []);
+
+  useEffect(() => {
+    setSelection(null);
+  }, [currentSheetId, columnFilterValues, sortConfig]);
+
+  const selectedBounds = useMemo(() => {
+    if (!selection || !processedRows.length || !realColumns.length) return null;
+    if (selection.kind === 'rows') {
+      const rows = [...selection.rows].filter(index => index >= 0 && index < processedRows.length).sort((a, b) => a - b);
+      return rows.length ? { rows, cols: realColumns.map((_, index) => index) } : null;
+    }
+    if (selection.kind === 'columns') {
+      const cols = [...selection.cols].filter(index => index >= 0 && index < realColumns.length).sort((a, b) => a - b);
+      return cols.length ? { rows: processedRows.map((_, index) => index), cols } : null;
+    }
+    const firstRow = Math.max(0, Math.min(selection.anchor.row, selection.focus.row));
+    const lastRow = Math.min(processedRows.length - 1, Math.max(selection.anchor.row, selection.focus.row));
+    const firstCol = Math.max(0, Math.min(selection.anchor.col, selection.focus.col));
+    const lastCol = Math.min(realColumns.length - 1, Math.max(selection.anchor.col, selection.focus.col));
+    if (firstRow > lastRow || firstCol > lastCol) return null;
+    return {
+      rows: Array.from({ length: lastRow - firstRow + 1 }, (_, index) => firstRow + index),
+      cols: Array.from({ length: lastCol - firstCol + 1 }, (_, index) => firstCol + index),
+    };
+  }, [selection, processedRows, realColumns]);
+
+  const selectedLookup = useMemo(() => selectedBounds ? {
+    rows: new Set(selectedBounds.rows),
+    cols: new Set(selectedBounds.cols),
+  } : null, [selectedBounds]);
+  const isInSelection = (row, col) => Boolean(selectedLookup?.rows.has(row) && selectedLookup.cols.has(col));
+
+  useEffect(() => {
+    if (!printSelection) return;
+    const reset = () => setPrintSelection(false);
+    window.addEventListener('afterprint', reset, { once: true });
+    const frame = requestAnimationFrame(() => window.print());
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('afterprint', reset);
+    };
+  }, [printSelection]);
+
   // Total display rows: at least 60 rows or real records + 35 blank rows (endless grid)
   const TOTAL_ROWS = useMemo(() => {
     return Math.max(processedRows.length + 35, 60);
@@ -247,6 +306,7 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
   // Auto-focus cell input when editing begins
   useEffect(() => {
     if (isEditing && cellInputRef.current) {
+      editCommittedRef.current = false;
       cellInputRef.current.focus();
       cellInputRef.current.select();
     }
@@ -257,10 +317,22 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
     const col = sheet?.columns?.find(c => c.id === columnId);
     if (!col || col.editable === false || !sheet?.canEdit) return;
 
+    const prevRow = sheet.rows.find(r => r.id === rowId);
+    if (!prevRow) return;
+    if (currentSheetId !== 'challans-jkl' && columnId === 'totalBags' && prevRow?.materials?.length !== 1) {
+      setError('Bag totals for multi-material challans must be changed in the Challan form.');
+      return;
+    }
+    if (pendingRowsRef.current.has(rowId)) {
+      setError('Wait for this row to finish saving before editing it again.');
+      return;
+    }
+    pendingRowsRef.current.add(rowId);
+    mutationEpochRef.current += 1;
+
     setSaveStatus('saving');
     setSaveMessage('Saving changes…');
 
-    const prevRow = sheet.rows.find(r => r.id === rowId);
     const prevVal = prevRow?.[columnId] ?? '';
 
     // Optimistic Update
@@ -295,7 +367,8 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
     try {
       const response = await ax.patch(`/sheets/${encodeURIComponent(currentSheetId)}/${encodeURIComponent(rowId)}`, {
         field: columnId,
-        value
+        value,
+        revision: prevRow?._revision,
       });
 
       setSheet(curr => {
@@ -322,15 +395,19 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
         if (!curr) return curr;
         return {
           ...curr,
-          rows: curr.rows.map(r => r.id === rowId ? prevRow : r)
+          rows: curr.rows.map(r => r.id === rowId ? (err.response?.data?.row || prevRow) : r)
         };
       });
       setError(err.response?.data?.error || 'Failed to save cell edit');
+    } finally {
+      pendingRowsRef.current.delete(rowId);
     }
   }, [sheet, currentSheetId]);
 
   // Commit Active Cell Edit
   const commitEdit = useCallback((explicitValue) => {
+    if (isEditing && editCommittedRef.current) return;
+    if (isEditing) editCommittedRef.current = true;
     setIsEditing(false);
     const row = processedRows[activeCell.row];
     const col = columns[activeCell.col];
@@ -350,7 +427,7 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
     if (String(finalVal).trim() !== currentVal.trim()) {
       saveCell(row.id, col.id, finalVal);
     }
-  }, [processedRows, activeCell, columns, realColumns, editValue, sheet, saveCell]);
+  }, [processedRows, activeCell, columns, realColumns, editValue, sheet, saveCell, isEditing]);
 
   // Add New Row: strictly for Challans only
   const handleAddRow = useCallback(async (initialFieldVal = null) => {
@@ -774,6 +851,9 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
                       <span><Printer size={14} /> Print</span>
                       <span className="gsq-kbd-shortcut">Ctrl+P</span>
                     </button>
+                    <button disabled={!selectedBounds} onClick={() => { setOpenMenu(null); setPrintSelection(true); }}>
+                      <span><Printer size={14} /> Print selection</span>
+                    </button>
                     <div className="gsq-dropdown-divider" />
                     <button onClick={() => window.close() || window.history.back()}>
                       <span><ArrowLeft size={14} /> Close sheet</span>
@@ -1000,6 +1080,9 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
         {/* Print */}
         <button className="gsq-tb-btn" onClick={() => window.print()} title="Print (Ctrl+P)">
           <Printer size={15} />
+        </button>
+        <button className="gsq-tb-btn gsq-print-selection-btn" onClick={() => setPrintSelection(true)} disabled={!selectedBounds} title="Print selected cells, rows, or columns">
+          Print selection
         </button>
 
         {/* Paint Format */}
@@ -1310,7 +1393,10 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
           {/* 1. Header Row */}
           <div className="gsq-row gsq-header-row">
             {/* Corner select-all cell */}
-            <div className="gsq-corner-cell" onClick={() => setActiveCell({ row: 0, col: 0 })}>
+            <div className="gsq-corner-cell" title="Select all populated cells" onClick={() => {
+              setSelection({ kind: 'range', anchor: { row: 0, col: 0 }, focus: { row: Math.max(0, processedRows.length - 1), col: Math.max(0, realColumns.length - 1) } });
+              setActiveCell({ row: 0, col: 0 });
+            }}>
               <div className="gsq-corner-triangle" />
             </div>
 
@@ -1322,12 +1408,20 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
               return (
                 <div
                   key={col.id}
-                  className={`gsq-col-header ${freezeFirstCol && cIdx === 0 ? 'gsq-freeze-col' : ''} ${isColActive ? 'gsq-col-active' : ''}`}
+                  className={`gsq-col-header ${freezeFirstCol && cIdx === 0 ? 'gsq-freeze-col' : ''} ${isColActive ? 'gsq-col-active' : ''} ${selection?.kind === 'columns' && selection.cols.has(cIdx) ? 'gsq-header-selected' : ''}`}
                   style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                  onClick={() => {
+                  title={col.editable === false || !sheet?.canEdit ? 'Not editable. Click to select column.' : 'Click to select column. Sort from Data menu.'}
+                  onClick={e => {
                     if (col.isFiller) return;
-                    const nextDir = sortConfig?.key === col.id && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-                    setSortConfig({ key: col.id, direction: nextDir });
+                    if (e.ctrlKey || e.metaKey) {
+                      const cols = new Set(selection?.kind === 'columns' ? selection.cols : []);
+                      if (cols.has(cIdx)) cols.delete(cIdx); else cols.add(cIdx);
+                      setSelection(cols.size ? { kind: 'columns', cols, anchor: cIdx } : null);
+                    } else if (e.shiftKey && selection?.kind === 'columns') {
+                      const from = selection.anchor;
+                      setSelection({ kind: 'columns', cols: new Set(Array.from({ length: Math.abs(cIdx - from) + 1 }, (_, index) => Math.min(cIdx, from) + index)), anchor: from });
+                    } else setSelection({ kind: 'columns', cols: new Set([cIdx]), anchor: cIdx });
+                    setActiveCell(curr => ({ ...curr, col: cIdx }));
                   }}
                 >
                   <div className="gsq-col-letter">{col.letter}</div>
@@ -1448,8 +1542,20 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
               >
                 {/* Row Number Header */}
                 <div
-                  className={`gsq-row-header-cell ${isRowActive ? 'active-row' : ''}`}
-                  onClick={() => setActiveCell({ row: rIdx, col: 0 })}
+                  className={`gsq-row-header-cell ${isRowActive ? 'active-row' : ''} ${selection?.kind === 'rows' && selection.rows.has(rIdx) ? 'gsq-header-selected' : ''}`}
+                  title={isDataRow && !realColumns.some(col => col.editable && sheet?.canEdit) ? 'Not editable. Click to select row.' : 'Click to select row; Ctrl-click for multiple rows; Shift-click for range.'}
+                  onClick={e => {
+                    if (!isDataRow) return;
+                    if (e.ctrlKey || e.metaKey) {
+                      const rows = new Set(selection?.kind === 'rows' ? selection.rows : []);
+                      if (rows.has(rIdx)) rows.delete(rIdx); else rows.add(rIdx);
+                      setSelection(rows.size ? { kind: 'rows', rows, anchor: rIdx } : null);
+                    } else if (e.shiftKey && selection?.kind === 'rows') {
+                      const from = selection.anchor;
+                      setSelection({ kind: 'rows', rows: new Set(Array.from({ length: Math.abs(rIdx - from) + 1 }, (_, index) => Math.min(rIdx, from) + index)), anchor: from });
+                    } else setSelection({ kind: 'rows', rows: new Set([rIdx]), anchor: rIdx });
+                    setActiveCell({ row: rIdx, col: 0 });
+                  }}
                   onContextMenu={e => {
                     e.preventDefault();
                     setContextMenu({ x: e.clientX, y: e.clientY, rowIdx: rIdx, isDataRow });
@@ -1471,7 +1577,8 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
                   return (
                     <div
                       key={col.id}
-                      className={`gsq-cell ${col.type === 'number' ? 'gsq-align-right' : ''} ${isSelected ? 'gsq-selected' : ''} ${freezeFirstCol && cIdx === 0 ? 'gsq-freeze-col' : ''} ${isMatchedInFind ? 'gsq-find-match' : ''}`}
+                      className={`gsq-cell ${col.type === 'number' ? 'gsq-align-right' : ''} ${isSelected ? 'gsq-selected' : ''} ${isInSelection(rIdx, cIdx) ? 'gsq-range-selected' : ''} ${freezeFirstCol && cIdx === 0 ? 'gsq-freeze-col' : ''} ${isMatchedInFind ? 'gsq-find-match' : ''}`}
+                      title={(!isDataRow || col.isFiller || col.editable === false || !sheet?.canEdit) ? 'Not editable' : undefined}
                       style={{
                         width: col.width,
                         minWidth: col.width,
@@ -1484,12 +1591,22 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
                         backgroundColor: customStyle.bg || undefined,
                         textAlign: customStyle.align || (col.type === 'number' ? 'right' : 'left'),
                       }}
+                      onMouseDown={e => {
+                        if (e.button !== 0 || isCellEditing) return;
+                        if (e.shiftKey && selection?.kind === 'range') {
+                          setSelection({ kind: 'range', anchor: selection.anchor, focus: { row: rIdx, col: cIdx } });
+                        } else {
+                          setSelection({ kind: 'range', anchor: { row: rIdx, col: cIdx }, focus: { row: rIdx, col: cIdx } });
+                          draggingSelectionRef.current = true;
+                        }
+                      }}
+                      onMouseEnter={() => {
+                        if (draggingSelectionRef.current) setSelection(curr => curr?.kind === 'range' ? { ...curr, focus: { row: rIdx, col: cIdx } } : curr);
+                      }}
                       onClick={e => {
                         e.stopPropagation();
                         if (isCellEditing) return;
-                        if (isSelected) {
-                          if (col.editable && isDataRow) setIsEditing(true);
-                        } else {
+                        if (!isSelected) {
                           commitEdit();
                           setActiveCell({ row: rIdx, col: cIdx });
                         }
@@ -1552,6 +1669,23 @@ export default function SmartSheet({ sheetId: initialSheetId }) {
           })}
         </div>
       </main>
+
+      {printSelection && selectedBounds && (
+        <section className="gsq-print-area" aria-label="Selected sheet area for printing">
+          <h1>{sheet?.title || 'VGTC Smart Sheet'}</h1>
+          <table>
+            <thead><tr>{selectedBounds.cols.map(colIndex => <th key={realColumns[colIndex].id}>{realColumns[colIndex].title || realColumns[colIndex].letter}</th>)}</tr></thead>
+            <tbody>{selectedBounds.rows.map(rowIndex => (
+              <tr key={processedRows[rowIndex].id || rowIndex}>
+                {selectedBounds.cols.map(colIndex => {
+                  const col = realColumns[colIndex];
+                  return <td key={col.id}>{String(processedRows[rowIndex][col.id] ?? '')}</td>;
+                })}
+              </tr>
+            ))}</tbody>
+          </table>
+        </section>
+      )}
 
       {/* ── 5. BOTTOM TABS & AGGREGATE SUMMARY ── */}
       <footer className="gsq-bottombar">

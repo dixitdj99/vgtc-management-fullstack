@@ -1123,3 +1123,45 @@ checks; `git diff --check` passes (line-ending warnings only).
 - [x] Fixed unbound `e` in [SmartSheet.jsx](file:///b:/VGTC%20Managemet/client/src/sheets/SmartSheet.jsx) filter button `onClick`.
 - [x] AST Scope Analysis across entire `client/src`: 0 unbound identifiers remain.
 - [x] Verification: client tests pass (124 passed), sheet definitions pass (3 passed), Vite production bundle builds in 6.16s without errors.
+
+# Three godown workflow follow-up (2026-10-01)
+
+- [x] Harden Bahadurgarh challan creation/rendering; deployed production reproduction still pending.
+- [x] Make challan sheet edits persist, including conflicts and permission checks.
+- [x] Require Bill No and Party Code on Kosli, Jhajjar, Bahadurgarh LR creation.
+- [x] Create one linked Balance Sheet bill with each new LR; preserve manual bill entry only for existing LR.
+- [x] Unify LR and Stock challan creation fields; show complete challan table with status.
+- [x] Include crossing MIGO unloading labour charges.
+- [x] Align and simplify three godown LR form using supplied screenshot.
+- [x] Test three godown and Jharli paths; review diff.
+- [ ] Verify Bahadurgarh Create Challan in production after deployment.
+
+## Review
+
+Focused LR/bill and sheet tests: 12 passed. Client production build passed. Full API suite: 204 passed, 5 failed on unrelated existing assertions (permission navigation, archive path, balance width, and two icon assets). Jharli billing and crossing behavior covered by targeted tests. No deployment performed, so production-only crash cannot be confirmed resolved yet.
+
+# UI corrections (2026-10-01)
+
+- [x] Widen and simplify three-godown LR creation form; remove voice option there.
+- [x] Rename challan LR number field to auto-generated five-digit Challan Number, consistently on server and UI.
+- [x] Set browser title per active module; home keeps Vikas Goods Transport.
+- [x] Add Windows-like sheet selection and print selection; mark read-only cells on hover.
+- [x] Collapse other sidebar modules when opening one.
+- [x] Remove status from main header and make status panel content scrollable.
+- [x] Verify build, focused tests, and Jharli isolation.
+
+## UI corrections review
+
+Focused tests: 15 passed, including concurrent five-digit challan numbering and Jharli legacy path. Client production build passed. `git diff --check` passed. Browser interaction and deployed production behavior remain unverified.
+
+# LR bill status and multi-destination follow-up (2026-10-01)
+
+- [x] Show only matching godown bill under Bill Status; keep Jharli voucher status.
+- [x] Give each material/destination its own unique LR number while retaining one shared entry ID for one vehicle load.
+- [x] Generate matching bill records and godown-specific series without duplicates.
+- [x] Match Jharli multi-destination behavior where applicable; preserve Jharli code paths.
+- [x] Verify focused tests, build, and data compatibility.
+
+## Multi-destination review
+
+Focused LR/bill/challan/sheet tests: 16 passed. Client production build passed. Multi-material, multi-destination Kosli flow verifies unique LR numbers, shared entry ID, one linked bill, delivery rows, and commission. Jharli test path remains bill-free.

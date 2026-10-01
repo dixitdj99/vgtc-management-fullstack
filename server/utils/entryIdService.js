@@ -2,29 +2,29 @@ const localStore = require('./localStore');
 const { db, isAvailable } = require('../firebase');
 
 /**
- * Generates the next sequential 6-digit Entry ID (starting from 100001) for a given collection and orgId.
+ * Generates the next sequential 4-digit Entry ID (starting from 1001) for a given collection and orgId.
  */
 const getNextEntryId = async (orgId, collectionName) => {
-    let maxId = 100000;
+    let maxId = 1000;
     if (isAvailable()) {
         const snap = await db.collection(collectionName).where('orgId', '==', orgId).get();
         snap.docs.forEach(doc => {
             const data = doc.data();
             const num = parseInt(data.entryId);
-            if (!isNaN(num) && num > maxId) maxId = num;
+            if (!isNaN(num) && num >= 1000 && num <= 9999 && num > maxId) maxId = num;
         });
     } else {
         const docs = localStore.getAll(collectionName).filter(d => d.orgId === orgId);
         docs.forEach(d => {
             const num = parseInt(d.entryId);
-            if (!isNaN(num) && num > maxId) maxId = num;
+            if (!isNaN(num) && num >= 1000 && num <= 9999 && num > maxId) maxId = num;
         });
     }
     return maxId + 1;
 };
 
 /**
- * Backfills existing records missing an entryId in chronological order starting from 100001.
+ * Backfills existing records missing an entryId in chronological order starting from 1001.
  */
 const ensureEntryIds = async (orgId, collectionName) => {
     if (!orgId) return;
@@ -39,10 +39,10 @@ const ensureEntryIds = async (orgId, collectionName) => {
     const missing = docs.filter(d => !d.entryId);
     if (missing.length === 0) return;
 
-    let maxId = 100000;
+    let maxId = 1000;
     docs.forEach(d => {
         const num = parseInt(d.entryId);
-        if (!isNaN(num) && num > maxId) maxId = num;
+        if (!isNaN(num) && num >= 1000 && num <= 9999 && num > maxId) maxId = num;
     });
 
     missing.sort((a, b) => {
@@ -88,10 +88,10 @@ const ensureEntryIdsAll = async (collectionName) => {
         const missing = list.filter(d => !d.entryId);
         if (missing.length === 0) continue;
 
-        let maxId = 100000;
+        let maxId = 1000;
         list.forEach(d => {
             const num = parseInt(d.entryId);
-            if (!isNaN(num) && num > maxId) maxId = num;
+            if (!isNaN(num) && num >= 1000 && num <= 9999 && num > maxId) maxId = num;
         });
 
         missing.sort((a, b) => {

@@ -17,23 +17,20 @@
  *                    Crossing      → crossing_load   paid
  *                    Direct        →                 nothing: labour never touched it
  *   MIGO             Godown Unload → godown_unload   paid
- *                    Crossing      →                 nothing
+ *                    Crossing      → crossing_unload paid at dump locations
  *                    Direct        →                 nothing
- *
- * The asymmetry is deliberate and was confirmed with the firm: a crossing at
- * the loading gate is bags moved between trucks, a crossing on the way in is a
- * truck passing through.
  */
 
 const { getCol } = require('./collectionUtils');
 
 /** Rate keys. A material with no rate of its own falls back to the default. */
-const ACTIVITIES = ['godown_load', 'crossing_load', 'godown_unload'];
+const ACTIVITIES = ['godown_load', 'crossing_load', 'godown_unload', 'crossing_unload'];
 
 const ACTIVITY_LABEL = {
   godown_load: 'Loading from godown',
   crossing_load: 'Crossing (loading)',
   godown_unload: 'Godown unload (MIGO)',
+  crossing_unload: 'Crossing unload (MIGO)',
 };
 
 /** The two labour crews. The three dumps share one; Jharli has its own. */
@@ -75,12 +72,18 @@ const LOADING_ACTIVITY = {
   'Direct': null,               // labour never touched it
 };
 
-/** The unloading types a MIGO entry can carry. Only one of them pays. */
+/** Base MIGO mapping keeps Jharli's existing crossing rule. */
 const UNLOADING_ACTIVITY = {
   'Godown Unload': 'godown_unload',
   'Crossing': null,
   'Direct': null,
 };
+
+function unloadingActivity(type, group) {
+  if (type === 'Crossing' && group === 'dump') return 'crossing_unload';
+  const activity = UNLOADING_ACTIVITY[type] === undefined ? 'godown_unload' : UNLOADING_ACTIVITY[type];
+  return activity;
+}
 
 /**
  * The rate for one line. A material priced specifically beats the group
@@ -110,6 +113,11 @@ function sanitiseRates(body = {}) {
   GROUPS.forEach(({ key }) => {
     const src = body?.groups?.[key] || {};
     ACTIVITIES.forEach(a => { out.groups[key].default[a] = num(src.default?.[a]); });
+    // Existing dump rate sheets predate crossing unload. Use their godown
+    // unload rate until a separate crossing rate is explicitly saved.
+    if (key === 'dump' && src.default?.crossing_unload === undefined) {
+      out.groups[key].default.crossing_unload = out.groups[key].default.godown_unload;
+    }
     Object.entries(src.materials || {}).forEach(([material, byActivity]) => {
       const name = String(material || '').trim();
       if (!name) return;
@@ -120,6 +128,10 @@ function sanitiseRates(body = {}) {
         // a stored 0 would override the group default with free labour.
         if (v !== undefined && v !== null && v !== '') row[a] = num(v);
       });
+      if (key === 'dump' && src.default?.crossing_unload === undefined &&
+          byActivity?.crossing_unload === undefined && row.godown_unload !== undefined) {
+        row.crossing_unload = row.godown_unload;
+      }
       if (Object.keys(row).length) out.groups[key].materials[name] = row;
     });
   });
@@ -216,7 +228,7 @@ async function earnings(orgId, req, { from, to } = {}, rates) {
       // was the only thing MIGO recorded, so treating them as anything else
       // would rewrite history the firm already worked to.
       const type = r.unloadingType || 'Godown Unload';
-      const activity = UNLOADING_ACTIVITY[type] === undefined ? 'godown_unload' : UNLOADING_ACTIVITY[type];
+      const activity = unloadingActivity(type, plant.group);
       const bags = parseInt(r.quantity, 10) || 0;
       const rate = rateFor(sheet, plant.group, r.material, activity);
       lines.push({
@@ -359,7 +371,7 @@ function summarise(lines = [], payments = []) {
 
 module.exports = {
   ACTIVITIES, ACTIVITY_LABEL, GROUPS, PLANTS,
-  LOADING_ACTIVITY, UNLOADING_ACTIVITY, DEFAULT_MATERIALS, JKL_MATERIALS,
+  LOADING_ACTIVITY, UNLOADING_ACTIVITY, unloadingActivity, DEFAULT_MATERIALS, JKL_MATERIALS,
   rateFor, emptyRates, sanitiseRates, materialsByGroup,
   getRates, saveRates, earnings, listPayments, addPayment, removePayment, summarise,
 };

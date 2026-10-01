@@ -67,8 +67,8 @@ const getVouchersByType = async (orgId, type, col = COLLECTION_VOUCHERS) => {
             .map(doc => ({ id: doc.id, ...doc.data() }))
             .filter(d => d.type === type);
         return docs.sort((a, b) => {
-            const aTime = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
-            const bTime = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+            const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?._seconds ? a.createdAt._seconds * 1000 : new Date(a.createdAt || 0).getTime()));
+            const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt?._seconds ? b.createdAt._seconds * 1000 : new Date(b.createdAt || 0).getTime()));
             return bTime - aTime;
         });
     }
@@ -83,8 +83,8 @@ const getAllVouchers = async (orgId, col = COLLECTION_VOUCHERS) => {
         const snapshot = await db.collection(col).where('orgId', '==', orgId).get();
         const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         return docs.sort((a, b) => {
-            const aTime = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
-            const bTime = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+            const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?._seconds ? a.createdAt._seconds * 1000 : new Date(a.createdAt || 0).getTime()));
+            const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt?._seconds ? b.createdAt._seconds * 1000 : new Date(b.createdAt || 0).getTime()));
             return bTime - aTime;
         });
     }

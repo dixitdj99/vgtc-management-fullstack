@@ -23,7 +23,7 @@ const ROLE_COLOR = Object.fromEntries(ROLES.map(r => [r.value, r.color]));
 const GODOWNS = [
   { value: 'kosli', label: 'Kosli', color: '#6366f1' },
   { value: 'jhajjar', label: 'Jhajjar', color: '#14b8a6' },
-  { value: 'bahadurgarh', label: 'Bahadurgarh', color: '#d97706' },
+  { value: 'bahadurgarh', label: 'Bahadurgarh', color: '#2563eb' },
   { value: 'jkl', label: 'JK Lakshmi', color: '#f59e0b' },
   { value: 'dump', label: 'Dump — JK Super general', color: '#f43f5e' },
 ];

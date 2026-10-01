@@ -38,9 +38,15 @@ export default function EwayBillPanel({ materials = [], onApply, refreshKey = 0 
             ]);
             setState({
                 loading: false,
-                configured: !!pending.configured,
-                bills: pending.bills || [],
-                missing: pending.missing || [],
+                configured: !!pending?.configured,
+                // Older feed rows can be incomplete. The challan screen must
+                // still open so operators can create a challan by hand.
+                bills: Array.isArray(pending?.bills)
+                    ? pending.bills.filter(b => b && typeof b === 'object').map(b => ({
+                        ...b, draft: b.draft && typeof b.draft === 'object' ? b.draft : {},
+                    }))
+                    : [],
+                missing: pending?.missing || [],
                 lastSyncAt: status.lastSyncAt || null,
                 lastError: status.lastError || null,
             });
@@ -105,7 +111,7 @@ export default function EwayBillPanel({ materials = [], onApply, refreshKey = 0 
 
             <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {state.bills.map(({ ewbNo, draft }) => {
-                    const flags = draft.needsReview || [];
+                    const flags = Array.isArray(draft.needsReview) ? draft.needsReview : [];
                     return (
                         <div key={ewbNo}
                             style={{ border: `1px solid ${flags.length ? 'rgba(245,158,11,0.45)' : 'var(--border)'}`, borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px', background: 'var(--bg)' }}>
