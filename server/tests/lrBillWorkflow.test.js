@@ -51,6 +51,7 @@ test('Kosli receipt creates one linked bill with matching ID and totals', async 
     assert.deepEqual(result.lrNos, [1001, 1002]);
     assert.deepEqual(receipts.map(row => row.lrNo), [1001, 1002]);
     assert.equal(receipts[0].entryId, receipts[1].entryId);
+    assert.equal(receipts[0].entryId, 100001);
     assert.deepEqual(receipts.map(row => row.destination), ['KOSLI CITY', 'REWARI']);
     assert.equal(result.billId, receipts[0].id);
     assert.equal(bills[0].id, receipts[0].id);
@@ -65,14 +66,14 @@ test('Kosli receipt creates one linked bill with matching ID and totals', async 
 test('loading receipt without challan creates bill with blank rate and automatic commission', async () => {
     const lrCollection = 'dev_test_bahadurgarh_loading_receipts';
     const result = await lrService.createLoadingReceipt('test-org', {
-        date: '2026-10-01',
+        billNo: 'B-44', partyCode: 'P-6', date: '2026-10-01',
         materials: [{ type: 'PPC', loadingType: 'From Godown', bags: 10, weight: 0.5, destination: 'BAHADURGARH' }],
     }, lrCollection, 'dev_test_bahadurgarh_metadata');
     const receipts = rows(lrCollection);
     const bills = rows('dev_test_vouchers');
     const bill = bills.find(b => b.id === result.billId);
     assert.ok(bill);
-    assert.equal(bill.billNo, '1001');
+    assert.equal(bill.billNo, 'B-44');
     assert.equal(bill.rate, '');
     assert.equal(bill.commission, 15);
     assert.equal(bill.hasCommission, true);
@@ -93,6 +94,42 @@ test('manual LR number collision is rejected within same godown and series are s
     const jhajjar = await lrService.createLoadingReceipt('test-org', payload, 'dev_test_jhajjar_loading_receipts', 'dev_test_jhajjar_metadata');
     assert.equal(jhajjar.lrNo, 1002);
     assert.equal(rows('dev_test_jhajjar_loading_receipts')[0].lrNo, 1002);
+    await assert.rejects(() => lrService.createLoadingReceipt('test-org', {
+        lrNo: 10000, billNo: 'B-44', partyCode: 'P-5',
+        materials: [{ type: 'PPC', loadingType: 'From Godown', bags: 1, weight: 0.05 }],
+    }, 'dev_test_jhajjar_loading_receipts', 'dev_test_jhajjar_metadata'), /4-digit/);
+});
+
+test('three godowns require bill number and party code; Jharli does not', async () => {
+    const materials = [{ type: 'PPC', loadingType: 'From Godown', bags: 1, weight: 0.05 }];
+    for (const godown of ['kosli', 'jhajjar', 'bahadurgarh']) {
+        await assert.rejects(() => lrService.createLoadingReceipt('test-org', { materials }, `dev_test_${godown}_loading_receipts`), /Bill number is required/);
+        await assert.rejects(() => lrService.createLoadingReceipt('test-org', { materials, billNo: 'B-1' }, `dev_test_${godown}_loading_receipts`), /Party code is required/);
+    }
+});
+
+test('missing bill can be recovered once for full LR group with correct scope', async () => {
+    const col = 'dev_test_kosli_loading_receipts';
+    const first = localStore.insert(col, { orgId: 'recovery-org', entryId: 100009, lrNo: 1501, material: 'PPC', loadingType: 'From Godown', totalBags: 10, weight: 0.5, partyName: 'ABC', destination: 'KOSLI' });
+    localStore.insert(col, { orgId: 'recovery-org', entryId: 100009, lrNo: 1502, material: 'OPC', loadingType: 'From Godown', totalBags: 20, weight: 1, partyName: 'ABC', destination: 'REWARI' });
+    await assert.rejects(() => lrService.createBillForLoadingReceipt('other-org', first.id, { billNo: 'B-99', partyCode: 'P-99' }, col), /not found/);
+    await assert.rejects(() => lrService.createBillForLoadingReceipt('recovery-org', first.id, {}, col), /Bill number is required/);
+    const result = await lrService.createBillForLoadingReceipt('recovery-org', first.id, { billNo: 'B-99', partyCode: 'P-99' }, col);
+    assert.equal(result.created, true);
+    assert.deepEqual(result.lrNos, [1501, 1502]);
+    const bill = rows('dev_test_vouchers').find(row => row.id === result.billId);
+    assert.equal(bill.entryId, 100009);
+    assert.equal(bill.billNo, 'B-99');
+    assert.deepEqual(bill.deliveries.map(row => row.destination), ['KOSLI', 'REWARI']);
+    assert.equal(bill.commission, 45);
+    assert.equal(bill.rate, '');
+    const retry = await lrService.createBillForLoadingReceipt('recovery-org', first.id, { billNo: 'B-99', partyCode: 'P-99' }, col);
+    assert.equal(retry.created, false);
+    assert.equal(retry.billId, result.billId);
+    assert.equal(rows('dev_test_vouchers').filter(row => row.orgId === 'recovery-org').length, 1);
+    await assert.rejects(() => lrService.createBillForLoadingReceipt('recovery-org', first.id, { billNo: 'B-99', partyCode: 'P-99' }, 'dev_test_jhajjar_loading_receipts'), /not found/);
+    const another = localStore.insert(col, { orgId: 'recovery-org', entryId: 100010, lrNo: 1503, material: 'PPC', totalBags: 1, weight: 0.05 });
+    await assert.rejects(() => lrService.createBillForLoadingReceipt('recovery-org', another.id, { billNo: 'B-99', partyCode: 'P-99' }, col), /already exists/);
 });
 
 test('Jharli receipt flow does not require or create a bill', async () => {

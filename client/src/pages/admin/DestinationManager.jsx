@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ax from '../../api';
-import { MapPin, Plus, X, Trash2, Search, Calendar, TrendingUp, RefreshCw, Layers } from 'lucide-react';
+import { MapPin, Plus, X, Trash2, Search, Calendar, TrendingUp, RefreshCw, Layers, Edit3 } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import TableScroll from '../../components/TableScroll';
 
@@ -23,6 +23,7 @@ export default function DestinationManager() {
     
     // Modal states
     const [showAddDest, setShowAddDest] = useState(false);
+    const [editingDest, setEditingDest] = useState(null);
     const [showRatePeriod, setShowRatePeriod] = useState(false);
     const [selectedDest, setSelectedDest] = useState(null);
     const [delTarget, setDelTarget] = useState(null);
@@ -60,10 +61,9 @@ export default function DestinationManager() {
         try {
             const res = await ax.post('/destinations/sync');
             const count = res.data?.syncedCount || 0;
-            alert(count > 0 
-                ? `Successfully imported ${count} new destination(s) from vouchers & LRs!` 
-                : 'Destinations are already up to date with vouchers.'
-            );
+            alert(count
+                ? `Imported ${count} destination(s).`
+                : 'Destinations are already up to date with vouchers.');
             fetchDestinations();
         } catch (err) {
             alert(err.response?.data?.error || 'Failed to sync destinations from vouchers');
@@ -77,6 +77,7 @@ export default function DestinationManager() {
     }, []);
 
     const handleOpenAddModal = () => {
+        setEditingDest(null);
         setDestForm({
             name: '',
             module: selectedModule !== 'all' ? selectedModule : 'all',
@@ -87,23 +88,38 @@ export default function DestinationManager() {
         setShowAddDest(true);
     };
 
+    const handleOpenEditModal = destination => {
+        setEditingDest(destination);
+        setDestForm({
+            name: destination.name || '', module: destination.module || 'all',
+            rate: destination.currentRate || '',
+            startDate: new Date().toISOString().split('T')[0], endDate: ''
+        });
+        setShowAddDest(true);
+    };
+
     const handleCreateDestination = async (e) => {
         e.preventDefault();
         if (!destForm.name.trim()) return;
         setBusy(true);
         try {
-            await ax.post('/destinations', {
+            const payload = {
                 name: destForm.name.trim(),
                 module: destForm.module || 'all',
                 rate: Number(destForm.rate) || 0,
                 startDate: destForm.startDate,
                 endDate: destForm.endDate || null
+            };
+            if (editingDest) await ax.patch(`/destinations/${editingDest.id}`, {
+                name: payload.name, module: payload.module
             });
+            else await ax.post('/destinations', payload);
             setShowAddDest(false);
+            setEditingDest(null);
             setDestForm({ name: '', module: 'all', rate: '', startDate: new Date().toISOString().split('T')[0], endDate: '' });
             fetchDestinations();
         } catch (err) {
-            alert(err.response?.data?.error || 'Failed to create destination');
+            alert(err.response?.data?.error || 'Failed to save destination');
         } finally {
             setBusy(false);
         }
@@ -348,6 +364,7 @@ export default function DestinationManager() {
                                             </td>
                                             <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                                    <button className="btn btn-g btn-sm" onClick={() => handleOpenEditModal(d)} title="Edit destination" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px' }}><Edit3 size={13} /> Edit</button>
                                                     <button 
                                                         className="btn btn-g btn-sm"
                                                         onClick={() => { setSelectedDest(d); setShowRatePeriod(true); }}
@@ -380,7 +397,7 @@ export default function DestinationManager() {
                     <div style={{ width: '90%', maxWidth: '420px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
                             <h4 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <MapPin size={18} color="#3b82f6" /> Add Destination
+                                <MapPin size={18} color="#3b82f6" /> {editingDest ? 'Edit Destination' : 'Add Destination'}
                             </h4>
                             <button onClick={() => setShowAddDest(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
                         </div>
@@ -390,12 +407,16 @@ export default function DestinationManager() {
                                 <input 
                                     className="fi" 
                                     type="text" 
+                                    list="known-destination-names"
                                     placeholder="e.g. Rewari" 
                                     value={destForm.name} 
                                     onChange={e => setDestForm(f => ({ ...f, name: e.target.value }))} 
                                     required 
                                     autoFocus
                                 />
+                                <datalist id="known-destination-names">
+                                    {[...new Set(destinations.map(d => d.name).filter(Boolean))].sort().map(name => <option key={name} value={name} />)}
+                                </datalist>
                             </div>
                             <div className="field">
                                 <label>Module / Plant *</label>
@@ -409,7 +430,7 @@ export default function DestinationManager() {
                                     ))}
                                 </select>
                             </div>
-                            <div className="field">
+                            {!editingDest && <div className="field">
                                 <label>Rate (Rs/MT) *</label>
                                 <input 
                                     className="fi" 
@@ -419,8 +440,8 @@ export default function DestinationManager() {
                                     onChange={e => setDestForm(f => ({ ...f, rate: e.target.value }))} 
                                     required 
                                 />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            </div>}
+                            {!editingDest && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                 <div className="field">
                                     <label>Start Date *</label>
                                     <input 
@@ -441,7 +462,7 @@ export default function DestinationManager() {
                                         placeholder="Leave empty for onward"
                                     />
                                 </div>
-                            </div>
+                            </div>}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                                 <button type="button" className="btn btn-g" onClick={() => setShowAddDest(false)}>Cancel</button>
                                 <button type="submit" className="btn btn-p" disabled={busy}>

@@ -21,6 +21,14 @@ const nextFiveDigitChallanNo = (challans, lastNumber = 0) => {
     return String(highest + 1).padStart(5, '0');
 };
 
+const validateManualChallanNo = value => {
+    const number = String(value || '').trim();
+    if (!/^(?!00000)\d{5}$/.test(number)) {
+        throw new Error('Manual challan number must be exactly 5 digits (00001–99999)');
+    }
+    return number;
+};
+
 // ── Firestore helpers ──────────────────────────────────────────────────────────
 
 const firestoreAddStock = async (orgId, data, sCol) => {
@@ -53,7 +61,7 @@ const firestoreCreateChallan = async (orgId, data, cCol) => {
 
 // Counter and challan document commit together. The first transaction reads
 // existing challans so an upgraded godown continues beyond legacy CH-0001 data.
-const firestoreCreateFiveDigitChallan = async (orgId, data, cCol) => {
+const firestoreCreateFiveDigitChallan = async (orgId, data, cCol, manualChallanNo = '') => {
     const collection = db.collection(cCol);
     const ref = collection.doc();
     const counterRef = db.collection('challan_counters').doc(`${cCol}_${orgId}`);
@@ -64,8 +72,27 @@ const firestoreCreateFiveDigitChallan = async (orgId, data, cCol) => {
             const existing = await transaction.get(collection.where('orgId', '==', orgId));
             seed = existing.docs.map(doc => doc.data());
         }
-        const number = nextFiveDigitChallanNo(seed, counter.exists ? counter.data().lastNumber : 0);
-        transaction.set(counterRef, { lastNumber: Number(number), orgId, collection: cCol });
+        const lastNumber = counter.exists ? Number(counter.data().lastNumber) || 0 : 0;
+        const number = manualChallanNo || nextFiveDigitChallanNo(seed, lastNumber);
+        const claimRef = db.collection('challan_number_claims').doc(`${cCol}_${orgId}_${number}`);
+        const claim = await transaction.get(claimRef);
+        if (claim.exists) throw new Error(`Challan number ${number} already exists`);
+        if (manualChallanNo) {
+            // Older challans predate number claims and may use shorter CH- codes.
+            const existing = counter.exists
+                ? (await transaction.get(collection.where('orgId', '==', orgId))).docs.map(doc => doc.data())
+                : seed;
+            if (existing.some(challan => {
+                const match = /^(?:CH-)?(\d{1,5})$/.exec(String(challan.challanNo || '').trim());
+                return match && Number(match[1]) === Number(number);
+            })) throw new Error(`Challan number ${number} already exists`);
+        }
+        const highest = seed.reduce((max, challan) => {
+            const match = /^(?:CH-)?(\d{1,5})$/.exec(String(challan.challanNo || '').trim());
+            return match ? Math.max(max, Number(match[1])) : max;
+        }, lastNumber);
+        transaction.set(counterRef, { lastNumber: Math.max(highest, Number(number)), orgId, collection: cCol });
+        transaction.set(claimRef, { challanNo: number, orgId, collection: cCol, challanId: ref.id });
         transaction.set(ref, {
             ...data, challanNo: number, orgId,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -328,6 +355,8 @@ module.exports = {
         let { challanNo, truckNo, materials, partyName, partyCode, billNo, destination, date, remark, material, quantity, factoryCode, lrNo } = data;
         // An optional LR link is separate from the challan's own number.
         const fiveDigit = isFiveDigitChallanCollection(cCol);
+        const manualChallanNo = fiveDigit && String(challanNo || '').trim()
+            ? validateManualChallanNo(challanNo) : '';
         const lrLink = fiveDigit
             ? { lrNo: String(lrNo || '').trim() }
             : {};
@@ -368,7 +397,7 @@ module.exports = {
                 date: date || new Date().toISOString().slice(0, 10),
                 remark: remark || '', status: 'open', ...lrLink
             };
-            if (fiveDigit) return firestoreCreateFiveDigitChallan(orgId, payload, cCol);
+            if (fiveDigit) return firestoreCreateFiveDigitChallan(orgId, payload, cCol, manualChallanNo);
             let finalChallanNo = challanNo;
             if (!finalChallanNo) {
                 const snap = await db.collection(cCol).where('orgId', '==', orgId).get();
@@ -378,7 +407,12 @@ module.exports = {
         }
 
         const existing = localStore.getAll(cCol).filter(c => c.orgId === orgId);
-        let finalChallanNo = fiveDigit ? nextFiveDigitChallanNo(existing) : challanNo;
+        let finalChallanNo = fiveDigit ? (manualChallanNo || nextFiveDigitChallanNo(existing)) : challanNo;
+        if (fiveDigit && existing.some(c => {
+            const used = String(c.challanNo || '').trim();
+            const match = /^(?:CH-)?(\d{1,5})$/.exec(used);
+            return match && Number(match[1]) === Number(finalChallanNo);
+        })) throw new Error(`Challan number ${finalChallanNo} already exists`);
         if (!fiveDigit && !finalChallanNo) {
             finalChallanNo = 'CH-' + String(existing.length + 1).padStart(4, '0');
         }

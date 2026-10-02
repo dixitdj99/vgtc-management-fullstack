@@ -3,8 +3,9 @@ const { normalizePartyName, isDummyPartyName } = require('../utils/partyNameUtil
 const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
+const { getEnvPrefix } = require('../utils/envConfig');
 const { brandOfLr } = require('../utils/partyBrands');
-const { getNextEntryId, ensureEntryIds } = require('../utils/entryIdService');
+const { getNextEntryId, getNextSixDigitEntryId, ensureEntryIds } = require('../utils/entryIdService');
 const { billTypeForCollection, voucherCollectionForLr, validateBillDetails, billLrNumbers, buildBillFromLr } = require('./lrBillService');
 
 const COLLECTION_LR = 'loading_receipts';
@@ -56,40 +57,56 @@ const groupOfLrCollection = (col = '') => {
     return null;
 };
 
+const locationOfLrCollection = (col = '') => {
+    if (col.includes('jkl_loading_receipts')) return 'jharli';
+    if (col.includes('kosli_loading_receipts')) return 'kosli';
+    if (col.includes('jhajjar_loading_receipts')) return 'jhajjar';
+    if (col.includes('bahadurgarh_loading_receipts')) return 'bahadurgarh';
+    return null;
+};
+
 // ── Party Sync Helper ──────────────────────────────────────────────────────────
 /**
- * Ensures a party exists for `partyName` and returns its id.
- *
- * `group` is the party list this LR belongs to ('jklakshmi' | 'jksuper' |
- * null). A new party is created already tagged with it, so auto-created
- * parties land in the right list instead of leaking into both. If the party
- * exists but lacks the group, the group is ADDED — the same dealer name used
- * on both sides becomes a both-lists party, which is exactly what the tick
- * boxes in Party Master express. Groups are never removed here: an LR proves
- * a party trades somewhere, never that it stopped trading elsewhere.
+ * Ensures a party exists for `partyName` in the LR's environment/sandbox.
+ * Adds the source brand and site without removing existing tags. The first
+ * nonblank manual code becomes the master code; conflicting existing codes
+ * must be resolved explicitly in Party Master.
  */
-const syncParty = async (orgId, partyName, group = null) => {
+const partyScopeForLrCollection = collection => ({
+    user: { isSandbox: String(collection).startsWith(`${getEnvPrefix()}test_`) }
+});
+
+const syncParty = async (orgId, partyName, group = null, location = null, partyCode = '', partyId = null, partyScope = null) => {
     if (!partyName || isDummyPartyName(partyName)) return null;
     try {
-        const parties = await partyService.getAllParties(orgId);
-        let party = parties.find(p => p.name === partyName.toUpperCase());
+        const parties = await partyService.getAllParties(orgId, partyScope);
+        let party = parties.find(p => p.id === partyId && normalizePartyName(p.name) === normalizePartyName(partyName))
+            || parties.find(p => normalizePartyName(p.name) === normalizePartyName(partyName));
+        const code = String(partyCode || '').trim().toUpperCase();
         if (!party) {
             party = await partyService.createParty(orgId, {
                 name: partyName,
                 type: 'customer',
                 isActive: true,
                 brands: group ? [group] : [],
-            });
-        } else if (group && Array.isArray(party.brands) && party.brands.length && !party.brands.includes(group)) {
-            // Tagged, but not with this side — widen it. An untagged party
-            // (empty brands) is left for the backfill/Party Master, since it
-            // is already visible everywhere.
-            await partyService.updateParty(party.id, { brands: [...party.brands, group] });
+                locations: location ? [location] : [],
+                partyCode: code,
+            }, partyScope);
+        } else {
+            const patch = {};
+            const brands = Array.isArray(party.brands) ? party.brands : [];
+            const locations = Array.isArray(party.locations) ? party.locations : [];
+            if (group && !brands.includes(group)) patch.brands = [...brands, group];
+            if (location && !locations.includes(location)) patch.locations = [...locations, location];
+            // LR code fills a blank master code. A different existing code
+            // requires an explicit edit in Party Master; never replace it here.
+            if (code && !String(party.partyCode || '').trim()) patch.partyCode = code;
+            if (Object.keys(patch).length) await partyService.updateParty(party.id, patch, partyScope);
         }
         return party.id;
     } catch (err) {
         console.error('Failed to sync party for LR:', err);
-        return null;
+        throw err;
     }
 };
 
@@ -100,7 +117,7 @@ const syncParty = async (orgId, partyName, group = null) => {
  * Anything that is not a positive whole number is rejected rather than
  * quietly coerced — an LR number is an identity, not an amount.
  */
-const readRequestedLrNo = (value) => {
+const readRequestedLrNo = (value, strictFourDigit = false) => {
     if (value === undefined || value === null || value === '') return null;
     const reject = () => {
         const e = new Error('LR number must be a 4-digit number (1000 - 9999)');
@@ -112,9 +129,9 @@ const readRequestedLrNo = (value) => {
     if (!/^\d+$/.test(raw)) reject();
     const n = parseInt(raw, 10);
     if (!Number.isSafeInteger(n)) reject();
-    // Live clerks use strictly 4-digit numbers (1000 - 9999).
-    // Test suite uses isolated 6-digit numbers (>= 100000) to prevent collisions.
-    if (n < 1000 || (n > 9999 && n < 100000)) reject();
+    // Historical Jharli/test imports can carry six-digit LR numbers; keep
+    // their behavior while the three godown books enforce four digits.
+    if (n < 1000 || (strictFourDigit ? n > 9999 : n > 9999 && n < 100000)) reject();
     return n;
 };
 
@@ -198,12 +215,15 @@ const firestoreGetNextLrNos = async (orgId, lrCollection, metadataCollection, re
         let next = Math.max(oldCount, maxExisting);
         if (next < 1000 || next > 9999) next = 1000;
         if (requested !== null) { numbers.push(requested); next = Math.max(next, requested); }
+        if (count > 9000) { const error = new Error('Four-digit LR series is full'); error.status = 409; throw error; }
+        let attempts = 0;
         while (numbers.length < count) {
             next++;
             if (next > 9999) next = 1001;
-            while (taken.has(next)) {
+            while (taken.has(next) || numbers.includes(next)) {
                 next++;
                 if (next > 9999) next = 1001;
+                if (++attempts > 9000) { const error = new Error('Four-digit LR series is full'); error.status = 409; throw error; }
             }
             numbers.push(next);
         }
@@ -250,11 +270,12 @@ async function getNextDailyLoadingNo(orgId, lrCollection, dateVal) {
 const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metadataCollection = COLLECTION_METADATA) => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId, createdBy, createdByName, source } = data;
     const group = groupOfLrCollection(lrCollection);
+    const location = locationOfLrCollection(lrCollection);
+    const partyScope = partyScopeForLrCollection(lrCollection);
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
 
-    const requestedNo = readRequestedLrNo(data.lrNo);
     const billType = billTypeForCollection(lrCollection);
+    const requestedNo = readRequestedLrNo(data.lrNo, !!billType);
     if (!billType && requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
         { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
     }
@@ -266,11 +287,25 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     const batch = db.batch();
     const createdIds = [];
     
-    const entryId = await getNextEntryId(orgId, lrCollection);
+    const entryId = billType
+        ? await getNextSixDigitEntryId(orgId, lrCollection, metadataCollection)
+        : await getNextEntryId(orgId, lrCollection);
+    const voucherCollection = billType ? voucherCollectionForLr(lrCollection) : null;
+    const existing = billType ? (await db.collection(voucherCollection).where('orgId', '==', orgId).get()).docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(v => v.type === billType) : [];
+    const prior = existing.find(v => billLrNumbers(v).some(number => lrNos.some(lr => String(lr) === number)));
+    const trimmedBillNo = String(data.billNo || '').trim();
+    if (billType && !prior && trimmedBillNo && existing.some(v => String(v.billNo || '').trim() === trimmedBillNo)) {
+        const error = new Error(`Bill #${trimmedBillNo} already exists`); error.status = 409; throw error;
+    }
+    const finalPartyId = await syncParty(orgId, normalizedPartyName, group, location, data.partyCode, partyId, partyScope);
     // We must handle async in map/forEach carefully. Since syncParty might be needed for material-level parties:
     for (const [index, mat] of materials.entries()) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
+        const matPartyId = matPartyName === normalizedPartyName && !mat.partyId && !mat.partyCode
+            ? finalPartyId
+            : await syncParty(orgId, matPartyName, group, location, mat.partyCode || (matPartyName === normalizedPartyName ? data.partyCode : ''), mat.partyId, partyScope);
 
         const ref = db.collection(lrCollection).doc();
         batch.set(ref, {
@@ -279,7 +314,7 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
             loadingNo,
             dailyTokenNo: loadingNo,
             date: date || new Date().toISOString(),
-            truckNo,
+            truckNo: truckNo || '',
             source: source || data.loadingPoint || '',
             destination: billType ? (mat.destination || destination || '') : (destination || ''),
             material: mat.type, 
@@ -288,6 +323,8 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
             partyName: matPartyName,
+            ...(billType ? { partyCode: String(mat.partyCode || (matPartyName === normalizedPartyName ? data.partyCode : '') || '').trim() } : {}),
+            ...(billType ? { billNo: String(data.billNo || '').trim() } : {}),
             partyId: matPartyId || null,
             status: 'Created',
             note: note || '',
@@ -301,11 +338,6 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
     }
     let billId = null;
     if (billType) {
-        const voucherCollection = voucherCollectionForLr(lrCollection);
-        const existing = (await db.collection(voucherCollection).where('orgId', '==', orgId).get()).docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(v => v.type === billType);
-        const prior = existing.find(v => billLrNumbers(v).some(number => lrNos.some(lr => String(lr) === number)));
         if (prior) {
             billId = prior.id;
             const voucherRef = db.collection(voucherCollection).doc(prior.id);
@@ -316,11 +348,6 @@ const firestoreCreate = async (orgId, data, lrCollection = COLLECTION_LR, metada
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
         } else {
-            const trimmedBillNo = String(data.billNo || '').trim();
-            if (trimmedBillNo) {
-                const billNumberUsed = existing.find(v => v !== prior && String(v.billNo || '').trim() === trimmedBillNo);
-                if (billNumberUsed) { const error = new Error(`Bill #${trimmedBillNo} already exists`); error.status = 409; throw error; }
-            }
             const voucherRef = db.collection(voucherCollection).doc(createdIds[0]);
             const bill = await buildBillFromLr(orgId, data, { lrNo, lrNos, entryId, sourceLrId: createdIds[0], type: billType });
             batch.set(voucherRef, { ...bill, createdAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -356,14 +383,15 @@ const localGetNextLrNo = (orgId, collectionName = 'lr_no', requested = null) => 
 const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCollection = 'lr_no') => {
     const { materials, date, truckNo, partyName, billing, destination, note, voiceMessageBase64, partyId, createdBy, createdByName, source } = data;
     const group = groupOfLrCollection(lrCollection);
+    const location = locationOfLrCollection(lrCollection);
+    const partyScope = partyScopeForLrCollection(lrCollection);
     const normalizedPartyName = normalizePartyName(partyName || '');
-    const finalPartyId = partyId || await syncParty(orgId, normalizedPartyName, group);
 
-    const requestedNo = readRequestedLrNo(data.lrNo);
+    const billType = billTypeForCollection(lrCollection);
+    const requestedNo = readRequestedLrNo(data.lrNo, !!billType);
     if (requestedNo !== null && await lrNoTaken(orgId, lrCollection, requestedNo)) {
         { const e = new Error(`LR #${requestedNo} already exists in this book`); e.status = 409; throw e; }
     }
-    const billType = billTypeForCollection(lrCollection);
     const lrNos = [localGetNextLrNo(orgId, counterCollection, requestedNo)];
     if (billType) {
         while (await lrNoTaken(orgId, lrCollection, lrNos[0])) {
@@ -379,7 +407,9 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
     const loadingNo = await getNextDailyLoadingNo(orgId, lrCollection, date);
     const createdIds = [];
 
-    const entryId = await getNextEntryId(orgId, lrCollection);
+    const entryId = billType
+        ? await getNextSixDigitEntryId(orgId, lrCollection)
+        : await getNextEntryId(orgId, lrCollection);
     const voucherCollection = voucherCollectionForLr(lrCollection);
     const existingBills = billType ? localStore.getAll(voucherCollection).filter(v => v.orgId === orgId && v.type === billType) : [];
     const priorBill = existingBills.find(v => billLrNumbers(v).some(number => lrNos.some(lr => String(lr) === number)));
@@ -392,9 +422,12 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
         }
         bill = await buildBillFromLr(orgId, data, { lrNo, lrNos, entryId, sourceLrId: null, type: billType });
     }
+    const finalPartyId = await syncParty(orgId, normalizedPartyName, group, location, data.partyCode, partyId, partyScope);
     for (const [index, mat] of materials.entries()) {
         const matPartyName = normalizePartyName(mat.partyName || normalizedPartyName);
-        const matPartyId = mat.partyId || (matPartyName === normalizedPartyName ? finalPartyId : await syncParty(orgId, matPartyName, group));
+        const matPartyId = matPartyName === normalizedPartyName && !mat.partyId && !mat.partyCode
+            ? finalPartyId
+            : await syncParty(orgId, matPartyName, group, location, mat.partyCode || (matPartyName === normalizedPartyName ? data.partyCode : ''), mat.partyId, partyScope);
 
         const doc = localStore.insert(lrCollection, {
             entryId,
@@ -411,6 +444,8 @@ const localCreate = async (orgId, data, lrCollection = COLLECTION_LR, counterCol
             totalBags: parseInt(mat.bags) || 0, 
             billing: mat.billing || billing || 'No',
             partyName: matPartyName,
+            ...(billType ? { partyCode: String(mat.partyCode || (matPartyName === normalizedPartyName ? data.partyCode : '') || '').trim() } : {}),
+            ...(billType ? { billNo: String(data.billNo || '').trim() } : {}),
             partyId: matPartyId || null,
             status: 'Created',
             note: note || '',
@@ -452,7 +487,7 @@ const createLoadingReceipt = async (
     vehicleCollection = 'vehicles'
 ) => {
     validateLrMaterials(data?.materials);
-    if (billTypeForCollection(lrCollection)) validateBillDetails(data, { required: false });
+    if (billTypeForCollection(lrCollection)) validateBillDetails(data, { required: true });
     if (data && data.truckNo) {
         try {
             const vehicleService = require('./vehicleService');
@@ -486,6 +521,114 @@ const createLoadingReceipt = async (
     // for local store, if the collection is jkl_loading_receipts, use jkl_lr_no for counter
     const localCounter = lrCollection === COLLECTION_LR ? 'lr_no' : lrCollection + '_counter';
     return await localCreate(orgId, data, lrCollection, localCounter);
+};
+
+/** Rebuild one bill from every material LR in the selected load. */
+const billDataFromReceipts = (receipts, details = {}) => {
+    const first = receipts[0];
+    const data = {
+        ...first,
+        billNo: String(details.billNo || first.billNo || '').trim(),
+        partyCode: String(details.partyCode || first.partyCode || '').trim(),
+        materials: receipts.map(row => ({
+            type: row.material || row.type || '',
+            loadingType: row.loadingType || '',
+            bags: Number(row.totalBags ?? row.bags ?? 0),
+            weight: Number(row.weight || 0),
+            destination: row.destination || '',
+            partyName: row.partyName || '',
+            partyCode: String(row.partyCode || details.partyCode || first.partyCode || '').trim(),
+        })),
+    };
+    validateBillDetails(data, { required: true });
+    return data;
+};
+
+const billConflict = message => { const error = new Error(message); error.status = 409; throw error; };
+const billNotFound = () => { const error = new Error('Loading receipt not found in this godown'); error.status = 404; throw error; };
+
+/**
+ * Repair an LR group whose automatic bill did not persist. Never trusts an
+ * entryId or godown sent by the caller: both come from the scoped LR document.
+ * Firestore transaction and deterministic voucher ID make retries idempotent.
+ */
+const createBillForLoadingReceipt = async (orgId, receiptId, details = {}, lrCollection = COLLECTION_LR) => {
+    const billType = billTypeForCollection(lrCollection);
+    if (!billType) { const error = new Error('Bill recovery is only available for the three godowns'); error.status = 400; throw error; }
+    const voucherCollection = voucherCollectionForLr(lrCollection);
+    const asGroup = (selected, all) => {
+        const group = selected.entryId === undefined || selected.entryId === null || selected.entryId === ''
+            ? [selected]
+            : all.filter(row => String(row.entryId) === String(selected.entryId));
+        return group.sort((a, b) => Number(a.lrNo) - Number(b.lrNo));
+    };
+    const checkExisting = (bills, receipts, data) => {
+        const numbers = new Set(receipts.map(row => String(row.lrNo)));
+        const overlapping = bills.filter(bill => bill.type === billType && billLrNumbers(bill).some(number => numbers.has(number)));
+        if (overlapping.length) {
+            if (overlapping.length === 1 && [...numbers].every(number => billLrNumbers(overlapping[0]).includes(number))) {
+                return overlapping[0];
+            }
+            billConflict('Some LRs in this load already have a different bill');
+        }
+        if (bills.some(bill => bill.type === billType && String(bill.billNo || '').trim() === data.billNo)) {
+            billConflict(`Bill #${data.billNo} already exists`);
+        }
+        return null;
+    };
+
+    if (firebaseAvailable()) {
+        return db.runTransaction(async transaction => {
+            const selectedSnap = await transaction.get(db.collection(lrCollection).doc(receiptId));
+            if (!selectedSnap.exists || selectedSnap.data().orgId !== orgId) billNotFound();
+            const allSnap = await transaction.get(db.collection(lrCollection).where('orgId', '==', orgId));
+            const all = allSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const selected = { id: selectedSnap.id, ...selectedSnap.data() };
+            const receipts = asGroup(selected, all);
+            const data = billDataFromReceipts(receipts, details);
+            const voucherSnap = await transaction.get(db.collection(voucherCollection).where('orgId', '==', orgId));
+            const bills = voucherSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const existing = checkExisting(bills, receipts, data);
+            if (existing) return { billId: existing.id, entryId: selected.entryId, lrNos: receipts.map(row => row.lrNo), created: false };
+            const voucherRef = db.collection(voucherCollection).doc(receipts[0].id);
+            const fixedIdSnap = await transaction.get(voucherRef);
+            if (fixedIdSnap.exists) billConflict('Bill ID already belongs to another record');
+            const bill = await buildBillFromLr(orgId, data, {
+                lrNo: receipts[0].lrNo,
+                lrNos: receipts.map(row => row.lrNo),
+                entryId: selected.entryId,
+                sourceLrId: receipts[0].id,
+                type: billType,
+            });
+            transaction.create(voucherRef, { ...bill, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            for (const receipt of receipts) {
+                transaction.update(db.collection(lrCollection).doc(receipt.id), { billNo: data.billNo, partyCode: receipt.partyCode || data.partyCode });
+            }
+            return { billId: voucherRef.id, entryId: selected.entryId, lrNos: receipts.map(row => row.lrNo), created: true };
+        });
+    }
+
+    const selected = localStore.getById(lrCollection, receiptId);
+    if (!selected || selected.orgId !== orgId) billNotFound();
+    const all = localStore.getAll(lrCollection).filter(row => row.orgId === orgId);
+    const receipts = asGroup(selected, all);
+    const data = billDataFromReceipts(receipts, details);
+    const bills = localStore.getAll(voucherCollection).filter(bill => bill.orgId === orgId);
+    const existing = checkExisting(bills, receipts, data);
+    if (existing) return { billId: existing.id, entryId: selected.entryId, lrNos: receipts.map(row => row.lrNo), created: false };
+    if (bills.some(bill => bill.id === receipts[0].id)) billConflict('Bill ID already belongs to another record');
+    const bill = await buildBillFromLr(orgId, data, {
+        lrNo: receipts[0].lrNo,
+        lrNos: receipts.map(row => row.lrNo),
+        entryId: selected.entryId,
+        sourceLrId: receipts[0].id,
+        type: billType,
+    });
+    const saved = localStore.insert(voucherCollection, { ...bill, id: receipts[0].id });
+    for (const receipt of receipts) {
+        localStore.update(lrCollection, receipt.id, { billNo: data.billNo, partyCode: receipt.partyCode || data.partyCode });
+    }
+    return { billId: saved.id, entryId: selected.entryId, lrNos: receipts.map(row => row.lrNo), created: true };
 };
 
 const getAllLoadingReceipts = async (orgId, lrCollection = COLLECTION_LR) => {
@@ -671,6 +814,7 @@ const generateBulkInvoice = async (ids, invoiceNumber, invoiceDate, lrCollection
 module.exports = {
     validateLrMaterials,
     createLoadingReceipt,
+    createBillForLoadingReceipt,
     getAllLoadingReceipts,
     updateBillingStatus,
     updateLoadingReceipt,

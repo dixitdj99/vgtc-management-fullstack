@@ -5,12 +5,18 @@ const uuidv4 = () => crypto.randomUUID();
 
 const firebaseAvailable = () => isAvailable();
 const COLLECTION_DESTINATIONS = 'destinations';
+const normalizeDestinationName = value => String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+const destinationKey = value => normalizeDestinationName(value).replace(/[^\p{L}\p{N}]/gu, '');
 
 /**
  * Normalizes destination data.
  */
 const normalizeDestination = (data = {}) => {
-    const name = String(data.name || '').trim().toUpperCase();
+    // Legacy destination party codes remain stored for audit, but are no longer
+    // exposed or reused: party codes belong to Party Master records.
+    const destinationData = { ...data };
+    delete destinationData.partyCode;
+    const name = normalizeDestinationName(data.name);
     const module = String(data.module || 'all').trim();
     const rateHistory = Array.isArray(data.rateHistory) ? data.rateHistory : [];
     
@@ -27,7 +33,7 @@ const normalizeDestination = (data = {}) => {
     }
 
     return {
-        ...data,
+        ...destinationData,
         name,
         module,
         currentRate,
@@ -150,12 +156,12 @@ const getDestinationById = async (orgId, id) => {
 };
 
 const createDestination = async (orgId, data) => {
-    const name = String(data.name || '').trim().toUpperCase();
+    const name = normalizeDestinationName(data.name);
     if (!name) throw new Error('Destination name is required');
     const module = String(data.module || 'all').trim();
 
     const all = await getAllDestinations(orgId, { autoSync: false });
-    if (all.some(d => d.name === name && (d.module || 'all') === module)) {
+    if (all.some(d => destinationKey(d.name) === destinationKey(name) && (d.module || 'all') === module)) {
         throw new Error(`Destination "${name}" already exists for module "${module}"`);
     }
 
@@ -182,8 +188,13 @@ const updateDestination = async (orgId, id, data) => {
     const existing = await getDestinationById(orgId, id);
     if (!existing) throw new Error('Destination not found');
 
-    const name = data.name ? String(data.name).trim().toUpperCase() : existing.name;
+    const name = data.name !== undefined ? normalizeDestinationName(data.name) : existing.name;
+    if (!name) throw new Error('Destination name is required');
     const module = data.module ? String(data.module).trim() : (existing.module || 'all');
+    const all = await getAllDestinations(orgId, { autoSync: false });
+    if (all.some(d => d.id !== id && destinationKey(d.name) === destinationKey(name) && (d.module || 'all') === module)) {
+        throw new Error(`Destination "${name}" already exists for module "${module}"`);
+    }
     let rateHistory = Array.isArray(data.rateHistory) ? data.rateHistory : existing.rateHistory;
 
     const payload = normalizeDestination({
@@ -250,19 +261,19 @@ const deleteDestination = async (id) => {
 
 const getRateForDate = async (orgId, name, dateStr, moduleType) => {
     if (!name) return 0;
-    const cleanName = String(name).trim().toUpperCase();
+    const cleanName = normalizeDestinationName(name);
     const targetModule = moduleType ? String(moduleType).trim() : '';
     const all = await getAllDestinations(orgId, { autoSync: false });
 
     let dest = null;
     if (targetModule) {
-        dest = all.find(d => d.name === cleanName && d.module === targetModule);
+        dest = all.find(d => destinationKey(d.name) === destinationKey(cleanName) && d.module === targetModule);
     }
     if (!dest) {
-        dest = all.find(d => d.name === cleanName && (!d.module || d.module === 'all'));
+        dest = all.find(d => destinationKey(d.name) === destinationKey(cleanName) && (!d.module || d.module === 'all'));
     }
     if (!dest) {
-        dest = all.find(d => d.name === cleanName);
+        dest = all.find(d => destinationKey(d.name) === destinationKey(cleanName));
     }
     if (!dest) return 0;
 
@@ -271,10 +282,10 @@ const getRateForDate = async (orgId, name, dateStr, moduleType) => {
 
 const autoRecordDestination = async (orgId, { name, rate, date, module }) => {
     if (!name) return null;
-    const cleanName = String(name).trim().toUpperCase();
+    const cleanName = normalizeDestinationName(name);
     const targetModule = module ? String(module).trim() : 'all';
     const all = await getAllDestinations(orgId, { autoSync: false });
-    const existing = all.find(d => d.name === cleanName && (d.module || 'all') === targetModule);
+    const existing = all.find(d => destinationKey(d.name) === destinationKey(cleanName) && (d.module || 'all') === targetModule);
 
     if (existing) {
         return existing; // Already exists, do not overwrite list rate
@@ -332,18 +343,19 @@ const syncDestinationsFromVouchers = async (orgId) => {
 
     const processItem = (name, rate, date) => {
         if (!name || typeof name !== 'string') return;
-        const cleanName = name.trim().toUpperCase();
+        const cleanName = normalizeDestinationName(name);
         if (!cleanName) return;
 
         const numericRate = Number(rate) || 0;
         const itemDate = date || new Date().toISOString().split('T')[0];
 
-        if (!destMap.has(cleanName)) {
-            destMap.set(cleanName, { name: cleanName, rate: numericRate, date: itemDate });
+        const key = destinationKey(cleanName);
+        if (!destMap.has(key)) {
+            destMap.set(key, { name: cleanName, rate: numericRate, date: itemDate });
         } else {
-            const existing = destMap.get(cleanName);
+            const existing = destMap.get(key);
             if ((!existing.rate && numericRate > 0) || (itemDate > existing.date && numericRate > 0)) {
-                destMap.set(cleanName, { name: cleanName, rate: numericRate, date: itemDate });
+                destMap.set(key, { ...existing, name: cleanName, rate: numericRate, date: itemDate });
             }
         }
     };
@@ -369,11 +381,11 @@ const syncDestinationsFromVouchers = async (orgId) => {
     }
 
     const existingDests = await getAllDestinations(orgId, { autoSync: false });
-    const existingNames = new Set(existingDests.map(d => (d.name || '').trim().toUpperCase()));
+    const existingNames = new Set(existingDests.map(d => destinationKey(d.name)));
 
     const added = [];
-    for (const [cleanName, info] of destMap.entries()) {
-        if (!existingNames.has(cleanName)) {
+    for (const [key, info] of destMap.entries()) {
+        if (!existingNames.has(key)) {
             try {
                 const created = await createDestination(orgId, {
                     name: info.name,
@@ -382,15 +394,16 @@ const syncDestinationsFromVouchers = async (orgId) => {
                     endDate: null
                 });
                 added.push(created);
-                existingNames.add(cleanName);
+                existingNames.add(key);
             } catch (e) {
-                console.error(`[destinationService] Error syncing destination "${cleanName}":`, e.message);
+                console.error(`[destinationService] Error syncing destination "${info.name}":`, e.message);
             }
         }
     }
 
     return {
         syncedCount: added.length,
+        updatedPartyCodes: 0,
         addedDestinations: added,
         totalFoundInVouchers: destMap.size
     };
@@ -407,5 +420,8 @@ module.exports = {
     autoRecordDestination,
     lookupRateForDate,
     syncDestinationsFromVouchers,
+    normalizeDestination,
+    normalizeDestinationName,
+    destinationKey,
 };
 

@@ -17,6 +17,15 @@ const META_COL = 'kosli_metadata';
 const { mountLrVoucherCheck } = require('./lrVoucherCheck');
 mountLrVoucherCheck(router, BASE_COL);
 
+router.post('/:id/create-bill', async (req, res) => {
+    try {
+        const result = await lrService.createBillForLoadingReceipt(req.orgId, req.params.id, req.body, getCol(BASE_COL, req));
+        res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+        res.status(error.status || 500).json({ error: error.message });
+    }
+});
+
 // Create
 router.post('/', async (req, res) => {
     try {

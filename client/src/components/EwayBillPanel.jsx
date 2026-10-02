@@ -78,16 +78,7 @@ export default function EwayBillPanel({ materials = [], onApply, refreshKey = 0 
 
     if (state.loading) return null;
 
-    // Not connected is the ordinary state until credentials arrive. One quiet line.
-    if (!state.configured) {
-        return (
-            <div style={{ padding: '10px 14px', marginBottom: '14px', border: '1px dashed var(--border)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                <Truck size={13} />
-                <span>E-way bill feed not connected — challans are entered by hand.</span>
-                {error && <span style={{ color: '#f43f5e', marginLeft: 'auto' }}>{error}</span>}
-            </div>
-        );
-    }
+    if (!state.configured) return null;
 
     return (
         <div className="card" style={{ marginBottom: '14px' }}>

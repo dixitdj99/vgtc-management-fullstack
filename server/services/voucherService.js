@@ -182,4 +182,5 @@ module.exports = {
     deleteVoucher,
     getVoucherById,
     getAllVouchers,
+    autoRecordFromVoucher,
 };

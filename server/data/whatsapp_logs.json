@@ -1,5 +1,148 @@
 [
   {
+    "id": "walog_1790914893552_r4d18",
+    "timestamp": "2026-10-02T04:21:33.552Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #706154 Dispatched",
+    "details": "LR #706154 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790914892830_rbf5p",
+    "timestamp": "2026-10-02T04:21:32.830Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #1009 Dispatched",
+    "details": "LR #1009 (HR47G0975) → Unspecified | 0.25 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790914892259_ymdnv",
+    "timestamp": "2026-10-02T04:21:32.259Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #944499 Dispatched",
+    "details": "LR #944499 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790914335864_9m8y8",
+    "timestamp": "2026-10-02T04:12:15.864Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #765373 Dispatched",
+    "details": "LR #765373 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790914335159_26ld0",
+    "timestamp": "2026-10-02T04:12:15.159Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #1008 Dispatched",
+    "details": "LR #1008 (HR47G0975) → Unspecified | 0.25 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790914334529_xybjb",
+    "timestamp": "2026-10-02T04:12:14.529Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #916549 Dispatched",
+    "details": "LR #916549 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790912792615_ubnic",
+    "timestamp": "2026-10-02T03:46:32.615Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #788130 Dispatched",
+    "details": "LR #788130 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790912791977_e96kb",
+    "timestamp": "2026-10-02T03:46:31.977Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #1007 Dispatched",
+    "details": "LR #1007 (HR47G0975) → Unspecified | 0.25 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790912791373_ef864",
+    "timestamp": "2026-10-02T03:46:31.373Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #916118 Dispatched",
+    "details": "LR #916118 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790911386310_9u58p",
+    "timestamp": "2026-10-02T03:23:06.310Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #727953 Dispatched",
+    "details": "LR #727953 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790911385729_p9bok",
+    "timestamp": "2026-10-02T03:23:05.729Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #1006 Dispatched",
+    "details": "LR #1006 (HR47G0975) → Unspecified | 0.25 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790911385138_a52ya",
+    "timestamp": "2026-10-02T03:23:05.138Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR47G0975",
+    "status": "sent",
+    "title": "LR #951530 Dispatched",
+    "details": "LR #951530 (HR47G0975) → Unspecified | 0.50 MT",
+    "error": null
+  },
+  {
+    "id": "walog_1790911059031_54wc5",
+    "timestamp": "2026-10-02T03:17:39.031Z",
+    "type": "outbound",
+    "category": "lr_created",
+    "phone": "HR55AB1234",
+    "status": "sent",
+    "title": "LR #1201 Dispatched",
+    "details": "LR #1201 (HR55AB1234) → ADAMPUR | 0.50 MT",
+    "error": null
+  },
+  {
     "id": "walog_1790880794103_vswjc",
     "timestamp": "2026-10-01T18:53:14.103Z",
     "type": "outbound",

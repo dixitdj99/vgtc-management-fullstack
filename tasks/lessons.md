@@ -88,3 +88,34 @@ shows other godowns' vouchers or repeated badges. Filter status by exact LR
 book and bill type. When one vehicle load contains multiple materials or
 destinations, do not reuse one LR number across rows; use one entry ID for the
 load and a unique LR number for each row, matching the operational workflow.
+
+## Compare production persistence semantics with local store (2026-10-02)
+
+Local JSON accepted `undefined` fields in LR/bill records while Firestore rejected the
+whole atomic batch. For production-only failures, test the same write path against a
+Firestore-style validator, including blank optional fields. Keep this regression in
+the normal test command; local-store success alone cannot prove production saves.
+
+## Attach business codes to their actual owner (2026-10-02)
+
+User corrected destination party-code design: code identifies a party, not a
+destination. Store it on Party Master; selecting a party may prefill it, but keep
+the transaction field editable. Do not infer party code from destination or
+silently overwrite manual code when destination changes. When automatic bill
+creation is required, enforce its mandatory metadata in both UI and API and
+provide an idempotent recovery path for older missing bills.
+
+## Verify existing auto-sync helpers meet full record requirements (2026-10-02)
+
+An LR-to-Party helper already created party names, but dropped entered party
+codes and exact godown location. Before treating an auto-create flow as done,
+check every required field, existing-record merge behavior, and sandbox
+collection scope. Preserve stored type values when a requested label change is
+only a UI wording change.
+
+## Prevent typo aliases before they enter master data (2026-10-02)
+
+Exact uppercase matching does not stop AHLAWAT/ALAWAT becoming separate parties.
+Check close names and stable party codes on every creation path, including
+automatic LR creation and historical sync. Never silently merge existing
+financial records by fuzzy name alone; show or report candidate for review.

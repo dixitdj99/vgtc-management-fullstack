@@ -29,7 +29,7 @@ test('dump godowns auto-allocate independent challan numbers; Jharli retains pri
         return row;
     };
     try {
-        const payload = { challanNo: '99990', truckNo: 'HR55EF9012', material: 'PPC', quantity: 10 };
+        const payload = { challanNo: '', truckNo: 'HR55EF9012', material: 'PPC', quantity: 10 };
         for (const col of ['kosli_challans', 'jhajjar_challans', 'bahadurgarh_challans']) {
             collections.set(col, [{ orgId: 'vgtc', challanNo: 'CH-0004' }]);
             const first = await stockService.createChallan('vgtc', payload, col, ['PPC']);
@@ -37,6 +37,12 @@ test('dump godowns auto-allocate independent challan numbers; Jharli retains pri
             assert.equal(first.challanNo, '00005', col);
             assert.equal(second.challanNo, '00006', col);
             assert.equal(first.lrNo, '', col);
+            const manual = await stockService.createChallan('vgtc', { ...payload, challanNo: '00020' }, col, ['PPC']);
+            assert.equal(manual.challanNo, '00020', col);
+            await assert.rejects(stockService.createChallan('vgtc', { ...payload, challanNo: '00020' }, col, ['PPC']), /already exists/);
+            await assert.rejects(stockService.createChallan('vgtc', { ...payload, challanNo: '20' }, col, ['PPC']), /exactly 5 digits/);
+            const next = await stockService.createChallan('vgtc', payload, col, ['PPC']);
+            assert.equal(next.challanNo, '00021', col);
         }
         const jharli = await stockService.createChallan('vgtc', { ...payload, challanNo: '' }, 'jkl_challans', ['PPC']);
         assert.equal(jharli.challanNo, 'CH-0001');

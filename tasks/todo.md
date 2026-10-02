@@ -1165,3 +1165,55 @@ Focused tests: 15 passed, including concurrent five-digit challan numbering and 
 ## Multi-destination review
 
 Focused LR/bill/challan/sheet tests: 16 passed. Client production build passed. Multi-material, multi-destination Kosli flow verifies unique LR numbers, shared entry ID, one linked bill, delivery rows, and commission. Jharli test path remains bill-free.
+
+# Godown production workflow fixes (2026-10-02)
+
+- [x] Keep open module in sync when switching Kosli, Jhajjar, Bahadurgarh.
+- [x] Trace and repair production LR-to-bill persistence; verify Firestore-style creation path.
+- [x] Format LR numbers as four digits and entry IDs as six digits for three godowns.
+- [x] Add manual challan number option with duplicate protection.
+- [x] Use vehicle, destination, and party suggestions in challan creation.
+- [x] Add party code to destination profile and autofill in forms; normalize names and prevent duplicate destinations.
+- [x] Show loading receipts and vouchers in Party Master details.
+- [x] Verify focused and build tests; document remaining production verification.
+- [ ] Deploy and verify a real production LR creates its linked bill.
+
+## Godown production workflow review
+
+Firestore-style LR/bill test covers one atomic write with missing optional truck data, unique four-digit LR numbers per material, and shared six-digit entry ID. Focused backend tests: 17 passed; client tests: 123 passed; Vite production build passed. Full server API suite: 204 passed, 5 pre-existing unrelated failures (permission navigation, archive path, balance width, and two icon checks). Live production behavior remains unverified until deployment. Existing destination records were not merged or deleted; duplicate prevention applies to new and edited records.
+
+# Party-code and bill recovery correction (2026-10-02)
+
+- [x] Store manually editable party code on Party Master, not destination profile; use selected party code in LR/challan.
+- [x] Require bill number and party code for new Kosli/Jhajjar/Bahadurgarh LRs in UI and API.
+- [x] Restore vehicle suggestions inside LR challan popup.
+- [x] Remove disconnected E-way feed message from challan view.
+- [x] Replace missing Bill Status with Create Bill action tied to that LR, preserving duplicate protection and shared entry ID.
+- [x] Test focused workflows and production build; record result.
+
+## Party-code and bill recovery review
+
+21 focused backend tests pass, including Firestore-style recovery/idempotence and Jharli isolation. Client tests and production build pass. Full server API suite remains at 204 passed, 5 pre-existing unrelated failures. Automatic bill creation and recovery still require live verification after deployment. Existing destination records retain historical party-code fields in storage for audit, but destination API and UI no longer expose or use them.
+
+# Party Master LR tagging correction (2026-10-02)
+
+- [x] Label legacy customer type as Party without breaking stored records or suggestions.
+- [x] Auto-create missing parties from new loading receipts, including per-material parties and their codes.
+- [x] Tag party with exact LR location and preserve existing brand tags/code safely.
+- [x] Show and allow correction of location tags in Party Master.
+- [x] Verify local/Firestore paths, client build, and Jharli behavior.
+
+## Party Master LR tagging review
+
+27 focused backend tests pass, including location tags, multi-material party codes, sandbox isolation, and Jharli. Client tests and production build pass. Full API suite remains at 204 passed and 5 previously recorded unrelated failures. Live production behavior still requires deployment verification. Historical Party Master records can be tagged through Sync from Records or manual edit.
+
+# Party duplicate guard and legacy JK Lakshmi tags (2026-10-02)
+
+- [x] Define safe near-name matching and prevent new duplicate Party Master records, including LR auto-sync.
+- [x] Tag existing untagged production parties as JK Lakshmi without overwriting explicit tags.
+- [x] Add regression tests for spelling variants, legitimate distinct names, and legacy tags.
+- [x] Run focused tests and build; record migration/deployment status.
+
+## Party duplicate guard review
+
+Near-name and duplicate-code checks return a reviewable conflict; they never silently merge financial records. Users can explicitly create a genuinely distinct close name. Production migration tagged 158 previously untagged parties as JK Lakshmi; follow-up dry run found 0 untagged parties. Focused backend tests: 14 pass; client tests: 123 pass; client build passes.
