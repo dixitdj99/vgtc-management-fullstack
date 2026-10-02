@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ax from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
@@ -26,6 +26,7 @@ import './lrEntryForm.css';
 const PAGE_SIZE = 20;
 
 const hasUsableMobile = value => String(value || '').replace(/\D/g, '').length >= 10;
+const normalizedDestinationName = value => String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
 
 const getMaterialValidationError = (materials = []) => {
   if (!Array.isArray(materials) || materials.length === 0) {
@@ -603,7 +604,7 @@ function printReceipt(allRows, lrNo, brand = '', signedBy = 'VGTC', vehicles = [
 }
 
 /* ── Edit Modal ── */
-function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {}, partySuggestions = [] }) {
+function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, brand, stockMap = {}, partySuggestions = [], destinationOptions = [], partyCodeByName }) {
   const [form, setForm] = useState({
     lrNo: row.lrNo,
     date: row.date,
@@ -962,6 +963,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
         {showChalPopup && (
           <ChallanPopup
             brand={brand} openChallans={openChallans} vehicles={vehicles} partySuggestions={resolvedPartySuggestions}
+            destinationOptions={destinationOptions} partyCodeByName={partyCodeByName}
             selectedChallans={form.usedChallans}
             targetTruckNo={form.truckNo}
             onClose={() => setShowChalPopup(false)}
@@ -982,7 +984,7 @@ function EditModal({ row, openChallans, allChallans, vehicles, onClose, onSave, 
 }
 
 /* ── Challan Popup Modal ── */
-function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [], targetTruckNo = '' }) {
+function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect, brand, vehicles = [], initialTab = 'select', preFill = null, onRefetch, onCreated, partySuggestions = [], destinationOptions = [], partyCodeByName, targetTruckNo = '' }) {
   const [tab, setTab] = useState(initialTab); // 'select' | 'create'
   const [challanSearch, setChallanSearch] = useState('');
 
@@ -1285,8 +1287,10 @@ function ChallanPopup({ openChallans, selectedChallans, onClose, onToggleSelect,
                       form={chalForm}
                       onChange={setChalForm}
                       materials={MATERIALS}
-                      vehicles={vehicles.filter(v => v.truckNo)}
+                      vehicles={vehicles}
                       partySuggestions={partySuggestions}
+                      destinationOptions={destinationOptions}
+                      partyCodeByName={partyCodeByName}
                       requireLr={false}
                     />
                   ) : (
@@ -1471,7 +1475,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   // canEdit: true if admin, or if the specific brand permission OR generic 'lr' permission is 'edit'
   const lrKey = brand === 'kosli' ? 'lr_kosli' : brand === 'jhajjar' ? 'lr_jhajjar' : brand === 'bahadurgarh' ? 'lr_bahadurgarh' : 'lr_jkl';
-  const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit';
+  const canEdit = role === 'admin' || permissions?.[lrKey] === 'edit' || permissions?.lr === 'edit' || (createsBill && permissions?.lr_dump === 'edit');
+  const billKey = brand === 'kosli' ? 'bill_kosli' : brand === 'jhajjar' ? 'bill_jhajjar' : 'bill_bahadurgarh';
+  const canCreateBill = canEdit || (createsBill && permissions?.[billKey] === 'edit');
 
   let API, API_STOCK;
   if (brand === 'jkl') {
@@ -1526,6 +1532,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
   const [isConfirmingSave, setIsConfirmingSave] = useState(false);
   const [statusTarget, setStatusTarget] = useState(null); // { lr, nextStatus }
   const [statusSaving, setStatusSaving] = useState(false);
+  const [billRecoveryTarget, setBillRecoveryTarget] = useState(null);
+  const [billRecoveryForm, setBillRecoveryForm] = useState({ billNo: '', partyCode: '' });
+  const [billRecoveryError, setBillRecoveryError] = useState('');
+  const [billRecoverySaving, setBillRecoverySaving] = useState(false);
   const [selectedLrs, setSelectedLrs] = useState(new Set());
 
   const toggleSelectAllLrs = () => {
@@ -1658,8 +1668,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const destinationOptions = useMemo(() => {
     const masterMap = new Map();
-    (destinationsList || []).forEach(d => {
-      const name = (d.name || '').toUpperCase().trim();
+    const billModule = brand === 'kosli' ? 'Kosli_Bill' : brand === 'jhajjar' ? 'Jajjhar_Bill' : brand === 'bahadurgarh' ? 'Bahadurgarh_Bill' : '';
+    (destinationsList || []).filter(d => !billModule || !d.module || d.module === 'all' || d.module === billModule).forEach(d => {
+      const name = normalizedDestinationName(d.name);
       if (name) {
         masterMap.set(name, d.currentRate ? `₹${d.currentRate}/MT` : '');
       }
@@ -1668,7 +1679,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
     const extraDest = new Set();
     (receipts || []).forEach(r => {
       if (r.destination && String(r.destination).trim()) {
-        extraDest.add(String(r.destination).trim().toUpperCase());
+        extraDest.add(normalizedDestinationName(r.destination));
       }
     });
 
@@ -1679,7 +1690,57 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
       value: name,
       sublabel: masterMap.get(name) || ''
     }));
-  }, [destinationsList, receipts]);
+  }, [destinationsList, receipts, brand]);
+
+  const partyCodeByName = useCallback(name => {
+    const cleanName = String(name || '').trim().replace(/\s+/g, ' ').toUpperCase();
+    const group = brandOfLr(brand);
+    const party = parties.find(item => partyVisibleIn(item, group)
+      && String(item.name || '').trim().replace(/\s+/g, ' ').toUpperCase() === cleanName);
+    return String(party?.partyCode || '').trim().toUpperCase();
+  }, [parties, brand]);
+
+  const updateDestination = value => {
+    const destination = normalizedDestinationName(value);
+    setForm(previous => {
+      return {
+        ...previous,
+        destination,
+        materials: previous.materials.map(material => {
+          if (material.destination && normalizedDestinationName(material.destination) !== normalizedDestinationName(previous.destination)) return material;
+          return { ...material, destination };
+        }),
+      };
+    });
+  };
+  const openBillRecovery = lr => {
+    setBillRecoveryTarget(lr);
+    setBillRecoveryForm({
+      billNo: String(lr.billNo || '').trim(),
+      partyCode: String(lr.partyCode || partyCodeByName(lr.partyName) || '').trim().toUpperCase(),
+    });
+    setBillRecoveryError('');
+  };
+  const createMissingBill = async event => {
+    event.preventDefault();
+    if (!billRecoveryTarget || billRecoverySaving) return;
+    setBillRecoverySaving(true);
+    setBillRecoveryError('');
+    try {
+      await ax.post(`${API}/${billRecoveryTarget.id}/create-bill`, {
+        billNo: billRecoveryForm.billNo.trim(),
+        partyCode: billRecoveryForm.partyCode.trim().toUpperCase(),
+      });
+      await fetchLRData();
+      setBillRecoveryTarget(null);
+      showToast?.('Bill created for loading receipt', 'success');
+    } catch (error) {
+      setBillRecoveryError(error.response?.data?.error || 'Could not create bill');
+      fetchLRData();
+    } finally {
+      setBillRecoverySaving(false);
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -1882,14 +1943,28 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
 
   const updMat = (i, field, val) => {
     const m = [...form.materials]; m[i] = { ...m[i], [field]: val };
+    if (field === 'destination') {
+      m[i].destination = normalizedDestinationName(val);
+    }
+    if (field === 'partyName') {
+      m[i].partyName = resolvePartyName(val, partySuggestions);
+      m[i].partyCode = partyCodeByName(m[i].partyName);
+    }
     if (field === 'bags' && val) m[i].weight = (parseFloat(val) * 0.05).toFixed(2);
     setForm({ ...form, materials: m });
   };
-  const addMat = () => setForm({ ...form, materials: [...form.materials, { type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No' }] });
+  const addMat = () => setForm({ ...form, materials: [...form.materials, {
+    type: MATERIALS[0], loadingType: 'From Godown', weight: '', bags: '', billing: 'No',
+    ...(createsBill ? { destination: form.destination, partyCode: form.partyCode } : {})
+  }] });
   const removeMat = idx => setForm({ ...form, materials: form.materials.filter((_, i) => i !== idx) });
 
   const requestCreateSave = () => {
     if (markInvalidFields(createFormRef.current)) return;
+    if (createsBill && (!String(form.billNo || '').trim() || !String(form.partyCode || '').trim())) {
+      alert('Bill number and party code are required.');
+      return;
+    }
     if (!validateTruckNo(form.truckNo)) {
       alert('Invalid truck number format. Please enter in GJ01AB1234 format (No spaces).');
       return;
@@ -2179,9 +2254,40 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
         isSaving={loading}
       />
 
+      <AnimatePresence>
+        {billRecoveryTarget && (
+          <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.65)', display: 'grid', placeItems: 'center', padding: '16px' }}>
+            <motion.form role="dialog" aria-modal="true" aria-label="Create missing bill"
+              initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              onSubmit={createMissingBill}
+              style={{ width: 'min(100%, 420px)', background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '12px', padding: '22px', display: 'grid', gap: '14px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Create Bill</h3>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>LR #{billRecoveryTarget.lrNo} · {billRecoveryTarget.truckNo}</div>
+              </div>
+              <div className="field-h">
+                <label>Bill Number *</label>
+                <input className="fi" required autoFocus maxLength={60} value={billRecoveryForm.billNo}
+                  onChange={e => setBillRecoveryForm(f => ({ ...f, billNo: e.target.value }))} />
+              </div>
+              <div className="field-h">
+                <label>Party Code *</label>
+                <input className="fi" required maxLength={60} value={billRecoveryForm.partyCode}
+                  onChange={e => setBillRecoveryForm(f => ({ ...f, partyCode: e.target.value.toUpperCase() }))} />
+              </div>
+              {billRecoveryError && <div role="alert" style={{ color: 'var(--danger)', fontSize: '12px' }}>{billRecoveryError}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" className="btn btn-g" disabled={billRecoverySaving} onClick={() => setBillRecoveryTarget(null)}>Cancel</button>
+                <button type="submit" className="btn btn-p" disabled={billRecoverySaving}>{billRecoverySaving ? 'Creating…' : 'Create Bill'}</button>
+              </div>
+            </motion.form>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Edit Modal */}
       <AnimatePresence>
-        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} partySuggestions={partySuggestions} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchLRData(); fetchChallans(); }} />}
+        {editRow && <EditModal row={{ ...editRow, brandMats: MATERIALS }} brand={brand} openChallans={openChallans} allChallans={allChallans} vehicles={vehicles} partySuggestions={partySuggestions} destinationOptions={destinationOptions} partyCodeByName={partyCodeByName} stockMap={stockMap} onClose={() => setEditRow(null)} onSave={() => { setEditRow(null); fetchLRData(); fetchChallans(); }} />}
       </AnimatePresence>
 
       {/* Delete Confirm */}
@@ -2211,6 +2317,8 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
             } : null)}
             targetTruckNo={linkingLrId ? receipts.find(r => r.id === linkingLrId)?.truckNo : form.truckNo}
             partySuggestions={partySuggestions}
+            destinationOptions={destinationOptions}
+            partyCodeByName={partyCodeByName}
             onClose={() => { setShowChalPopup(false); setChalPreFill(null); setLinkingLrId(null); }}
             onRefetch={() => fetchChallans()}
             onCreated={handleChallanCreatedFromLR}
@@ -2287,10 +2395,10 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 if (c.materials) {
                   c.materials.forEach(m => {
                     const left = m.totalBags - (m.loadedBags || 0);
-                    if (left > 0) combinedMaterials.push({ type: m.type, loadingType: 'From Godown', bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '' });
+                    if (left > 0) combinedMaterials.push({ type: m.type, loadingType: 'From Godown', bags: String(left), weight: (left * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '', ...(createsBill ? { partyCode: partyCodeByName(c.partyName) || c.partyCode || '', destination: c.destination || '' } : {}) });
                   });
                 } else {
-                  combinedMaterials.push({ type: c.material, loadingType: 'From Godown', bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '' });
+                  combinedMaterials.push({ type: c.material, loadingType: 'From Godown', bags: String(c.quantity), weight: (c.quantity * 0.05).toFixed(2), billing: c.challanNo, partyName: c.partyName || '', ...(createsBill ? { partyCode: partyCodeByName(c.partyName) || c.partyCode || '', destination: c.destination || '' } : {}) });
                 }
               });
               if (combinedMaterials.length === 0 && newUsed.length === 0) {
@@ -2303,7 +2411,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                 materials: combinedMaterials,
                 destination: f.destination || firstChal?.destination || '',
                 billNo: f.billNo || firstChal?.billNo || '',
-                partyCode: f.partyCode || firstChal?.partyCode || '',
+                partyCode: f.partyCode || (createsBill ? partyCodeByName(firstChal?.partyName) : '') || firstChal?.partyCode || '',
                 partyName: f.partyName || firstChal?.partyName || ''
               }));
             }}
@@ -2566,10 +2674,12 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                           value={form.partyName}
                           onChange={val => {
                             const name = resolvePartyName(val, partySuggestions);
+                            const code = partyCodeByName(name);
                             setForm(f => ({
                               ...f,
                               partyName: name,
-                              materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name } : m)
+                              partyCode: code,
+                              materials: f.materials.map(m => (!m.partyName || m.partyName === f.partyName) ? { ...m, partyName: name, partyCode: code } : m)
                             }));
                           }}
                           options={partySuggestions.map(p => ({ label: String(p).toUpperCase(), value: String(p).toUpperCase() }))}
@@ -2582,7 +2692,7 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                         <label className="vgtc-dump-label"><MapPin size={12} /> DESTINATION</label>
                         <StyledAutocomplete
                           value={form.destination}
-                          onChange={val => setForm({ ...form, destination: val })}
+                          onChange={updateDestination}
                           options={destinationOptions}
                           uppercase
                           placeholder="ENTER DELIVERY CITY OR LOCATION"
@@ -2590,28 +2700,30 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                       </div>
                     </div>
 
-                    {/* Row 5: Bill Number + Party Code (Optional / Auto from Challan) */}
+                    {/* Row 5: Bill Number + Party Code */}
                     <div className="vgtc-dump-row-2">
                       <div className="vgtc-dump-field">
-                        <label className="vgtc-dump-label">BILL NUMBER <span style={{ fontSize: '10px', color: 'var(--dump-text-sub)', fontWeight: 600 }}>(OPTIONAL)</span></label>
+                        <label className="vgtc-dump-label">BILL NUMBER *</label>
                         <input
                           className="fi"
                           type="text"
                           maxLength={60}
-                          placeholder="Auto / optional"
+                          required
+                          placeholder="Enter bill number"
                           value={form.billNo || ''}
                           onChange={e => setForm(f => ({ ...f, billNo: e.target.value }))}
                         />
                       </div>
                       <div className="vgtc-dump-field">
-                        <label className="vgtc-dump-label">PARTY CODE <span style={{ fontSize: '10px', color: 'var(--dump-text-sub)', fontWeight: 600 }}>(OPTIONAL)</span></label>
+                        <label className="vgtc-dump-label">PARTY CODE *</label>
                         <input
                           className="fi"
                           type="text"
                           maxLength={60}
-                          placeholder="Auto / optional"
+                          required
+                          placeholder="Enter or select party code"
                           value={form.partyCode || ''}
-                          onChange={e => setForm(f => ({ ...f, partyCode: e.target.value }))}
+                          onChange={e => setForm(f => ({ ...f, partyCode: e.target.value.toUpperCase() }))}
                         />
                       </div>
                     </div>
@@ -2696,8 +2808,19 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                             </div>
                             <div>
                               <label>Party</label>
-                              <input className="fi" type="text" placeholder={form.partyName || 'Party name'}
-                                value={m.partyName || ''} onChange={e => updMat(i, 'partyName', e.target.value)} list="lr-party-list" />
+                              <StyledAutocomplete value={m.partyName || ''} onChange={value => updMat(i, 'partyName', value)}
+                                options={partySuggestions.map(name => ({ label: String(name).toUpperCase(), value: String(name).toUpperCase() }))}
+                                uppercase placeholder={form.partyName || 'Party name'} />
+                            </div>
+                            <div>
+                              <label>Party Code</label>
+                              <input className="fi" type="text" value={m.partyCode || ''} placeholder="Party code"
+                                onChange={e => updMat(i, 'partyCode', e.target.value.toUpperCase())} />
+                            </div>
+                            <div>
+                              <label>Destination</label>
+                              <StyledAutocomplete value={m.destination || ''} onChange={value => updMat(i, 'destination', value)}
+                                options={destinationOptions} uppercase placeholder={form.destination || 'Destination'} />
                             </div>
                           </div>
                         </div>
@@ -3123,7 +3246,9 @@ export default function LRModule({ role = 'user', brand = 'dump', permissions = 
                                 || siteBills.find(v => (!v.sourceLrId || (v.lrEntryId && lr.entryId && String(v.lrEntryId) === String(lr.entryId)))
                                   && (!v.lrEntryId || !lr.entryId || String(v.lrEntryId) === String(lr.entryId))
                                   && matchesLrNumber(v));
-                              if (!bill) return <span className="badge badge-n" style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.3)', fontSize: '10px', padding: '2px 6px', whiteSpace: 'nowrap' }}>Unbilled</span>;
+                              if (!bill) return <button type="button" className="btn btn-g btn-sm" disabled={!canCreateBill}
+                                title={canCreateBill ? 'Create bill for this loading receipt' : 'Bill edit permission required'}
+                                onClick={() => openBillRecovery(lr)} style={{ fontSize: '10px', padding: '3px 8px', whiteSpace: 'nowrap' }}>Create Bill</button>;
                               return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
                                 <strong style={{ fontSize: '10px', color: '#10b981' }}>{bill.type.replace(/_/g, ' ')}</strong>
                                 {bill.billNo && <span style={{ fontSize: '9px', fontWeight: 700, color: '#059669' }}>#{bill.billNo}</span>}

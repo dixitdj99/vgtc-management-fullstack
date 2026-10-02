@@ -4,19 +4,42 @@ import { cleanTruckNo } from '../utils/vehicleUtils';
 import { resolvePartyName } from '../utils/partyNameUtils';
 
 /** Shared fields for stock challans created from Stock or Loading Receipt. */
-export default function ChallanFormFields({ form, onChange, materials = [], vehicles = [], partySuggestions = [], stockMap, ewbSource }) {
+export default function ChallanFormFields({ form, onChange, materials = [], vehicles = [], partySuggestions = [], destinationOptions = [], partyCodeByName, stockMap, ewbSource }) {
   const set = (key, value) => onChange({ ...form, [key]: value });
+  const manualNumber = form.challanNumberMode === 'manual';
+  const destinations = destinationOptions.map(option => typeof option === 'string'
+    ? { label: option, value: option }
+    : option);
+  const setDestination = value => {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+    const matched = destinations.find(option => String(option.value || option.label || '').trim().replace(/\s+/g, ' ').toUpperCase() === normalized);
+    const destination = matched?.value || value;
+    onChange({ ...form, destination });
+  };
   return (
     <div className="fg fg-2" style={{ gap: '14px', width: '100%' }}>
       <div className="field-h">
         <label>Challan Number {ewbSource && <span style={{ color: '#10b981', marginLeft: '6px', textTransform: 'none', fontWeight: 700 }}>— rest filled from EWB {ewbSource}</span>}</label>
-        <input id="challan-number-input" className="fi" type="text" placeholder="Auto-generated 5-digit number on save" readOnly value="" />
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <select className="fi" style={{ maxWidth: '105px' }} aria-label="Challan number mode"
+            value={manualNumber ? 'manual' : 'auto'}
+            onChange={e => onChange({ ...form, challanNumberMode: e.target.value, challanNo: '' })}>
+            <option value="auto">Auto</option>
+            <option value="manual">Manual</option>
+          </select>
+          <input id="challan-number-input" className="fi" type="text" inputMode="numeric" maxLength={5}
+            pattern={manualNumber ? '[0-9]{5}' : undefined} required={manualNumber}
+            placeholder={manualNumber ? 'Enter 5-digit number' : 'Generated on save'}
+            readOnly={!manualNumber} value={manualNumber ? (form.challanNo || '') : ''}
+            onChange={e => set('challanNo', e.target.value.replace(/\D/g, '').slice(0, 5))} />
+        </div>
       </div>
       <div className="field-h">
         <label>Truck Number *</label>
-        <input id="challan-truck-input" className="fi" type="text" placeholder="Enter truck number" required list="stock-truck-list"
-          value={form.truckNo || ''} onChange={e => set('truckNo', cleanTruckNo(e.target.value))} />
-        <datalist id="stock-truck-list">{vehicles.map(v => <option key={v.id || v.truckNo} value={v.truckNo} />)}</datalist>
+        <StyledAutocomplete id="challan-truck-input" value={form.truckNo || ''}
+          onChange={value => set('truckNo', cleanTruckNo(value))}
+          options={vehicles.map(v => v?.truckNo || v?.value || v?.label || '').filter(Boolean).map(truckNo => ({ label: truckNo, value: truckNo }))}
+          uppercase required placeholder="ENTER OR SELECT TRUCK NUMBER" />
       </div>
       <div className="field-h">
         <label>Material *</label>
@@ -35,7 +58,10 @@ export default function ChallanFormFields({ form, onChange, materials = [], vehi
       </div>
       <div className="field-h">
         <label>Party Name</label>
-        <StyledAutocomplete value={form.partyName || ''} onChange={value => set('partyName', resolvePartyName(value, partySuggestions))}
+        <StyledAutocomplete value={form.partyName || ''} onChange={value => {
+          const partyName = resolvePartyName(value, partySuggestions);
+          onChange({ ...form, partyName, partyCode: partyCodeByName?.(partyName) || '' });
+        }}
           options={partySuggestions.map(name => ({ label: String(name).toUpperCase(), value: String(name).toUpperCase() }))}
           uppercase placeholder="ENTER CUSTOMER OR PARTY NAME" />
       </div>
@@ -54,7 +80,8 @@ export default function ChallanFormFields({ form, onChange, materials = [], vehi
       </div>
       <div className="field-h">
         <label>Destination</label>
-        <input className="fi" type="text" placeholder="Delivery destination" value={form.destination || ''} onChange={e => set('destination', e.target.value)} />
+        <StyledAutocomplete value={form.destination || ''} onChange={setDestination}
+          options={destinations} uppercase placeholder="ENTER OR SELECT DESTINATION" />
       </div>
       <div className="field-h">
         <label>Date</label>

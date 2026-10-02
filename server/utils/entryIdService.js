@@ -23,6 +23,33 @@ const getNextEntryId = async (orgId, collectionName) => {
     return maxId + 1;
 };
 
+/** Six-digit ID sequence for the three godown LR books only. */
+const getNextSixDigitEntryId = async (orgId, collectionName, metadataCollection) => {
+    const first = 100001;
+    const last = 999999;
+    if (isAvailable()) {
+        const counterRef = db.collection(metadataCollection).doc(`${orgId}_lr_entry_id_counter`);
+        return db.runTransaction(async transaction => {
+            const counter = await transaction.get(counterRef);
+            const receipts = await transaction.get(db.collection(collectionName).where('orgId', '==', orgId));
+            const existingMax = receipts.docs.reduce((max, doc) => {
+                const number = Number(doc.data().entryId);
+                return Number.isInteger(number) && number >= first && number <= last ? Math.max(max, number) : max;
+            }, first - 1);
+            const next = Math.max(Number(counter.exists && counter.data().count) || first - 1, existingMax) + 1;
+            if (next > last) { const error = new Error('Six-digit entry ID series is full'); error.status = 409; throw error; }
+            transaction.set(counterRef, { count: next }, { merge: true });
+            return next;
+        });
+    }
+    const existingMax = localStore.getAll(collectionName).filter(row => row.orgId === orgId).reduce((max, row) => {
+        const number = Number(row.entryId);
+        return Number.isInteger(number) && number >= first && number <= last ? Math.max(max, number) : max;
+    }, first - 1);
+    if (existingMax >= last) { const error = new Error('Six-digit entry ID series is full'); error.status = 409; throw error; }
+    return existingMax + 1;
+};
+
 /**
  * Backfills existing records missing an entryId in chronological order starting from 1001.
  */
@@ -115,4 +142,4 @@ const ensureEntryIdsAll = async (collectionName) => {
     return updatedCount;
 };
 
-module.exports = { getNextEntryId, ensureEntryIds, ensureEntryIdsAll };
+module.exports = { getNextEntryId, getNextSixDigitEntryId, ensureEntryIds, ensureEntryIdsAll };

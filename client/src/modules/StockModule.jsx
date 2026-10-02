@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import ax from '../api';
 import { validateTruckNo, cleanTruckNo } from '../utils/vehicleUtils';
 import { buildPartySuggestions, resolvePartyName } from '../utils/partyNameUtils';
+import { brandOfLr, partyVisibleIn } from '../utils/partyBrands';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Plus, TrendingDown, FileText, Archive, CheckCircle2,
@@ -279,6 +280,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const [sales, setSales] = useState([]);
   const [setStock, setSetStock] = useState([]); // water-damaged ("set") bags
   const [vehicles, setVehicles] = useState([]); // Added vehicles state
+  const [parties, setParties] = useState([]);
+  const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(initialTab || 'overview'); // overview|history|migo|challan
   const [showMigoForm, setShowMigoForm] = useState(false);
@@ -303,7 +306,7 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
 
   /* forms */
   const getEmptyMigo = () => ({ material: MATS[0], quantity: '', date: new Date().toISOString().slice(0, 10), remark: '', truckNo: '', unloadingType: 'Godown Unload' });
-  const getEmptyChal = () => ({ truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', factoryCode: '', destination: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
+  const getEmptyChal = () => ({ challanNumberMode: 'auto', challanNo: '', truckNo: '', material: MATS[0], quantity: '', partyName: '', partyCode: '', billNo: '', factoryCode: '', destination: '', date: new Date().toISOString().slice(0, 10), remark: '', lrNo: '' });
   const [migoForm, setMigoForm] = useState(getEmptyMigo());
   const [chalForm, setChalForm] = useState(getEmptyChal());
   const [saving, setSaving] = useState(false);
@@ -339,16 +342,20 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [ad, ch, lr, vh, sl, matsRaw, st] = await Promise.all([
+      const [ad, ch, lr, vh, sl, matsRaw, st, partyRows, destinationRows] = await Promise.all([
         ax.get(API + '/additions').then(r => r.data).catch(() => []),
         ax.get(API + '/challans').then(r => r.data).catch(() => []),
         ax.get(API_LR).then(r => r.data).catch(() => []),
         ax.get(`/vehicles`).then(r => r.data).catch(() => []),
         ax.get(`/sell?brand=${brand}`).then(r => r.data).catch(() => []),
         ax.get(`${API}/materials/list`).then(r => r.data).catch(() => []),
-        ax.get(`${API}/set-stock`).then(r => r.data).catch(() => [])
+        ax.get(`${API}/set-stock`).then(r => r.data).catch(() => []),
+        ax.get('/parties').then(r => r.data).catch(() => []),
+        ax.get('/destinations').then(r => r.data).catch(() => [])
       ]);
       setAdditions(ad); setChallans(ch); setLrs(lr); setVehicles(vh); setSales(sl); setSetStock(st);
+      setParties(Array.isArray(partyRows) ? partyRows : []);
+      setDestinations(Array.isArray(destinationRows) ? destinationRows : []);
       if (matsRaw && matsRaw.length > 0) setMaterialObjs(matsRaw);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -637,9 +644,38 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
   }, [additions, lrs, sales]);
 
   const partySuggestions = useMemo(() => buildPartySuggestions(
+    parties.filter(p => (p.type === 'customer' || p.type === 'broker') && partyVisibleIn(p, brandOfLr(brand))).map(p => p.name),
     challans.map(c => c.partyName),
     lrs.map(l => l.partyName)
-  ), [challans, lrs]);
+  ), [parties, challans, lrs, brand]);
+
+  const destinationOptions = useMemo(() => {
+    const names = new Map();
+    const siteType = brand === 'kosli' ? 'Kosli_Bill'
+      : brand === 'jhajjar' ? 'Jajjhar_Bill'
+      : brand === 'bahadurgarh' ? 'Bahadurgarh_Bill' : '';
+    destinations
+      .filter(d => !d.module || d.module === 'all' || d.module === siteType)
+      .sort((a, b) => Number(a.module === siteType) - Number(b.module === siteType))
+      .forEach(d => {
+      const name = String(d.name || '').trim().replace(/\s+/g, ' ').toUpperCase();
+      if (name) {
+        const previous = names.get(name);
+        names.set(name, { label: name, value: name, sublabel: d.currentRate ? `₹${d.currentRate}/MT` : previous?.sublabel || '' });
+      }
+      });
+    lrs.forEach(l => {
+      const name = String(l.destination || '').trim().replace(/\s+/g, ' ').toUpperCase();
+      if (name && !names.has(name)) names.set(name, { label: name, value: name });
+    });
+    return [...names.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [destinations, lrs, brand]);
+
+  const partyCodeByName = name => {
+    const normalized = String(name || '').trim().replace(/\s+/g, ' ').toUpperCase();
+    return String(parties.find(p => partyVisibleIn(p, brandOfLr(brand))
+      && String(p.name || '').trim().replace(/\s+/g, ' ').toUpperCase() === normalized)?.partyCode || '').trim().toUpperCase();
+  };
 
   const totalAvailable = MATS.reduce((s, mat) => s + (stockMap[mat]?.available || 0), 0);
   const totalHeld = MATS.reduce((s, mat) => s + (stockMap[mat]?.held || 0), 0);
@@ -1377,7 +1413,8 @@ export default function StockModule({ initialTab, brand = 'dump', role = 'user',
               {isDumpGodown ? (
               <ChallanFormFields
                 form={chalForm} onChange={setChalForm} materials={MATS} vehicles={vehicles}
-                partySuggestions={partySuggestions} ewbSource={ewbSource}
+                partySuggestions={partySuggestions} destinationOptions={destinationOptions}
+                partyCodeByName={partyCodeByName} ewbSource={ewbSource}
               />
               ) : (
               <div className="fg fg-2" style={{ gap: '12px', maxWidth: '800px' }}>

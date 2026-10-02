@@ -10,12 +10,19 @@ import TruckLoader from '../components/TruckLoader';
 
 const fmtRs = n => 'Rs.' + Math.round(n).toLocaleString('en-IN');
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const PARTY_LOCATIONS = [
+  { id: 'jharli', label: 'Jharli' },
+  { id: 'kosli', label: 'Kosli' },
+  { id: 'jhajjar', label: 'Jhajjar' },
+  { id: 'bahadurgarh', label: 'Bahadurgarh' },
+];
 
 export default function PartyMaster() {
   const { user } = useAuth();
   const [parties, setParties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [similarConflict, setSimilarConflict] = useState(null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -26,6 +33,7 @@ export default function PartyMaster() {
   const [ledgerParty, setLedgerParty] = useState(null);
   const [ledgerData, setLedgerData] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerError, setLedgerError] = useState('');
   const [ledgerTab, setLedgerTab] = useState('vouchers');
 
   // Sync from records
@@ -36,18 +44,19 @@ export default function PartyMaster() {
     setLedgerParty(party);
     setLedgerData(null);
     setLedgerLoading(true);
+    setLedgerError('');
     setLedgerTab('vouchers');
     try {
       const res = await ax.get(`/parties/${party.id}/ledger`);
       setLedgerData(res.data);
-    } catch { setLedgerData({ vouchers: [], lrs: [], summary: {} }); }
+    } catch (err) { setLedgerError(err.response?.data?.error || 'Could not load party records'); }
     finally { setLedgerLoading(false); }
   };
   
   const [formData, setFormData] = useState({
-    name: '', type: 'customer', contactPerson: '', phone: '', email: '',
+    name: '', partyCode: '', type: 'customer', contactPerson: '', phone: '', email: '',
     address: '', gstin: '', pan: '', bankDetails: '', openingBalance: 0, balanceType: 'credit', isActive: true,
-    brands: [],
+    brands: [], locations: [],
   });
 
   const toggleBrand = (id) => setFormData(f => ({
@@ -55,6 +64,12 @@ export default function PartyMaster() {
     brands: (f.brands || []).includes(id)
       ? (f.brands || []).filter(b => b !== id)
       : [...(f.brands || []), id],
+  }));
+  const toggleLocation = id => setFormData(f => ({
+    ...f,
+    locations: (f.locations || []).includes(id)
+      ? (f.locations || []).filter(location => location !== id)
+      : [...(f.locations || []), id],
   }));
 
   useEffect(() => {
@@ -74,34 +89,43 @@ export default function PartyMaster() {
   };
 
   const handleOpenModal = (party = null) => {
+    setSimilarConflict(null);
+    setError('');
     if (party) {
       setEditingId(party.id);
-      setFormData({ ...party, brands: Array.isArray(party.brands) ? party.brands : [] });
+      setFormData({ ...party, partyCode: party.partyCode || '', brands: Array.isArray(party.brands) ? party.brands : [], locations: Array.isArray(party.locations) ? party.locations : [] });
     } else {
       setEditingId(null);
       setFormData({
-        name: '', type: 'customer', contactPerson: '', phone: '', email: '',
+        name: '', partyCode: '', type: 'customer', contactPerson: '', phone: '', email: '',
         address: '', gstin: '', pan: '', bankDetails: '', openingBalance: 0, balanceType: 'credit', isActive: true,
-        brands: [],
+        brands: [], locations: [],
       });
     }
     setIsModalOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const saveParty = async (allowSimilarParty = false) => {
     try {
       setError('');
       if (editingId) {
-        await ax.patch(`/parties/${editingId}`, formData);
+        await ax.patch(`/parties/${editingId}`, { ...formData, allowSimilarParty });
       } else {
-        await ax.post('/parties', formData);
+        await ax.post('/parties', { ...formData, allowSimilarParty });
       }
+      setSimilarConflict(null);
       setIsModalOpen(false);
       fetchParties();
     } catch (err) {
+      if (err.response?.data?.code === 'SIMILAR_PARTY' && !allowSimilarParty) {
+        setSimilarConflict(err.response.data.match);
+      }
       setError(err.response?.data?.error || 'Failed to save party');
     }
+  };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    saveParty();
   };
 
   const [delTarget, setDelTarget] = useState(null);
@@ -164,12 +188,22 @@ export default function PartyMaster() {
         onConfirm={handleDelete}
         onCancel={() => setDelTarget(null)}
       />
+      <ConfirmDialog
+        open={!!similarConflict}
+        title="Possible duplicate party"
+        message={`Existing party: ${similarConflict?.name || ''}${similarConflict?.partyCode ? ` (${similarConflict.partyCode})` : ''}. Check spelling. Create separate party only if these are truly different.`}
+        confirmText="Create Separate Party"
+        cancelText="Check Spelling"
+        danger={false}
+        onConfirm={() => saveParty(true)}
+        onCancel={() => setSimilarConflict(null)}
+      />
       
       {/* Header with quick action */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: syncResult ? '16px' : '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>Master Data</h1>
-          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Manage your global directory of customers, suppliers, and brokers.</p>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)' }}>Manage parties, suppliers, brokers, and their module tags.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           {/* Sync from Vouchers / LRs */}
@@ -224,7 +258,13 @@ export default function PartyMaster() {
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                     {syncResult.total} unique names found across vouchers &amp; loading receipts
                     {syncResult.skipped > 0 && ` · ${syncResult.skipped} already existed`}
+                    {syncResult.taggedLegacy > 0 && ` · ${syncResult.taggedLegacy} legacy parties tagged JK Lakshmi`}
                   </div>
+                  {syncResult.conflicts?.length > 0 && (
+                    <div style={{ marginTop: '8px', color: 'var(--warn)', fontSize: '12px', fontWeight: 700 }}>
+                      {syncResult.conflicts.length} possible duplicate names need review: {syncResult.conflicts.map(c => `${c.name} → ${c.match}`).join(', ')}
+                    </div>
+                  )}
                   {syncResult.names?.length > 0 && (
                     <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {syncResult.names.map(n => (
@@ -264,7 +304,7 @@ export default function PartyMaster() {
               color: filterType === t ? 'white' : 'var(--text-muted)',
               transition: 'all 0.2s'
             }}>
-              {t}
+              {t === 'customer' ? 'Party' : t}
             </button>
           ))}
         </div>
@@ -296,7 +336,7 @@ export default function PartyMaster() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                 <div>
-                  <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>{party.type}</div>
+                  <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>{party.type === 'customer' ? 'Party' : party.type}</div>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{party.name}</h3>
                   <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
                     {brandsOf(party).length === 0 ? (
@@ -310,6 +350,14 @@ export default function PartyMaster() {
                       );
                     })}
                   </div>
+                  {(party.locations || []).length > 0 && (
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      {party.locations.map(location => {
+                        const meta = PARTY_LOCATIONS.find(item => item.id === location);
+                        return meta && <span key={location} style={{ padding: '2px 8px', borderRadius: '5px', fontSize: '9.5px', fontWeight: 800, background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>{meta.label.toUpperCase()}</span>;
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button onClick={() => openLedger(party)} title="View Party Ledger" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: '4px' }}><BookOpen size={14} /></button>
@@ -321,6 +369,7 @@ export default function PartyMaster() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-muted)' }}>
                 {party.contactPerson && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><User size={14} /> {party.contactPerson}</div>}
                 {party.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Phone size={14} /> {party.phone}</div>}
+                {party.partyCode && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={14} /> Party Code: <span style={{ fontWeight: 700, color: 'var(--text)' }}>{party.partyCode}</span></div>}
                 {party.gstin && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={14} /> GST: <span style={{ fontWeight: 700, color: 'var(--text)' }}>{party.gstin}</span></div>}
               </div>
 
@@ -357,6 +406,8 @@ export default function PartyMaster() {
               </div>
               {ledgerLoading ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}><TruckLoader text="Loading ledger..." size={160} /></div>
+              ) : ledgerError ? (
+                <div role="alert" style={{ padding: '24px', color: 'var(--danger)' }}>{ledgerError}</div>
               ) : ledgerData ? (
                 <>
                   {/* Summary cards */}
@@ -392,14 +443,16 @@ export default function PartyMaster() {
                         <tbody>
                           {ledgerData.vouchers.length === 0 ? <tr><td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No vouchers found</td></tr>
                             : ledgerData.vouchers.map((v, i) => {
-                              const g = (parseFloat(v.weight)||0) * (parseFloat(v.rate)||0);
+                              const g = Array.isArray(v.deliveries) && v.deliveries.length
+                                ? v.deliveries.reduce((sum, delivery) => sum + (parseFloat(delivery.weight)||0) * (parseFloat(delivery.rate)||0), 0)
+                                : (parseFloat(v.weight)||0) * (parseFloat(v.rate)||0);
                               const d = v.advanceDiesel === 'FULL' ? 4000 : (parseFloat(v.advanceDiesel)||0);
                               const net = g - d - (parseFloat(v.advanceCash)||0) - (parseFloat(v.advanceOnline)||0) - (parseFloat(v.munshi)||0) - (parseFloat(v.shortage)||0) - (parseFloat(v.commission)||0);
                               const paid = parseFloat(v.paidBalance) || 0;
                               const out = Math.max(0, net - paid);
                               return <tr key={v.id} style={{ background: i%2===0?'var(--bg-row-even)':'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
                                 <td style={{ padding: '6px 12px' }}>{fmtDate(v.date)}</td>
-                                <td style={{ padding: '6px 12px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{v.lrNo}</td>
+                                <td style={{ padding: '6px 12px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>{(v.lrNos?.length ? v.lrNos : [v.lrNo]).filter(Boolean).map(number => `#${number}`).join(', ') || '—'}</td>
                                 <td style={{ padding: '6px 12px', fontWeight: 700 }}>{v.truckNo}</td>
                                 <td style={{ padding: '6px 12px' }}>{v.destination || '—'}</td>
                                 <td style={{ padding: '6px 12px', textAlign: 'right' }}>{v.weight}</td>
@@ -422,7 +475,7 @@ export default function PartyMaster() {
                         <tbody>
                           {ledgerData.lrs.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No loading receipts found</td></tr>
                             : ledgerData.lrs.map((l, i) => (
-                              <tr key={l.id} style={{ background: i%2===0?'var(--bg-row-even)':'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
+                              <tr key={`${l.collection}:${l.id}`} style={{ background: i%2===0?'var(--bg-row-even)':'var(--bg-row-odd)', borderBottom: '1px solid var(--border)' }}>
                                 <td style={{ padding: '6px 12px' }}>{fmtDate(l.date)}</td>
                                 <td style={{ padding: '6px 12px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>#{l.lrNo}</td>
                                 <td style={{ padding: '6px 12px', fontWeight: 700 }}>{l.truckNo}</td>
@@ -472,11 +525,15 @@ export default function PartyMaster() {
                   <div className="field-h">
                     <label>Party Type</label>
                     <select className="fi" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
-                      <option value="customer">Customer</option>
+                      <option value="customer">Party</option>
                       <option value="supplier">Supplier</option>
                       <option value="broker">Broker</option>
                       <option value="transporter">Transporter</option>
                     </select>
+                  </div>
+                  <div className="field-h">
+                    <label>Party Code</label>
+                    <input className="fi" type="text" value={formData.partyCode || ''} onChange={e => setFormData({ ...formData, partyCode: e.target.value.toUpperCase() })} placeholder="Enter party code manually" />
                   </div>
                   {/* Which party lists this party appears in. JK Super covers
                       Kosli, Jajjhar and Bahadurgarh. Both ticked = trades on
@@ -494,6 +551,19 @@ export default function PartyMaster() {
                       {(formData.brands || []).length === 0 && (
                         <span style={{ fontSize: '11px', color: 'var(--warn)', fontWeight: 700 }}>Untagged — will show in every module</span>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="field-h" style={{ gridColumn: '1 / -1' }}>
+                    <label>Location / Module</label>
+                    <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {PARTY_LOCATIONS.map(location => (
+                        <label key={location.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={(formData.locations || []).includes(location.id)} onChange={() => toggleLocation(location.id)}
+                            style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                          {location.label}
+                        </label>
+                      ))}
                     </div>
                   </div>
 

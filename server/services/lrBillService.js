@@ -1,3 +1,5 @@
+const { normalizePartyName } = require('../utils/partyNameUtils');
+
 const BILL_TYPE_BY_LR_COLLECTION = {
     kosli_loading_receipts: 'Kosli_Bill',
     jhajjar_loading_receipts: 'Jajjhar_Bill',
@@ -50,6 +52,9 @@ async function buildBillFromLr(orgId, data, { lrNo, lrNos, entryId, sourceLrId, 
             lrNo: String(numbers[index] ?? numbers[0]),
             destination,
             partyName: material.partyName || data.partyName || '',
+            partyCode: String(material.partyCode ||
+                (!material.partyName || normalizePartyName(material.partyName) === normalizePartyName(data.partyName)
+                    ? data.partyCode : '') || '').trim(),
             material: material.type,
             bags: String(Number(material.bags || 0)),
             weight: Number(material.weight || 0).toFixed(2),
@@ -68,7 +73,7 @@ async function buildBillFromLr(orgId, data, { lrNo, lrNos, entryId, sourceLrId, 
         billNo: String(data.billNo || '').trim() || String(numbers[0]),
         partyCode: String(data.partyCode || '').trim(),
         partyName: data.partyName || data.materials.find(m => m.partyName)?.partyName || '',
-        truckNo: data.truckNo,
+        truckNo: data.truckNo || '',
         driverName: data.driverName || '',
         driverContact: data.driverContact || '',
         ownerName: data.ownerName || '',

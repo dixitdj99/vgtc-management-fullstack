@@ -53,7 +53,7 @@ const stockService = require('../utils/stockService');
 test('concurrent godown challans get unique five-digit numbers in one transaction', async () => {
     const col = 'dev_kosli_challans';
     rows.set(`${col}/legacy`, { orgId: 'vgtc', challanNo: 'CH-0007' });
-    const data = { challanNo: '00008', truckNo: 'HR55EF9012', material: 'PPC', quantity: 10 };
+    const data = { challanNo: '', truckNo: 'HR55EF9012', material: 'PPC', quantity: 10 };
     const created = await Promise.all(Array.from({ length: 20 }, () =>
         stockService.createChallan('vgtc', data, col, ['PPC'])));
     const numbers = created.map(row => row.challanNo);
@@ -66,4 +66,15 @@ test('concurrent godown challans get unique five-digit numbers in one transactio
     }
     const anotherGodown = await stockService.createChallan('vgtc', data, 'dev_jhajjar_challans', ['PPC']);
     assert.equal(anotherGodown.challanNo, '00001');
+    const manual = await stockService.createChallan('vgtc', { ...data, challanNo: '00035' }, col, ['PPC']);
+    assert.equal(manual.challanNo, '00035');
+    assert.equal(rows.get(`challan_number_claims/${col}_vgtc_00035`).challanId, manual.id);
+    await assert.rejects(stockService.createChallan('vgtc', { ...data, challanNo: '00035' }, col, ['PPC']), /already exists/);
+    await assert.rejects(stockService.createChallan('vgtc', { ...data, challanNo: '00007' }, col, ['PPC']), /already exists/);
+    const afterManual = await stockService.createChallan('vgtc', data, col, ['PPC']);
+    assert.equal(afterManual.challanNo, '00036');
+    rows.set(`challan_counters/${col}_vgtc`, { lastNumber: 99999, orgId: 'vgtc', collection: col });
+    const beforeExhausted = rows.size;
+    await assert.rejects(stockService.createChallan('vgtc', data, col, ['PPC']), /range exhausted/);
+    assert.equal(rows.size, beforeExhausted);
 });

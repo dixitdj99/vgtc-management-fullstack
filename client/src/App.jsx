@@ -926,10 +926,14 @@ function AppInner() {
                 if (godown === targetGodown) return;
                 setGodown(targetGodown);
 
-                // If currently viewing a godown-specific stock module, switch to the new godown's stock module
-                if (active === 'stock_kosli' || active === 'stock_jhajjar' || active === 'stock_bahadurgarh') {
-                  setActive(`stock_${targetGodown}`);
-                  setExpanded({ [`stock_${targetGodown}`]: true });
+                const siteModule = /^(stock|migo|challan)_(kosli|jhajjar|bahadurgarh)$/.exec(active);
+                if (siteModule) {
+                  const nextActive = `${siteModule[1]}_${targetGodown}`;
+                  setActive(nextActive);
+                  setExpanded(siteModule[1] === 'stock' ? { [nextActive]: true } : {});
+                } else if (active === 'voucher_dump' || active === 'balance_dump') {
+                  setSubActive(targetGodown === 'jhajjar' ? 'Jajjhar_Bill'
+                    : targetGodown === 'bahadurgarh' ? 'Bahadurgarh_Bill' : 'Kosli_Bill');
                 }
               };
 
