@@ -119,3 +119,7 @@ Exact uppercase matching does not stop AHLAWAT/ALAWAT becoming separate parties.
 Check close names and stable party codes on every creation path, including
 automatic LR creation and historical sync. Never silently merge existing
 financial records by fuzzy name alone; show or report candidate for review.
+
+## Prove terminal roster against real profile types and production auth (2026-10-03)
+
+User reported an empty staff list after prior Android terminal changes were called complete. A successful APK build only proves compilation. Never apply a narrow profile-type/name filter without checking real VGTC profile shapes, and never silently substitute a production URL or a built-in terminal token when local/prod configuration fails. Exercise the authenticated roster route with representative portal profiles and make setup display a real failure. For attendance controls, test server rejection and explicit stopped-scan events, not just visual toggle state.

@@ -14,12 +14,21 @@ const requireAuth = async (req, res, next) => {
     const token = auth.slice(7).trim();
 
     // Allow terminal authentication
-    if (token === 'VGTC-TERMINAL-TOKEN-KEY' || token === (process.env.TERMINAL_KEY || 'VGTC-TERMINAL-TOKEN-KEY')) {
+    const terminalKeyStore = require('../utils/terminalKeyStore');
+    const isTerminalAuth = await terminalKeyStore.isTerminalTokenAsync(token);
+
+    if (isTerminalAuth) {
+        const route = req.originalUrl.split('?')[0];
+        const isProfilesRoute = /^\/api\/profiles(\/|$)/.test(route);
+        if (!/^\/api\/(terminal|attendance)(\/|$)/.test(route) && !isProfilesRoute) {
+            return res.status(403).json({ error: 'Terminal credential is restricted to attendance, profiles and terminal APIs' });
+        }
         req.user = {
             id: 'vgtc-terminal',
             name: 'VGTC Terminal Kiosk',
-            role: 'admin',
-            orgId: req.headers['x-org-id'] || 'vgtc'
+            role: 'terminal',
+            permissions: { attendance: 'edit', profiles: 'edit' },
+            orgId: 'vgtc'
         };
         return next();
     }

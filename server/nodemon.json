@@ -1,0 +1,13 @@
+{
+  "watch": ["index.js", "routes", "services", "middleware", "utils"],
+  "ignore": [
+    "data/**",
+    "uploads/**",
+    "tests/**",
+    "*.test.js",
+    "*.log",
+    "*.tmp",
+    "serviceAccountKey.json"
+  ],
+  "ext": "js,json"
+}

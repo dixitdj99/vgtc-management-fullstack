@@ -9,7 +9,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.vgtc.terminal.model.Profile
 
-class Prefs(context: Context) {
+class Prefs(private val context: Context) {
 
     // Login password and auth token are sensitive, so the backing store is
     // encrypted at rest. Falls back to a plain (unencrypted) SharedPreferences
@@ -34,6 +34,7 @@ class Prefs(context: Context) {
 
     init {
         migrateFromLegacyPlainPrefs(context)
+        migrateLegacyProfileKey()
     }
 
     /**
@@ -93,12 +94,16 @@ class Prefs(context: Context) {
         get() {
             val raw = sp.getString("server_url", "https://vgtc.site") ?: "https://vgtc.site"
             val clean = sanitizeServerUrl(raw)
-            if (clean.isBlank() || clean.contains("192.168.") || clean.contains("localhost")) {
+            if (clean.isBlank()) {
                 return "https://vgtc.site"
             }
             return clean
         }
         set(value) = sp.edit().putString("server_url", sanitizeServerUrl(value)).apply()
+
+    var terminalApiKey: String
+        get() = sp.getString("terminal_api_key", "VGTC-TERMINAL-TOKEN-KEY")?.ifBlank { "VGTC-TERMINAL-TOKEN-KEY" } ?: "VGTC-TERMINAL-TOKEN-KEY"
+        set(value) = sp.edit().putString("terminal_api_key", value.trim().ifBlank { "VGTC-TERMINAL-TOKEN-KEY" }).apply()
 
     var language: String
         get() = sp.getString("app_language", "en") ?: "en"
@@ -133,10 +138,28 @@ class Prefs(context: Context) {
         get() = sp.getString("admin_pin", "1234") ?: "1234"
         set(value) = sp.edit().putString("admin_pin", value).apply()
 
-    // Local persistent profiles (so enrolled employees are always saved and accessible)
+    // Environment determination: production vs local testing
+    val isProdEnvironment: Boolean
+        get() = serverUrl.contains("vgtc.site", ignoreCase = true)
+
+    val profileStorageKey: String
+        get() = if (isProdEnvironment) "local_profiles_prod" else "local_profiles_local"
+
+    private fun migrateLegacyProfileKey() {
+        val legacy = sp.getString("local_profiles_json", null)
+        if (!legacy.isNullOrBlank()) {
+            val targetKey = if (isProdEnvironment) "local_profiles_prod" else "local_profiles_local"
+            if (!sp.contains(targetKey)) {
+                sp.edit().putString(targetKey, legacy).apply()
+            }
+            sp.edit().remove("local_profiles_json").apply()
+        }
+    }
+
+    // Local persistent profiles scoped strictly to current environment (prod vs local)
     private var localProfilesJson: String
-        get() = sp.getString("local_profiles_json", "[]") ?: "[]"
-        set(value) = sp.edit().putString("local_profiles_json", value).apply()
+        get() = sp.getString(profileStorageKey, "[]") ?: "[]"
+        set(value) = sp.edit().putString(profileStorageKey, value).apply()
 
     fun getLocalProfiles(): List<Profile> {
         return try {
@@ -149,6 +172,53 @@ class Prefs(context: Context) {
 
     fun saveLocalProfiles(profiles: List<Profile>) {
         localProfilesJson = gson.toJson(profiles)
+    }
+
+    fun clearLocalProfiles() {
+        localProfilesJson = "[]"
+    }
+
+    /**
+     * Clean server-roster synchronization scoped to current environment.
+     * The server list is the single source of truth for WHICH profiles exist.
+     * Profiles not in serverList are excluded (so deletions on web portal reflect instantly).
+     * Locally enrolled biometrics (faceEmbedding, fingerprintSlotId) are preserved for existing profiles.
+     */
+    fun mergeServerRoster(serverList: List<Profile>): List<Profile> {
+        if (serverList.isEmpty()) {
+            return getLocalProfiles()
+        }
+        val localMap = getLocalProfiles().associateBy { it.id }
+
+        val mergedList = serverList.map { serverProf ->
+            val existing = localMap[serverProf.id]
+            if (existing != null) {
+                existing.copy(
+                    name = if (serverProf.name.isNotBlank()) serverProf.name else existing.name,
+                    role = if (!serverProf.role.isNullOrBlank()) serverProf.role else existing.role,
+                    profileType = if (!serverProf.profileType.isNullOrBlank()) serverProf.profileType else existing.profileType,
+                    vehicleNo = if (!serverProf.vehicleNo.isNullOrBlank()) serverProf.vehicleNo else existing.vehicleNo,
+                    phone = if (!serverProf.phone.isNullOrBlank()) serverProf.phone else existing.phone,
+                    photo = if (!serverProf.photo.isNullOrBlank()) serverProf.photo else existing.photo,
+                    photos = if (!serverProf.photos.isNullOrEmpty()) serverProf.photos else existing.photos,
+                    attendanceEnabled = serverProf.attendanceEnabled,
+                    fingerprintEnrolled = existing.fingerprintEnrolled || serverProf.fingerprintEnrolled,
+                    fingerprintSlotId = existing.fingerprintSlotId ?: serverProf.fingerprintSlotId,
+                    faceEmbedding = if (!existing.faceEmbedding.isNullOrEmpty()) existing.faceEmbedding else serverProf.faceEmbedding
+                )
+            } else {
+                serverProf
+            }
+        }
+        saveLocalProfiles(mergedList)
+        return mergedList
+    }
+
+    /** Safe non-destructive wrapper for mergeServerRoster */
+    fun reconcileRoster(profiles: List<Profile>) {
+        if (profiles.isNotEmpty()) {
+            mergeServerRoster(profiles)
+        }
     }
 
     fun addOrUpdateLocalProfile(profile: Profile) {

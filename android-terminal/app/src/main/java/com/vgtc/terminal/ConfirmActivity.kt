@@ -50,7 +50,7 @@ class ConfirmActivity : AppCompatActivity() {
 
         // Photo
         if (!photo.isNullOrBlank()) {
-            Glide.with(this).load(photo).circleCrop().into(binding.ivEmployeePhoto)
+            Glide.with(this).load(com.vgtc.terminal.api.ApiClient(this).photoModel(photo)).circleCrop().into(binding.ivEmployeePhoto)
         } else {
             binding.ivEmployeePhoto.setImageResource(R.drawable.ic_person_placeholder)
         }

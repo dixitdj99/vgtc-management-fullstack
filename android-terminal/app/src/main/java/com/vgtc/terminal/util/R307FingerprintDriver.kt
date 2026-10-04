@@ -346,7 +346,16 @@ class R307FingerprintDriver private constructor() {
 
             // Step 2: Ask user to lift finger
             withContext(Dispatchers.Main) { progressCallback("Remove finger...") }
-            delay(1200)
+            var fingerRemoved = false
+            for (attempt in 0..40) {
+                val res = sendCommand(byteArrayOf(CMD_GEN_IMG))
+                if (res?.firstOrNull() == CONFIRM_NO_FINGER) { fingerRemoved = true; break }
+                delay(200)
+            }
+            if (!fingerRemoved) {
+                withContext(Dispatchers.Main) { completionCallback(false, "Please lift your finger between the two captures, then retry.") }
+                return@launch
+            }
 
             // Wait for finger again
             withContext(Dispatchers.Main) { progressCallback("Step 2/2: Place the SAME finger again...") }

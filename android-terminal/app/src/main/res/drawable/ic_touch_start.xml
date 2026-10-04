@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Clean Touch / Hand gesture icon -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,11.24V7.5a2.5,2.5 0,0 1,5 0v3.74c1.21,-0.81 2,-2.18 2,-3.74a4.5,4.5 0,0 0,-9 0c0,1.56 0.79,2.93 2,3.74zM17.84,15.27l-2.7,-1.35a1.25,1.25 0,0 0,-1.14 0.08L13,14.6V7.5a1.5,1.5 0,0 0,-3 0v10.74l-3.44,-0.72a1.25,1.25 0,0 0,-1.28 0.49l-0.78,0.99 4.67,4.67A2.5,2.5 0,0 0,10.94,24h5.68a2.5,2.5 0,0 0,2.44,-1.93l1.01,-4.54a1.25,1.25 0,0 0,-0.5,-1.26l-1.73,-1z"/>
+</vector>

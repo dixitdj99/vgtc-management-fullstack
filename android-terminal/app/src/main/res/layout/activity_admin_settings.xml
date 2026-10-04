@@ -99,7 +99,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Add (+), Edit, Delete employees with Face &amp; Fingerprint"
+                            android:text="Enroll existing VGTC people. Staff changes sync from portal."
                             android:textSize="12sp"
                             android:textColor="@color/text_secondary" />
                     </LinearLayout>
@@ -110,7 +110,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:layout_marginTop="14dp"
-                    android:text="Manage Enrolled Employees"
+                    android:text="Open staff enrollment"
                     android:textSize="14sp"
                     android:fontFamily="sans-serif-medium"
                     app:cornerRadius="10dp"
@@ -158,6 +158,36 @@
                         android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <!-- Quick Environment Switch Buttons -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPresetProd"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:text="🌐 Prod (vgtc.site)"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPresetLocal"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="💻 Local PC (5000)"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp" />
+                </LinearLayout>
+
                 <!-- Username -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
@@ -191,7 +221,31 @@
                         android:textSize="14sp" />
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <!-- Org ID -->
+<com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:hint="Terminal API key (or sign in below)"
+            app:passwordToggleEnabled="true">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etTerminalApiKey" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:inputType="textPassword" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFillDefaultKey"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="🔑 Use Default Key (VGTC-TERMINAL-TOKEN-KEY)"
+            android:textSize="11sp"
+            android:textColor="@color/primary"
+            android:paddingHorizontal="0dp"
+            android:layout_marginTop="2dp" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:textSize="12sp" android:textColor="@color/text_secondary"
+            android:text="Production: https://vgtc.site • Local testing: http://192.168.1.112:5000 (debug app only). Phone and computer must share Wi-Fi." />
+                        <!-- Org ID -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

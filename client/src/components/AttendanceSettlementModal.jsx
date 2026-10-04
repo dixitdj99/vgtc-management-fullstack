@@ -168,8 +168,8 @@ export default function AttendanceSettlementModal({
       const next = {};
       nonPresentDays.forEach(d => {
         const existing = prev[d.date];
-        // By default, regular absences and half days are deducted; Sundays/leaves are excused unless clerk toggles
-        const defaultDeduct = existing ? existing.deduct : (d.status === 'absent' || d.status === 'half_day');
+        // For now, attendance system is NOT deducted from driver/staff salary: default deduct is false
+        const defaultDeduct = existing ? existing.deduct : false;
         const defaultRate = d.status === 'half_day' ? Math.round(effectiveDailyRate * 0.5) : effectiveDailyRate;
         next[d.date] = {
           deduct: existing ? existing.deduct : defaultDeduct,

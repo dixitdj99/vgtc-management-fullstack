@@ -12,8 +12,12 @@ data class Profile(
     val fingerprintEnrolled: Boolean = false,
     val fingerprintSlotId: Int? = null,
     val faceEmbedding: List<Float>? = null,
+    val attendanceEnabled: Boolean? = true,
     val createdAt: String? = null
-)
+) {
+    val isAttendanceActive: Boolean
+        get() = attendanceEnabled != false
+}
 
 data class AttendanceRecord(
     val profileId: String,
@@ -32,7 +36,8 @@ data class AttendanceRecord(
     val source: String = "terminal",
     val note: String? = null,
     val method: String = "face",
-    val terminalId: String = "VGTC-TERMINAL-01"
+    val terminalId: String = "VGTC-TERMINAL-01",
+    val fingerprintSlotId: Int? = null
 )
 
 data class DutyRecord(

@@ -1217,3 +1217,33 @@ Firestore-style LR/bill test covers one atomic write with missing optional truck
 ## Party duplicate guard review
 
 Near-name and duplicate-code checks return a reviewable conflict; they never silently merge financial records. Users can explicitly create a genuinely distinct close name. Production migration tagged 158 previously untagged parties as JK Lakshmi; follow-up dry run found 0 untagged parties. Focused backend tests: 14 pass; client tests: 123 pass; client build passes.
+
+# Android terminal live portal integration (2026-10-02)
+
+- [x] Inspect project instructions, lessons, existing terminal integration; create codex/android-terminal-live.
+- [ ] Server: authoritative staff roster, live changes/deletions, restricted terminal permissions, sensor IDs and protected enrollment photos.
+- [ ] Android: server-confirmed workflows, roster reconciliation, guided enrollment, phone photo copies, clearer bilingual voice/beeps and simple UI.
+- [ ] Portal: live enrollment/profile gallery using server-accessible image URLs.
+- [ ] Verify API regressions, Android build, portal build; review integration contracts.
+- [ ] Document deployment/hardware requirements and Firebase request categories/cost assumptions.
+
+## Design and verification plan
+
+VGTC portal owns staff identity and deletion. Terminal may enroll existing staff and submit attendance but cannot create/delete staff. Server remains authority for eligibility and successful writes. External fingerprint hardware retains templates; API stores sensor slot ID with terminal identity. Enrollment keeps private phone copies and uploads protected server copies because phone filesystem URLs are not internet-accessible. Live subscriptions/reconciliation remove deleted staff locally; server rejects stale operations. Costs count actual Firestore document operations, not HTTP verbs. Verify with automated server regressions, client production build, available Android build tooling, and explicitly list hardware/device checks still required.
+
+## Review
+
+Implemented on `codex/android-terminal-live`. Android debug APK builds successfully. Client production build succeeds. Server suite runs with the repository's existing unrelated failures (`loading_status` permission catalogue and legacy LR bill-number assertions); all terminal-specific compilation paths are covered by the Android build. Full live hardware and production round-trip verification still requires deploying the configured `TERMINAL_KEY` and private `FIREBASE_STORAGE_BUCKET`, then testing an R307/AS608 device.
+
+# Terminal reference UI and attendance stop correction (2026-10-03)
+
+- [ ] Reproduce and fix empty production/local terminal roster and setup errors; list every VGTC portal profile.
+- [ ] Keep enrollment in Android, status/control in portal; no terminal profile deletion.
+- [ ] Add per-profile and bulk attendance stop/start in portal, visible in attendance and enrollment.
+- [ ] Reject stopped face/fingerprint attendance on server, record stopped scan event, and reflect live in app/portal.
+- [ ] Match supplied splash/lock and scan-screen references using native Android layout and generated truck background.
+- [ ] Verify route behavior, client build, Android build, local/prod configuration; inspect final diff.
+
+## Review
+
+Done on `codex/android-terminal-live`. Server terminal tests: 15 passed, including all-profile roster, document deletion, bulk and individual attendance stop/start, stopped face/fingerprint audit-only attempts, transaction race protection, fingerprint slot isolation, and private-image cleanup. Client Vite production build passed. Android `assembleDebug` passed and generated [app-debug.apk](../android-terminal/app/build/outputs/apk/debug/app-debug.apk). ADB install was not possible because the connected phone has an existing `com.vgtc.terminal` package signed with a different key; uninstalling it would erase its app data, so it was left untouched. Production verification still requires terminal key, Storage bucket, Firestore indexes, and R307/AS608 hardware.

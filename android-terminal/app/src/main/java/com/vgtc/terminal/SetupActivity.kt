@@ -27,6 +27,18 @@ class SetupActivity : AppCompatActivity() {
         binding.etServerUrl.setText(defaultUrl)
         binding.etUsername.setText(prefs.username)
         binding.etOrgId.setText(prefs.orgId)
+        binding.etTerminalApiKey.setText(prefs.terminalApiKey.ifBlank { "VGTC-TERMINAL-TOKEN-KEY" })
+
+        binding.btnPresetProd.setOnClickListener {
+            binding.etServerUrl.setText("https://vgtc.site")
+        }
+        binding.btnPresetLocal.setOnClickListener {
+            binding.etServerUrl.setText("http://192.168.1.112:5000")
+        }
+        binding.btnFillDefaultKey.setOnClickListener {
+            binding.etTerminalApiKey.setText("VGTC-TERMINAL-TOKEN-KEY")
+            Toast.makeText(this, "Default Terminal Key filled", Toast.LENGTH_SHORT).show()
+        }
 
         binding.btnSave.setOnClickListener {
             var url = Prefs.sanitizeServerUrl(binding.etServerUrl.text.toString())
@@ -36,8 +48,15 @@ class SetupActivity : AppCompatActivity() {
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
+            val terminalKey = binding.etTerminalApiKey.text.toString().trim().ifBlank { "VGTC-TERMINAL-TOKEN-KEY" }
+
+            val urlChanged = prefs.serverUrl != url
+            if (urlChanged) {
+                prefs.clearLocalProfiles()
+            }
 
             binding.etServerUrl.setText(url)
+            binding.etTerminalApiKey.setText(terminalKey)
             binding.btnSave.isEnabled = false
             binding.btnSave.text = "Connecting..."
 
@@ -46,20 +65,33 @@ class SetupActivity : AppCompatActivity() {
             if (username.isNotBlank()) prefs.username = username
             if (password.isNotBlank()) prefs.password = password
             prefs.orgId = orgId.ifBlank { "vgtc" }
-            if (prefs.authToken.isBlank()) {
-                prefs.authToken = "VGTC-TERMINAL-TOKEN-KEY"
+            prefs.terminalApiKey = terminalKey
+            prefs.authToken = ""
+
+            fun showError(message: String) { runOnUiThread {
+                binding.btnSave.isEnabled = true
+                binding.btnSave.text = "Save & Connect"
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                    .setTitle("Connection not ready").setMessage(message).setPositiveButton("OK", null).show()
+            } }
+
+            fun testRoster() {
+                apiClient.getProfiles { result -> runOnUiThread {
+                    binding.btnSave.isEnabled = true
+                    binding.btnSave.text = "Save & Connect"
+                    result.onSuccess { profiles ->
+                        prefs.mergeServerRoster(profiles)
+                        Toast.makeText(this, "✓ Connected • ${profiles.size} VGTC profiles", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(this, MainActivity::class.java)); finish()
+                    }.onFailure { showError(it.message ?: "Cannot load VGTC roster") }
+                } }
             }
 
-            // Verify connectivity using Terminal & Server Status endpoints
-            apiClient.checkConnection { connected ->
-                runOnUiThread {
-                    if (connected) {
-                        Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "✓ Server URL saved: $url", Toast.LENGTH_SHORT).show()
-                    }
-                    startActivity(Intent(this, MainActivity::class.java))
-                    finishAffinity()
+            testRoster()
+
+            if (username.isNotBlank() && password.isNotBlank()) {
+                apiClient.login(username, password) { result ->
+                    result.onSuccess { prefs.authToken = it }
                 }
             }
         }

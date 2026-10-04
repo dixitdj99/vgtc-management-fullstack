@@ -1,0 +1,53 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <!-- Top-left bracket -->
+    <path
+        android:strokeColor="#FFFF8900"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 6,13 L 6,8 A 2,2 0 0 1 8,6 L 13,6" />
+    <!-- Top-right bracket -->
+    <path
+        android:strokeColor="#FFFF8900"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 23,6 L 28,6 A 2,2 0 0 1 30,8 L 30,13" />
+    <!-- Bottom-left bracket -->
+    <path
+        android:strokeColor="#FFFF8900"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 6,23 L 6,28 A 2,2 0 0 0 8,30 L 13,30" />
+    <!-- Bottom-right bracket -->
+    <path
+        android:strokeColor="#FFFF8900"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 23,30 L 28,30 A 2,2 0 0 0 30,28 L 30,23" />
+    <!-- Face outline -->
+    <path
+        android:strokeColor="#FFFF8900"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M 18,11 A 7,7 0 1 1 17.99,11 Z" />
+    <!-- Eyes -->
+    <path
+        android:fillColor="#FFFF8900"
+        android:pathData="M 15.5,16 A 1,1 0 1 1 15.49,16 Z" />
+    <path
+        android:fillColor="#FFFF8900"
+        android:pathData="M 20.5,16 A 1,1 0 1 1 20.49,16 Z" />
+    <!-- Smile -->
+    <path
+        android:strokeColor="#FFFF8900"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M 15,20 Q 18,23 21,20" />
+</vector>

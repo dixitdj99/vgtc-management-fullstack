@@ -13,6 +13,11 @@ const { db, isAvailable } = require('../firebase');
 const localStore = require('../utils/localStore');
 const { getEnvCol } = require('../utils/collectionUtils');
 const crypto = require('crypto');
+const { cleanupEnrollmentImages } = require('./enrollmentImageCleanup');
+const { isProduction } = require('../utils/envConfig');
+const requireDatabase = () => {
+    if (isProduction() && (!isAvailable() || !db)) throw Object.assign(new Error('VGTC database unavailable; retry when server reconnects'), { status: 503 });
+};
 const { sendEventNotification } = require('../utils/whatsappService');
 
 const ATTENDANCE_EVENTS_COL = 'attendance_events';
@@ -28,10 +33,10 @@ const DUPLICATE_WINDOW_MS = 4 * 1000; // 4 seconds camera micro-burst debounce
 
 const clean = s => String(s || '').trim();
 const upper = s => clean(s).toUpperCase().replace(/\s+/g, '');
-const NON_PERSON_PROFILE_RE = /^(tyre|manual|pump|fuel|fuel pump|fuel station|firm|expense|labour)$/i;
-const isBiometricPerson = (p) => [p.type, p.profileType, p.department, p.category, p.name]
-    .map(clean)
-    .every(v => !NON_PERSON_PROFILE_RE.test(v) && !/fuel\s*(pump|station)/i.test(v));
+// Mirror /api/profiles exactly: profile type/status flags never hide a row.
+// Actual portal deletion removes the document, checked again for every event.
+const isPortalProfile = p => Boolean(p);
+const attendanceEnabled = p => p.attendanceEnabled !== false;
 
 /**
  * Returns today's date as a YYYY-MM-DD string in Asia/Kolkata timezone.
@@ -96,20 +101,65 @@ const calcSalaryDays = (inMs, outMs) => {
     return 0.0;
 };
 
+// One Firestore listener per server instance: polling HTTP clients share its
+// snapshot. Deletions propagate across instances without rereading the roster.
+let rosterSnapshotPromise;
+let attemptsSnapshotPromise;
+async function getRosterProfiles() {
+    requireDatabase();
+    if (!isAvailable() || !db) return localStore.getAll(PROFILES_COL) || [];
+    if (!rosterSnapshotPromise) {
+        rosterSnapshotPromise = new Promise((resolve, reject) => {
+            const unsubscribe = db.collection(getEnvCol(PROFILES_COL)).onSnapshot(snapshot => {
+                const rows = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                rosterSnapshotPromise = Promise.resolve(rows);
+                resolve(rows);
+            }, error => {
+                rosterSnapshotPromise = null;
+                reject(error);
+                unsubscribe();
+            });
+        });
+    }
+    return rosterSnapshotPromise;
+}
+
 async function getDocs(colName) {
+    requireDatabase();
     if (isAvailable() && db) {
         try {
             const actualCol = getEnvCol ? getEnvCol(colName) : colName;
             const snap = await db.collection(actualCol).get();
             return snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (e) {
-            console.warn(`[DecisionEngine] Firestore read failed for ${colName}, falling back to localStore:`, e.message);
+            throw e; // Never authorize against stale local data after a server read failure.
         }
     }
     return localStore.getAll(colName) || [];
 }
 
+async function getDoc(colName, id) {
+    requireDatabase();
+    if (isAvailable() && db) {
+        const snap = await db.collection(getEnvCol(colName)).doc(id).get();
+        if (snap.exists) return { ...snap.data(), id: snap.id };
+
+        // Fallback: match by data id field in case Firestore document key differs from profile id
+        try {
+            const qSnap = await db.collection(getEnvCol(colName)).where('id', '==', id).limit(1).get();
+            if (!qSnap.empty) {
+                const d = qSnap.docs[0];
+                return { ...d.data(), id: d.id, profileId: id };
+            }
+        } catch (_) {}
+
+        return null;
+    }
+    return localStore.getById(colName, id);
+}
+
 async function insertDoc(colName, data) {
+    requireDatabase();
     const docId = data.id || crypto.randomUUID();
     const payload = { ...data, id: docId, updatedAt: new Date().toISOString() };
 
@@ -119,9 +169,10 @@ async function insertDoc(colName, data) {
             await db.collection(actualCol).doc(docId).set(payload, { merge: true });
             return payload;
         } catch (e) {
-            console.warn(`[DecisionEngine] Firestore insert failed for ${colName}:`, e.message);
+            throw e;
         }
     }
+    if (localStore.getById(colName, docId)) { localStore.update(colName, docId, payload); return payload; }
     return localStore.insert(colName, payload);
 }
 
@@ -129,13 +180,8 @@ const attendanceDecisionEngine = {
     /**
      * Get active fleet and staff roster for the terminal (used for local identification and face matching)
      */
-    async getTerminalRoster(orgId = 'main') {
-        const [profiles, vouchers, lrs, vehicles] = await Promise.all([
-            getDocs(PROFILES_COL),
-            getDocs(VOUCHERS_COL),
-            getDocs(LRS_COL),
-            getDocs('vehicles')
-        ]);
+    async getTerminalRoster(terminalId = '') {
+        const profiles = await getRosterProfiles();
 
         const today = todayStr();
 
@@ -143,67 +189,22 @@ const attendanceDecisionEngine = {
         const driverList = [];
         const staffList = [];
 
-        profiles.filter(isBiometricPerson).forEach(p => {
+        profiles.filter(isPortalProfile).forEach(p => {
             const type = String(p.type || p.profileType || '').toLowerCase();
             const primaryPhoto = p.facePhoto || p.photo || p.photoUrl || (p.photos && p.photos.length > 0 ? p.photos[0] : null);
             const isEnrolled = Boolean(primaryPhoto || p.faceEnrolled || (p.faceEmbedding && p.faceEmbedding.length > 0));
 
             if (type.includes('driver')) {
-                // Find driver's active trip if any
-                const pName = upper(p.name);
                 const pPhone = clean(p.mobile || p.phone);
-                const pTruck = upper(p.vehicleNo || p.truckNo);
-
-                // Check today's or recent uncompleted vouchers
-                const matchingVouchers = vouchers.filter(v => {
-                    const vDriver = upper(v.driverName);
-                    const vTruck = upper(v.truckNo);
-                    return (vDriver && vDriver === pName) || (vTruck && vTruck === pTruck);
-                }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-
-                // Check in-transit LRs
-                const matchingLrs = lrs.filter(l => {
-                    const lTruck = upper(l.truckNo);
-                    return (lTruck && lTruck === pTruck) && (l.status === 'In Transit' || String(l.date || '').slice(0, 10) === today);
-                }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-
-                const latestVoucher = matchingVouchers[0];
-                const latestLr = matchingLrs[0];
-
-                let status = 'AVAILABLE';
-                let activeTrip = null;
-
-                if (latestVoucher && String(latestVoucher.date || '').slice(0, 10) === today) {
-                    status = 'ON_TRIP';
-                    activeTrip = {
-                        type: 'voucher',
-                        voucherNo: latestVoucher.voucherNo || latestVoucher.entryId || 'VCH-NEW',
-                        lrNo: latestVoucher.lrNo || '—',
-                        destination: latestVoucher.destination || '—',
-                        partyName: latestVoucher.partyName || '—',
-                        material: latestVoucher.materialName || latestVoucher.material || 'Cement',
-                        bags: latestVoucher.bags || '—',
-                        weight: latestVoucher.weight || '—',
-                        date: latestVoucher.date || today,
-                    };
-                } else if (latestLr && (latestLr.status === 'In Transit' || String(latestLr.date || '').slice(0, 10) === today)) {
-                    status = latestLr.status === 'In Transit' ? 'ON_TRIP' : 'LOADED';
-                    activeTrip = {
-                        type: 'lr',
-                        lrNo: latestLr.lrNo || 'LR-NEW',
-                        destination: latestLr.destination || '—',
-                        partyName: latestLr.partyName || '—',
-                        material: latestLr.material || 'Cement',
-                        bags: latestLr.totalBags || '—',
-                        weight: latestLr.weight || '—',
-                        date: latestLr.date || today,
-                    };
-                }
+                const status = p.dutyState || 'AVAILABLE';
+                const activeTrip = p.activeTrip || null;
 
                 driverList.push({
                     id: p.id,
                     employeeId: p.employeeId || `DRV-${p.id.slice(-4).toUpperCase()}`,
                     name: p.name,
+                    attendanceEnabled: attendanceEnabled(p),
+                    profileType: p.profileType || p.type || 'Staff',
                     phone: pPhone,
                     type: 'DRIVER',
                     assignedTruck: p.vehicleNo || p.truckNo || '',
@@ -211,15 +212,19 @@ const attendanceDecisionEngine = {
                     photoUrl: primaryPhoto,
                     photo: primaryPhoto,
                     photos: p.photos || (primaryPhoto ? [primaryPhoto] : []),
-                    fingerprintEnrolled: Boolean(p.fingerprintEnrolled),
+                    faceEmbedding: p.faceEmbedding || p.faceEmbedding512 || null,
+                    fingerprintEnrolled: terminalId ? Number.isInteger(p.fingerprints?.[terminalId]) : Boolean(p.fingerprintEnrolled),
+                    fingerprintSlotId: terminalId ? (p.fingerprints?.[terminalId] ?? null) : null,
                     status, // AVAILABLE | ON_TRIP | LOADED
                     activeTrip
                 });
-            } else if (!['tyre', 'manual', 'pump', 'firm', 'expense'].includes(type)) {
+            } else {
                 staffList.push({
                     id: p.id,
                     employeeId: p.employeeId || `EMP-${p.id.slice(-4).toUpperCase()}`,
                     name: p.name,
+                    attendanceEnabled: attendanceEnabled(p),
+                    profileType: p.profileType || p.type || 'Staff',
                     phone: clean(p.mobile || p.phone),
                     type: 'STAFF',
                     department: p.department || p.type || 'Office',
@@ -227,24 +232,19 @@ const attendanceDecisionEngine = {
                     photoUrl: primaryPhoto,
                     photo: primaryPhoto,
                     photos: p.photos || (primaryPhoto ? [primaryPhoto] : []),
-                    fingerprintEnrolled: Boolean(p.fingerprintEnrolled),
+                    faceEmbedding: p.faceEmbedding || p.faceEmbedding512 || null,
+                    fingerprintEnrolled: terminalId ? Number.isInteger(p.fingerprints?.[terminalId]) : Boolean(p.fingerprintEnrolled),
+                    fingerprintSlotId: terminalId ? (p.fingerprints?.[terminalId] ?? null) : null,
                     status: 'ACTIVE'
                 });
             }
         });
 
-        const vehicleList = (vehicles || []).map(v => ({
-            vehicleNo: v.vehicleNo || v.truckNo,
-            driverId: v.driverId || null,
-            status: v.status || 'AVAILABLE',
-            location: v.location || 'Yard Rewari'
-        }));
-
         return {
             date: today,
             drivers: driverList,
             staff: staffList,
-            vehicles: vehicleList
+            vehicles: []
         };
     },
 
@@ -271,6 +271,7 @@ const attendanceDecisionEngine = {
 
         const now = timestamp ? new Date(timestamp) : new Date();
         const nowMs = now.getTime();
+        if (!Number.isFinite(nowMs)) throw Object.assign(new Error('Invalid timestamp'), { status: 400 });
         const date = msToDateStr(nowMs);
         const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
@@ -290,6 +291,22 @@ const attendanceDecisionEngine = {
             }
         }
 
+        // 2. Fetch full profile and latest trip state
+        let current;
+        try { current = await this.requireActiveProfile(employeeId); }
+        catch (error) {
+            if (![400, 404].includes(error.status)) throw error;
+            return { status: 'UNKNOWN_EMPLOYEE', message: error.message, employeeId };
+        }
+        const person = {
+            ...current,
+            employeeId: current.employeeId || current.id,
+            phone: current.phone || current.mobile || '',
+            assignedTruck: current.vehicleNo || current.truckNo || '',
+            fingerprintSlotId: current.fingerprints?.[terminalId] ?? null,
+        };
+        const driver = /driver/i.test(current.type || current.profileType || '') ? person : null;
+        if (!attendanceEnabled(current) || action === 'BLOCKED_ATTEMPT') return this.recordStoppedAttempt(body, current);
         // 1. Debounce rapid repeat attempts (4 seconds), only for AUTO/CHECK_IN
         const lastScanTime = recentScans.get(employeeId);
         if (!isTest && lastScanTime && (nowMs - lastScanTime < DUPLICATE_WINDOW_MS) && action === 'CHECK_IN') {
@@ -303,59 +320,9 @@ const attendanceDecisionEngine = {
             };
         }
 
-        // 2. Fetch full profile and latest trip state
-        const roster = await this.getTerminalRoster();
-        const empName = clean(body.personName || body.profileName).toLowerCase();
-        const driver = roster.drivers.find(d =>
-            d.id === employeeId ||
-            d.employeeId === employeeId ||
-            d.phone === employeeId ||
-            (empName && clean(d.name).toLowerCase() === empName)
-        );
-        const staff = roster.staff.find(s =>
-            s.id === employeeId ||
-            s.employeeId === employeeId ||
-            s.phone === employeeId ||
-            (empName && clean(s.name).toLowerCase() === empName)
-        );
-
-        let person = driver || staff;
-
-        // Fallback: check raw profiles collection
-        if (!person) {
-            const rawProfiles = await getDocs(PROFILES_COL);
-            const rawMatch = rawProfiles.find(p =>
-                p.id === employeeId ||
-                p.employeeId === employeeId ||
-                clean(p.mobile || p.phone) === clean(employeeId) ||
-                (empName && clean(p.name).toLowerCase() === empName)
-            );
-            if (rawMatch) {
-                const isDrv = String(rawMatch.type || rawMatch.profileType || '').toLowerCase().includes('driver');
-                person = {
-                    id: rawMatch.id,
-                    employeeId: rawMatch.employeeId || rawMatch.id,
-                    name: rawMatch.name,
-                    phone: rawMatch.phone || rawMatch.mobile || '',
-                    type: isDrv ? 'DRIVER' : 'STAFF',
-                    department: rawMatch.department || rawMatch.profileType || 'Staff',
-                    assignedTruck: rawMatch.vehicleNo || rawMatch.truckNo || '',
-                    vehicleNo: rawMatch.vehicleNo || rawMatch.truckNo || ''
-                };
-            }
-        }
-
-        // Final fallback: if terminal provided personName, create a valid attendee record
-        if (!person && (body.personName || body.profileName)) {
-            const isDrv = String(body.employeeType || body.type || (body.vehicleNo ? 'DRIVER' : 'STAFF')).toUpperCase().includes('DRIVER');
-            person = {
-                id: employeeId || crypto.randomUUID(),
-                employeeId: employeeId || `EMP-${Date.now().toString().slice(-4)}`,
-                name: body.personName || body.profileName,
-                type: isDrv ? 'DRIVER' : 'STAFF',
-                department: body.department || (isDrv ? 'Fleet' : 'Staff'),
-                vehicleNo: body.vehicleNo || ''
-            };
+        if (biometricMethod === 'FINGERPRINT' && person &&
+            (!Number.isInteger(body.fingerprintSlotId) || body.fingerprintSlotId !== person.fingerprintSlotId)) {
+            return { status: 'FINGERPRINT_MISMATCH', message: 'Fingerprint ID is not enrolled for this employee on this terminal.' };
         }
 
         if (!person) {
@@ -403,6 +370,11 @@ const attendanceDecisionEngine = {
             recordStatus = 'present';
             dutyState = 'AVAILABLE';
             responseMsg = `Welcome back, ${person.name}! Trip return recorded.`;
+        } else if (eventType === 'DUTY_CONTINUES' || eventType === 'DUTY_IN_PROGRESS' || body.action === 'DUTY_CONTINUES') {
+            recordStatus = 'duty_continues';
+            dutyState = 'IN_DUTY';
+            eventType = 'DUTY_CONTINUES';
+            responseMsg = `Active duty continues for ${person.name} (scanned ${biometricMethod.toLowerCase()} again at ${punchTimeVal})`;
         } else if (eventType === 'MANUAL_OVERRIDE') {
             recordStatus = body.status || 'present';
             dutyState = body.dutyState || (recordStatus === 'present' ? 'IN_DUTY' : 'COMPLETED');
@@ -424,6 +396,7 @@ const attendanceDecisionEngine = {
             eventType,
             action: eventType,
             biometricMethod,
+            fingerprintSlotId: biometricMethod === 'FINGERPRINT' ? body.fingerprintSlotId : null,
             method: biometricMethod.toLowerCase(),
             status: recordStatus,
             dutyState,
@@ -441,10 +414,10 @@ const attendanceDecisionEngine = {
             syncStatus: 'SYNCED',
             createdAt: now.toISOString()
         };
-        await insertDoc(ATTENDANCE_EVENTS_COL, eventRecord);
+        const writes = [[ATTENDANCE_EVENTS_COL, eventRecord]];
 
         // Update recent scans cache
-        recentScans.set(employeeId, nowMs);
+
 
         // 4. Insert dedicated punch log into `attendance` collection so the "Punch Logs" table shows EVERY punch
         const punchDocId = `punch_${date}_${person.id}_${nowMs}_${eventType.toLowerCase()}`;
@@ -487,14 +460,13 @@ const attendanceDecisionEngine = {
             updatedAt: now.toISOString(),
             isPunchLog: true
         };
-        await insertDoc(ATTENDANCE_COL, punchRecord);
+        writes.push([ATTENDANCE_COL, punchRecord]);
 
         // 5. Update daily summary attendance record
         let summaryDoc = null;
         try {
             const summaryDocId = `${person.id}_${date}`;
-            const existingDocs = await getDocs(ATTENDANCE_COL);
-            const existingSummary = existingDocs.find(d => d.id === summaryDocId || d.id === `${date}_${person.id}`);
+            const existingSummary = await getDoc(ATTENDANCE_COL, summaryDocId) || await getDoc(ATTENDANCE_COL, `${date}_${person.id}`);
 
             const firstIn = existingSummary?.inTime || body.inTime || (eventType === 'CHECK_IN' ? timeStr : null);
             const lastOut = ((eventType === 'CHECK_OUT' || eventType === 'EMERGENCY_EXIT') ? (body.outTime || timeStr) : existingSummary?.outTime) || null;
@@ -529,6 +501,8 @@ const attendanceDecisionEngine = {
                 terminalTime: punchTimeVal,
                 punchTime: punchTimeVal,
                 inTime: firstIn,
+                inTimeMs: existingSummary?.inTimeMs || body.inTimeMs || (eventType === 'CHECK_IN' ? nowMs : null),
+                outTimeMs: ['CHECK_OUT', 'EMERGENCY_EXIT'].includes(eventType) ? nowMs : existingSummary?.outTimeMs || null,
                 outTime: lastOut,
                 durationHours: body.durationHours != null ? Number(body.durationHours) : existingSummary?.durationHours || null,
                 dutyDays: salaryDays,
@@ -539,13 +513,27 @@ const attendanceDecisionEngine = {
                 updatedAt: now.toISOString(),
                 isDailySummary: true
             };
-            await insertDoc(ATTENDANCE_COL, summaryDoc);
-
-            // Also keep backwards compatible id `${date}_${person.id}` updated
-            await insertDoc(ATTENDANCE_COL, { ...summaryDoc, id: `${date}_${person.id}` });
+            writes.push([ATTENDANCE_COL, summaryDoc]);
         } catch (attErr) {
-            console.warn('[DecisionEngine] Failed to update daily attendance summary doc:', attErr.message);
+            throw attErr; // Never report a successful punch when its portal summary failed.
         }
+
+        if (isAvailable() && db) {
+            // Verify employee still exists in the transaction; commit all four
+            // portal records together, or none of them.
+            try { await db.runTransaction(async transaction => {
+                const active = await transaction.get(db.collection(getEnvCol(PROFILES_COL)).doc(person.id));
+                if (!active.exists || !isPortalProfile(active.data())) throw Object.assign(new Error('Employee deleted'), { status: 404 });
+                if (!attendanceEnabled(active.data())) throw Object.assign(new Error('Attendance stopped from VGTC Portal'), { code: 'ATTENDANCE_STOPPED' });
+                for (const [collection, record] of writes) transaction.set(db.collection(getEnvCol(collection)).doc(record.id), record, { merge: true });
+            }); } catch (error) {
+                if (error.code === 'ATTENDANCE_STOPPED') return this.recordStoppedAttempt(body, current);
+                throw error;
+            }
+        } else {
+            for (const [collection, record] of writes) await insertDoc(collection, record);
+        }
+        recentScans.set(employeeId, nowMs);
 
         // Notify the employee only for the beginning/end of a duty period. Gate
         // passes and duplicate scans stay silent so WhatsApp does not become noisy.
@@ -591,67 +579,179 @@ const attendanceDecisionEngine = {
         };
     },
 
-    async enrollPerson(body = {}) {
-        const docId = body.id || body.personId || body.profileId || crypto.randomUUID();
-        const profiles = await getDocs(PROFILES_COL);
-        const existing = profiles.find(p => p.id === docId);
-
-        const photo = body.facePhoto || body.photo || body.photoUrl || null;
-        const photos = (body.photos && Array.isArray(body.photos) && body.photos.length > 0)
-            ? body.photos
-            : (photo ? [photo] : (existing?.photos || []));
-        const faceEmbedding = body.faceEmbedding || body.embedding || existing?.faceEmbedding || null;
-        const fingerprintEnrolled = body.fingerprintEnrolled !== undefined
-            ? Boolean(body.fingerprintEnrolled)
-            : Boolean(existing?.fingerprintEnrolled);
-        const fingerprintSlotId = body.fingerprintSlotId !== undefined
-            ? body.fingerprintSlotId
-            : (existing?.fingerprintSlotId || null);
-
-        const assignedTruck = body.assignedTruck !== undefined ? body.assignedTruck : (body.vehicleNo !== undefined ? body.vehicleNo : (existing?.vehicleNo || existing?.truckNo || ''));
-
-        const payload = {
-            ...(existing || {}),
-            id: docId,
-            name: body.name || existing?.name || 'Unnamed',
-            phone: body.phone || existing?.phone || existing?.mobile || '',
-            mobile: body.phone || existing?.mobile || '',
-            employeeId: body.employeeId || existing?.employeeId || `${(body.type || existing?.type) === 'DRIVER' ? 'DRV' : 'EMP'}-${docId.slice(-4).toUpperCase()}`,
-            type: String(body.type || existing?.type || 'DRIVER').toLowerCase(),
-            profileType: body.profileType || existing?.profileType || (body.type?.toLowerCase() === 'driver' ? 'Driver' : 'Staff'),
-            vehicleNo: assignedTruck,
-            truckNo: assignedTruck,
-            photo: photo || existing?.photo || (photos.length > 0 ? photos[0] : null),
-            photos: photos,
-            facePhoto: photo || existing?.facePhoto || (photos.length > 0 ? photos[0] : null),
-            photoUrl: photo || existing?.photoUrl || (photos.length > 0 ? photos[0] : null),
-            faceEmbedding: faceEmbedding,
-            faceEnrolled: Boolean(photo || existing?.faceEnrolled || (photos && photos.length > 0)),
-            fingerprintEnrolled: fingerprintEnrolled,
-            fingerprintSlotId: fingerprintSlotId,
-            updatedAt: new Date().toISOString()
+    async recordStoppedAttempt(body, profile) {
+        const timestamp = new Date().toISOString();
+        const event = {
+            id: crypto.randomUUID(), employeeId: profile.id, employeeName: profile.name || '',
+            terminalId: clean(body.terminalId), biometricMethod: String(body.biometricMethod || body.method || 'FACE').toUpperCase(),
+            fingerprintSlotId: Number.isInteger(body.fingerprintSlotId) ? body.fingerprintSlotId : null,
+            eventType: 'ATTENDANCE_STOPPED', status: 'ATTENDANCE_STOPPED', timestamp,
+            date: todayStr(), message: attendanceEnabled(profile) && body.action === 'BLOCKED_ATTEMPT' ? 'Scan blocked by terminal paused state; refresh roster' : 'Attendance stopped from VGTC Portal',
+            reason: attendanceEnabled(profile) && body.action === 'BLOCKED_ATTEMPT' ? 'TERMINAL_PAUSED_STATE' : 'PORTAL_ATTENDANCE_STOPPED',
         };
-
-        await insertDoc(PROFILES_COL, payload);
-        return payload;
+        await insertDoc(ATTENDANCE_EVENTS_COL, event);
+        return { status: 'ATTENDANCE_STOPPED', eventType: event.eventType, message: event.message, eventId: event.id, person: { id: profile.id, name: profile.name }, date: event.date };
     },
 
-    async deleteEnrollment(id) {
+    async setAttendanceEnabled(profileIds, enabled) {
+        if (!Array.isArray(profileIds) || !profileIds.length || profileIds.length > 400 || typeof enabled !== 'boolean' || profileIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))) throw Object.assign(new Error('1–400 profileIds and boolean attendanceEnabled required'), { status: 400 });
+        const ids = [...new Set(profileIds)];
+        const patch = { attendanceEnabled: enabled, attendanceUpdatedAt: new Date().toISOString() };
+        if (isAvailable() && db) {
+            await db.runTransaction(async transaction => {
+                const refs = ids.map(id => db.collection(getEnvCol(PROFILES_COL)).doc(id));
+                const profiles = await transaction.getAll(...refs);
+                if (profiles.some(p => !p.exists || !isPortalProfile(p.data()))) throw Object.assign(new Error('One or more profiles no longer exist; refresh roster'), { status: 404 });
+                refs.forEach(ref => transaction.update(ref, patch));
+            });
+        } else {
+            await Promise.all(ids.map(id => this.requireActiveProfile(id)));
+            ids.forEach(id => localStore.update(PROFILES_COL, id, patch));
+        }
+        return { profileIds: ids, ...patch };
+    },
+
+    async getAttempts() {
+        requireDatabase();
+        if (!isAvailable() || !db) return [...localStore.getAll(ATTENDANCE_EVENTS_COL)].filter(event => event.eventType === 'ATTENDANCE_STOPPED').sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 200);
+        // One filtered listener serves every portal polling request. Composite
+        // index definition lives in server/firestore.indexes.json.
+        if (!attemptsSnapshotPromise) {
+            attemptsSnapshotPromise = new Promise((resolve, reject) => {
+                const unsubscribe = db.collection(getEnvCol(ATTENDANCE_EVENTS_COL))
+                    .where('eventType', '==', 'ATTENDANCE_STOPPED').orderBy('timestamp', 'desc').limit(200)
+                    .onSnapshot(snapshot => {
+                        const events = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                        attemptsSnapshotPromise = Promise.resolve(events);
+                        resolve(events);
+                    }, error => { attemptsSnapshotPromise = null; reject(error); unsubscribe(); });
+            });
+        }
+        return attemptsSnapshotPromise;
+    },
+
+    async getDuty(profileId) {
+        await this.requireActiveProfile(profileId);
+        const date = todayStr();
+        const record = await getDoc(ATTENDANCE_COL, `${profileId}_${date}`) || await getDoc(ATTENDANCE_COL, `${date}_${profileId}`);
+        if (!record) return null;
+        const parseTime = value => {
+            if (!value) return 0;
+            const match = String(value).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
+            if (!match) return 0;
+            let hour = Number(match[1]);
+            if (match[4]) hour = hour % 12 + (/pm/i.test(match[4]) ? 12 : 0);
+            return new Date(`${date}T${String(hour).padStart(2, '0')}:${match[2]}:${match[3] || '00'}+05:30`).getTime();
+        };
+        return { ...record, inTimeMs: record.inTimeMs || parseTime(record.inTime), outTimeMs: record.outTimeMs || parseTime(record.outTime), inTimeFormatted: record.inTime || '', outTimeFormatted: record.outTime || '' };
+    },
+
+    async requireActiveProfile(id) {
+        if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw Object.assign(new Error('Valid profile ID required'), { status: 400 });
+        const existing = await getDoc(PROFILES_COL, id);
+        if (!existing || !isPortalProfile(existing)) throw Object.assign(new Error('Employee is not active in VGTC. Refresh the staff list.'), { status: 404 });
+        return existing;
+    },
+
+    async enrollPerson(body = {}) {
+        const docId = body.id || body.personId || body.profileId;
+        const existing = await this.requireActiveProfile(docId);
+        const payload = { updatedAt: new Date().toISOString() };
+        let replacedProfile = existing;
+        const photos = body.photos ?? (body.photo || body.facePhoto || body.photoUrl ? [body.photo || body.facePhoto || body.photoUrl] : undefined);
+        if (photos !== undefined) {
+            const prefix = `/api/terminal/enrollment-images/${encodeURIComponent(docId)}/`;
+            if (!Array.isArray(photos) || !photos.length || photos.length > 10 || photos.some(url => typeof url !== 'string' || !url.startsWith(prefix) || !/^[a-f0-9-]+\.(jpg|png)$/.test(url.slice(prefix.length)))) {
+                throw Object.assign(new Error('Upload enrollment photos before saving their server URLs.'), { status: 400 });
+            }
+            const selected = body.photo || body.facePhoto || body.photoUrl || photos[0];
+            if (!photos.includes(selected)) throw Object.assign(new Error('Profile photo must belong to the uploaded gallery.'), { status: 400 });
+            Object.assign(payload, { photos, photo: selected, facePhoto: selected, photoUrl: selected, faceEnrolled: true });
+        }
+        const embedding = body.faceEmbedding || body.embedding;
+        if (embedding !== undefined) {
+            if (!Array.isArray(embedding) || ![128, 192, 512].includes(embedding.length) || !embedding.every(Number.isFinite)) throw Object.assign(new Error('Invalid face embedding'), { status: 400 });
+            payload.faceEmbedding = embedding;
+        }
+        if (body.fingerprintSlotId !== undefined) {
+            const terminalId = clean(body.terminalId);
+            const slot = body.fingerprintSlotId;
+            if (!/^[A-Za-z0-9_-]{1,100}$/.test(terminalId) || !Number.isInteger(slot) || slot < 0 || slot > 65535) throw Object.assign(new Error('Valid terminalId and sensor fingerprintSlotId required.'), { status: 400 });
+            const profiles = isAvailable() && db ? [] : await getDocs(PROFILES_COL);
+            if (profiles.some(p => p.id !== docId && isPortalProfile(p) && p.fingerprints?.[terminalId] === slot)) throw Object.assign(new Error('Fingerprint ID already belongs to another employee on this terminal.'), { status: 409 });
+            payload.fingerprints = { ...(existing.fingerprints || {}), [terminalId]: slot };
+            payload.fingerprintSlotId = slot;
+            payload.fingerprintEnrolled = true;
+        }
+        // Update-only prevents resurrecting a profile deleted between read and write.
+        if (isAvailable() && db) {
+            const collection = db.collection(getEnvCol(PROFILES_COL));
+            await db.runTransaction(async transaction => {
+                const current = await transaction.get(collection.doc(docId));
+                replacedProfile = current.data();
+                if (!current.exists || !isPortalProfile(current.data())) throw Object.assign(new Error('Employee deleted or inactive'), { status: 404 });
+                if (body.fingerprintSlotId !== undefined) {
+                    const owners = await transaction.get(collection.where(`fingerprints.${clean(body.terminalId)}`, '==', body.fingerprintSlotId));
+                    if (owners.docs.some(p => p.id !== docId && isPortalProfile(p.data()))) throw Object.assign(new Error('Fingerprint ID already belongs to another employee on this terminal.'), { status: 409 });
+                    payload.fingerprints = { ...(current.data().fingerprints || {}), [clean(body.terminalId)]: body.fingerprintSlotId };
+                }
+                transaction.update(collection.doc(docId), payload);
+            });
+        }
+        else {
+            if (!localStore.getById(PROFILES_COL, docId)) throw Object.assign(new Error('Employee deleted'), { status: 404 });
+            localStore.update(PROFILES_COL, docId, payload);
+        }
+        if (photos !== undefined) await cleanupEnrollmentImages(docId, replacedProfile, payload);
+        return { ...existing, ...payload };
+    },
+
+    async deleteEnrollment(id, biometricType = 'face') {
+        const cleanId = String(id || '').trim();
         const profiles = await getDocs(PROFILES_COL);
-        const existing = profiles.find(p => p.id === id);
+        const existing = profiles.find(p => p.id === cleanId || p.employeeId === cleanId || p._docId === cleanId);
         if (!existing) return { success: false, message: 'Person not found' };
 
         const payload = {
             ...existing,
-            facePhoto: null,
-            photo: null,
-            photoUrl: null,
-            photos: [],
-            faceEnrolled: false,
-            fingerprintEnrolled: false,
             updatedAt: new Date().toISOString()
         };
+
+        if (biometricType === 'face' || biometricType === 'all') {
+            payload.facePhoto = null;
+            payload.photo = null;
+            payload.photoUrl = null;
+            payload.photos = [];
+            payload.faceEnrolled = false;
+            payload.faceEmbedding = null;
+            payload.faceEmbedding512 = null;
+        }
+
+        if (biometricType === 'fingerprint' || biometricType === 'all') {
+            payload.fingerprintEnrolled = false;
+            payload.fingerprintSlotId = null;
+            payload.fingerprints = {};
+        }
+
         await insertDoc(PROFILES_COL, payload);
+
+        // Also update by Firestore document ID if different
+        if (isAvailable() && db) {
+            try {
+                const actualCol = getEnvCol ? getEnvCol(PROFILES_COL) : PROFILES_COL;
+                if (existing._docId && existing._docId !== payload.id) {
+                    await db.collection(actualCol).doc(existing._docId).set(payload, { merge: true });
+                }
+                const qSnap = await db.collection(actualCol).where('id', '==', cleanId).get();
+                for (const d of qSnap.docs) {
+                    await d.ref.set(payload, { merge: true });
+                }
+            } catch (_) {}
+        }
+
+        if (biometricType === 'face' || biometricType === 'all') {
+            await cleanupEnrollmentImages(cleanId, existing, payload);
+        }
         return { success: true };
     },
 

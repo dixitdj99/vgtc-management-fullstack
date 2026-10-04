@@ -40,14 +40,14 @@ class SplashActivity : AppCompatActivity() {
         binding.appName.animate().alpha(1f).setDuration(800).setStartDelay(300).start()
         binding.tagline.animate().alpha(1f).setDuration(800).setStartDelay(600).start()
 
-        // Navigate after 2.5 seconds
+        // Navigate after 2.2 seconds
         Handler(Looper.getMainLooper()).postDelayed({
             val prefs = Prefs(this)
-            if (prefs.serverUrl.isBlank() || prefs.username.isBlank()) {
-                startActivity(Intent(this, SetupActivity::class.java))
-            } else {
-                startActivity(Intent(this, MainActivity::class.java))
+            if (prefs.serverUrl.isBlank()) {
+                prefs.serverUrl = "https://vgtc.site"
             }
-        }, 2500)
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+        }, 2200)
     }
 }

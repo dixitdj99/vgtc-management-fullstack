@@ -17,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -26,6 +27,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.bumptech.glide.Glide
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Matrix
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.mlkit.vision.common.InputImage
@@ -87,11 +89,18 @@ class MainActivity : AppCompatActivity() {
     private var scanPaused = false
     private var lastPunchedProfileId: String? = null
     private var lastPunchTime = 0L
+    private var globalLastPunchTime = 0L
     private var isAnalyzingFace = false
 
     // Dismiss timer for attendance popup
     private var dismissHandler: Handler? = null
     private var dismissRunnable: Runnable? = null
+
+    // Unregistered face alert state
+    private var unregisteredProgressAnimator: android.animation.ValueAnimator? = null
+    private var unregisteredCountDownTimer: android.os.CountDownTimer? = null
+    private var lastUnregisteredAlertTime = 0L
+    private var consecutiveUnknownFrames = 0
 
     // ML Kit fast face detector
     private val faceDetector = FaceDetection.getClient(
@@ -142,6 +151,12 @@ class MainActivity : AppCompatActivity() {
         setupAttendanceOverrideAction()
         setupTouchAndScreensaver()
         startLiveConnectionPolling()
+
+        // Immediately load locally cached profiles so kiosk is ready instantly
+        profiles = prefs.getLocalProfiles()
+        if (profiles.isNotEmpty()) {
+            binding.tvLiveConnection.text = "● Cached · ${profiles.size} profiles"
+        }
         loadProfiles()
         setupR307Driver()
 
@@ -153,9 +168,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ──────────────────────────────────────────────────
-    // Clock Without Seconds (Clean, no background box)
+    // Clock Matching Image 2 Standby (Split Digits + Orange am/pm)
     // ──────────────────────────────────────────────────
     private val topDateFormatter = SimpleDateFormat("EEE, dd MMM", Locale("en", "IN"))
+    private val saverTimeDigitsFormatter = SimpleDateFormat("hh:mm", Locale("en", "IN"))
+    private val saverTimeAmPmFormatter = SimpleDateFormat("a", Locale("en", "IN"))
+    private val saverFullDateFormatter = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale("en", "IN"))
 
     private fun setupLiveClock() {
         clockHandler = Handler(Looper.getMainLooper())
@@ -165,11 +183,16 @@ class MainActivity : AppCompatActivity() {
                 val timeStr = timeFormatter.format(now)
                 val dateStr = dateFormatter.format(now)
                 val topDateStr = topDateFormatter.format(now)
+                val digitsStr = saverTimeDigitsFormatter.format(now)
+                val amPmStr = saverTimeAmPmFormatter.format(now).lowercase(Locale.US)
+                val fullDateStr = saverFullDateFormatter.format(now)
 
                 binding.tvTime.text = timeStr
                 binding.tvDate.text = topDateStr
                 binding.tvSaverTime.text = timeStr
-                binding.tvSaverDate.text = dateStr
+                binding.tvSaverTimeDigits.text = digitsStr
+                binding.tvSaverTimeAmPm.text = amPmStr
+                binding.tvSaverDate.text = fullDateStr
 
                 clockHandler?.postDelayed(this, 1000)
             }
@@ -249,9 +272,14 @@ class MainActivity : AppCompatActivity() {
     // Audio Beep Chime & TextToSpeech Voice Guidance
     // ──────────────────────────────────────────────────
     private var textToSpeech: android.speech.tts.TextToSpeech? = null
+    private lateinit var sensorFeedback: com.vgtc.terminal.util.TerminalFeedback
+    private val rosterHandler = Handler(Looper.getMainLooper())
+    private var rosterLoading = false
+    private val rosterRefresh = object : Runnable { override fun run() { loadProfiles(); rosterHandler.postDelayed(this, 15000) } }
     private var toneGenerator: android.media.ToneGenerator? = null
 
     private fun initAudioAndVoice() {
+        sensorFeedback = com.vgtc.terminal.util.TerminalFeedback(this)
         try {
             toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100)
         } catch (e: Exception) {
@@ -267,7 +295,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTtsLanguage() {
         val lang = prefs.language
-        val locale = if (lang == "hi") Locale("hi", "IN") else Locale.US
+        val locale = if (lang == "hi") Locale("hi", "IN") else Locale("en", "IN")
         textToSpeech?.setLanguage(locale)
         textToSpeech?.setSpeechRate(0.88f)
         textToSpeech?.setPitch(1.0f)
@@ -312,12 +340,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLanguageUi() {
         val isHi = prefs.language == "hi"
-        binding.btnLanguageToggle.text = if (isHi) "HI" else "EN"
-        binding.btnLanguageToggle.text = if (isHi) "🌐 HI" else "🌐 EN"
+        binding.btnLanguageToggle.text = if (isHi) "🌐 HI ⌵" else "🌐 EN ⌵"
+        binding.tvDetectionTitle.text = if (isHi) "चेहरा या उंगली स्कैन करें" else "Looking for face or fingerprint..."
+        binding.tvDetectionTitle.setTextColor(Color.WHITE)
+        binding.ivDetectionIcon.setImageResource(R.drawable.ic_face_reticle)
         binding.tvFaceDetectionHint.text = if (isHi) {
-            "कैमरे की तरफ देखें या फिंगरप्रिंट सेंसर छुएं"
+            "कैमरे के सामने चेहरा रखें या स्कैनर पर उंगली रखें"
         } else {
-            "Look at camera or touch fingerprint sensor"
+            "Position your face inside frame or scan finger"
         }
     }
 
@@ -332,24 +362,7 @@ class MainActivity : AppCompatActivity() {
     // Live Connection Polling
     // ──────────────────────────────────────────────────
     private fun startLiveConnectionPolling() {
-        connectionHandler = Handler(Looper.getMainLooper())
-        connectionRunnable = object : Runnable {
-            override fun run() {
-                apiClient.checkConnection { connected ->
-                    runOnUiThread {
-                        if (connected) {
-                            binding.tvLiveConnection.text = "● Online"
-                            binding.tvLiveConnection.setTextColor(getColor(R.color.green_online))
-                        } else {
-                            binding.tvLiveConnection.text = "● Offline"
-                            binding.tvLiveConnection.setTextColor(getColor(R.color.red_offline))
-                        }
-                    }
-                }
-                connectionHandler?.postDelayed(this, 8000)
-            }
-        }
-        connectionHandler?.post(connectionRunnable!!)
+        binding.tvLiveConnection.text = "● Connecting"
     }
 
     // ──────────────────────────────────────────────────
@@ -543,9 +556,11 @@ class MainActivity : AppCompatActivity() {
                 overrideReason = noteStr
             )
 
-            prefs.saveTodayDuty(updatedDuty)
+            dialogBinding.btnOverrideSave.isEnabled = false
+            dialogBinding.btnOverrideCancel.isEnabled = false
+            dialog.setCancelable(false)
 
-            // Sync to server
+            // A local PIN authorizes the operator; only the server confirms a save.
             apiClient.markAttendance(
                 profile = selectedProfile,
                 status = chosenStatus,
@@ -559,19 +574,23 @@ class MainActivity : AppCompatActivity() {
             ) { result ->
                 runOnUiThread {
                     result.onSuccess {
+                        prefs.saveTodayDuty(updatedDuty)
+                        dialog.dismiss()
                         Toast.makeText(
                             this@MainActivity,
                             "✓ Override saved for ${selectedProfile.name} ($chosenStatus, $days Day)",
                             Toast.LENGTH_SHORT
                         ).show()
                     }.onFailure { err ->
-                        Toast.makeText(this@MainActivity, "Saved locally (Server: ${err.message})", Toast.LENGTH_SHORT)
+                        dialogBinding.btnOverrideSave.isEnabled = true
+                        dialogBinding.btnOverrideCancel.isEnabled = true
+                        dialog.setCancelable(true)
+                        Toast.makeText(this@MainActivity, "Not saved. Check internet and retry: ${err.message}", Toast.LENGTH_LONG)
                             .show()
                     }
                 }
             }
 
-            dialog.dismiss()
         }
 
         dialog.show()
@@ -587,34 +606,14 @@ class MainActivity : AppCompatActivity() {
     // Auto Fingerprint Detection & Punch (OTG USB R307 Sensor)
     // ──────────────────────────────────────────────────
     private fun triggerFingerprintScan() {
-        val enrolledId = prefs.enrolledFingerprintProfileId
-        val targetProfile = profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
-
-        if (targetProfile == null) {
-            Toast.makeText(this, "No employees enrolled yet. Admin can enroll in Settings.", Toast.LENGTH_SHORT).show()
-            return
+        if (!r307Driver.isConnected) setupR307Driver()
+        val message = if (r307Driver.isConnected) "Place your enrolled finger flat on the external scanner." else "Optical Scanner: Disconnected"
+        binding.tvFaceDetectionHint.text = message
+        if (r307Driver.isConnected) {
+            sensorFeedback.speak("Place your enrolled finger flat on the external scanner.", "दर्ज की गई उंगली स्कैनर पर ठीक से रखें।")
         }
-
-        // Try USB OTG Scanner if connected
-        if (com.vgtc.terminal.util.OtgFingerprintHelper.isOtgDeviceConnected(this)) {
-            val started = com.vgtc.terminal.util.OtgFingerprintHelper.startOtgCapture(this)
-            if (started) {
-                Toast.makeText(this, "Place finger on R307 USB OTG scanner...", Toast.LENGTH_SHORT).show()
-                return
-            }
-        }
-
-        // Inform user to connect external R307 optical scanner (do not use phone's biometric dialog)
-        Toast.makeText(
-            this,
-            "🔌 R307 optical fingerprint scanner not detected. Please plug in via USB OTG.",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 
-    // ──────────────────────────────────────────────────
-    // Real R307 Optical Fingerprint Sensor Setup & Polling
-    // ──────────────────────────────────────────────────
     private fun setupR307Driver() {
         r307Driver.connect(this) { connected, msg ->
             runOnUiThread {
@@ -640,17 +639,19 @@ class MainActivity : AppCompatActivity() {
                     r307Driver.searchFingerprint(startSlot = 1, maxSlots = 300) { result ->
                         isR307Searching = false
                         if (result.matched) {
-                            val matchedProfile = profiles.find { it.fingerprintSlotId == result.slotId }
-                                ?: profiles.find { it.id == prefs.enrolledFingerprintProfileId }
+                            val matchedProfile = profiles.find { it.fingerprintEnrolled && it.fingerprintSlotId == result.slotId }
                             if (matchedProfile != null) {
                                 resetScreensaverTimer()
                                 markAttendance(matchedProfile, "present", "fingerprint")
                             } else {
+                                sensorFeedback.rejected()
                                 binding.tvFaceDetectionHint.text =
-                                    "Fingerprint slot #${result.slotId} recognized, but employee unassigned"
+                                    "Fingerprint ID ${result.slotId} is not linked to a VGTC profile"
                             }
                         } else if (result.errorCode == R307FingerprintDriver.CONFIRM_NOT_FOUND) {
-                            binding.tvFaceDetectionHint.text = "Fingerprint not recognized. Please place finger again"
+                            sensorFeedback.rejected()
+                            speakVoice("Fingerprint not recognised. Lift your finger, then place it flat on the scanner again.", "फिंगरप्रिंट पहचाना नहीं गया। उंगली हटाएँ, फिर स्कैनर पर ठीक से रखें।")
+                            binding.tvFaceDetectionHint.text = "Fingerprint not recognised. Lift finger and retry."
                         }
                     }
                 }
@@ -667,17 +668,8 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == com.vgtc.terminal.util.OtgFingerprintHelper.OTG_FP_CAPTURE_REQUEST) {
-            if (com.vgtc.terminal.util.OtgFingerprintHelper.isCaptureSuccessful(data) || resultCode == RESULT_OK) {
-                val enrolledId = prefs.enrolledFingerprintProfileId
-                val targetProfile = profiles.find { it.id == enrolledId } ?: profiles.firstOrNull()
-                if (targetProfile != null) {
-                    markAttendance(targetProfile, "present", "fingerprint")
-                } else {
-                    Toast.makeText(this, "Attendance captured via OTG scanner!", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Toast.makeText(this, "OTG capture incomplete, please place finger firmly", Toast.LENGTH_SHORT).show()
-            }
+            sensorFeedback.rejected()
+            Toast.makeText(this, "Use the connected R307 / AS608 scanner. A verified fingerprint ID is required.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -688,17 +680,72 @@ class MainActivity : AppCompatActivity() {
     private fun markAttendance(profile: Profile, status: String, method: String = "face") {
         val now = System.currentTimeMillis()
 
-        // 1. Debounce rapid repeat attempts on current face in frame (5 seconds)
+        // 1. Global cooldown (4 seconds across ANY profile) to prevent same face multi-punching
+        if ((now - globalLastPunchTime) < 4000) {
+            return
+        }
+        globalLastPunchTime = now
+
+        // 2. Debounce rapid repeat attempts on current face in frame (5 seconds)
         if (profile.id == lastPunchedProfileId && (now - lastPunchTime) < 5000) {
             return
         }
 
-        // 2. Fetch duty record for this employee
-        val currentDuty = prefs.getTodayDuty(profile.id)
+        pauseScanning()
+        if (!profile.isAttendanceActive) {
+            lastPunchedProfileId = profile.id
+            lastPunchTime = now
+            sensorFeedback.rejected()
+            sensorFeedback.speak(
+                "Attendance is stopped for ${profile.name}. Please contact the office.",
+                "${profile.name} की हाज़िरी रोक दी गई है। कृपया कार्यालय से संपर्क करें।"
+            )
+
+            val bioMethod = if (method == "fingerprint") "FINGERPRINT" else "FACE"
+            val slot = if (method == "fingerprint") profile.fingerprintSlotId else null
+            apiClient.reportStoppedAttempt(profile.id, profile.name, bioMethod, slot)
+
+            showAttendanceStoppedAlert(profile, method)
+            return
+        }
+        binding.tvFaceDetectionHint.text = "Checking current duty with VGTC…"
+        apiClient.getDuty(profile.id) { result -> runOnUiThread {
+            result.onSuccess { duty -> processAttendance(profile, method, duty) }
+                .onFailure { showSyncFailure(it.message) }
+        } }
+    }
+
+    private fun showAttendanceStoppedAlert(profile: Profile, method: String) {
+        runOnUiThread {
+            binding.tvDetectionTitle.text = if (prefs.language == "hi") "⚠️ हाज़िरी रोक दी गई है" else "⚠️ Attendance Stopped"
+            binding.tvDetectionTitle.setTextColor(Color.parseColor("#EF4444"))
+            binding.tvFaceDetectionHint.text = if (prefs.language == "hi")
+                "${profile.name} — पोर्टल से हाज़िरी रोकी गई है"
+            else
+                "${profile.name} — Attendance stopped in VGTC Portal"
+            binding.ivDetectionIcon.setImageResource(R.drawable.ic_close)
+            binding.floatingStatusCard.alpha = 1f
+            binding.floatingStatusCard.visibility = View.VISIBLE
+
+            // Auto-resume scanning after 4 seconds without freezing terminal modal
+            dismissHandler?.removeCallbacksAndMessages(null)
+            dismissHandler = Handler(Looper.getMainLooper()).apply {
+                postDelayed({
+                    binding.tvDetectionTitle.setTextColor(Color.WHITE)
+                    binding.ivDetectionIcon.setImageResource(R.drawable.ic_face_reticle)
+                    updateLanguageUi()
+                    resumeScanning()
+                }, 4000)
+            }
+        }
+    }
+
+    private fun processAttendance(profile: Profile, method: String, currentDuty: DutyRecord?) {
+        val now = System.currentTimeMillis()
         val isDriver = profile.profileType.equals("Driver", ignoreCase = true)
 
         // Case A: Starting a new shift (First scan of the day OR starting again after leaving)
-        if (currentDuty == null || currentDuty.dutyState in listOf(
+        if (currentDuty == null || currentDuty.inTimeMs <= 0 || currentDuty.dutyState in listOf(
                 "COMPLETED",
                 "OFF_DUTY",
                 "EMERGENCY_LEAVE",
@@ -721,6 +768,7 @@ class MainActivity : AppCompatActivity() {
                 // Scanned within 1 minute of starting - debounce accidental double scan
                 lastPunchedProfileId = profile.id
                 lastPunchTime = now
+                resumeScanning()
                 return
             }
             lastPunchedProfileId = profile.id
@@ -733,9 +781,12 @@ class MainActivity : AppCompatActivity() {
             // Cannot mark completed yet - minimum 4 hours required for staff
             lastPunchedProfileId = profile.id
             lastPunchTime = now
+            globalLastPunchTime = now
 
-            // A face/fingerprint re-scan while on duty is only a local status
-            // check. Do not create another PRESENT punch-log row.
+            // Report Duty Continues event to server audit
+            apiClient.reportDutyContinuesScan(profile.id, profile.name, method)
+
+            // A face/fingerprint re-scan while on duty is an in-progress check.
             showActiveDutyInProgressCard(profile, currentDuty, elapsedMs, minHoursRequired)
         } else {
             // 4+ hours elapsed! Complete shift (Punch-Out)
@@ -750,22 +801,52 @@ class MainActivity : AppCompatActivity() {
         elapsedMs: Long
     ) {
         pauseScanning()
+        val isHi = prefs.language == "hi"
         val daysElapsed = (elapsedMs / (1000.0 * 60 * 60 * 24)).toInt()
         val hoursElapsed = ((elapsedMs / (1000.0 * 60 * 60)) % 24).toInt()
-        val durationStr = if (daysElapsed > 0) "${daysElapsed}d ${hoursElapsed}h" else "${hoursElapsed}h"
+        val minutesElapsed = ((elapsedMs / (1000.0 * 60)) % 60).toInt()
+        val durationStr = if (daysElapsed > 0) "${daysElapsed}d ${hoursElapsed}h" else "${hoursElapsed}h ${minutesElapsed}m"
 
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Driver Duty End / घर जा रहे हैं?")
-            .setMessage("${profile.name} (गाड़ी: ${profile.vehicleNo ?: "—"})\nड्यूटी शुरू: ${currentDuty.inTimeFormatted}\nकुल ड्यूटी अवधि: $durationStr\n\nक्या आप ड्यूटी समाप्त करके घर जा रहे हैं?")
-            .setPositiveButton("हाँ, ड्यूटी समाप्त (Punch Out)") { _, _ ->
-                completeShift(profile, currentDuty, method, elapsedMs)
-            }
-            .setNegativeButton("नहीं, अभी ड्यूटी पर हूँ (Cancel)") { dialog, _ ->
-                dialog.dismiss()
-                resumeScanning()
-            }
+        val dialogView = layoutInflater.inflate(R.layout.dialog_driver_tour_end, null)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTourDialogTitle)
+        val tvSub = dialogView.findViewById<TextView>(R.id.tvTourDialogSubtitle)
+        val tvDriver = dialogView.findViewById<TextView>(R.id.tvDriverName)
+        val tvVehicle = dialogView.findViewById<TextView>(R.id.tvVehicleBadge)
+        val tvDuration = dialogView.findViewById<TextView>(R.id.tvDurationBadge)
+        val tvStartTime = dialogView.findViewById<TextView>(R.id.tvStartTime)
+        val tvPrompt = dialogView.findViewById<TextView>(R.id.tvQuestionPrompt)
+        val tvPromptSub = dialogView.findViewById<TextView>(R.id.tvQuestionPromptSub)
+        val btnEndDuty = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnEndDuty)
+        val btnContinueDuty = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnContinueDuty)
+
+        tvTitle.text = if (isHi) "ड्यूटी स्थिति" else "Duty Tour Status"
+        tvSub.text = if (isHi) "चालक की सक्रिय ड्यूटी सत्र" else "Active driver duty session"
+        tvDriver.text = "${profile.name} (Driver)"
+        tvVehicle.text = "🚛 ${profile.vehicleNo ?: (if (isHi) "गाड़ी नहीं जुड़ी" else "No Vehicle")}"
+        tvDuration.text = "⏱️ $durationStr"
+        tvStartTime.text = if (isHi) "ड्यूटी शुरू: ${currentDuty.inTimeFormatted}" else "Shift Started: ${currentDuty.inTimeFormatted}"
+        tvPrompt.text = if (isHi) "क्या आप ड्यूटी समाप्त करके घर जा रहे हैं?" else "Would you like to complete your shift and punch out?"
+        tvPromptSub.text = if (isHi) "ड्यूटी समाप्त करने या जारी रखने के लिए नीचे बटन चुनें" else "Choose to punch out or continue active duty."
+        btnEndDuty.text = if (isHi) "✓ हाँ, ड्यूटी समाप्त (Punch Out)" else "✓ End Shift (Punch Out)"
+        btnContinueDuty.text = if (isHi) "▶️ नहीं, ड्यूटी चालू रखें (Continue)" else "▶️ Continue Active Duty"
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setView(dialogView)
             .setCancelable(false)
-            .show()
+            .create()
+
+        btnEndDuty.setOnClickListener {
+            dialog.dismiss()
+            completeShift(profile, currentDuty, method, elapsedMs)
+        }
+
+        btnContinueDuty.setOnClickListener {
+            dialog.dismiss()
+            speakVoice("Duty continues for ${profile.name}.", "${profile.name} की ड्यूटी जारी है।")
+            resumeScanning()
+        }
+
+        dialog.show()
     }
 
     private fun startShift(profile: Profile, method: String) {
@@ -789,25 +870,26 @@ class MainActivity : AppCompatActivity() {
             dutyState = "IN_DUTY",
             status = "present"
         )
-        prefs.saveTodayDuty(newDuty)
-        prefs.recordTodayAttendance(profile.id, inTimeFormatted)
-
-        lastPunchedProfileId = profile.id
-        lastPunchTime = now
-
         apiClient.markAttendance(
-            profile = profile,
-            status = "present",
-            method = method,
-            inTime = inTimeFormatted,
-            inTimeMs = now,
-            dutyDays = 0.0,
-            dutyState = "in_duty"
-        ) { _ -> }
+            profile = profile, status = "present", method = method,
+            inTime = inTimeFormatted, inTimeMs = now, dutyDays = 0.0, dutyState = "in_duty"
+        ) { result -> runOnUiThread {
+            result.onSuccess {
+                prefs.saveTodayDuty(newDuty)
+                lastPunchedProfileId = profile.id
+                lastPunchTime = now
+                showDutyStartSuccess(profile, inTimeFormatted, method)
+            }.onFailure { showSyncFailure(it.message) }
+        } }
+    }
 
-        runOnUiThread {
-            showDutyStartSuccess(profile, inTimeFormatted, method)
-        }
+    private fun showSyncFailure(message: String?) {
+        sensorFeedback.rejected()
+        speakVoice("Attendance was not saved. Check the internet connection and try again.", "हाज़िरी सहेजी नहीं गई। इंटरनेट जाँचें और दोबारा कोशिश करें।", true)
+        MaterialAlertDialogBuilder(this).setTitle("Attendance not saved")
+            .setMessage(message ?: "VGTC did not confirm the request. Please retry.")
+            .setPositiveButton("Try again") { _, _ -> loadProfiles(); resumeScanning() }
+            .setCancelable(false).show()
     }
 
 
@@ -828,31 +910,19 @@ class MainActivity : AppCompatActivity() {
             dutyState = "COMPLETED",
             status = "present"
         )
-        prefs.saveTodayDuty(completedDuty)
-
-        lastPunchedProfileId = profile.id
-        lastPunchTime = now
-
         apiClient.markAttendance(
-            profile = profile,
-            status = "present",
-            method = method,
-            inTime = currentDuty.inTimeFormatted,
-            inTimeMs = currentDuty.inTimeMs,
-            outTime = outTimeFormatted,
-            durationHours = durationRounded,
-            dutyDays = null,
-            dutyState = "completed"
-        ) { _ -> }
-
-        runOnUiThread {
-            speakVoice(
-                "Shift completed for ${profile.name}",
-                "${profile.name} की ड्यूटी पूरी हो गई है",
-                force = true
-            )
-            showDutyCompletedSuccess(profile, completedDuty, elapsedMs, method)
-        }
+            profile = profile, status = "present", method = method,
+            inTime = currentDuty.inTimeFormatted, inTimeMs = currentDuty.inTimeMs,
+            outTime = outTimeFormatted, durationHours = durationRounded, dutyDays = null, dutyState = "completed"
+        ) { result -> runOnUiThread {
+            result.onSuccess {
+                prefs.saveTodayDuty(completedDuty)
+                lastPunchedProfileId = profile.id
+                lastPunchTime = now
+                speakVoice("Shift completed and saved for ${profile.name}.", "${profile.name} की ड्यूटी पूरी हो गई है और सहेज दी गई है।", true)
+                showDutyCompletedSuccess(profile, completedDuty, elapsedMs, method)
+            }.onFailure { showSyncFailure(it.message) }
+        } }
     }
 
     private fun showDutyStartSuccess(profile: Profile, inTimeFormatted: String, method: String) {
@@ -912,7 +982,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnEmergencyCheckout.visibility = View.GONE
 
         if (normalizedPhotoUrl(profile.photo) != null) {
-            Glide.with(this).load(normalizedPhotoUrl(profile.photo)).circleCrop()
+            Glide.with(this).load(apiClient.photoModel(profile.photo)).circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(binding.ivSuccessPhoto)
         } else {
@@ -974,7 +1044,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (normalizedPhotoUrl(profile.photo) != null) {
-            Glide.with(this).load(normalizedPhotoUrl(profile.photo)).circleCrop()
+            Glide.with(this).load(apiClient.photoModel(profile.photo)).circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(binding.ivSuccessPhoto)
         } else {
@@ -1026,7 +1096,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnEmergencyCheckout.visibility = View.GONE
 
         if (normalizedPhotoUrl(profile.photo) != null) {
-            Glide.with(this).load(normalizedPhotoUrl(profile.photo)).circleCrop()
+            Glide.with(this).load(apiClient.photoModel(profile.photo)).circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(binding.ivSuccessPhoto)
         } else {
@@ -1063,8 +1133,7 @@ class MainActivity : AppCompatActivity() {
                 status = status,
                 overrideReason = "Admin Approved Emergency Early Departure"
             )
-            prefs.saveTodayDuty(updatedDuty)
-
+            binding.btnEmergencyCheckout.isEnabled = false
             apiClient.markAttendance(
                 profile = profile,
                 status = status,
@@ -1075,15 +1144,21 @@ class MainActivity : AppCompatActivity() {
                 dutyDays = days,
                 dutyState = "emergency_leave",
                 overrideReason = "Admin Approved Emergency Early Departure"
-            ) { _ -> }
-
-            runOnUiThread {
-                dismissSuccessPopup()
-                Toast.makeText(
-                    this,
-                    "✓ Early departure approved for ${profile.name} (Off Duty, $days Day)",
-                    Toast.LENGTH_LONG
-                ).show()
+            ) { result ->
+                runOnUiThread {
+                    binding.btnEmergencyCheckout.isEnabled = true
+                    result.onSuccess {
+                        prefs.saveTodayDuty(updatedDuty)
+                        dismissSuccessPopup()
+                        Toast.makeText(
+                            this,
+                            "Early departure saved for ${profile.name} ($days Day)",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }.onFailure { err ->
+                        Toast.makeText(this, "Departure not saved. Check internet and retry: ${err.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }
@@ -1127,12 +1202,90 @@ class MainActivity : AppCompatActivity() {
             .start()
     }
 
+    private fun showUnregisteredFaceAlert() {
+        pauseScanning()
+        sensorFeedback.rejected()
+        val isHi = prefs.language == "hi"
+        speakVoice(
+            "Face not enrolled. You are not in the staff profile.",
+            "चेहरा दर्ज नहीं है। आप कर्मचारी प्रोफ़ाइल में नहीं हैं।",
+            true
+        )
+
+        binding.tvUnregisteredTitle.text = if (isHi) "चेहरा दर्ज नहीं है" else "Face Not Enrolled"
+        binding.tvUnregisteredSubtitle.text = if (isHi) "आप कर्मचारी प्रोफ़ाइल में दर्ज नहीं हैं" else "You are not registered in the staff profile"
+        binding.tvUnregisteredDesc.text = if (isHi) "बायोमेट्रिक हाज़िरी के लिए कृपया कार्यालय व्यवस्थापक से संपर्क करें।" else "Your face biometrics are not registered on this terminal. Please contact office administration."
+        binding.progressDismissUnregistered.progress = 1000
+        binding.tvUnregisteredTimer.text = if (isHi) "5 सेकंड में बंद होगा..." else "Closing in 5 seconds..."
+
+        val screenHeight = resources.displayMetrics.heightPixels.toFloat()
+        binding.cardUnregisteredFace.translationY = screenHeight
+        binding.cardUnregisteredFace.alpha = 1f
+        binding.cardUnregisteredFace.visibility = View.VISIBLE
+        binding.cardUnregisteredFace.animate()
+            .translationY(0f)
+            .setDuration(350)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .start()
+
+        // 5-second smooth progress line animation (1000 down to 0)
+        unregisteredProgressAnimator?.cancel()
+        unregisteredProgressAnimator = android.animation.ValueAnimator.ofInt(1000, 0).apply {
+            duration = 5000L
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { anim ->
+                binding.progressDismissUnregistered.progress = anim.animatedValue as Int
+            }
+            start()
+        }
+
+        // 5-second countdown timer text
+        unregisteredCountDownTimer?.cancel()
+        unregisteredCountDownTimer = object : android.os.CountDownTimer(5000L, 1000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val secs = (millisUntilFinished / 1000).coerceAtLeast(1)
+                binding.tvUnregisteredTimer.text = if (isHi) "$secs सेकंड में बंद होगा..." else "Closing in $secs seconds..."
+            }
+            override fun onFinish() {
+                dismissUnregisteredFaceAlert()
+            }
+        }.start()
+
+        binding.cardUnregisteredFace.setOnClickListener {
+            dismissUnregisteredFaceAlert()
+        }
+    }
+
+    private fun dismissUnregisteredFaceAlert() {
+        unregisteredProgressAnimator?.cancel()
+        unregisteredCountDownTimer?.cancel()
+
+        if (binding.cardUnregisteredFace.visibility != View.VISIBLE) return
+
+        val screenHeight = resources.displayMetrics.heightPixels.toFloat()
+        binding.cardUnregisteredFace.animate()
+            .translationY(screenHeight)
+            .setDuration(300)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                binding.cardUnregisteredFace.visibility = View.GONE
+                resumeScanning()
+            }
+            .start()
+    }
+
     private fun pauseScanning() {
         scanComplete = true
         scanPaused = true
     }
 
     private fun resumeScanning() {
+        unregisteredProgressAnimator?.cancel()
+        unregisteredCountDownTimer?.cancel()
+        if (binding.cardUnregisteredFace.visibility == View.VISIBLE) {
+            binding.cardUnregisteredFace.visibility = View.GONE
+        }
+        consecutiveUnknownFrames = 0
         scanComplete = false
         scanPaused = false
         faceDetected = false
@@ -1214,13 +1367,14 @@ class MainActivity : AppCompatActivity() {
 
         faceDetector.process(image)
             .addOnSuccessListener { faces ->
-                if (faces.isNotEmpty()) {
+                if (faces.size == 1) {
                     runOnUiThread { resetScreensaverTimer() }
 
                     if (!faceDetected) {
                         faceDetected = true
                         runOnUiThread {
-                            binding.tvFaceDetectionHint.text = if (prefs.language == "hi") "चेहरा पहचाना गया! पहचान रहे हैं..." else "Face detected! Recognizing..."
+                            binding.tvDetectionTitle.text = if (prefs.language == "hi") "चेहरा पहचाना गया" else "Face detected"
+                            binding.tvFaceDetectionHint.text = if (prefs.language == "hi") "पहचान रहे हैं..." else "Recognizing..."
                             speakVoice("Look at camera", "कैमरे की तरफ देखें")
                         }
                     }
@@ -1240,16 +1394,25 @@ class MainActivity : AppCompatActivity() {
                                 )
                                 runOnUiThread {
                                     if (matchResult.matched && matchResult.profile != null) {
+                                        consecutiveUnknownFrames = 0
                                         markAttendance(matchResult.profile, "present", "face")
                                     } else {
-                                        val pct = (matchResult.similarity * 100).toInt().coerceIn(0, 99)
-                                        if (profiles.isEmpty()) {
-                                            binding.tvFaceDetectionHint.text =
-                                                if (prefs.language == "hi") "चेहरा पहचाना गया, परंतु कोई कर्मचारी दर्ज नहीं है" else "Face detected, but no enrolled employees in terminal"
+                                        consecutiveUnknownFrames++
+                                        val now = System.currentTimeMillis()
+                                        if (consecutiveUnknownFrames >= 3 && (now - lastUnregisteredAlertTime) > 7000L) {
+                                            consecutiveUnknownFrames = 0
+                                            lastUnregisteredAlertTime = now
+                                            showUnregisteredFaceAlert()
                                         } else {
-                                            binding.tvFaceDetectionHint.text =
-                                                if (prefs.language == "hi") "अज्ञात चेहरा ($pct% मैच)" else "Unknown Face ($pct% match) - Hold still or enroll in Admin"
-                                            speakVoice("Face not recognized", "चेहरा पहचाना नहीं गया")
+                                            val pct = (matchResult.similarity * 100).toInt().coerceIn(0, 99)
+                                            binding.tvDetectionTitle.text = if (prefs.language == "hi") "चेहरा पहचाना गया" else "Face detected"
+                                            if (profiles.isEmpty()) {
+                                                binding.tvFaceDetectionHint.text =
+                                                    if (prefs.language == "hi") "परंतु कोई कर्मचारी दर्ज नहीं है" else "No enrolled staff in terminal"
+                                            } else {
+                                                binding.tvFaceDetectionHint.text =
+                                                    if (prefs.language == "hi") "पहचान रहे हैं... ($pct% मैच)" else "Recognizing... ($pct% match)"
+                                            }
                                         }
                                     }
                                     isAnalyzingFace = false
@@ -1264,6 +1427,7 @@ class MainActivity : AppCompatActivity() {
                 } else if (faces.isEmpty() && faceDetected) {
                     faceDetected = false
                     isAnalyzingFace = false
+                    consecutiveUnknownFrames = 0
                     runOnUiThread {
                         updateLanguageUi()
                     }
@@ -1273,40 +1437,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadProfiles() {
-        // Load from local persistent store
-        val localList = prefs.getLocalProfiles()
-        if (localList.isNotEmpty()) {
-            profiles = enrichProfilesWithEmbeddings(localList)
-        }
-
-        // Sync with server
-        apiClient.getProfiles { result ->
+        if (rosterLoading) return
+        rosterLoading = true
+        apiClient.getProfiles { result -> runOnUiThread {
+            rosterLoading = false
             result.onSuccess { serverList ->
-                if (serverList.isNotEmpty()) {
-                    val merged = serverList.toMutableList()
-                    val localProfiles = prefs.getLocalProfiles()
-                    for (local in localProfiles) {
-                        val serverIdx = merged.indexOfFirst { it.id == local.id }
-                        if (serverIdx >= 0) {
-                            val serverItem = merged[serverIdx]
-                            merged[serverIdx] = serverItem.copy(
-                                faceEmbedding = serverItem.faceEmbedding ?: local.faceEmbedding,
-                                photos = if (!serverItem.photos.isNullOrEmpty()) serverItem.photos else local.photos,
-                                photo = if (!serverItem.photo.isNullOrBlank()) serverItem.photo else local.photo,
-                                vehicleNo = if (!serverItem.vehicleNo.isNullOrBlank()) serverItem.vehicleNo else local.vehicleNo,
-                                fingerprintEnrolled = serverItem.fingerprintEnrolled || local.fingerprintEnrolled,
-                                fingerprintSlotId = serverItem.fingerprintSlotId ?: local.fingerprintSlotId
-                            )
-                        } else {
-                            merged.add(local)
-                        }
-                    }
-                    val enriched = enrichProfilesWithEmbeddings(merged)
-                    profiles = enriched
-                    prefs.saveLocalProfiles(enriched)
+                val merged = prefs.mergeServerRoster(serverList)
+                profiles = enrichProfilesWithEmbeddings(merged)
+                binding.tvLiveConnection.text = "● Online · ${profiles.size} profiles"
+                binding.tvLiveConnection.setTextColor(getColor(R.color.green_online))
+            }.onFailure {
+                val cached = prefs.getLocalProfiles()
+                if (cached.isNotEmpty()) {
+                    profiles = enrichProfilesWithEmbeddings(cached)
+                    binding.tvLiveConnection.text = "● Offline (${cached.size} cached)"
+                } else {
+                    binding.tvLiveConnection.text = "● Offline"
                 }
+                binding.tvLiveConnection.setTextColor(getColor(R.color.red_offline))
             }
-        }
+        } }
     }
 
     private fun enrichProfilesWithEmbeddings(list: List<Profile>): List<Profile> {
@@ -1314,10 +1464,34 @@ class MainActivity : AppCompatActivity() {
             if (profile.faceEmbedding == null || profile.faceEmbedding.isEmpty()) {
                 val photoToUse = profile.photos?.firstOrNull() ?: profile.photo
                 if (!photoToUse.isNullOrBlank()) {
-                    val emb = realFaceEngine.extractEmbeddingFromBase64(photoToUse)
-                    if (emb != null) {
-                        profile.copy(faceEmbedding = emb)
+                    if (photoToUse.startsWith("data:") || !photoToUse.contains("/")) {
+                        val emb = realFaceEngine.extractEmbeddingFromBase64(photoToUse)
+                        if (emb != null) {
+                            val updated = profile.copy(faceEmbedding = emb)
+                            prefs.addOrUpdateLocalProfile(updated)
+                            updated
+                        } else profile
                     } else {
+                        // Remote image URL: download in background and extract face embedding
+                        Thread {
+                            try {
+                                val bitmap = com.bumptech.glide.Glide.with(applicationContext)
+                                    .asBitmap()
+                                    .load(apiClient.photoModel(photoToUse))
+                                    .submit(400, 400)
+                                    .get()
+                                if (bitmap != null) {
+                                    val emb = realFaceEngine.extractEmbeddingFromAnyPhoto(bitmap)
+                                    if (emb != null) {
+                                        val updated = profile.copy(faceEmbedding = emb.toList())
+                                        prefs.addOrUpdateLocalProfile(updated)
+                                        runOnUiThread {
+                                            profiles = prefs.getLocalProfiles()
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }.start()
                         profile
                     }
                 } else {
@@ -1366,7 +1540,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         resumeScanning()
         if (!isScreensaverActive) startCameraPreview()
-        loadProfiles()
+        rosterHandler.removeCallbacks(rosterRefresh)
+        rosterHandler.post(rosterRefresh)
         resetScreensaverTimer()
         setupR307Driver()
     }
@@ -1375,11 +1550,15 @@ class MainActivity : AppCompatActivity() {
         // Never leave the camera bound while the terminal is covered by
         // another activity or the app is in the background.
         stopCamera()
+        stopR307Polling()
+        rosterHandler.removeCallbacks(rosterRefresh)
         super.onPause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        sensorFeedback.close()
+        rosterHandler.removeCallbacksAndMessages(null)
         clockHandler?.removeCallbacksAndMessages(null)
         connectionHandler?.removeCallbacksAndMessages(null)
         screensaverHandler?.removeCallbacksAndMessages(null)

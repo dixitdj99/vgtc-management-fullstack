@@ -32,7 +32,7 @@ class EmployeeListAdapter(
         // Profile photo
         if (!profile.photo.isNullOrBlank()) {
             Glide.with(holder.binding.root.context)
-                .load(profile.photo)
+                .load(com.vgtc.terminal.api.ApiClient(holder.itemView.context).photoModel(profile.photo))
                 .circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(holder.binding.ivPhoto)

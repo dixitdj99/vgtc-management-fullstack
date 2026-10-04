@@ -1,17 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const voucherService = require('../services/voucherService');
+const path = require('path');
+const fs = require('fs');
 
 // GET /api/public/receipt/:truckNo/:date
-// Org is always fixed to 'vgtc' — never sourced from the caller. Accepting an
-// arbitrary ?org= query param would let anyone read another org's voucher data.
+// Org is always fixed to 'vgtc' — never sourced from the caller.
 router.get('/receipt/:truckNo/:date', async (req, res) => {
     try {
         const { truckNo, date } = req.params;
-        const orgId = 'vgtc'; // never trust req.query.org — IDOR vulnerability
+        const orgId = 'vgtc';
         const vouchers = await voucherService.getVouchersByTruckAndDate(orgId, truckNo, date);
         
-        // Sanitize the response to only return necessary summary data for public viewing
         const sanitized = vouchers.map(v => ({
             id: v.id,
             lrNo: v.lrNo,
@@ -37,8 +37,13 @@ router.get('/receipt/:truckNo/:date', async (req, res) => {
     }
 });
 
-// Removed: GET /api/public/org/:id — leaked org name, status, and config presence
-// to unauthenticated callers, enabling org enumeration reconnaissance.
-// Admins can use the authenticated /api/org/:id endpoint instead.
+// GET /api/public/terminal.apk — Direct download of compiled terminal APK
+router.get('/terminal.apk', (req, res) => {
+    const apkFile = path.join(__dirname, '..', '..', 'android-terminal', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+    if (!fs.existsSync(apkFile)) {
+        return res.status(404).json({ error: 'APK not compiled yet' });
+    }
+    res.download(apkFile, 'vgtc-terminal.apk');
+});
 
 module.exports = router;

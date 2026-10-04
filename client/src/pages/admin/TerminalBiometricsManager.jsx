@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ScanFace, Fingerprint, Calendar, Search, Download,
   CheckCircle2, AlertCircle, Clock, RefreshCw,
-  Eye, Smartphone, Plus, Trash2, Upload, ChevronLeft, ChevronRight, Cpu,
-  Truck, UserCheck, UserX, Home, Check, CheckCheck, MapPin
+  Eye, Smartphone, ChevronLeft, ChevronRight, Cpu,
+  Truck, UserCheck, UserX, Home, Check, CheckCheck, MapPin,
+  Key, Copy, Trash2, UserPlus, Power, Play
 } from 'lucide-react';
 import ax, { invalidateCache } from '../../api';
 import TableScroll from '../../components/TableScroll';
 import AttendanceTimelineModal from '../../components/AttendanceTimelineModal';
+import EnrollmentImage from '../../components/EnrollmentImage';
 import * as XLSX from 'xlsx';
 import './admin.css';
 
@@ -17,10 +19,6 @@ const getTodayIST = () => {
   const ist = new Date(utc + (3600000 * 5.5));
   return ist.toISOString().slice(0, 10);
 };
-
-const isBiometricPerson = (p) => [p?.type, p?.profileType, p?.department, p?.category, p?.name]
-  .map(v => String(v || '').trim().toLowerCase())
-  .every(v => !['tyre', 'manual', 'pump', 'fuel', 'fuel pump', 'fuel station', 'firm', 'expense', 'labour'].includes(v) && !/fuel\s*(pump|station)/i.test(v));
 
 const formatPunchTime = (value) => {
   if (!value) return 'Logged';
@@ -32,8 +30,17 @@ const formatPunchTime = (value) => {
 const imageUrl = (value) => {
   if (!value) return null;
   if (/^(data:|https?:\/\/)/i.test(value)) return value;
+  // Capacitor serves the UI from localhost; API files live on the remote host.
+  if (value.startsWith('/api/')) {
+    return new URL(value, new URL(ax.defaults.baseURL, window.location.origin).origin).href;
+  }
   return `${window.location.origin}${value.startsWith('/') ? value : `/${value}`}`;
 };
+
+const enrollmentPhotos = (profile) => [...new Set([
+  profile?.facePhoto || profile?.photo || profile?.photoUrl,
+  ...(Array.isArray(profile?.photos) ? profile.photos : []),
+].filter(value => typeof value === 'string' && value))];
 
 const formatTimelineDate = (value) => {
   if (!value) return 'Unknown time';
@@ -64,87 +71,112 @@ export default function TerminalBiometricsManager() {
 
   // ── Logs state ──
   const [logs, setLogs] = useState([]);
+  const [stoppedAttempts, setStoppedAttempts] = useState([]);
+  const [attemptsError, setAttemptsError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
 
   // ── Enrolled employees state ──
   const [profiles, setProfiles] = useState([]);
+  const [selectedProfileIds, setSelectedProfileIds] = useState([]);
+  const [attendanceControlBusy, setAttendanceControlBusy] = useState(false);
+  const [attendanceControlMessage, setAttendanceControlMessage] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [enrolledSearch, setEnrolledSearch] = useState('');
-  const [viewingPhotoModal, setViewingPhotoModal] = useState(null);
+  const [terminalKey, setTerminalKey] = useState('VGTC-TERMINAL-TOKEN-KEY');
+  const [keyCopied, setKeyCopied] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedAddProfileId, setSelectedAddProfileId] = useState('');
 
-  // ── Add Employee Modal State ──
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [addName, setAddName] = useState('');
-  const [addRole, setAddRole] = useState('Staff');
-  const [addVehicle, setAddVehicle] = useState('');
-  const [addPhone, setAddPhone] = useState('');
-  const [addPhoto, setAddPhoto] = useState(null);
-  const [savingEmployee, setSavingEmployee] = useState(false);
-
-  const handlePhotoSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = 320;
-        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUri = canvas.toDataURL('image/jpeg', 0.8);
-        setAddPhoto(dataUri);
-      };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
+  const fetchTerminalConfig = async () => {
+    try {
+      const res = await ax.get('terminal/config', { _skipCache: true });
+      if (res.data?.terminalKey) setTerminalKey(res.data.terminalKey);
+    } catch (_) {}
   };
 
-  const handleSaveEmployee = async (e) => {
-    e.preventDefault();
-    if (!addName.trim()) return alert('Please enter employee name');
-    setSavingEmployee(true);
+  const handleGenerateKey = async () => {
+    if (!window.confirm('Generate a new Terminal API Key? You will need to enter this key in your Android terminal settings to connect.')) return;
+    setKeyBusy(true);
     try {
-      const payload = {
-        name: addName.trim(),
-        profileType: addRole,
-        vehicleNo: addVehicle.trim().toUpperCase() || null,
-        phone: addPhone.trim() || null,
-        photo: addPhoto || null,
-        photos: addPhoto ? [addPhoto] : [],
-        createdAt: new Date().toISOString(),
-      };
-      await ax.post('profiles', payload);
-      await fetchProfiles();
-      setIsAddModalOpen(false);
-      setAddName('');
-      setAddRole('Staff');
-      setAddVehicle('');
-      setAddPhone('');
-      setAddPhoto(null);
-    } catch (err) {
-      console.error('Failed to create profile:', err);
-      alert(err.response?.data?.error || err.message || 'Failed to save employee');
+      const res = await ax.post('terminal/config', {});
+      if (res.data?.terminalKey) {
+        setTerminalKey(res.data.terminalKey);
+        setAttendanceControlMessage(`✓ New Terminal API Key generated: ${res.data.terminalKey}`);
+      }
+    } catch (e) {
+      alert('Failed to generate key: ' + (e.response?.data?.error || e.message));
     } finally {
-      setSavingEmployee(false);
+      setKeyBusy(false);
     }
   };
 
-  const handleDeleteProfile = async (p) => {
-    if (!window.confirm(`Are you sure you want to remove ${p.name}? This will also delete their biometrics on the terminal.`)) return;
-    try {
-      await ax.delete(`profiles/${p.id}`);
-      await fetchProfiles();
-    } catch (err) {
-      console.error('Failed to delete profile:', err);
-      alert('Failed to delete profile');
+  const copyKeyToClipboard = () => {
+    navigator.clipboard?.writeText(terminalKey);
+    setKeyCopied(true);
+    setTimeout(() => setKeyCopied(false), 2500);
+  };
+
+  const handleStopAll = () => {
+    if (!filteredProfiles.length) return;
+    if (window.confirm(`Stop attendance for all ${filteredProfiles.length} displayed profiles? Terminal will block attendance scans for them until resumed.`)) {
+      changeAttendanceAccess(filteredProfiles.map(p => p.id), false);
     }
   };
+
+  const handleResumeAll = () => {
+    if (!filteredProfiles.length) return;
+    if (window.confirm(`Resume attendance for all ${filteredProfiles.length} displayed profiles?`)) {
+      changeAttendanceAccess(filteredProfiles.map(p => p.id), true);
+    }
+  };
+
+  const handleDeleteProfile = async (profile) => {
+    if (!window.confirm(`Permanently delete profile "${profile.name}" from VGTC? This will remove the employee from both portal and terminal.`)) return;
+    try {
+      await ax.delete(`profiles/${profile.id}`);
+      setProfiles(prev => prev.filter(p => p.id !== profile.id));
+      setAttendanceControlMessage(`✓ Profile "${profile.name}" deleted.`);
+    } catch (e) {
+      alert('Failed to delete profile: ' + (e.response?.data?.error || e.message));
+    }
+  };
+
+  const handleAddFromVgtc = async () => {
+    if (!selectedAddProfileId) return;
+    try {
+      await changeAttendanceAccess([selectedAddProfileId], true);
+      setShowAddModal(false);
+      setSelectedAddProfileId('');
+    } catch (e) {
+      alert('Failed to add profile: ' + (e.response?.data?.error || e.message));
+    }
+  };
+
+  const [viewingPhotoModal, setViewingPhotoModal] = useState(null);
+  const photoCloseRef = useRef(null);
+  const photoModalOpen = !!viewingPhotoModal;
+
+  useEffect(() => {
+    if (!photoModalOpen) return undefined;
+    const previousFocus = document.activeElement;
+    photoCloseRef.current?.focus();
+    const onKeyDown = event => {
+      if (event.key === 'Escape') setViewingPhotoModal(null);
+      // The gallery's only interactive control is Close.
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        photoCloseRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [photoModalOpen]);
 
   const fetchRoster = async (silent = false) => {
     if (!silent) setRosterLoading(true);
@@ -168,6 +200,14 @@ export default function TerminalBiometricsManager() {
       const res = await ax.get(`attendance?from=${selectedDate}&to=${selectedDate}`, { _skipCache: true });
       const rawRecords = Array.isArray(res.data) ? res.data : [];
       setLogs(rawRecords);
+      if (activeTab !== 'enrolled') try {
+        const attempts = await ax.get('terminal/attempts', { _skipCache: true });
+        setStoppedAttempts((attempts.data?.events || []).filter(event => event.date === selectedDate));
+        setAttemptsError('');
+      } catch (error) {
+        setStoppedAttempts([]);
+        setAttemptsError('Stopped scan attempts could not be loaded. Refresh to retry.');
+      }
     } catch (err) {
       console.error('Failed to load attendance logs:', err);
     } finally {
@@ -178,9 +218,35 @@ export default function TerminalBiometricsManager() {
   const fetchProfiles = async () => {
     try {
       const res = await ax.get('profiles', { _skipCache: true });
-      setProfiles(Array.isArray(res.data) ? res.data.filter(isBiometricPerson) : []);
+      const nextProfiles = Array.isArray(res.data) ? res.data : [];
+      setProfiles(nextProfiles);
+      setSelectedProfileIds(previous => previous.filter(id => nextProfiles.some(p => p.id === id)));
+      setViewingPhotoModal(previous => previous ? nextProfiles.find(p => p.id === previous.id) || null : null);
+      setTimelineProfile(previous => previous ? nextProfiles.find(p => p.id === previous.id) || null : null);
     } catch (err) {
       console.error('Failed to load profiles:', err);
+    }
+  };
+
+  const changeAttendanceAccess = async (profileIds, attendanceEnabled) => {
+    if (!profileIds.length || attendanceControlBusy) return;
+    setAttendanceControlBusy(true);
+    setAttendanceControlMessage('');
+    let updated = 0;
+    try {
+      // Firestore batches are bounded; a large portal roster is sent in chunks.
+      for (let index = 0; index < profileIds.length; index += 400) {
+        const batch = profileIds.slice(index, index + 400);
+        const response = await ax.post('terminal/attendance-control', { profileIds: batch, attendanceEnabled }, { _requireOnline: true });
+        if (response.data?._queued) throw new Error('Connect to the internet to change attendance access.');
+        updated += batch.length;
+      }
+      setAttendanceControlMessage(`Attendance ${attendanceEnabled ? 'started' : 'stopped'} for ${updated} profiles.`);
+    } catch (error) {
+      setAttendanceControlMessage(`${updated ? `${updated} profiles updated. ` : ''}${error.response?.data?.error || error.message || 'Unable to update attendance access.'}`);
+    } finally {
+      await Promise.all([fetchProfiles(), fetchRoster(true)]);
+      setAttendanceControlBusy(false);
     }
   };
 
@@ -188,19 +254,22 @@ export default function TerminalBiometricsManager() {
     fetchRoster();
     fetchLogs();
     fetchProfiles();
+    fetchTerminalConfig();
   }, [selectedDate]);
 
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
+      if (document.hidden) return;
       if (activeTab === 'presence') fetchRoster(true);
       else if (activeTab === 'logs') fetchLogs(true);
-    }, 10000);
+      fetchProfiles();
+    }, 60000);
     return () => clearInterval(interval);
-  }, [selectedDate, autoRefresh, activeTab]);
+  }, [selectedDate, autoRefresh, activeTab, liveConnected]);
 
   // Server-sent events make Android terminal punches appear immediately. The
-  // uncached interval above remains as a cross-instance/network fallback.
+  // one-minute uncached interval remains as a cross-instance/network fallback.
   useEffect(() => {
     if (!autoRefresh) {
       setLiveConnected(false);
@@ -220,7 +289,8 @@ export default function TerminalBiometricsManager() {
     const connect = async () => {
       try {
         const token = localStorage.getItem('vgtc-token');
-        const response = await fetch('/api/attendance/live', {
+        const apiBase = new URL(ax.defaults.baseURL, window.location.origin).href.replace(/\/$/, '');
+        const response = await fetch(`${apiBase}/attendance/live`, {
           headers: {
             Accept: 'text/event-stream',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -230,6 +300,9 @@ export default function TerminalBiometricsManager() {
         });
         if (!response.ok || !response.body) throw new Error(`Live stream unavailable (${response.status})`);
         setLiveConnected(true);
+        // Reconcile changes missed while the internet connection was unavailable.
+        fetchProfiles();
+        refreshAttendance();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -247,6 +320,11 @@ export default function TerminalBiometricsManager() {
               const event = JSON.parse(dataLine.slice(5).trim());
               if (event.type === 'attendance.changed') {
                 window.dispatchEvent(new CustomEvent('attendance-realtime', { detail: event }));
+                refreshAttendance();
+              }
+              if (event.type === 'profiles.changed') {
+                invalidateCache('profiles');
+                fetchProfiles();
                 refreshAttendance();
               }
             } catch (_) { /* Ignore malformed keep-alive packets. */ }
@@ -269,7 +347,7 @@ export default function TerminalBiometricsManager() {
       controller.abort();
       setLiveConnected(false);
     };
-  }, [selectedDate, autoRefresh]);
+  }, [selectedDate, autoRefresh, activeTab]);
 
   // ── Quick Mark Attendance ──
   const handleQuickMark = async (profile, newStatus) => {
@@ -306,7 +384,7 @@ export default function TerminalBiometricsManager() {
   // ── Bulk Mark Unmarked as Present ──
   const handleMarkAllUnmarkedPresent = async () => {
     if (!roster?.rows) return;
-    const unmarked = roster.rows.filter(r => !r.status);
+    const unmarked = presenceList.filter(r => !r.status && r.attendanceEnabled);
     if (unmarked.length === 0) {
       alert('All personnel on the roster already have attendance marked for this date.');
       return;
@@ -335,7 +413,12 @@ export default function TerminalBiometricsManager() {
   // ── Computed Presence List ──
   const presenceList = useMemo(() => {
     if (!roster?.rows) return [];
-    return roster.rows.map(r => {
+    const rosterById = new Map(roster.rows.map(row => [row.profileId, row]));
+    // Payroll rosters can exclude categories. Terminal controls cover every
+    // existing master profile, including profiles with no attendance history.
+    return profiles.map(profile => {
+      const r = { profileId: profile.id, name: profile.name, type: profile.profileType || profile.type || 'Staff', phone: profile.phone, vehicleNo: profile.vehicleNo, ...rosterById.get(profile.id) };
+      const attendanceEnabled = (profiles.find(p => p.id === r.profileId)?.attendanceEnabled ?? r.attendanceEnabled) !== false;
       const cleanTruck = (r.vehicleNo || '').toUpperCase().replace(/\s+/g, '');
       const matchedVeh = vehicles.find(v => (v.truckNo || '').toUpperCase().replace(/\s+/g, '') === cleanTruck);
 
@@ -400,6 +483,7 @@ export default function TerminalBiometricsManager() {
 
       return {
         ...r,
+        attendanceEnabled,
         matchedVeh,
         isOnTrip,
         dutyText,
@@ -411,12 +495,13 @@ export default function TerminalBiometricsManager() {
         punchMethod,
       };
     });
-  }, [roster, vehicles]);
+  }, [roster, vehicles, profiles]);
 
   const filteredPresence = useMemo(() => {
     return presenceList.filter(row => {
       if (presenceRoleFilter !== 'all' && (row.type || 'Staff') !== presenceRoleFilter) return false;
       if (presenceStatusFilter !== 'all') {
+        if (presenceStatusFilter === 'stopped' && row.attendanceEnabled) return false;
         if (presenceStatusFilter === 'present' && row.liveStatus !== 'present') return false;
         if (presenceStatusFilter === 'trip' && row.liveStatus !== 'trip') return false;
         if (presenceStatusFilter === 'leave' && row.liveStatus !== 'leave') return false;
@@ -443,12 +528,38 @@ export default function TerminalBiometricsManager() {
     const onLeave = presenceList.filter(p => p.liveStatus === 'leave').length;
     const absent = presenceList.filter(p => p.liveStatus === 'absent').length;
     const halfDay = presenceList.filter(p => p.liveStatus === 'half_day').length;
-    const unmarked = presenceList.filter(p => p.liveStatus === 'unmarked').length;
+    const unmarked = presenceList.filter(p => p.liveStatus === 'unmarked' && p.attendanceEnabled).length;
     return { total, presentYard, onTrip, onLeave, absent, halfDay, unmarked };
   }, [presenceList]);
 
   const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
+    // 1. Separate individual punch records from daily summaries
+    const punchLogs = logs.filter(l => l.isPunchLog || (l.id && l.id.startsWith('punch_')));
+    const punchedProfileDates = new Set(punchLogs.map(l => `${l.profileId || l.id}_${l.date}`));
+
+    // 2. Include other records (e.g. manual portal roll-calls) only if no terminal punch exists for that person/day
+    const otherLogs = logs.filter(l => {
+      if (l.isPunchLog || (l.id && l.id.startsWith('punch_'))) return false;
+      // Skip duplicate backward-compatible summary documents
+      if (l.id && l.date && l.id.startsWith(l.date + '_')) return false;
+      if (l.isDailySummary && punchedProfileDates.has(`${l.profileId || l.id}_${l.date}`)) return false;
+      return true;
+    });
+
+    // 3. Deduplicate by unique punch signature: profileId + terminalTime/punchTime + status
+    const seen = new Set();
+    const uniqueLogs = [];
+    for (const log of [...punchLogs, ...otherLogs]) {
+      const pId = log.profileId || log.id || '';
+      const pTime = log.punchTime || log.terminalTime || log.inTime || log.createdAt || '';
+      const key = log.isPunchLog ? log.id : `${pId}_${log.date}_${pTime}_${log.status}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueLogs.push(log);
+      }
+    }
+
+    return uniqueLogs.filter(log => {
       const isTerminal = log.source === 'terminal' || log.terminalId || log.method === 'face' || log.method === 'fingerprint' || log.id?.startsWith('emp_') || log.isPunchLog;
       if (sourceFilter === 'terminal' && !isTerminal) return false;
       if (statusFilter !== 'all' && log.status !== statusFilter) return false;
@@ -459,6 +570,10 @@ export default function TerminalBiometricsManager() {
         if (!name.includes(q) && !role.includes(q)) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = a.punchTime || a.terminalTime || a.inTime || a.createdAt || '';
+      const timeB = b.punchTime || b.terminalTime || b.inTime || b.createdAt || '';
+      return String(timeB).localeCompare(String(timeA));
     });
   }, [logs, sourceFilter, statusFilter, searchQuery]);
 
@@ -528,6 +643,7 @@ export default function TerminalBiometricsManager() {
         'Face Enrolled': (p.facePhoto || p.photo || p.faceEnrolled) ? 'Yes (Photo Saved)' : 'No',
         'Photos Count': p.photos ? p.photos.length : ((p.facePhoto || p.photo) ? 1 : 0),
         'Fingerprint Enrolled': p.fingerprintEnrolled ? 'Yes (Linked)' : 'No',
+        'Attendance Access': p.attendanceEnabled === false ? 'Stopped' : 'Enabled',
         'Phone': p.phone || '-',
       }));
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -611,7 +727,7 @@ export default function TerminalBiometricsManager() {
               }}
             >
               <Fingerprint size={16} />
-              Enrolled Biometrics ({profiles.length})
+              Profiles & Attendance ({profiles.length})
             </button>
           </div>
         </div>
@@ -830,7 +946,7 @@ export default function TerminalBiometricsManager() {
             }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Total Enrolled
+                  VGTC Profiles
                 </div>
                 <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--text)', marginTop: 4, letterSpacing: '-0.02em' }}>
                   {stats.totalEnrolled}
@@ -986,6 +1102,7 @@ export default function TerminalBiometricsManager() {
                 <option value="absent">Absent / At Home</option>
                 <option value="half_day">Half Day</option>
                 <option value="unmarked">Unmarked (Pending)</option>
+                <option value="stopped">Attendance Stopped</option>
               </select>
 
               {/* Role Filter */}
@@ -1152,16 +1269,71 @@ export default function TerminalBiometricsManager() {
             </button>
           )}
 
+
           {activeTab === 'enrolled' && (
-            <button
-              type="button"
-              className="adm-btn adm-btn--primary"
-              onClick={() => setIsAddModalOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 9 }}
-            >
-              <Plus size={15} />
-              Enroll Employee
-            </button>
+            <>
+              {selectedProfileIds.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className="adm-btn"
+                    disabled={attendanceControlBusy}
+                    onClick={() => changeAttendanceAccess(selectedProfileIds, false)}
+                    style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', borderColor: '#ef4444', fontWeight: 700 }}
+                  >
+                    Stop Attendance ({selectedProfileIds.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-btn"
+                    disabled={attendanceControlBusy}
+                    onClick={() => changeAttendanceAccess(selectedProfileIds, true)}
+                    style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderColor: '#10b981', fontWeight: 700 }}
+                  >
+                    Resume Attendance ({selectedProfileIds.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-btn"
+                    onClick={() => setSelectedProfileIds([])}
+                    style={{ fontSize: 12 }}
+                  >
+                    Clear ({selectedProfileIds.length})
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="adm-btn"
+                    disabled={attendanceControlBusy || profiles.length === 0}
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to STOP attendance for all ${profiles.length} profiles?`)) {
+                        changeAttendanceAccess(profiles.map(p => p.id), false);
+                      }
+                    }}
+                    style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', borderColor: 'rgba(239,68,68,0.35)', fontWeight: 700 }}
+                    title="Stop attendance punches for every employee profile"
+                  >
+                    🚫 Stop All Attendance
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-btn"
+                    disabled={attendanceControlBusy || profiles.length === 0}
+                    onClick={() => {
+                      if (window.confirm(`Resume attendance for all ${profiles.length} profiles?`)) {
+                        changeAttendanceAccess(profiles.map(p => p.id), true);
+                      }
+                    }}
+                    style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', borderColor: 'rgba(16,185,129,0.35)', fontWeight: 700 }}
+                    title="Resume/allow attendance punches for all employee profiles"
+                  >
+                    ✓ Resume All Attendance
+                  </button>
+                </>
+              )}
+            </>
           )}
 
           <button
@@ -1193,6 +1365,79 @@ export default function TerminalBiometricsManager() {
       </div>
 
       {/* ══════════════════════ CONTENT AREA ══════════════════════ */}
+
+      {attendanceControlMessage && <p role="status" className="adm-sub">{attendanceControlMessage}</p>}
+      {activeTab === 'enrolled' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+          <div className="adm-panel" style={{ padding: '16px 20px', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', borderRadius: 14 }}>
+            {/* Quick Global Attendance Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="adm-btn"
+                style={{ background: '#ef4444', color: '#fff', border: 'none', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, cursor: 'pointer' }}
+                onClick={handleStopAll}
+                disabled={attendanceControlBusy || filteredProfiles.length === 0}
+                title="Stop attendance for all displayed profiles"
+              >
+                <Power size={16} /> Stop All Attendance ({filteredProfiles.length})
+              </button>
+
+              <button
+                type="button"
+                className="adm-btn"
+                style={{ background: '#10b981', color: '#fff', border: 'none', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, cursor: 'pointer' }}
+                onClick={handleResumeAll}
+                disabled={attendanceControlBusy || filteredProfiles.length === 0}
+                title="Resume attendance for all displayed profiles"
+              >
+                <Play size={16} /> Resume All Attendance
+              </button>
+
+              <button
+                type="button"
+                className="adm-btn"
+                style={{ background: 'var(--primary, #6366f1)', color: '#fff', border: 'none', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, cursor: 'pointer' }}
+                onClick={() => setShowAddModal(true)}
+              >
+                <UserPlus size={16} /> Add from VGTC Staff / Drivers
+              </button>
+            </div>
+
+            {/* Terminal Device API Key Card */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-th, rgba(99,102,241,0.06))', padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700 }}>
+                <Key size={15} color="var(--primary)" />
+                <span>Terminal API Key:</span>
+                <code style={{ background: 'var(--bg-card)', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12.5, fontWeight: 800, color: 'var(--primary)' }}>
+                  {terminalKey}
+                </code>
+              </div>
+              <button
+                type="button"
+                className="adm-btn adm-btn--sm"
+                onClick={copyKeyToClipboard}
+                title="Copy Terminal API key for Android app"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px' }}
+              >
+                {keyCopied ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
+                {keyCopied ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                className="adm-btn adm-btn--sm"
+                onClick={handleGenerateKey}
+                disabled={keyBusy}
+                title="Generate new API key"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px' }}
+              >
+                <RefreshCw size={13} className={keyBusy ? 'spin' : ''} />
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'presence' ? (
         /* ── Daily Presence & Attendance Table ── */
@@ -1239,7 +1484,7 @@ export default function TerminalBiometricsManager() {
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           {photoUrl ? (
-                            <img
+                            <EnrollmentImage
                               src={photoUrl}
                               alt=""
                               style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.3)', flexShrink: 0 }}
@@ -1348,10 +1593,16 @@ export default function TerminalBiometricsManager() {
 
                       {/* Roll-Call Actions */}
                       <td style={{ textAlign: 'center' }}>
+                        <button type="button" className="adm-btn adm-btn--sm" disabled={attendanceControlBusy}
+                          onClick={event => { event.stopPropagation(); changeAttendanceAccess([row.profileId], !row.attendanceEnabled); }}
+                          style={{ marginBottom: 6 }}>
+                          {row.attendanceEnabled ? 'Stop attendance' : 'Start attendance'}
+                        </button>
+                        {!row.attendanceEnabled && <div style={{ color: '#dc2626', fontWeight: 700, marginBottom: 6 }}>Attendance stopped</div>}
                         <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-th)', padding: 3, borderRadius: 8, border: '1px solid var(--border)' }}>
                           <button
                             type="button"
-                            disabled={isBusy}
+                            disabled={isBusy || !row.attendanceEnabled}
                             onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'present'); }}
                             title="Mark Present in Yard"
                             style={{
@@ -1366,7 +1617,7 @@ export default function TerminalBiometricsManager() {
                           </button>
                           <button
                             type="button"
-                            disabled={isBusy}
+                            disabled={isBusy || !row.attendanceEnabled}
                             onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'half_day'); }}
                             title="Mark Half Day"
                             style={{
@@ -1381,7 +1632,7 @@ export default function TerminalBiometricsManager() {
                           </button>
                           <button
                             type="button"
-                            disabled={isBusy}
+                            disabled={isBusy || !row.attendanceEnabled}
                             onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'leave'); }}
                             title="Mark On Leave"
                             style={{
@@ -1396,7 +1647,7 @@ export default function TerminalBiometricsManager() {
                           </button>
                           <button
                             type="button"
-                            disabled={isBusy}
+                            disabled={isBusy || !row.attendanceEnabled}
                             onClick={(event) => { event.stopPropagation(); handleQuickMark(row, 'absent'); }}
                             title="Mark Absent / At Home"
                             style={{
@@ -1497,6 +1748,7 @@ export default function TerminalBiometricsManager() {
               ) : (
                 filteredLogs.map((log, idx) => {
                   const statusColor =
+                    log.status === 'duty_continues' ? '#6366f1' :
                     log.status === 'present' ? '#10b981' :
                     log.status === 'half_day' ? '#f59e0b' : '#ef4444';
 
@@ -1540,7 +1792,7 @@ export default function TerminalBiometricsManager() {
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           {photoUrl ? (
-                            <img
+                            <EnrollmentImage
                               src={photoUrl}
                               alt=""
                               style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.4)', flexShrink: 0 }}
@@ -1560,6 +1812,7 @@ export default function TerminalBiometricsManager() {
                             <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {log.profileName || 'Unknown Employee'}
                             </div>
+                            {matchedProfile?.attendanceEnabled === false && <div style={{ color: '#dc2626', fontSize: 11, fontWeight: 700 }}>Attendance currently stopped</div>}
                             {assignedVeh && (
                               <div style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, marginTop: '2px' }}>
                                 🚛 {assignedVeh}
@@ -1629,6 +1882,14 @@ export default function TerminalBiometricsManager() {
                               borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
                             }}>
                               ⚡ Tour Active
+                            </span>
+                          ) : (log.terminalEvent === 'DUTY_CONTINUES' || log.status === 'duty_continues' || log.action === 'DUTY_CONTINUES') ? (
+                            <span style={{
+                              fontSize: '10.5px', fontWeight: 800, color: '#6366f1',
+                              background: 'rgba(99,102,241,0.12)', padding: '2px 7px',
+                              borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: 3
+                            }}>
+                              🔄 Duty Continues (Re-scan)
                             </span>
                           ) : log.terminalEvent === 'CHECK_IN' ? (
                             <span style={{
@@ -1722,16 +1983,16 @@ export default function TerminalBiometricsManager() {
               background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
             }}>
               <Fingerprint size={44} style={{ opacity: 0.3, margin: '0 auto 12px', display: 'block' }} />
-              <h3 style={{ margin: 0, fontSize: 16, color: 'var(--text)' }}>No Enrolled Employees Found</h3>
+              <h3 style={{ margin: 0, fontSize: 16, color: 'var(--text)' }}>No VGTC Profiles Found</h3>
               <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
                 Use the VGTC Android Terminal app to enroll face photos and OTG fingerprints.
               </p>
             </div>
           ) : (
             filteredProfiles.map(p => {
-              const primaryPhoto = imageUrl(p.facePhoto || p.photo || p.photoUrl || (p.photos && p.photos.length > 0 ? p.photos[0] : null));
+              const primaryPhoto = imageUrl(enrollmentPhotos(p)[0]);
               const hasFace = !!(primaryPhoto || p.faceEnrolled || (p.faceEmbedding && p.faceEmbedding.length > 0));
-              const photoCount = p.photos && p.photos.length > 0 ? p.photos.length : (primaryPhoto ? 1 : 0);
+              const photoCount = enrollmentPhotos(p).length;
               const hasFp = !!p.fingerprintEnrolled || p.fingerprintSlotId != null;
 
               return (
@@ -1741,7 +2002,12 @@ export default function TerminalBiometricsManager() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setTimelineProfile(p)}
-                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setTimelineProfile(p); }}
+                  onKeyDown={(event) => {
+                    if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault();
+                      setTimelineProfile(p);
+                    }
+                  }}
                   title="Open complete attendance timeline"
                   style={{
                     padding: 18, display: 'flex', flexDirection: 'column', gap: 14,
@@ -1750,9 +2016,14 @@ export default function TerminalBiometricsManager() {
                   }}
                 >
                   {/* Avatar + Name Row */}
+                  <label onClick={event => event.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={selectedProfileIds.includes(p.id)}
+                      onChange={event => setSelectedProfileIds(previous => event.target.checked ? [...new Set([...previous, p.id])] : previous.filter(id => id !== p.id))} />
+                    Select {p.name}
+                  </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                     {primaryPhoto ? (
-                      <img
+                      <EnrollmentImage
                         src={primaryPhoto}
                         alt={p.name}
                         style={{
@@ -1767,7 +2038,7 @@ export default function TerminalBiometricsManager() {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#6366f1', fontSize: 20, fontWeight: 800, flexShrink: 0,
                       }}>
-                        {p.name.charAt(0).toUpperCase()}
+                        {(p.name || '?').charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -1802,14 +2073,59 @@ export default function TerminalBiometricsManager() {
                     </span>
                   </div>
 
+                  {/* Attendance Active/Stopped Toggle Bar */}
+                  <div
+                    onClick={event => {
+                      event.stopPropagation();
+                      changeAttendanceAccess([p.id], p.attendanceEnabled === false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      background: p.attendanceEnabled === false ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                      border: `1.5px solid ${p.attendanceEnabled === false ? '#ef4444' : '#10b981'}`,
+                      cursor: attendanceControlBusy ? 'wait' : 'pointer',
+                      userSelect: 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title={p.attendanceEnabled === false ? 'Click to Enable Attendance' : 'Click to Stop Attendance'}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 9, height: 9, borderRadius: '50%',
+                        background: p.attendanceEnabled === false ? '#ef4444' : '#10b981',
+                        boxShadow: `0 0 8px ${p.attendanceEnabled === false ? '#ef4444' : '#10b981'}`
+                      }} />
+                      <span style={{
+                        fontWeight: 800, fontSize: '12px',
+                        color: p.attendanceEnabled === false ? '#ef4444' : '#10b981'
+                      }}>
+                        {p.attendanceEnabled === false ? 'Attendance STOPPED' : 'Attendance ACTIVE'}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '3px 9px',
+                      borderRadius: 6,
+                      background: p.attendanceEnabled === false ? '#ef4444' : '#10b981',
+                      color: '#fff'
+                    }}>
+                      {p.attendanceEnabled === false ? 'Resume' : 'Stop'}
+                    </span>
+                  </div>
+
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary, #6366f1)', fontSize: 11.5, fontWeight: 750 }}>
                     <Calendar size={13} />
                     Click card to view full attendance timeline
                   </div>
 
                   {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {hasFace && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    {photoCount > 0 && (
                       <button
                         type="button"
                         className="adm-btn adm-btn--sm"
@@ -1817,23 +2133,83 @@ export default function TerminalBiometricsManager() {
                         onClick={(event) => { event.stopPropagation(); setViewingPhotoModal(p); }}
                       >
                         <Eye size={13} />
-                        View Angles ({photoCount})
+                        Photos ({photoCount})
                       </button>
                     )}
                     <button
                       type="button"
                       className="adm-btn adm-btn--sm"
-                      style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 5, color: 'var(--danger)', borderColor: 'rgba(180,35,24,0.3)' }}
+                      style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px' }}
                       onClick={(event) => { event.stopPropagation(); handleDeleteProfile(p); }}
-                      title="Remove employee"
+                      title="Permanently delete profile from VGTC"
                     >
                       <Trash2 size={13} />
+                      Delete
                     </button>
                   </div>
                 </div>
               );
             })
           )}
+        </div>
+      )}
+
+      {/* ── Add from VGTC Staff / Drivers Modal ── */}
+      {showAddModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: 20,
+        }}>
+          <div role="dialog" className="adm-panel" style={{ maxWidth: 540, width: '100%', borderRadius: 16 }}>
+            <div className="adm-panel-hd">
+              <div>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>
+                  Add from VGTC Staff &amp; Drivers
+                </h3>
+                <p className="adm-sub">Select an existing VGTC person to activate for terminal attendance &amp; biometric enrollment.</p>
+              </div>
+              <button type="button" className="adm-btn adm-btn--sm" onClick={() => { setShowAddModal(false); setSelectedAddProfileId(''); }}>
+                ✕
+              </button>
+            </div>
+            <div className="adm-panel-bd" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 700 }}>
+                  Select Staff / Driver:
+                </label>
+                <select
+                  className="adm-input"
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 14 }}
+                  value={selectedAddProfileId}
+                  onChange={(e) => setSelectedAddProfileId(e.target.value)}
+                >
+                  <option value="">-- Choose employee from VGTC --</option>
+                  {profiles
+                    .filter(p => !p.type?.toLowerCase().includes('pump'))
+                    .map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {p.profileType || p.department || p.type || 'Staff'} {p.vehicleNo ? `(🚛 ${p.vehicleNo})` : ''} {p.attendanceEnabled === false ? '[Attendance Stopped]' : '[Active]'}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button type="button" className="adm-btn" onClick={() => { setShowAddModal(false); setSelectedAddProfileId(''); }}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="adm-btn"
+                  style={{ background: 'var(--primary, #6366f1)', color: '#fff', border: 'none', fontWeight: 700 }}
+                  disabled={!selectedAddProfileId || attendanceControlBusy}
+                  onClick={handleAddFromVgtc}
+                >
+                  Activate for Terminal
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1848,31 +2224,28 @@ export default function TerminalBiometricsManager() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 9999, padding: 20,
         }}>
-          <div className="adm-panel" style={{ maxWidth: 620, width: '100%', borderRadius: 16 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="enrollment-photo-title" className="adm-panel" style={{ maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto', borderRadius: 16 }}>
             <div className="adm-panel-hd">
               <div>
-                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>
+                <h3 id="enrollment-photo-title" style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>
                   {viewingPhotoModal.name} — Enrolled Face Photos
                 </h3>
-                <p className="adm-sub">Captured for biometric recognition</p>
+                <p className="adm-sub">Synced from the terminal. First photo is the profile image.</p>
               </div>
-              <button type="button" className="adm-btn adm-btn--sm" onClick={() => setViewingPhotoModal(null)}>
+              <button ref={photoCloseRef} type="button" className="adm-btn adm-btn--sm" onClick={() => setViewingPhotoModal(null)}>
                 Close
               </button>
             </div>
             <div className="adm-panel-bd">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
-                {(viewingPhotoModal.photos && viewingPhotoModal.photos.length > 0
-                  ? viewingPhotoModal.photos
-                  : [viewingPhotoModal.facePhoto || viewingPhotoModal.photo || viewingPhotoModal.photoUrl].filter(Boolean)
-                ).map((imgSrc, i) => (
+                {enrollmentPhotos(viewingPhotoModal).map((imgSrc, i) => (
                   <div key={i} style={{ textAlign: 'center' }}>
-                    <img
+                    <EnrollmentImage
                       src={imageUrl(imgSrc)}
-                      alt={`Angle ${i + 1}`}
-                      style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)' }}
+                      alt={`${viewingPhotoModal.name} — ${i === 0 ? 'profile image' : `enrollment photo ${i + 1}`}`}
+                      style={{ width: '100%', height: 220, objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)' }}
                     />
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginTop: 6 }}>Angle {i + 1}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginTop: 6 }}>{i === 0 ? 'Profile image' : `Enrollment photo ${i + 1}`}</div>
                   </div>
                 ))}
               </div>
@@ -1881,121 +2254,6 @@ export default function TerminalBiometricsManager() {
         </div>
       )}
 
-      {/* ── Enroll Employee Modal ── */}
-      {isAddModalOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 9999, padding: 20,
-        }}>
-          <div className="adm-panel" style={{ maxWidth: 480, width: '100%', borderRadius: 16 }}>
-            <div className="adm-panel-hd">
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ScanFace size={20} color="#10b981" />
-                Enroll New Employee
-              </h3>
-              <button type="button" className="adm-btn adm-btn--sm" onClick={() => setIsAddModalOpen(false)}>✕</button>
-            </div>
-
-            <form onSubmit={handleSaveEmployee} className="adm-panel-bd" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="adm-field">
-                <label htmlFor="add-name">Employee Full Name *</label>
-                <input
-                  id="add-name"
-                  type="text"
-                  required
-                  placeholder="e.g. Ramesh Kumar"
-                  value={addName}
-                  onChange={e => setAddName(e.target.value)}
-                  className="adm-input"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="adm-field">
-                  <label htmlFor="add-role">Role / Category</label>
-                  <select id="add-role" value={addRole} onChange={e => setAddRole(e.target.value)} className="adm-select">
-                    <option value="Staff">Staff</option>
-                    <option value="Driver">Driver</option>
-                    <option value="Labour">Labour</option>
-                    <option value="Helper">Helper</option>
-                    <option value="Manager">Manager</option>
-                  </select>
-                </div>
-                <div className="adm-field">
-                  <label htmlFor="add-phone">Phone (Optional)</label>
-                  <input
-                    id="add-phone"
-                    type="tel"
-                    placeholder="9876543210"
-                    value={addPhone}
-                    onChange={e => setAddPhone(e.target.value)}
-                    className="adm-input"
-                  />
-                </div>
-              </div>
-
-              <div className="adm-field">
-                <label htmlFor="add-vehicle">
-                  Assigned Vehicle / Truck Number {addRole === 'Driver' ? '(Linked for Driver Attendance)' : '(Optional)'}
-                </label>
-                <input
-                  id="add-vehicle"
-                  type="text"
-                  placeholder="e.g. HR 55 AB 1234"
-                  value={addVehicle}
-                  onChange={e => setAddVehicle(e.target.value.toUpperCase())}
-                  className="adm-input"
-                  style={{ textTransform: 'uppercase' }}
-                />
-              </div>
-
-              <div className="adm-field">
-                <label>Face Photo (For Biometric AI Recognition)</label>
-                <div style={{
-                  border: '2px dashed var(--border)',
-                  borderRadius: 10, padding: 16, textAlign: 'center',
-                  background: 'var(--bg-th)',
-                }}>
-                  {addPhoto ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                      <img src={addPhoto} alt="Preview" style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: '3px solid #10b981' }} />
-                      <button
-                        type="button"
-                        onClick={() => setAddPhoto(null)}
-                        style={{ color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
-                      >
-                        Change Photo
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Upload size={26} style={{ margin: '0 auto 8px', display: 'block', color: 'var(--text-muted)' }} />
-                      <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>Upload face portrait image</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>JPG, PNG up to 5MB (auto-compressed)</div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePhotoSelect}
-                        style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
-                <button type="button" className="adm-btn" onClick={() => setIsAddModalOpen(false)} disabled={savingEmployee}>
-                  Cancel
-                </button>
-                <button type="submit" className="adm-btn adm-btn--primary" disabled={savingEmployee}>
-                  {savingEmployee ? 'Saving & Syncing...' : 'Save & Sync to Terminal'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,1 +1,5 @@
-{}
+{
+  "firestore": {
+    "indexes": "server/firestore.indexes.json"
+  }
+}

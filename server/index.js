@@ -262,6 +262,7 @@ app.use('/api/labour-account', requireAuth, gate('pay'), require('./routes/labou
 app.use('/api/stock-transfers', requireAuth, gate(['stock_kosli','stock_jhajjar','stock_bahadurgarh','stock_jkl']), stockTransferRoutes);
 app.use('/api/mileage', requireAuth, gate('mileage'), mileageRoutes);
 app.use('/api/profiles', requireAuth, profileRoutes);
+app.use('/api/terminal', requireAuth, require('./routes/terminalRoutes'));
 app.use('/api/payments', requireAuth, gate('pay'), paymentRoutes);
 app.use('/api/maintenance', requireAuth, gate('vehicle'), maintenanceRoutes);
 // requireAuth first: the gate reads req.user, and invoiceRoutes applies its own

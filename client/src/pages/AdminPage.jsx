@@ -32,7 +32,8 @@ const TAB_GROUPS = [
     tabs: [
       { id: 'users', label: 'Users & Permissions', Icon: Users },
       { id: 'profiles', label: 'Driver & Staff Profiles', Icon: UserCircle },
-      { id: 'biometrics', label: 'Terminal & Attendance', Icon: ScanFace },
+      // Temporarily hidden per admin request (code preserved below):
+      // { id: 'biometrics', label: 'Terminal & Attendance', Icon: ScanFace },
     ],
   },
   {

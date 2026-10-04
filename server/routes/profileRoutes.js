@@ -4,19 +4,18 @@ const { db, isAvailable } = require('../firebase');
 const { getCol } = require('../utils/collectionUtils');
 const { isProduction } = require('../utils/envConfig');
 const localStore = require('../utils/localStore');
+const { cleanupEnrollmentImages } = require('../services/enrollmentImageCleanup');
+const { publishAttendanceChange } = require('../services/attendanceRealtime');
 
-// Terminal kiosk token — identical to the one accepted in middleware/auth.js
-const TERMINAL_TOKEN = process.env.TERMINAL_KEY || 'VGTC-TERMINAL-TOKEN-KEY';
+// Terminal kiosk token helper
+const terminalKeyStore = require('../utils/terminalKeyStore');
 
 // Middleware: allow terminal device token OR a normal auth token.
-// profileRoutes is mounted with requireAuth in index.js, which already handles
-// the VGTC-TERMINAL-TOKEN-KEY case. This extra check is a belt-and-suspenders
-// guard and sets req.orgId so getCol() works correctly for terminal requests.
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.slice(7).trim();
-        if (token === TERMINAL_TOKEN) {
+        if (await terminalKeyStore.isTerminalTokenAsync(token)) {
             // Ensure orgId is populated for getCol()
             if (!req.orgId) req.orgId = req.headers['x-org-id'] || req.user?.orgId || 'vgtc';
         }
@@ -46,7 +45,7 @@ const PHOTO_MAX_BYTES = 500 * 1024;
 const validatePhoto = (photo) => {
     if (photo === undefined || photo === null || photo === '') return null;
     if (typeof photo !== 'string') return 'photo must be a data URI string';
-    if (!photo.startsWith('data:image/') && !/^https?:\/\//i.test(photo) && !/^\/uploads\//.test(photo) && !/^[A-Za-z0-9+/=]+$/.test(photo.slice(0, 100))) {
+    if (!photo.startsWith('data:image/') && !/^https?:\/\//i.test(photo) && !/^\/uploads\//.test(photo) && !/^\/api\/terminal\/enrollment-images\/[A-Za-z0-9_-]+\/[a-f0-9-]+\.(jpg|png)$/.test(photo) && !/^[A-Za-z0-9+/=]+$/.test(photo.slice(0, 100))) {
         return 'photo must be a valid base64 or data URI image';
     }
     if (Buffer.byteLength(photo, 'utf8') > PHOTO_MAX_BYTES) {
@@ -167,6 +166,7 @@ router.post('/', async (req, res) => {
             }
         }
         
+        publishAttendanceChange({ type: 'profiles.changed', action: 'create', profileId: docRefId });
         res.json({ id: docRefId, ...payload });
     } catch (err) {
         console.error('add profile error:', err);
@@ -177,6 +177,12 @@ router.post('/', async (req, res) => {
 // PUT update a profile
 router.put('/:id', async (req, res) => {
     try {
+        if (req.user?.id === 'vgtc-terminal') {
+            // Strip out restricted fields so terminal requests that pass along profile metadata don't get rejected,
+            // while ensuring terminal cannot alter core employment details.
+            const restrictedFields = ['name', 'phone', 'mobile', 'role', 'profileType', 'salary', 'bankDetails', 'panCard', 'aadharCard', 'paidLeaveEntitlement'];
+            restrictedFields.forEach(f => { delete req.body[f]; });
+        }
         const photoError = validatePhoto(req.body.photo || req.body.facePhoto);
         if (photoError) return res.status(400).json({ error: photoError });
 
@@ -218,7 +224,17 @@ router.put('/:id', async (req, res) => {
                 payload.photoUrl = null;
                 payload.photos = [];
                 payload.faceEmbedding = null;
+                payload.faceEmbedding512 = null;
             }
+        }
+        if (req.body.clearFace === true) {
+            payload.faceEnrolled = false;
+            payload.photo = null;
+            payload.facePhoto = null;
+            payload.photoUrl = null;
+            payload.photos = [];
+            payload.faceEmbedding = null;
+            payload.faceEmbedding512 = null;
         }
         
         if (!isAvailable()) {
@@ -227,7 +243,7 @@ router.put('/:id', async (req, res) => {
                 localStore.update(PROFILE_COL, targetId, payload);
             } else {
                 const docs = localStore.getAll(PROFILE_COL);
-                const idx = docs.findIndex(d => d.id === targetId || d.name === payload.name);
+                const idx = docs.findIndex(d => d.id === targetId || d.employeeId === targetId || d.name === payload.name);
                 if (idx >= 0) {
                     docs[idx] = { ...docs[idx], ...payload, updatedAt: new Date().toISOString() };
                 } else {
@@ -241,9 +257,21 @@ router.put('/:id', async (req, res) => {
             }
         } else {
             const colRef = db.collection(getCol(PROFILE_COL, req));
-            // Fix #1: only update the target document — no "sync by name" cross-doc writes
-            await colRef.doc(targetId).set(payload, { merge: true });
+            const directDoc = await colRef.doc(targetId).get();
+            if (directDoc.exists) {
+                await colRef.doc(targetId).set(payload, { merge: true });
+            } else {
+                const qSnap = await colRef.where('id', '==', targetId).get();
+                if (!qSnap.empty) {
+                    for (const d of qSnap.docs) {
+                        await d.ref.set(payload, { merge: true });
+                    }
+                } else {
+                    await colRef.doc(targetId).set(payload, { merge: true });
+                }
+            }
         }
+        publishAttendanceChange({ type: 'profiles.changed', action: 'update', profileId: targetId });
         res.json({ id: targetId, ...payload });
     } catch (err) {
         console.error('update profile error:', err);
@@ -288,12 +316,46 @@ router.delete('/:id', async (req, res) => {
         if (req.user?.id === 'vgtc-terminal') {
             return res.status(403).json({ error: 'Profiles can only be deleted from the VGTC Portal' });
         }
+        const targetId = String(req.params.id).trim();
+        let deleted = false;
+
         if (!isAvailable()) {
-            localStore.delete(PROFILE_COL, req.params.id);
+            localStore.delete(PROFILE_COL, targetId);
+            const docs = localStore.getAll(PROFILE_COL);
+            const remaining = docs.filter(d => d.id !== targetId && d.employeeId !== targetId && d.profileId !== targetId);
+            if (remaining.length !== docs.length) {
+                const fs = require('fs');
+                const path = require('path');
+                const DATA_DIR = path.join(__dirname, '..', 'data');
+                const file = path.join(DATA_DIR, PROFILE_COL + '.json');
+                try { fs.writeFileSync(file, JSON.stringify(remaining, null, 2), 'utf8'); } catch (_) {}
+            }
+            deleted = true;
         } else {
-            await db.collection(getCol(PROFILE_COL, req)).doc(req.params.id).delete();
+            const colRef = db.collection(getCol(PROFILE_COL, req));
+            const directDoc = await colRef.doc(targetId).get();
+            if (directDoc.exists) {
+                await colRef.doc(targetId).delete();
+                deleted = true;
+            }
+            // Check if document has id field equal to targetId
+            const qSnap = await colRef.where('id', '==', targetId).get();
+            for (const d of qSnap.docs) {
+                await d.ref.delete();
+                deleted = true;
+            }
+            // Check employeeId field
+            if (!deleted) {
+                const empSnap = await colRef.where('employeeId', '==', targetId).get();
+                for (const d of empSnap.docs) {
+                    await d.ref.delete();
+                    deleted = true;
+                }
+            }
         }
-        res.json({ message: 'Profile deleted' });
+        if (!req.user?.isSandbox) await cleanupEnrollmentImages(targetId, {}, {}, { all: true });
+        publishAttendanceChange({ type: 'profiles.changed', action: 'delete', profileId: targetId });
+        res.json({ message: 'Profile deleted', success: true });
     } catch (err) {
         console.error('delete profile error:', err);
         res.status(500).json({ error: err.message });

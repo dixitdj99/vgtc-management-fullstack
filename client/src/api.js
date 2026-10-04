@@ -142,6 +142,9 @@ ax.interceptors.request.use(async (config) => {
 
     // ── Offline write queue ───────────────────────────────────────────────
     const isWrite = ['post', 'patch', 'put', 'delete'].includes(config.method);
+    if (isWrite && config._requireOnline && !navigator.onLine) {
+        return Promise.reject(new Error('Internet connection required. No changes were saved.'));
+    }
     if (isWrite && !navigator.onLine) {
         const op = await enqueue({
             method:  config.method,
@@ -162,7 +165,8 @@ ax.interceptors.request.use(async (config) => {
     // Loading indicators
     pendingRequests++;
     emitLoading();
-    if (pendingRequests === 1) {
+    const isLocalHost = typeof window !== 'undefined' && (/^(localhost|127\\.0\\.0\\.1|192\\.168\\.|10\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.)/.test(window.location.hostname));
+    if (pendingRequests === 1 && !isLocalHost) {
         slowRequestTimer = setTimeout(() => window.dispatchEvent(new CustomEvent('api-slow')), 3000);
     }
 

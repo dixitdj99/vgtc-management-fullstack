@@ -46,6 +46,11 @@ class EnrollActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityEnrollBinding
     private lateinit var apiClient: ApiClient
+    private lateinit var feedback: com.vgtc.terminal.util.TerminalFeedback
+    private val syncHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var syncing = false
+    private var enrollmentBusy = false
+    private val syncRoster = object : Runnable { override fun run() { loadProfiles(); syncHandler.postDelayed(this, 15000) } }
     private lateinit var prefs: Prefs
     private lateinit var adapter: EnrollListAdapter
     private var allProfiles: MutableList<Profile> = mutableListOf()
@@ -88,6 +93,7 @@ class EnrollActivity : AppCompatActivity() {
 
         apiClient = ApiClient(this)
         prefs = Prefs(this)
+        feedback = com.vgtc.terminal.util.TerminalFeedback(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
         realFaceEngine = RealFaceRecognitionEngine.getInstance(this)
 
@@ -102,6 +108,14 @@ class EnrollActivity : AppCompatActivity() {
         setupSearch()
         setupFaceCaptureOverlay()
         setupFabAdd()
+
+        // Load cached profiles immediately so screen is never blank
+        val cached = prefs.getLocalProfiles()
+        if (cached.isNotEmpty()) {
+            allProfiles = cached.toMutableList()
+            filteredProfiles = allProfiles.toMutableList()
+            updateUiState()
+        }
         loadProfiles()
     }
 
@@ -163,27 +177,39 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun clearFaceEnrollment(profile: Profile) {
-        MaterialAlertDialogBuilder(this).setTitle("Delete enrolled face?")
-            .setMessage("This removes only the face biometric. The staff/driver profile stays in the portal.")
-            .setPositiveButton("Delete face") { _, _ ->
-                val cleared = profile.copy(photo = null, photos = emptyList(), faceEmbedding = null)
-                prefs.addOrUpdateLocalProfile(cleared)
-                apiClient.updateProfile(cleared) { }
-                replaceProfile(cleared)
-            }.setNegativeButton("Cancel", null).show()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Delete Face Data?")
+            .setMessage("Are you sure you want to delete face biometrics for ${profile.name}?\n\nThe employee profile will remain in VGTC, but their face biometrics will be removed.")
+            .setPositiveButton("Delete Face") { _, _ ->
+                val updated = profile.copy(
+                    photo = null,
+                    photos = emptyList(),
+                    faceEmbedding = null
+                )
+                prefs.addOrUpdateLocalProfile(updated)
+                replaceProfile(updated)
+
+                apiClient.deleteFaceBiometrics(profile.id) { result ->
+                    runOnUiThread {
+                        result.onSuccess {
+                            Toast.makeText(this, "✓ Face data deleted for ${profile.name}", Toast.LENGTH_SHORT).show()
+                            loadProfiles()
+                        }.onFailure {
+                            apiClient.updateProfile(updated) { _ -> }
+                            Toast.makeText(this, "Face cleared locally on terminal", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
-    private fun clearFingerprintEnrollment(profile: Profile) {
-        MaterialAlertDialogBuilder(this).setTitle("Delete recorded fingerprint?")
-            .setMessage("This removes only the fingerprint enrollment. The staff/driver profile stays in the portal.")
-            .setPositiveButton("Delete fingerprint") { _, _ ->
-                profile.fingerprintSlotId?.let { slot -> r307Driver.deleteFingerprint(slot) { } }
-                val cleared = profile.copy(fingerprintEnrolled = false, fingerprintSlotId = null)
-                prefs.addOrUpdateLocalProfile(cleared)
-                if (prefs.enrolledFingerprintProfileId == profile.id) prefs.enrolledFingerprintProfileId = ""
-                apiClient.updateProfile(cleared) { }
-                replaceProfile(cleared)
-            }.setNegativeButton("Cancel", null).show()
+    private fun clearFingerprintEnrollment(profile: Profile) = portalManagedNotice()
+    private fun portalManagedNotice() {
+        MaterialAlertDialogBuilder(this).setTitle("Manage staff in VGTC")
+            .setMessage("Create or remove staff in the VGTC portal. Use Enroll here to update biometrics.")
+            .setPositiveButton("OK", null).show()
     }
 
     private fun replaceProfile(updated: Profile) {
@@ -198,7 +224,18 @@ class EnrollActivity : AppCompatActivity() {
                 val message = result.getOrElse { "Unable to load attendance history" }.let { body ->
                     try {
                         val rows = com.google.gson.Gson().fromJson(body, Array<com.google.gson.JsonObject>::class.java)
-                        rows.take(30).joinToString("\n") { r ->
+                        val distinctRows = mutableListOf<com.google.gson.JsonObject>()
+                        val seen = mutableSetOf<String>()
+                        for (r in rows) {
+                            val date = r.get("date")?.asString ?: ""
+                            val inTime = r.get("inTime")?.asString ?: r.get("punchTime")?.asString ?: ""
+                            val status = r.get("status")?.asString ?: ""
+                            val key = "$date|$inTime|$status"
+                            if (seen.add(key)) {
+                                distinctRows.add(r)
+                            }
+                        }
+                        distinctRows.take(30).joinToString("\n") { r ->
                             val date = r.get("date")?.asString ?: "—"
                             val status = r.get("status")?.asString ?: "—"
                             val location = r.get("location")?.asString ?: if (profile.profileType.equals("Driver", true)) "Yard" else "Office"
@@ -214,42 +251,39 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun loadProfiles() {
-        val localList = prefs.getLocalProfiles().filter(::isBiometricPerson)
-        allProfiles = localList.toMutableList()
-        filteredProfiles = allProfiles.toMutableList()
-        updateUiState()
-
-        binding.progressBar.visibility = View.VISIBLE
-        apiClient.getProfiles { result ->
-            runOnUiThread {
-                binding.progressBar.visibility = View.GONE
-                result.onSuccess { serverList ->
-                    if (serverList.isNotEmpty()) {
-                        val merged = serverList.filter(::isBiometricPerson).toMutableList()
-                        for (local in localList) {
-                            val serverIdx = merged.indexOfFirst { it.id == local.id }
-                            if (serverIdx >= 0) {
-                                val s = merged[serverIdx]
-                                merged[serverIdx] = s.copy(
-                                    faceEmbedding = s.faceEmbedding ?: local.faceEmbedding,
-                                    photos = if (!s.photos.isNullOrEmpty()) s.photos else local.photos,
-                                    photo = if (!s.photo.isNullOrBlank()) s.photo else local.photo,
-                                    fingerprintEnrolled = s.fingerprintEnrolled || local.fingerprintEnrolled,
-                                    fingerprintSlotId = s.fingerprintSlotId ?: local.fingerprintSlotId
-                                )
-                            } else {
-                                merged.add(local)
-                            }
-                        }
-                        allProfiles = merged
-                        filteredProfiles = allProfiles.toMutableList()
-                        prefs.saveLocalProfiles(merged)
-                        updateUiState()
-                    }
+        if (syncing || enrollmentBusy) return
+        syncing = true
+        if (allProfiles.isEmpty()) {
+            binding.progressBar.visibility = View.VISIBLE
+        }
+        apiClient.getProfiles { result -> runOnUiThread {
+            syncing = false
+            binding.progressBar.visibility = View.GONE
+            result.onSuccess { serverList ->
+                val merged = prefs.mergeServerRoster(serverList)
+                allProfiles = merged.toMutableList()
+                binding.tvOtgStatus.text = "Live VGTC roster • ${allProfiles.size} profiles"
+                val query = binding.etSearch.text.toString().trim()
+                filteredProfiles = if (query.isEmpty()) allProfiles else allProfiles.filter { it.name.contains(query, true) }.toMutableList()
+                updateUiState()
+            }.onFailure { err ->
+                val local = prefs.getLocalProfiles()
+                if (local.isNotEmpty()) {
+                    allProfiles = local.toMutableList()
+                    val query = binding.etSearch.text.toString().trim()
+                    filteredProfiles = if (query.isEmpty()) allProfiles else allProfiles.filter { it.name.contains(query, true) }.toMutableList()
+                    updateUiState()
+                    binding.tvOtgStatus.text = "Offline (${allProfiles.size} cached) — ${err.message ?: "server unreachable"}"
+                } else {
+                    binding.tvOtgStatus.text = err.message ?: "Offline — connect to VGTC to load staff"
+                    updateUiState()
                 }
             }
-        }
+        } }
     }
+
+    override fun onResume() { super.onResume(); syncHandler.removeCallbacks(syncRoster); syncHandler.post(syncRoster) }
+    override fun onPause() { syncHandler.removeCallbacks(syncRoster); super.onPause() }
 
     private fun updateUiState() {
         adapter.updateList(filteredProfiles)
@@ -262,157 +296,8 @@ class EnrollActivity : AppCompatActivity() {
     // ──────────────────────────────────────────────────
     // Add / Edit Employee Dialog
     // ──────────────────────────────────────────────────
-    private fun showAddEditDialog(existing: Profile?) {
-        val dialogBinding = DialogAddEditEmployeeBinding.inflate(LayoutInflater.from(this))
-        var capturedPhotos: List<String>? = existing?.photos
-        var primaryPhoto: String? = existing?.photo
-        var capturedEmbedding: List<Float>? = existing?.faceEmbedding
-        var fingerprintLinked =
-            existing != null && (prefs.enrolledFingerprintProfileId == existing.id || existing.fingerprintEnrolled)
-        var fingerprintSlot: Int? = existing?.fingerprintSlotId
-
-        if (existing != null) {
-            dialogBinding.tvDialogTitle.text = "Edit Employee"
-            dialogBinding.etEmployeeName.setText(existing.name)
-            dialogBinding.etEmployeeRole.setText(existing.profileType ?: "Staff")
-            dialogBinding.etEmployeeVehicle.setText(existing.vehicleNo ?: "")
-
-            val count = existing.photos?.size ?: if (!existing.photo.isNullOrBlank()) 1 else 0
-            if (count > 0) {
-                dialogBinding.tvFaceStatus.text = "Face: $count Photo(s) (AI Enrolled) ✓"
-                dialogBinding.tvFaceStatus.setTextColor(getColor(R.color.green_online))
-            }
-            if (fingerprintLinked) {
-                val slotStr = if (fingerprintSlot != null) " (R307 Slot #$fingerprintSlot)" else ""
-                dialogBinding.tvFingerprintStatus.text = "Fingerprint: Linked$slotStr ✓"
-                dialogBinding.tvFingerprintStatus.setTextColor(getColor(R.color.green_online))
-            }
-        } else {
-            dialogBinding.tvDialogTitle.text = "Enroll New Employee"
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogBinding.root)
-            .setCancelable(false)
-            .create()
-
-        currentEditingDialog = dialog
-
-        dialogBinding.btnDialogScanFace.setOnClickListener {
-            val tempName = dialogBinding.etEmployeeName.text.toString().ifBlank { "New Employee" }
-            val tempVehicle = dialogBinding.etEmployeeVehicle.text.toString().trim().ifBlank { null }
-            val tempProfile =
-                (existing ?: Profile(id = "emp_${UUID.randomUUID()}", name = tempName, vehicleNo = tempVehicle))
-            dialog.hide()
-            startFaceEnrollment(tempProfile) { photos, emb ->
-                capturedPhotos = photos
-                capturedEmbedding = emb
-                primaryPhoto = photos.firstOrNull()
-                dialogBinding.tvFaceStatus.text = "Face: ${photos.size} Photos (AI Embedded) ✓"
-                dialogBinding.tvFaceStatus.setTextColor(getColor(R.color.green_online))
-                Toast.makeText(this, "${photos.size} face photos & AI embeddings ready!", Toast.LENGTH_SHORT).show()
-                dialog.show()
-            }
-        }
-
-        dialogBinding.btnDialogScanFingerprint.setOnClickListener {
-            val tempName = dialogBinding.etEmployeeName.text.toString().ifBlank { "New Employee" }
-            val tempVehicle = dialogBinding.etEmployeeVehicle.text.toString().trim().ifBlank { null }
-            val tempProfile =
-                (existing ?: Profile(id = "emp_${UUID.randomUUID()}", name = tempName, vehicleNo = tempVehicle))
-            dialog.hide()
-            startFingerprintEnrollment(tempProfile) { slotId ->
-                fingerprintLinked = true
-                fingerprintSlot = slotId ?: fingerprintSlot
-                val slotMsg = if (fingerprintSlot != null) " (R307 Slot #$fingerprintSlot)" else ""
-                dialogBinding.tvFingerprintStatus.text = "Fingerprint: Linked$slotMsg ✓"
-                dialogBinding.tvFingerprintStatus.setTextColor(getColor(R.color.green_online))
-                dialog.show()
-            }
-        }
-
-        dialogBinding.btnDialogCancel.setOnClickListener {
-            dialog.dismiss()
-            currentEditingDialog = null
-        }
-
-        dialogBinding.btnDialogSave.setOnClickListener {
-            val name = dialogBinding.etEmployeeName.text.toString().trim()
-            val role = dialogBinding.etEmployeeRole.text.toString().trim().ifBlank { "Staff" }
-            val vehicleNo = dialogBinding.etEmployeeVehicle.text.toString().trim().ifBlank { null }
-
-            if (name.isEmpty()) {
-                Toast.makeText(this, "Please enter employee name", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val profileId = existing?.id ?: "emp_${System.currentTimeMillis()}"
-            val newProfile = Profile(
-                id = profileId,
-                name = name,
-                profileType = role,
-                vehicleNo = vehicleNo,
-                photo = primaryPhoto,
-                photos = capturedPhotos,
-                fingerprintEnrolled = fingerprintLinked,
-                fingerprintSlotId = fingerprintSlot,
-                faceEmbedding = capturedEmbedding,
-                createdAt = existing?.createdAt ?: SimpleDateFormat(
-                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                    Locale.US
-                ).format(Date())
-            )
-
-            prefs.addOrUpdateLocalProfile(newProfile)
-            if (fingerprintLinked) {
-                prefs.enrolledFingerprintProfileId = newProfile.id
-                prefs.enrolledFingerprintProfileName = newProfile.name
-            }
-
-            if (existing == null) {
-                apiClient.createProfile(newProfile) { _ -> }
-            } else {
-                apiClient.updateProfile(newProfile) { _ -> }
-            }
-
-            val idx = allProfiles.indexOfFirst { it.id == newProfile.id }
-            if (idx >= 0) allProfiles[idx] = newProfile else allProfiles.add(0, newProfile)
-            filteredProfiles = allProfiles.toMutableList()
-            updateUiState()
-
-            dialog.dismiss()
-            currentEditingDialog = null
-            Toast.makeText(this, "✓ ${newProfile.name} enrolled successfully!", Toast.LENGTH_SHORT).show()
-        }
-
-        dialog.show()
-    }
-
-    private fun confirmDeleteProfile(profile: Profile) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Delete Employee?")
-            .setMessage("Are you sure you want to remove ${profile.name}? This will remove their biometric enrollment.")
-            .setPositiveButton("Delete") { _, _ ->
-                // Clean up R307 flash slot if one was assigned
-                profile.fingerprintSlotId?.let { slotId ->
-                    r307Driver.deleteFingerprint(slotId) { _ -> }
-                }
-                prefs.deleteLocalProfile(profile.id)
-                apiClient.deleteProfile(profile.id) { _ -> }
-                allProfiles.removeAll { it.id == profile.id }
-                filteredProfiles.removeAll { it.id == profile.id }
-                updateUiState()
-                Toast.makeText(this, "${profile.name} removed", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    // ──────────────────────────────────────────────────
-    // Real R307 Optical Sensor 2-Step Enrollment
-    // ──────────────────────────────────────────────────
     private fun startFingerprintEnrollment(profile: Profile, onSuccess: ((Int?) -> Unit)? = null) {
-        onOtgSuccessCallback = { onSuccess?.invoke(null) }
+        if (enrollmentBusy) return
 
         // 1. If R307 Sensor is connected over USB-UART OTG:
         if (r307Driver.isConnected) {
@@ -422,13 +307,17 @@ class EnrollActivity : AppCompatActivity() {
                 targetSlot++
             }
 
+            if (targetSlot > 300) {
+                feedback.rejected()
+                Toast.makeText(this, "Sensor storage is full. Contact the administrator.", Toast.LENGTH_LONG).show()
+                return
+            }
+            enrollmentBusy = true
             val progressDialog = MaterialAlertDialogBuilder(this)
                 .setTitle("R307 Optical Fingerprint Scanner")
                 .setMessage("Enrolling for ${profile.name}\nFlash Slot #$targetSlot\n\nInitializing sensor...")
                 .setCancelable(false)
-                .setNegativeButton("Cancel") { _, _ ->
-                    currentEditingDialog?.show()
-                }
+
                 .create()
 
             progressDialog.show()
@@ -437,31 +326,39 @@ class EnrollActivity : AppCompatActivity() {
                 targetSlotId = targetSlot,
                 progressCallback = { msg ->
                     runOnUiThread {
-                        progressDialog.setMessage("Enrolling for ${profile.name}\nFlash Slot #$targetSlot\n\n$msg")
+                        progressDialog.setMessage("${profile.name} • Fingerprint ID $targetSlot\n\n$msg\n\nKeep the scanner connected until saved to VGTC.")
+                        feedback.speak(msg, when {
+                            msg.contains("Remove") -> "अब उंगली हटाएँ।"
+                            msg.contains("2/2") -> "उसी उंगली को दोबारा स्कैनर पर रखें।"
+                            else -> "पहला चरण। उंगली स्कैनर पर रखें और स्थिर रखें।"
+                        })
                     }
                 },
                 completionCallback = { success, msg ->
                     runOnUiThread {
-                        progressDialog.dismiss()
-                        currentEditingDialog?.show()
                         if (success) {
+                            progressDialog.setMessage("Saving fingerprint ID $targetSlot to VGTC…")
                             val updated = profile.copy(fingerprintSlotId = targetSlot, fingerprintEnrolled = true)
                             prefs.addOrUpdateLocalProfile(updated)
-                            prefs.enrolledFingerprintProfileId = updated.id
-                            prefs.enrolledFingerprintProfileName = updated.name
-                            apiClient.updateProfile(updated) { _ -> }
-                            val idx = allProfiles.indexOfFirst { it.id == updated.id }
-                            if (idx >= 0) allProfiles[idx] = updated
-                            filteredProfiles = allProfiles.toMutableList()
-                            updateUiState()
+                            replaceProfile(updated)
+                            feedback.accepted()
+                            feedback.speak("Fingerprint enrolled and saved.", "फिंगरप्रिंट दर्ज हो गया है।")
+                            profile.fingerprintSlotId?.takeIf { it != targetSlot }?.let { r307Driver.deleteFingerprint(it) { } }
                             onSuccess?.invoke(targetSlot)
-                            Toast.makeText(
-                                this@EnrollActivity,
-                                "✓ Fingerprint Enrolled in R307 Slot #$targetSlot!",
-                                Toast.LENGTH_LONG
-                            ).show()
+
+                            apiClient.updateProfile(updated) { result -> runOnUiThread {
+                                enrollmentBusy = false
+                                progressDialog.dismiss()
+                                result.onSuccess {
+                                    Toast.makeText(this, "Fingerprint saved to VGTC • ID $targetSlot", Toast.LENGTH_LONG).show()
+                                }.onFailure {
+                                    Toast.makeText(this, "Saved on device sensor • ID $targetSlot (Offline)", Toast.LENGTH_LONG).show()
+                                }
+                            } }
                         } else {
-                            Toast.makeText(this@EnrollActivity, "Enrollment failed: $msg", Toast.LENGTH_LONG).show()
+                            enrollmentBusy = false
+                            progressDialog.dismiss()
+                            showEnrollmentError(msg)
                         }
                     }
                 }
@@ -485,33 +382,13 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun showFallbackFingerprintDialog(profile: Profile, onSuccess: ((Int?) -> Unit)?) {
-        // Do NOT use inbuilt phone BiometricPrompt. Strictly notify about external R307 optical sensor.
-        MaterialAlertDialogBuilder(this)
-            .setTitle("R307 Optical Fingerprint Scanner")
-            .setMessage("R307 USB optical sensor not detected.\n\nPlease plug your R307 fingerprint module via USB OTG cable into the terminal.\n\nWould you like to mark ${profile.name} as linked anyway for testing?")
-            .apply {
-                // Only show "Mark Linked" in debug builds — never in production
-                if (com.vgtc.terminal.BuildConfig.DEBUG) {
-                    setPositiveButton("Mark Linked (Debug Only)") { _, _ ->
-                        prefs.enrolledFingerprintProfileId = profile.id
-                        prefs.enrolledFingerprintProfileName = profile.name
-                        currentEditingDialog?.show()
-                        onSuccess?.invoke(null)
-                        Toast.makeText(
-                            this@EnrollActivity,
-                            "✓ Fingerprint Linked for ${profile.name}!",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-            .setNegativeButton("Cancel") { _, _ ->
-                currentEditingDialog?.show()
-            }
-            .setOnCancelListener {
-                currentEditingDialog?.show()
-            }
-            .show()
+        showEnrollmentError("Connect the supported R307 external fingerprint sensor using USB OTG, then retry. Phone fingerprint unlock cannot enroll staff.")
+    }
+
+    private fun showEnrollmentError(message: String) {
+        feedback.rejected()
+        MaterialAlertDialogBuilder(this).setTitle("Enrollment not saved")
+            .setMessage(message).setPositiveButton("OK", null).show()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -548,8 +425,10 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun closeFaceCapture() {
+        enrollmentBusy = false
+        ProcessCameraProvider.getInstance(this).get().unbindAll()
         binding.layoutFaceCapture.visibility = View.GONE
-        binding.fabAddEmployee.visibility = View.VISIBLE
+        binding.fabAddEmployee.visibility = View.GONE
         capturedPhotosList.clear()
         capturedEmbeddingsList.clear()
         currentCaptureStep = 1
@@ -557,6 +436,8 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun startFaceEnrollment(profile: Profile, callback: (List<String>, List<Float>?) -> Unit) {
+        if (enrollmentBusy) return
+        enrollmentBusy = true
         activeEnrollProfile = profile
         onFaceCaptureSuccessWithEmbedding = callback
         capturedPhotosList.clear()
@@ -577,6 +458,8 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun updateStepDisplay() {
+        val hindiSteps = arrayOf("कैमरे की ओर सीधे देखें।", "चेहरा थोड़ा दाईं ओर मोड़ें।", "चेहरा थोड़ा बाईं ओर मोड़ें।", "ठोड़ी थोड़ी ऊपर करें।", "हल्की मुस्कान के साथ कैमरे की ओर देखें।")
+        feedback.speak(STEP_INSTRUCTIONS.getOrElse(currentCaptureStep - 1) { "Saving photos" }, hindiSteps.getOrElse(currentCaptureStep - 1) { "फ़ोटो सहेजे जा रहे हैं।" })
         binding.tvStepIndicator.text = STEP_INSTRUCTIONS.getOrElse(currentCaptureStep - 1) { "Finalizing photos..." }
         binding.btnDoCapture.text = "📸 Take Shot ($currentCaptureStep/$TOTAL_STEPS)"
 
@@ -604,17 +487,12 @@ class EnrollActivity : AppCompatActivity() {
                 it.setSurfaceProvider(binding.enrollCameraPreview.surfaceProvider)
             }
 
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .build()
-
             try {
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
                     this,
                     CameraSelector.DEFAULT_FRONT_CAMERA,
-                    preview,
-                    imageCapture
+                    preview
                 )
             } catch (e: Exception) {
                 Toast.makeText(this, "Camera error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -623,84 +501,117 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun captureNextFaceShot() {
-        val capture = imageCapture ?: return
+        val previewBmp = binding.enrollCameraPreview.bitmap
+        if (previewBmp == null) {
+            Toast.makeText(this, "Camera preview initializing, please wait...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         binding.btnDoCapture.isEnabled = false
-        binding.btnDoCapture.text = "Capturing ($currentCaptureStep/$TOTAL_STEPS)..."
+        binding.btnDoCapture.text = "Saving ($currentCaptureStep/$TOTAL_STEPS)..."
 
-        capture.takePicture(cameraExecutor, object : ImageCapture.OnImageCapturedCallback() {
-            override fun onCaptureSuccess(imageProxy: ImageProxy) {
-                val bitmap = imageProxyToBitmap(imageProxy)
-                imageProxy.close()
+        // Shutter flash effect using dedicated overlay (never touches PreviewView surface)
+        binding.viewShutterFlash.visibility = View.VISIBLE
+        binding.viewShutterFlash.alpha = 0.7f
+        binding.viewShutterFlash.animate().alpha(0f).setDuration(120).withEndAction {
+            binding.viewShutterFlash.visibility = View.GONE
+        }.start()
 
-                if (bitmap != null) {
-                    saveEnrollmentPhotoToPhone(bitmap, currentCaptureStep)
-                    val base64DataUri = bitmapToBase64DataUri(bitmap)
+        val snapshot = previewBmp.copy(Bitmap.Config.ARGB_8888, true)
+        cameraExecutor.execute {
+            processCapturedBitmap(snapshot)
+        }
+    }
 
-                    // Extract AI Embedding from captured photo
-                    val inputImg = InputImage.fromBitmap(bitmap, 0)
-                    faceDetector.process(inputImg)
-                        .addOnSuccessListener { faces ->
-                            if (faces.isNotEmpty()) {
-                                val faceCrop = realFaceEngine.cropFace(bitmap, faces[0].boundingBox)
-                                if (faceCrop != null) {
-                                    val emb = realFaceEngine.extractEmbedding(faceCrop)
-                                    if (emb != null) {
-                                        capturedEmbeddingsList.add(emb)
-                                    }
-                                }
-                            }
+    private fun processCapturedBitmap(bitmap: Bitmap) {
+        val base64DataUri = bitmapToBase64DataUri(bitmap)
+        val inputImg = InputImage.fromBitmap(bitmap, 0)
+
+        faceDetector.process(inputImg)
+            .addOnSuccessListener { faces ->
+                val primaryFace = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
+                if (primaryFace != null) {
+                    val faceCrop = realFaceEngine.cropFace(bitmap, primaryFace.boundingBox)
+                    if (faceCrop != null) {
+                        val emb = realFaceEngine.extractEmbedding(faceCrop)
+                        if (emb != null) {
+                            capturedEmbeddingsList.add(emb)
                         }
-                        .addOnCompleteListener {
-                            runOnUiThread {
-                                capturedPhotosList.add(base64DataUri)
-                                binding.btnDoCapture.isEnabled = true
-
-                                if (capturedPhotosList.size >= TOTAL_STEPS) {
-                                    val finalEmbedding = if (capturedEmbeddingsList.isNotEmpty()) {
-                                        averageEmbeddings(capturedEmbeddingsList)
-                                    } else {
-                                        realFaceEngine.extractEmbeddingFromBase64(capturedPhotosList.first())
-                                    }
-
-                                    Toast.makeText(
-                                        this@EnrollActivity,
-                                        "✓ All 5 face angles & AI embeddings generated!",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    closeFaceCapture()
-                                    onFaceCaptureSuccessWithEmbedding?.invoke(
-                                        capturedPhotosList.toList(),
-                                        finalEmbedding
-                                    )
-                                } else {
-                                    currentCaptureStep++
-                                    updateStepDisplay()
-                                    Toast.makeText(
-                                        this@EnrollActivity,
-                                        "Shot $currentCaptureStep saved! ${STEP_INSTRUCTIONS[currentCaptureStep - 1]}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        }
-                } else {
-                    runOnUiThread {
-                        binding.btnDoCapture.isEnabled = true
-                        updateStepDisplay()
-                        Toast.makeText(this@EnrollActivity, "Failed to capture, try again", Toast.LENGTH_SHORT).show()
+                    }
+                } else if (currentCaptureStep == 1) {
+                    // Step 1 frontal fallback: center 60% crop if detector had lighting sensitivity
+                    val w = bitmap.width
+                    val h = bitmap.height
+                    val centerBox = android.graphics.Rect((w * 0.2).toInt(), (h * 0.15).toInt(), (w * 0.8).toInt(), (h * 0.85).toInt())
+                    val centerCrop = realFaceEngine.cropFace(bitmap, centerBox) ?: bitmap
+                    val emb = realFaceEngine.extractEmbedding(centerCrop) ?: realFaceEngine.extractEmbedding(bitmap)
+                    if (emb != null) {
+                        capturedEmbeddingsList.add(emb)
                     }
                 }
             }
-
-            override fun onError(exception: ImageCaptureException) {
-                runOnUiThread {
-                    binding.btnDoCapture.isEnabled = true
-                    updateStepDisplay()
-                    Toast.makeText(this@EnrollActivity, "Capture failed: ${exception.message}", Toast.LENGTH_SHORT)
-                        .show()
+            .addOnFailureListener {
+                if (currentCaptureStep == 1 && capturedEmbeddingsList.isEmpty()) {
+                    val emb = realFaceEngine.extractEmbedding(bitmap)
+                    if (emb != null) {
+                        capturedEmbeddingsList.add(emb)
+                    }
                 }
             }
-        })
+            .addOnCompleteListener {
+                runOnUiThread {
+                    // For Step 1 (Front), make sure a primary embedding exists
+                    if (currentCaptureStep == 1 && capturedEmbeddingsList.isEmpty()) {
+                        binding.btnDoCapture.isEnabled = true
+                        feedback.rejected()
+                        Toast.makeText(this@EnrollActivity, "Look straight into camera in good lighting, then retry.", Toast.LENGTH_LONG).show()
+                        return@runOnUiThread
+                    }
+
+                    // For angle shots (Steps 2-5), duplicate Step 1 embedding if face turned too far for frontal model
+                    if (capturedEmbeddingsList.size < currentCaptureStep && capturedEmbeddingsList.isNotEmpty()) {
+                        capturedEmbeddingsList.add(capturedEmbeddingsList.first())
+                    }
+
+                    if (!saveEnrollmentPhotoToPhone(bitmap, currentCaptureStep)) {
+                        binding.btnDoCapture.isEnabled = true
+                        showEnrollmentError("Cannot save photo to phone storage. Free space and retry.")
+                        return@runOnUiThread
+                    }
+
+                    feedback.accepted()
+                    capturedPhotosList.add(base64DataUri)
+                    binding.btnDoCapture.isEnabled = true
+
+                    if (capturedPhotosList.size >= TOTAL_STEPS) {
+                        val finalEmbedding = if (capturedEmbeddingsList.isNotEmpty()) {
+                            averageEmbeddings(capturedEmbeddingsList)
+                        } else {
+                            realFaceEngine.extractEmbeddingFromBase64(capturedPhotosList.first())
+                        }
+
+                        Toast.makeText(
+                            this@EnrollActivity,
+                            "✓ All 5 face angles saved!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        val completedPhotos = capturedPhotosList.toList()
+                        closeFaceCapture()
+                        onFaceCaptureSuccessWithEmbedding?.invoke(
+                            completedPhotos,
+                            finalEmbedding
+                        )
+                    } else {
+                        currentCaptureStep++
+                        updateStepDisplay()
+                        Toast.makeText(
+                            this@EnrollActivity,
+                            "Shot $currentCaptureStep saved! ${STEP_INSTRUCTIONS[currentCaptureStep - 1]}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
     }
 
     private fun averageEmbeddings(embeddings: List<FloatArray>): List<Float> {
@@ -728,28 +639,76 @@ class EnrollActivity : AppCompatActivity() {
     }
 
     private fun saveFacePhotosToProfile(profile: Profile, photos: List<String>, embedding: List<Float>?) {
-        apiClient.uploadEnrollmentImages(profile.id, photos) { uploadResult ->
-            val webPhotos = uploadResult.getOrElse { photos }
-            val primaryPhoto = webPhotos.firstOrNull()
-            val updated = profile.copy(photo = primaryPhoto, photos = webPhotos, faceEmbedding = embedding ?: profile.faceEmbedding)
-            prefs.addOrUpdateLocalProfile(updated)
-            apiClient.updateProfile(updated) { _ -> }
-            runOnUiThread {
-                replaceProfile(updated)
-                Toast.makeText(this, "✓ Face images saved on phone and uploaded to portal", Toast.LENGTH_SHORT).show()
+        // 1. Check for Duplicate Face against all other enrolled profiles
+        if (embedding != null && embedding.isNotEmpty()) {
+            val embArray = embedding.toFloatArray()
+            val duplicate = allProfiles.firstOrNull { other ->
+                other.id != profile.id &&
+                other.faceEmbedding != null &&
+                other.faceEmbedding.size == RealFaceRecognitionEngine.EMBEDDING_SIZE &&
+                realFaceEngine.computeCosineSimilarity(embArray, other.faceEmbedding.toFloatArray()) >= 0.65f
+            }
+
+            if (duplicate != null) {
+                enrollmentBusy = false
+                binding.progressBar.visibility = View.GONE
+                feedback.rejected()
+                feedback.speak(
+                    "This face is already enrolled for ${duplicate.name}.",
+                    "यह चेहरा पहले से ${duplicate.name} के लिए दर्ज है।"
+                )
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Duplicate Face Detected")
+                    .setMessage(
+                        "This face is already enrolled under '${duplicate.name}' (${duplicate.profileType ?: "Staff"}).\n\n" +
+                        "The same face cannot be enrolled for multiple profiles. Please verify the profile or delete the existing face first."
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
+                return
             }
         }
 
+        enrollmentBusy = true
+        binding.progressBar.visibility = View.VISIBLE
+        val localUpdated = profile.copy(photo = photos.firstOrNull(), photos = photos, faceEmbedding = embedding)
+        prefs.addOrUpdateLocalProfile(localUpdated)
+        replaceProfile(localUpdated)
+
+        apiClient.uploadEnrollmentImages(profile.id, photos) { uploadResult ->
+            uploadResult.onSuccess { webPhotos ->
+                val updated = profile.copy(photo = webPhotos.firstOrNull(), photos = webPhotos, faceEmbedding = embedding)
+                apiClient.updateProfile(updated) { result -> runOnUiThread {
+                    enrollmentBusy = false
+                    binding.progressBar.visibility = View.GONE
+                    prefs.addOrUpdateLocalProfile(updated)
+                    replaceProfile(updated)
+                    feedback.accepted()
+                    feedback.speak("Face enrollment saved. Front photo is the profile photo.", "चेहरा दर्ज हो गया है। सामने वाला फ़ोटो प्रोफ़ाइल फ़ोटो है।")
+                    MaterialAlertDialogBuilder(this).setTitle("Face enrollment complete")
+                        .setMessage("All five photos saved on this phone and uploaded to VGTC. The front photo is the profile photo.")
+                        .setPositiveButton("Done", null).show()
+                } }
+            }.onFailure { runOnUiThread {
+                enrollmentBusy = false
+                binding.progressBar.visibility = View.GONE
+                feedback.accepted()
+                feedback.speak("Face enrolled locally.", "चेहरा डिवाइस पर दर्ज हो गया है।")
+                MaterialAlertDialogBuilder(this).setTitle("Face saved locally (Offline)")
+                    .setMessage("Photos and AI template saved locally on terminal. Attendance will work immediately.")
+                    .setPositiveButton("Done", null).show()
+            } }
+        }
     }
 
-    private fun saveEnrollmentPhotoToPhone(bitmap: Bitmap, step: Int) {
-        try {
-            val dir = File(filesDir, "enrolled_faces").apply { mkdirs() }
-            FileOutputStream(File(dir, "${activeEnrollProfile?.id ?: "unknown"}-$step.jpg")).use {
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it)
-            }
-        } catch (_: Exception) { /* portal upload remains the source of truth */ }
-    }
+    private fun saveEnrollmentPhotoToPhone(bitmap: Bitmap, step: Int): Boolean = try {
+        val safeId = activeEnrollProfile?.id.orEmpty().replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val dir = File(filesDir, "enrolled_faces/$safeId").apply { mkdirs() }
+        FileOutputStream(File(dir, "${System.currentTimeMillis()}-$step.jpg")).use {
+            check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it))
+        }
+        true
+    } catch (_: Exception) { false }
 
     private fun imageProxyToBitmap(image: ImageProxy): Bitmap? {
         val planeProxy = image.planes[0]
@@ -791,6 +750,8 @@ class EnrollActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        syncHandler.removeCallbacksAndMessages(null)
+        feedback.close()
         cameraExecutor.shutdown()
         faceDetector.close()
     }

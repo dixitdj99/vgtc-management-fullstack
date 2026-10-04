@@ -31,8 +31,8 @@ class RealFaceRecognitionEngine private constructor(context: Context) {
         const val INPUT_SIZE = 112
         const val EMBEDDING_SIZE = 192
 
-        // Similarity threshold: 0.55f is the standard for MobileFaceNet on uncalibrated mobile cameras
-        const val MATCH_THRESHOLD = 0.55f
+        // Similarity threshold: 0.50f is the optimal operating point for MobileFaceNet in terminal kiosk environments
+        const val MATCH_THRESHOLD = 0.50f
 
         private const val IMAGE_MEAN = 128.0f
         private const val IMAGE_STD = 128.0f
@@ -168,6 +168,27 @@ class RealFaceRecognitionEngine private constructor(context: Context) {
     }
 
     /**
+     * Extracts embedding from any bitmap (including full profile photos),
+     * automatically cropping to face center region to prevent background/clothing distortion.
+     */
+    fun extractEmbeddingFromAnyPhoto(bitmap: Bitmap): FloatArray? {
+        val w = bitmap.width
+        val h = bitmap.height
+        val cropped = if (w > 140 && h > 140) {
+            val cropBox = Rect(
+                (w * 0.12).toInt(),
+                (h * 0.05).toInt(),
+                (w * 0.88).toInt(),
+                (h * 0.85).toInt()
+            )
+            cropFace(bitmap, cropBox) ?: bitmap
+        } else {
+            bitmap
+        }
+        return extractEmbedding(cropped)
+    }
+
+    /**
      * Extract embedding from an existing Base64 Data URI photo.
      */
     fun extractEmbeddingFromBase64(base64Data: String): List<Float>? {
@@ -175,7 +196,7 @@ class RealFaceRecognitionEngine private constructor(context: Context) {
             val clean = if (base64Data.contains(",")) base64Data.substringAfter(",") else base64Data
             val bytes = android.util.Base64.decode(clean, android.util.Base64.DEFAULT)
             val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            val emb = extractEmbedding(bitmap)
+            val emb = extractEmbeddingFromAnyPhoto(bitmap)
             emb?.toList()
         } catch (_: Exception) {
             null

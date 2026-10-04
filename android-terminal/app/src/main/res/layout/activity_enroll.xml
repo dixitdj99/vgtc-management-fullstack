@@ -84,7 +84,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:layout_marginStart="10dp"
-            android:hint="Search employee by name or role..."
+            android:hint="Search VGTC profile by name…"
             android:textColor="@color/text_primary"
             android:textColorHint="@color/text_hint"
             android:background="@null"
@@ -189,6 +189,19 @@
             android:id="@+id/enrollCameraPreview"
             android:layout_width="0dp"
             android:layout_height="0dp"
+            app:implementationMode="compatible"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <View
+            android:id="@+id/viewShutterFlash"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#FFFFFF"
+            android:alpha="0"
+            android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"

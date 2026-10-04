@@ -944,6 +944,17 @@ function PersonTile({ row, status, isTouched, canEdit, index, onCycle, onPick, o
           </div>
         )}
 
+        {row.attendanceEnabled === false && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',
+            fontWeight: 800, color: '#dc2626', background: 'rgba(239,68,68,0.12)',
+            padding: '2px 8px', borderRadius: '12px',
+          }}>
+            <AlertTriangle size={10} />
+            Attendance Stopped · उपस्थिति रोकी गई
+          </div>
+        )}
+
         {showSuggestedBadge && (
           <div title="Suggested by default, not saved yet — tap to change, then Save." style={{
             display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px',

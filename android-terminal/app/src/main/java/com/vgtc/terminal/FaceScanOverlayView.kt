@@ -3,15 +3,13 @@ package com.vgtc.terminal
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import androidx.core.content.ContextCompat
 
 /**
- * Simple oval face guide overlay for the camera scan screen.
- * Draws a transparent oval in the center of the view.
- * When a face is detected, the oval border changes color to green.
+ * Modern rounded corner viewfinder reticles matching the reference UI.
  */
 class FaceScanOverlayView @JvmOverloads constructor(
     context: Context,
@@ -19,78 +17,60 @@ class FaceScanOverlayView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    private var isDetected = false
-
-    private val backgroundPaint = Paint().apply {
-        color = 0xCC000000.toInt()
-        style = Paint.Style.FILL
-    }
-
-    private val ovalBorderPaint = Paint().apply {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFF8900.toInt()
         style = Paint.Style.STROKE
-        strokeWidth = 6f
-        isAntiAlias = true
-    }
-
-    private val cornerPaint = Paint().apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 8f
+        strokeWidth = resources.displayMetrics.density * 4.5f
         strokeCap = Paint.Cap.ROUND
-        isAntiAlias = true
+        strokeJoin = Paint.Join.ROUND
     }
 
-    private val ovalRect = RectF()
-
-    init {
-        setWillNotDraw(false)
-    }
+    private val path = Path()
 
     fun setDetected(detected: Boolean) {
-        isDetected = detected
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val w = width.toFloat()
-        val h = height.toFloat()
+        val density = resources.displayMetrics.density
+        val inset = 18f * density
+        val length = 42f * density
+        val radius = 24f * density
 
-        // Oval dimensions — center of screen, slightly taller than wide
-        val ovalW = w * 0.65f
-        val ovalH = ovalW * 1.35f
-        val left = (w - ovalW) / 2f
-        val top = (h - ovalH) / 2f
+        val left = inset
+        val top = inset
+        val right = width - inset
+        val bottom = height - inset
 
-        ovalRect.set(left, top, left + ovalW, top + ovalH)
+        if (right <= left || bottom <= top) return
 
-        // Darken everything outside the oval
-        val overlayPath = android.graphics.Path()
-        overlayPath.addRect(0f, 0f, w, h, android.graphics.Path.Direction.CW)
-        overlayPath.addOval(ovalRect, android.graphics.Path.Direction.CCW)
-        canvas.drawPath(overlayPath, backgroundPaint)
+        path.reset()
 
-        // Oval border
-        val borderColor = if (isDetected) {
-            ContextCompat.getColor(context, R.color.green_online)
-        } else {
-            0xFFFFFFFF.toInt()
-        }
-        ovalBorderPaint.color = borderColor
-        canvas.drawOval(ovalRect, ovalBorderPaint)
+        // 1. Top-Left rounded bracket: ╭
+        path.moveTo(left, top + length)
+        path.lineTo(left, top + radius)
+        path.arcTo(RectF(left, top, left + radius * 2, top + radius * 2), 180f, 90f, false)
+        path.lineTo(left + length, top)
 
-        // Corner accent marks (top-left, top-right, bottom-left, bottom-right)
-        cornerPaint.color = borderColor
-        val cornerLen = ovalW * 0.12f
-        val cx = ovalRect.centerX()
-        val cy = ovalRect.centerY()
+        // 2. Top-Right rounded bracket: ╮
+        path.moveTo(right - length, top)
+        path.lineTo(right - radius, top)
+        path.arcTo(RectF(right - radius * 2, top, right, top + radius * 2), 270f, 90f, false)
+        path.lineTo(right, top + length)
 
-        // Top
-        canvas.drawLine(cx - cornerLen, ovalRect.top, cx + cornerLen, ovalRect.top, cornerPaint)
-        // Bottom
-        canvas.drawLine(cx - cornerLen, ovalRect.bottom, cx + cornerLen, ovalRect.bottom, cornerPaint)
-        // Left
-        canvas.drawLine(ovalRect.left, cy - cornerLen, ovalRect.left, cy + cornerLen, cornerPaint)
-        // Right
-        canvas.drawLine(ovalRect.right, cy - cornerLen, ovalRect.right, cy + cornerLen, cornerPaint)
+        // 3. Bottom-Left rounded bracket: ╰
+        path.moveTo(left, bottom - length)
+        path.lineTo(left, bottom - radius)
+        path.arcTo(RectF(left, bottom - radius * 2, left + radius * 2, bottom), 180f, -90f, false)
+        path.lineTo(left + length, bottom)
+
+        // 4. Bottom-Right rounded bracket: ╯
+        path.moveTo(right - length, bottom)
+        path.lineTo(right - radius, bottom)
+        path.arcTo(RectF(right - radius * 2, bottom - radius * 2, right, bottom), 90f, -90f, false)
+        path.lineTo(right, bottom - length)
+
+        canvas.drawPath(path, paint)
     }
 }

@@ -244,6 +244,17 @@ const getRange = async (orgId, req, { from, to, profileId }) => {
     }
     if (orgId) docs = docs.filter(d => !d.orgId || d.orgId === orgId);
     if (profileId) docs = docs.filter(d => d.profileId === profileId);
+
+    // Deduplicate legacy duplicate document IDs: drop `${date}_${profileId}` if `${profileId}_${date}` exists
+    const docIds = new Set(docs.map(d => d.id));
+    docs = docs.filter(d => {
+        if (d.id && d.date && d.id.startsWith(d.date + '_')) {
+            const alternateId = `${d.profileId}_${d.date}`;
+            if (docIds.has(alternateId)) return false;
+        }
+        return true;
+    });
+
     return docs.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 };
 
@@ -338,6 +349,9 @@ const getRoster = async (orgId, req, date) => {
                 suggested = null;
                 suggestedBy = null;
             }
+        } else if (p.attendanceEnabled === false) {
+            suggested = null;
+            suggestedBy = null;
         } else {
             suggested = 'present';
             suggestedBy = 'default';
@@ -359,6 +373,7 @@ const getRoster = async (orgId, req, date) => {
         return {
             profileId: p.id,
             name: p.name || '',
+            attendanceEnabled: p.attendanceEnabled !== false,
             type: p.type || p.profileType || 'Staff',
             department: p.department || '',
             phone: p.phone || p.mobile || '',

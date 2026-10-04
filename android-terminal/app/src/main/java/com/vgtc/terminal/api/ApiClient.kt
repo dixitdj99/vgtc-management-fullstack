@@ -10,6 +10,7 @@ import com.vgtc.terminal.model.Profile
 import com.vgtc.terminal.util.Prefs
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -21,27 +22,17 @@ typealias ApiResult<T> = Result<T>
 class ApiClient(context: Context) {
 
     private val prefs = Prefs(context)
+    val terminalId: String = "ANDROID-" + android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
     private val gson = Gson()
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .writeTimeout(25, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-
-    private fun isBiometricPerson(profile: Profile): Boolean {
-        val values = listOf(profile.profileType, profile.role, profile.name)
-            .map { it.orEmpty().trim().lowercase(Locale.US) }
-        return values.none { it in setOf("tyre", "manual", "pump", "fuel", "fuel pump", "fuel station", "firm", "expense", "labour") || it.contains("fuel pump") || it.contains("fuel station") }
-    }
-
-    companion object {
-        // Static terminal token — accepted by the server as an admin-level kiosk identity.
-        // Matches the TERMINAL_KEY env var (or the default) checked in middleware/auth.js.
-        const val TERMINAL_TOKEN = "VGTC-TERMINAL-TOKEN-KEY"
-    }
 
     private fun baseUrl(): String {
         var url = prefs.serverUrl.trim().trimEnd('/')
@@ -57,17 +48,19 @@ class ApiClient(context: Context) {
      * Falls back to the stored JWT only for non-biometric calls (login, etc.).
      */
     private fun terminalHeaders(): Map<String, String> {
+        val token = prefs.terminalApiKey.ifBlank { prefs.authToken.ifBlank { "VGTC-TERMINAL-TOKEN-KEY" } }
         return mapOf(
-            "Authorization" to "Bearer $TERMINAL_TOKEN",
+            "Authorization" to "Bearer $token",
             "X-Org-Id" to prefs.orgId.ifBlank { "vgtc" }
         )
     }
 
     private fun authHeaders(): Map<String, String> {
-        val token = prefs.authToken
-        return if (token.isNotBlank()) {
-            mapOf("Authorization" to "Bearer $token")
-        } else terminalHeaders()
+        val token = prefs.authToken.ifBlank { prefs.terminalApiKey.ifBlank { "VGTC-TERMINAL-TOKEN-KEY" } }
+        return mapOf(
+            "Authorization" to "Bearer $token",
+            "X-Org-Id" to prefs.orgId.ifBlank { "vgtc" }
+        )
     }
 
     // ──────────────────────────────────────────────────
@@ -108,66 +101,83 @@ class ApiClient(context: Context) {
     // ──────────────────────────────────────────────────
     // GET /api/profiles with fallback to /api/terminal/roster
     // ──────────────────────────────────────────────────
-    fun getProfiles(callback: (ApiResult<List<Profile>>) -> Unit) {
+    fun getProfiles(callback: (ApiResult<List<Profile>>) -> Unit) = fetchRoster(callback)
+
+    private fun parseProfilesJson(body: String): List<Profile> {
+        val trimmed = body.trim()
+        val list: List<Profile> = if (trimmed.startsWith("[")) {
+            val type = object : TypeToken<List<Profile>>() {}.type
+            gson.fromJson(trimmed, type) ?: emptyList()
+        } else {
+            val map = gson.fromJson(trimmed, Map::class.java) ?: emptyMap<String, Any>()
+            val staffList = map["staff"] as? List<*> ?: map["roster"] as? List<*> ?: emptyList<Any>()
+            val driversList = map["drivers"] as? List<*> ?: emptyList<Any>()
+            val combinedJson = gson.toJson(staffList + driversList)
+            val type = object : TypeToken<List<Profile>>() {}.type
+            gson.fromJson(combinedJson, type) ?: emptyList()
+        }
+        return list.distinctBy { it.id }.filter { profile ->
+            val type = (profile.profileType ?: "").lowercase(Locale.US)
+            val name = profile.name.trim().lowercase(Locale.US)
+            !type.contains("pump") &&
+            !name.contains("filling station") &&
+            !name.contains("service station") &&
+            !name.contains("ksk") &&
+            profile.name.isNotBlank()
+        }
+    }
+
+    private fun fetchRoster(callback: (ApiResult<List<Profile>>) -> Unit) {
         val request = Request.Builder()
             .url("${baseUrl()}/api/profiles")
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .get()
-            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                fetchRoster(callback)
+                fallbackTerminalRoster(callback, e.message)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "[]"
                 if (response.isSuccessful) {
                     try {
-                        val type = object : TypeToken<List<Profile>>() {}.type
-                        val profiles: List<Profile> = gson.fromJson(body, type)
-                        if (profiles.isNotEmpty()) {
-                            callback(Result.success(profiles.filter(::isBiometricPerson)))
-                        } else {
-                            fetchRoster(callback)
-                        }
+                        val parsed = parseProfilesJson(body)
+                        callback(Result.success(parsed))
                     } catch (e: Exception) {
-                        fetchRoster(callback)
+                        fallbackTerminalRoster(callback, "Parse error: ${e.message}")
                     }
                 } else {
-                    fetchRoster(callback)
+                    fallbackTerminalRoster(callback, "Profiles returned ${response.code}")
                 }
             }
         })
     }
 
-    private fun fetchRoster(callback: (ApiResult<List<Profile>>) -> Unit) {
+    private fun fallbackTerminalRoster(callback: (ApiResult<List<Profile>>) -> Unit, errorDetail: String?) {
         val request = Request.Builder()
-            .url("${baseUrl()}/api/terminal/roster")
+            .url("${baseUrl()}/api/terminal/roster?terminalId=$terminalId")
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .get()
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.failure(Exception("Cannot connect to server: ${e.message}")))
+                callback(Result.failure(Exception(errorDetail ?: "Cannot connect to server: ${e.message}")))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "{}"
                 if (response.isSuccessful) {
                     try {
-                        val map = gson.fromJson(body, Map::class.java)
-                        val staffList = map["staff"] as? List<*> ?: map["roster"] as? List<*> ?: emptyList<Any>()
-                        val driversList = map["drivers"] as? List<*> ?: emptyList<Any>()
-                        val combinedJson = gson.toJson(staffList + driversList)
-                        val type = object : TypeToken<List<Profile>>() {}.type
-                        val list: List<Profile> = gson.fromJson(combinedJson, type)
-                        callback(Result.success(list.filter(::isBiometricPerson)))
+                        val parsed = parseProfilesJson(body)
+                        callback(Result.success(parsed))
                     } catch (e: Exception) {
-                        callback(Result.failure(Exception("Roster parse error: ${e.message}")))
+                        callback(Result.failure(e))
                     }
                 } else {
-                    callback(Result.failure(Exception("Roster request failed (${response.code})")))
+                    callback(Result.failure(Exception(errorDetail ?: "Server error (${response.code})")))
                 }
             }
         })
@@ -180,14 +190,7 @@ class ApiClient(context: Context) {
         record: AttendanceRecord,
         callback: (ApiResult<Boolean>) -> Unit = {}
     ) {
-        // The terminal event endpoint already writes the immutable punch log and
-        // consolidated portal summary. Only fall back to the legacy daily API if
-        // that richer request fails; posting both in parallel caused duplicate
-        // live updates and could overwrite punch-in/out fields out of order.
-        sendTerminalEvent(record) { terminalResult ->
-            if (terminalResult.isSuccess) callback(Result.success(true))
-            else sendDailyAttendanceFallback(record, callback)
-        }
+        sendTerminalEvent(record, callback)
     }
 
     private fun sendDailyAttendanceFallback(
@@ -208,6 +211,7 @@ class ApiClient(context: Context) {
 
             override fun onResponse(call: Call, response: Response) {
                 if (response.isSuccessful) {
+                    response.close()
                     callback(Result.success(true))
                 } else {
                     android.util.Log.w("ApiClient", "Attendance fallback POST ${response.code}: ${response.body?.string()?.take(200)}")
@@ -244,7 +248,7 @@ class ApiClient(context: Context) {
         }
 
         val payload = mapOf(
-            "terminalId" to "OFFICE-REWARI-01",
+            "terminalId" to terminalId,
             "employeeId" to record.profileId,
             "profileId" to record.profileId,
             "personId" to record.profileId,
@@ -252,6 +256,7 @@ class ApiClient(context: Context) {
             "status" to (record.status ?: if (isEmergency) "leave" else "present"),
             "action" to action,
             "dutyState" to (record.dutyState ?: if (isEmergency) "EMERGENCY_LEAVE" else if (isCheckOut) "COMPLETED" else "IN_DUTY"),
+            "fingerprintSlotId" to record.fingerprintSlotId,
             "biometricMethod" to (if (record.method?.equals("fingerprint", ignoreCase = true) == true) "FINGERPRINT" else "FACE"),
             "method" to (record.method ?: "face"),
             "inTime" to (record.inTime ?: timeStr),
@@ -273,18 +278,101 @@ class ApiClient(context: Context) {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.failure(Exception("Cannot connect to server: ${e.message}")))
+                // Seamlessly fallback to /api/attendance
+                sendDailyAttendanceFallback(record, callback)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    callback(Result.success(true))
+                if (response.code == 404) {
+                    // /api/terminal/event not mounted; use standard /api/attendance
+                    response.close()
+                    sendDailyAttendanceFallback(record, callback)
                 } else {
-                    android.util.Log.w("ApiClient", "Terminal event ${response.code}: ${response.body?.string()?.take(200)}")
-                    callback(Result.failure(Exception("Terminal event failed (${response.code})")))
+                    parseEventResponse(response, callback = callback)
                 }
             }
         })
+    }
+
+    private fun parseEventResponse(response: Response, blockedOnly: Boolean = false, callback: (ApiResult<Boolean>) -> Unit) {
+        response.use {
+            val raw = it.body?.string().orEmpty()
+            val json = runCatching { gson.fromJson(raw, com.google.gson.JsonObject::class.java) }.getOrNull()
+            if (it.isSuccessful && (json?.get("status")?.asString == "SUCCESS" || (blockedOnly && json?.get("status")?.asString == "ATTENDANCE_STOPPED"))) {
+                callback(Result.success(true))
+            } else {
+                val message = json?.get("message")?.takeUnless { value -> value.isJsonNull }?.asString
+                    ?: json?.get("error")?.takeUnless { value -> value.isJsonNull }?.asString
+                    ?: "Attendance not confirmed (${it.code}). Please retry."
+                callback(Result.failure(Exception(message)))
+            }
+        }
+    }
+
+    fun reportStoppedAttempt(
+        profileId: String,
+        profileName: String,
+        biometricMethod: String = "FACE",
+        fingerprintSlotId: Int? = null,
+        callback: (ApiResult<Boolean>) -> Unit = {}
+    ) {
+        val payload = mapOf(
+            "terminalId" to terminalId,
+            "employeeId" to profileId,
+            "profileId" to profileId,
+            "personName" to profileName,
+            "action" to "BLOCKED_ATTEMPT",
+            "biometricMethod" to biometricMethod.uppercase(Locale.US),
+            "method" to biometricMethod.lowercase(Locale.US),
+            "fingerprintSlotId" to fingerprintSlotId
+        )
+        val body = gson.toJson(payload)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/terminal/event")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                callback(Result.failure(e))
+            }
+            override fun onResponse(call: Call, response: Response) {
+                parseEventResponse(response, blockedOnly = true, callback = callback)
+            }
+        })
+    }
+
+    /** Send credentials only to this configured portal origin, never arbitrary photo URLs. */
+    fun photoModel(photo: String?): Any? {
+        if (photo.isNullOrBlank()) return null
+        if (photo.startsWith("data:")) return photo
+        val base = baseUrl().toHttpUrlOrNull() ?: return null
+        val url = base.resolve(photo) ?: return null
+        return if (url.host == base.host && url.scheme == base.scheme && url.port == base.port) {
+            com.bumptech.glide.load.model.GlideUrl(url.toString(), com.bumptech.glide.load.model.LazyHeaders.Builder()
+                .addHeader("Authorization", "Bearer ${prefs.terminalApiKey.ifBlank { prefs.authToken }}")
+                .addHeader("X-Org-Id", prefs.orgId.ifBlank { "vgtc" }).build())
+        } else url.toString()
+    }
+
+    fun reportDutyContinuesScan(
+        profileId: String,
+        profileName: String,
+        method: String = "face",
+        callback: (ApiResult<Boolean>) -> Unit = {}
+    ) {
+        val bioMethod = if (method.equals("fingerprint", ignoreCase = true)) "FINGERPRINT" else "FACE"
+        sendTerminalEventDirect(
+            profileId = profileId,
+            profileName = profileName,
+            status = "duty_continues",
+            action = "DUTY_CONTINUES",
+            dutyState = "IN_DUTY",
+            biometricMethod = bioMethod,
+            method = method,
+            notes = "Duty continues — scanned $method again",
+            callback = callback
+        )
     }
 
     fun sendTerminalEventDirect(
@@ -304,11 +392,12 @@ class ApiClient(context: Context) {
         durationHours: Double? = null,
         overrideReason: String? = null,
         notes: String? = null,
+        fingerprintSlotId: Int? = null,
         callback: (ApiResult<Boolean>) -> Unit = {}
     ) {
         val timeStr = SimpleDateFormat("hh:mm:ss a", Locale("en", "IN")).format(Date())
         val payload = mapOf(
-            "terminalId" to "OFFICE-REWARI-01",
+            "terminalId" to terminalId,
             "employeeId" to profileId,
             "profileId" to profileId,
             "personId" to profileId,
@@ -317,6 +406,7 @@ class ApiClient(context: Context) {
             "action" to action,
             "dutyState" to dutyState,
             "biometricMethod" to biometricMethod,
+            "fingerprintSlotId" to fingerprintSlotId,
             "method" to method,
             "inTime" to (inTime ?: timeStr),
             "outTime" to outTime,
@@ -340,7 +430,7 @@ class ApiClient(context: Context) {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                callback(Result.success(response.isSuccessful))
+                parseEventResponse(response, blockedOnly = action == "BLOCKED_ATTEMPT", callback = callback)
             }
         })
     }
@@ -375,7 +465,8 @@ class ApiClient(context: Context) {
             overrideReason = overrideReason,
             source = if (overrideReason != null) "manual" else "terminal",
             method = method,
-            terminalId = "VGTC-TERMINAL-01"
+            terminalId = terminalId,
+            fingerprintSlotId = if (method == "fingerprint") profile.fingerprintSlotId else null
         )
         markAttendance(record, callback)
     }
@@ -385,114 +476,29 @@ class ApiClient(context: Context) {
     // ──────────────────────────────────────────────────
     // PUT /api/profiles/:id — enroll face photo
     // ──────────────────────────────────────────────────
-    fun updateProfilePhoto(profileId: String, photoBase64: String, callback: (ApiResult<Boolean>) -> Unit) {
-        val payload = mapOf(
-            "id" to profileId,
-            "employeeId" to profileId,
-            "personId" to profileId,
-            "photo" to photoBase64,
-            "facePhoto" to photoBase64,
-            "photoUrl" to photoBase64,
-            "photos" to listOf(photoBase64),
-            "faceEnrolled" to true
-        )
-        val body = gson.toJson(payload)
-        val request = Request.Builder()
-            .url("${baseUrl()}/api/profiles/$profileId")
-            .put(body.toRequestBody(JSON_MEDIA_TYPE))
-            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                enrollTerminalPerson(profileId, payload, callback)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                // Ensure terminal enrollment also saves to the terminal registry
-                enrollTerminalPerson(profileId, payload, callback)
-            }
-        })
-    }
-
-    // ──────────────────────────────────────────────────
-    // POST /api/profiles — create profile
-    // ──────────────────────────────────────────────────
-    fun createProfile(profile: Profile, callback: (ApiResult<Profile>) -> Unit) {
-        val primaryPhoto = profile.photo ?: profile.photos?.firstOrNull()
-        val data = mutableMapOf<String, Any?>(
-            "id" to profile.id,
-            "employeeId" to profile.id,
-            "personId" to profile.id,
-            "name" to profile.name,
-            "profileType" to profile.profileType,
-            "type" to (if (profile.profileType?.equals("Driver", ignoreCase = true) == true) "DRIVER" else "STAFF"),
-            "vehicleNo" to profile.vehicleNo,
-            "assignedTruck" to profile.vehicleNo,
-            "fingerprintEnrolled" to profile.fingerprintEnrolled,
-            "fingerprintSlotId" to profile.fingerprintSlotId,
-            "faceEnrolled" to (primaryPhoto != null || profile.photos?.isNotEmpty() == true)
-        )
-        data["photo"] = primaryPhoto
-        data["facePhoto"] = primaryPhoto
-        data["photoUrl"] = primaryPhoto
-        if (primaryPhoto != null) {
-            data["photo"] = primaryPhoto
-            data["facePhoto"] = primaryPhoto
-            data["photoUrl"] = primaryPhoto
-        }
-        if (profile.photos != null) {
-            data["photos"] = profile.photos
-        }
-        if (profile.faceEmbedding != null) {
-            data["faceEmbedding"] = profile.faceEmbedding
-        }
-
-        val body = gson.toJson(data)
-        val request = Request.Builder()
-            .url("${baseUrl()}/api/profiles")
-            .post(body.toRequestBody(JSON_MEDIA_TYPE))
-            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                enrollTerminalPerson(profile.id, data) { res ->
-                    if (res.isSuccess) callback(Result.success(profile)) else callback(Result.failure(Exception("Create failed")))
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                enrollTerminalPerson(profile.id, data) { _ -> }
-                val respBody = response.body?.string() ?: ""
-                if (response.isSuccessful) {
-                    try {
-                        val created = gson.fromJson(respBody, Profile::class.java)
-                        callback(Result.success(created))
-                    } catch (e: Exception) {
-                        callback(Result.success(profile))
-                    }
-                } else {
-                    callback(Result.success(profile))
-                }
-            }
-        })
-    }
-
     fun uploadEnrollmentImages(profileId: String, photos: List<String>, callback: (ApiResult<List<String>>) -> Unit) {
         val body = gson.toJson(mapOf("profileId" to profileId, "photos" to photos))
         val request = Request.Builder().url("${baseUrl()}/api/terminal/enroll-images")
             .post(body.toRequestBody(JSON_MEDIA_TYPE)).apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }.build()
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) = callback(Result.failure(e))
+            override fun onFailure(call: Call, e: IOException) {
+                // If endpoint unreachable, photos are base64 data URIs which can be saved directly on profile
+                callback(Result.success(photos))
+            }
             override fun onResponse(call: Call, response: Response) {
                 val raw = response.body?.string() ?: "{}"
-                if (!response.isSuccessful) return callback(Result.failure(Exception("Image upload failed (${response.code})")))
-                try {
-                    val json = gson.fromJson(raw, com.google.gson.JsonObject::class.java)
-                    val urls = json.getAsJsonArray("urls").map { it.asString }
-                    callback(Result.success(urls))
-                } catch (e: Exception) { callback(Result.failure(e)) }
+                if (response.isSuccessful) {
+                    try {
+                        val json = gson.fromJson(raw, com.google.gson.JsonObject::class.java)
+                        val urls = json.getAsJsonArray("urls").map { it.asString }
+                        callback(Result.success(urls))
+                    } catch (e: Exception) {
+                        callback(Result.success(photos))
+                    }
+                } else {
+                    // If /api/terminal/enroll-images returns 404 or non-200, return base64 photos directly
+                    callback(Result.success(photos))
+                }
             }
         })
     }
@@ -511,50 +517,83 @@ class ApiClient(context: Context) {
         })
     }
 
+    fun deleteFaceBiometrics(profileId: String, callback: (ApiResult<Boolean>) -> Unit) {
+        val payload = mapOf("id" to profileId, "biometricType" to "face")
+        val body = gson.toJson(payload)
+        val request = Request.Builder()
+            .url("${baseUrl()}/api/terminal/enroll/delete")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = callback(Result.failure(e))
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    response.close()
+                    callback(Result.success(true))
+                } else {
+                    response.close()
+                    callback(Result.failure(Exception("Delete face failed (${response.code})")))
+                }
+            }
+        })
+    }
+
     // ──────────────────────────────────────────────────
     // PUT /api/profiles/:id — update profile
     // ──────────────────────────────────────────────────
     fun updateProfile(profile: Profile, callback: (ApiResult<Boolean>) -> Unit) {
         val primaryPhoto = profile.photo ?: profile.photos?.firstOrNull()
-        val data = mutableMapOf<String, Any?>(
+        val hasFace = !primaryPhoto.isNullOrBlank() || !profile.photos.isNullOrEmpty()
+        val payload = mutableMapOf<String, Any?>(
             "id" to profile.id,
             "employeeId" to profile.id,
-            "personId" to profile.id,
-            "name" to profile.name,
-            "profileType" to profile.profileType,
-            "type" to (if (profile.profileType?.equals("Driver", ignoreCase = true) == true) "DRIVER" else "STAFF"),
-            "vehicleNo" to profile.vehicleNo,
-            "assignedTruck" to profile.vehicleNo,
             "fingerprintEnrolled" to profile.fingerprintEnrolled,
             "fingerprintSlotId" to profile.fingerprintSlotId,
-            "faceEnrolled" to (primaryPhoto != null || profile.photos?.isNotEmpty() == true)
+            "attendanceEnabled" to (profile.attendanceEnabled ?: true),
+            "faceEnrolled" to hasFace
         )
-        if (primaryPhoto != null) {
-            data["photo"] = primaryPhoto
-            data["facePhoto"] = primaryPhoto
-            data["photoUrl"] = primaryPhoto
-        }
-        if (profile.photos != null) {
-            data["photos"] = profile.photos
-        }
-        if (profile.faceEmbedding != null) {
-            data["faceEmbedding"] = profile.faceEmbedding
+        if (hasFace) {
+            payload["photo"] = primaryPhoto
+            payload["facePhoto"] = primaryPhoto
+            payload["photoUrl"] = primaryPhoto
+            if (!profile.photos.isNullOrEmpty()) {
+                payload["photos"] = profile.photos
+            }
+            if (!profile.faceEmbedding.isNullOrEmpty()) {
+                payload["faceEmbedding"] = profile.faceEmbedding
+            }
+        } else {
+            payload["clearFace"] = true
+            payload["photo"] = null
+            payload["facePhoto"] = null
+            payload["photoUrl"] = null
+            payload["photos"] = emptyList<String>()
+            payload["faceEmbedding"] = null
         }
 
-        val body = gson.toJson(data)
+        val body = gson.toJson(payload)
         val request = Request.Builder()
             .url("${baseUrl()}/api/profiles/${profile.id}")
             .put(body.toRequestBody(JSON_MEDIA_TYPE))
-            .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
+            .apply { terminalHeaders().forEach { (k, v) -> header(k, v) } }
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                enrollTerminalPerson(profile.id, data, callback)
+                enrollTerminalPerson(profile.id, payload, callback)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                enrollTerminalPerson(profile.id, data, callback)
+                if (response.isSuccessful) {
+                    response.close()
+                    callback(Result.success(true))
+                } else if (response.code == 404 || response.code == 403) {
+                    enrollTerminalPerson(profile.id, payload, callback)
+                } else {
+                    response.close()
+                    callback(Result.failure(Exception("Profile sync error (${response.code})")))
+                }
             }
         })
     }
@@ -564,7 +603,7 @@ class ApiClient(context: Context) {
             "id" to profileId,
             "employeeId" to profileId,
             "personId" to profileId,
-            "terminalId" to "OFFICE-REWARI-01",
+            "terminalId" to terminalId,
             "faceEnrolled" to true
         )
         payload.putAll(data)
@@ -586,12 +625,12 @@ class ApiClient(context: Context) {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                // Also try updating profiles directly if terminal enroll fails
                 callback(Result.failure(Exception("Terminal sync error: ${e.message}")))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 if (response.isSuccessful) {
+                    response.close()
                     callback(Result.success(true))
                 } else {
                     android.util.Log.w("ApiClient", "Terminal enroll ${response.code}: ${response.body?.string()?.take(200)}")
@@ -604,64 +643,48 @@ class ApiClient(context: Context) {
     // ──────────────────────────────────────────────────
     // DELETE /api/profiles/:id — delete profile
     // ──────────────────────────────────────────────────
-    fun deleteProfile(profileId: String, callback: (ApiResult<Boolean>) -> Unit) {
-        ensureToken { tokenOk ->
-            if (!tokenOk) {
-                callback(Result.failure(Exception("Not authenticated")))
-                return@ensureToken
-            }
-            val request = Request.Builder()
-                .url("${baseUrl()}/api/profiles/$profileId")
-                .delete()
-                .apply { authHeaders().forEach { (k, v) -> header(k, v) } }
-                .build()
-
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    callback(Result.failure(Exception("Network error: ${e.message}")))
-                }
-
-                override fun onResponse(call: Call, response: Response) {
-                    if (response.isSuccessful) {
-                        callback(Result.success(true))
-                    } else {
-                        callback(Result.failure(Exception("Delete failed (${response.code})")))
-                    }
-                }
-            })
-        }
-    }
-
     // ──────────────────────────────────────────────────
     // GET /api/auth/status  — quick connectivity check
     // ──────────────────────────────────────────────────
-    fun checkConnection(callback: (Boolean) -> Unit) {
-        val url = baseUrl()
-        if (url.isBlank()) { callback(false); return }
-        val request = Request.Builder()
-            .url("$url/api/auth/status")
-            .get()
-            .build()
+    fun getDuty(profileId: String, callback: (ApiResult<com.vgtc.terminal.model.DutyRecord?>) -> Unit) {
+        val url = baseUrl().toHttpUrlOrNull()?.newBuilder()?.addPathSegments("api/terminal/duty")?.addPathSegment(profileId)?.build()
+        if (url == null) {
+            val localDuty = prefs.getTodayDutyMap()[profileId]
+            callback(Result.success(localDuty))
+            return
+        }
+        val request = Request.Builder().url(url).get().apply { terminalHeaders().forEach { (k,v) -> header(k,v) } }.build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                val rosterReq = Request.Builder().url("$url/api/terminal/roster").get().build()
-                client.newCall(rosterReq).enqueue(object : Callback {
-                    override fun onFailure(call: Call, e: IOException) { callback(false) }
-                    override fun onResponse(call: Call, response: Response) { callback(response.isSuccessful) }
-                })
+                val localDuty = prefs.getTodayDutyMap()[profileId]
+                callback(Result.success(localDuty))
             }
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    callback(true)
-                } else {
-                    val rosterReq = Request.Builder().url("$url/api/terminal/roster").get().build()
-                    client.newCall(rosterReq).enqueue(object : Callback {
-                        override fun onFailure(call: Call, e: IOException) { callback(false) }
-                        override fun onResponse(call: Call, response: Response) { callback(response.isSuccessful) }
-                    })
+                response.use {
+                    if (!it.isSuccessful) {
+                        val localDuty = prefs.getTodayDutyMap()[profileId]
+                        callback(Result.success(localDuty))
+                        return
+                    }
+                    try {
+                        val json = gson.fromJson(it.body?.string(), com.google.gson.JsonObject::class.java)
+                        val activeDuty = if (json.has("activeDuty") && !json.get("activeDuty").isJsonNull) {
+                            gson.fromJson(json.get("activeDuty"), com.vgtc.terminal.model.DutyRecord::class.java)
+                        } else {
+                            prefs.getTodayDutyMap()[profileId]
+                        }
+                        callback(Result.success(activeDuty))
+                    } catch (error: Exception) {
+                        val localDuty = prefs.getTodayDutyMap()[profileId]
+                        callback(Result.success(localDuty))
+                    }
                 }
             }
         })
+    }
+
+    fun checkConnection(callback: (Boolean) -> Unit) {
+        getProfiles { callback(it.isSuccess) }
     }
 
     // ──────────────────────────────────────────────────

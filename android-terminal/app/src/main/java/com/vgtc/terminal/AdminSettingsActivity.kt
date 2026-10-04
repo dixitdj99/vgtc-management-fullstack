@@ -43,6 +43,18 @@ class AdminSettingsActivity : AppCompatActivity() {
         binding.etUsername.setText(prefs.username)
         binding.etPassword.setText(prefs.password)
         binding.etOrgId.setText(prefs.orgId)
+        binding.etTerminalApiKey.setText(prefs.terminalApiKey.ifBlank { "VGTC-TERMINAL-TOKEN-KEY" })
+
+        binding.btnPresetProd.setOnClickListener {
+            binding.etServerUrl.setText("https://vgtc.site")
+        }
+        binding.btnPresetLocal.setOnClickListener {
+            binding.etServerUrl.setText("http://192.168.1.112:5000")
+        }
+        binding.btnFillDefaultKey.setOnClickListener {
+            binding.etTerminalApiKey.setText("VGTC-TERMINAL-TOKEN-KEY")
+            Toast.makeText(this, "Default Terminal Key filled", Toast.LENGTH_SHORT).show()
+        }
 
         binding.btnSaveServerConfig.setOnClickListener {
             var url = Prefs.sanitizeServerUrl(binding.etServerUrl.text.toString())
@@ -52,8 +64,16 @@ class AdminSettingsActivity : AppCompatActivity() {
             val username = binding.etUsername.text.toString().trim()
             val password = binding.etPassword.text.toString()
             val orgId = binding.etOrgId.text.toString().trim()
+            val terminalKey = binding.etTerminalApiKey.text.toString().trim().ifBlank { "VGTC-TERMINAL-TOKEN-KEY" }
+
+            val urlChanged = prefs.serverUrl != url
+            if (urlChanged) {
+                // Clear old environment cached roster so new environment profiles load cleanly
+                prefs.clearLocalProfiles()
+            }
 
             binding.etServerUrl.setText(url)
+            binding.etTerminalApiKey.setText(terminalKey)
             binding.btnSaveServerConfig.isEnabled = false
             binding.btnSaveServerConfig.text = "Testing connection..."
 
@@ -61,26 +81,32 @@ class AdminSettingsActivity : AppCompatActivity() {
             if (username.isNotBlank()) prefs.username = username
             if (password.isNotBlank()) prefs.password = password
             prefs.orgId = orgId.ifBlank { "vgtc" }
-            if (prefs.authToken.isBlank()) {
-                prefs.authToken = "VGTC-TERMINAL-TOKEN-KEY"
-            }
+            prefs.terminalApiKey = terminalKey
+            prefs.authToken = ""
 
-            apiClient.checkConnection { connected ->
-                runOnUiThread {
+            fun showError(message: String) { runOnUiThread {
+                binding.btnSaveServerConfig.isEnabled = true
+                binding.btnSaveServerConfig.text = "Save & Test Connection"
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                    .setTitle("Connection not ready").setMessage(message).setPositiveButton("OK", null).show()
+            } }
+
+            fun testRoster() {
+                apiClient.getProfiles { result -> runOnUiThread {
                     binding.btnSaveServerConfig.isEnabled = true
                     binding.btnSaveServerConfig.text = "Save & Test Connection"
+                    result.onSuccess { profiles ->
+                        prefs.mergeServerRoster(profiles)
+                        Toast.makeText(this, "✓ Connected • ${profiles.size} VGTC profiles synchronized", Toast.LENGTH_LONG).show()
+                    }.onFailure { showError(it.message ?: "Cannot load VGTC roster") }
+                } }
+            }
 
-                    if (connected) {
-                        Toast.makeText(this, "✓ Connected to VGTC Production Server!", Toast.LENGTH_SHORT).show()
-                        // Synchronize profiles immediately so live roster is updated
-                        apiClient.getProfiles { rosterResult ->
-                            rosterResult.onSuccess { profiles ->
-                                prefs.saveLocalProfiles(profiles)
-                            }
-                        }
-                    } else {
-                        Toast.makeText(this, "✓ Server configuration saved ($url)", Toast.LENGTH_SHORT).show()
-                    }
+            testRoster()
+
+            if (username.isNotBlank() && password.isNotBlank()) {
+                apiClient.login(username, password) { result ->
+                    result.onSuccess { prefs.authToken = it }
                 }
             }
         }

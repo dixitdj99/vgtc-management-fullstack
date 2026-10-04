@@ -8,29 +8,26 @@ const { publishAttendanceChange, subscribeToAttendance } = require('../services/
 
 const ATTENDANCE_COL = 'attendance';
 
-// Terminal kiosk token — allows biometric devices to write attendance
-// records without needing a full user JWT with attendance permissions.
-const TERMINAL_TOKEN = process.env.TERMINAL_KEY || 'VGTC-TERMINAL-TOKEN-KEY';
+const terminalKeyStore = require('../utils/terminalKeyStore');
 
 /**
  * Middleware that accepts either a valid terminal token OR a normal user auth
  * token with attendance view permission. This is necessary because the Android
  * terminal app authenticates with a static device token, not a user JWT.
  */
-const attendanceOrTerminalAuth = (req, res, next) => {
+const attendanceOrTerminalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.slice(7).trim();
-        if (token === TERMINAL_TOKEN) {
+        if (await terminalKeyStore.isTerminalTokenAsync(token)) {
             // Terminal device — inject admin context with org from header
             req.user = {
                 id: 'vgtc-terminal',
                 name: 'VGTC Terminal Kiosk',
-                role: 'admin',
+                role: 'terminal',
                 orgId: req.headers['x-org-id'] || 'vgtc',
-                permissions: { attendance: 'delete' }
+                permissions: { attendance: 'edit' }
             };
-            // tenancyMiddleware expects req.orgId
             req.orgId = req.user.orgId;
             return next();
         }

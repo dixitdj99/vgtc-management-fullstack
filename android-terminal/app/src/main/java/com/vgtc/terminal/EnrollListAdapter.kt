@@ -3,6 +3,7 @@ package com.vgtc.terminal
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.vgtc.terminal.databinding.ItemEmployeeEnrollBinding
@@ -49,6 +50,7 @@ class EnrollListAdapter(
         // Type + location label
         holder.binding.tvType.text = buildString {
             append(if (isDriver) "Driver • Yard" else ((profile.profileType ?: "Staff") + " • Office"))
+            if (!profile.isAttendanceActive) append(" • Attendance stopped")
             if (vehicleNo != null) append("  🚛 $vehicleNo")
         }
 
@@ -56,8 +58,7 @@ class EnrollListAdapter(
         holder.binding.badgeFace.visibility = if (hasFace) View.VISIBLE else View.GONE
         holder.binding.badgeFace.text = if (!profile.faceEmbedding.isNullOrEmpty()) "Face AI ✓" else "Face ✓"
 
-        val hasFingerprint = profile.fingerprintEnrolled || profile.fingerprintSlotId != null ||
-                prefs.enrolledFingerprintProfileId == profile.id
+        val hasFingerprint = profile.fingerprintEnrolled && profile.fingerprintSlotId != null
         holder.binding.badgeFingerprint.visibility = if (hasFingerprint) View.VISIBLE else View.GONE
         holder.binding.badgeFingerprint.text = if (profile.fingerprintSlotId != null)
             "R307 #${profile.fingerprintSlotId} ✓" else "Fingerprint ✓"
@@ -69,7 +70,7 @@ class EnrollListAdapter(
         // Avatar photo
         if (hasFace && !profile.photo.isNullOrBlank()) {
             Glide.with(holder.itemView.context)
-                .load(profile.photo)
+                .load(com.vgtc.terminal.api.ApiClient(holder.itemView.context).photoModel(profile.photo))
                 .circleCrop()
                 .placeholder(R.drawable.ic_person_placeholder)
                 .into(holder.binding.ivAvatar)
@@ -81,6 +82,9 @@ class EnrollListAdapter(
         if (hasFace) {
             holder.binding.btnEnrollFace.text = "Re-enroll Face"
             holder.binding.btnClearFace.visibility = View.VISIBLE
+            holder.binding.btnClearFace.text = "Delete Face"
+            holder.binding.btnClearFace.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.red_offline))
+            holder.binding.btnClearFace.strokeColor = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(holder.itemView.context, R.color.red_offline))
         } else {
             holder.binding.btnEnrollFace.text = "Enroll Face"
             holder.binding.btnClearFace.visibility = View.GONE
@@ -88,10 +92,10 @@ class EnrollListAdapter(
 
         // Fingerprint buttons
         if (hasFingerprint) {
-            holder.binding.btnEnrollFingerprint.text = "Re-record FP"
-            holder.binding.btnClearFingerprint.visibility = View.VISIBLE
+            holder.binding.btnEnrollFingerprint.text = "Re-enroll finger"
+            holder.binding.btnClearFingerprint.visibility = View.GONE
         } else {
-            holder.binding.btnEnrollFingerprint.text = "Record FP"
+            holder.binding.btnEnrollFingerprint.text = "Enroll finger"
             holder.binding.btnClearFingerprint.visibility = View.GONE
         }
 

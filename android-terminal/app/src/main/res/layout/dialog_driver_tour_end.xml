@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@drawable/chip_rounded"
+    android:backgroundTint="@color/surface_card">
+
+    <!-- Header Badge -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/chip_rounded"
+            android:backgroundTint="#EFF6FF"
+            android:gravity="center"
+            android:text="🚛"
+            android:textSize="18sp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvTourDialogTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Duty Tour Status"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tvTourDialogSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Active driver duty session"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider"
+        android:layout_marginVertical="14dp" />
+
+    <!-- Driver Info Card -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:background="@drawable/chip_rounded"
+        android:backgroundTint="#F8FAFC">
+
+        <TextView
+            android:id="@+id/tvDriverName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Driver Name"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvVehicleBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🚛 RJ14 GH 0000"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#1E40AF"
+                android:background="@drawable/chip_rounded"
+                android:backgroundTint="#DBEAFE"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp" />
+
+            <TextView
+                android:id="@+id/tvDurationBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="⏱️ 4h elapsed"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#065F46"
+                android:background="@drawable/chip_rounded"
+                android:backgroundTint="#D1FAE5"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvStartTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Shift Started: 02:38 pm"
+            android:textSize="12.5sp"
+            android:textColor="@color/text_secondary" />
+    </LinearLayout>
+
+    <!-- Question Prompt -->
+    <TextView
+        android:id="@+id/tvQuestionPrompt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="क्या आप ड्यूटी समाप्त करके घर जा रहे हैं?"
+        android:textSize="14.5sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textColor="@color/text_primary" />
+
+    <TextView
+        android:id="@+id/tvQuestionPromptSub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Please choose to punch out or continue active duty."
+        android:textSize="12sp"
+        android:gravity="center"
+        android:textColor="@color/text_secondary" />
+
+    <!-- Action Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="18dp">
+
+        <!-- Complete Duty / Punch Out Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnEndDuty"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="✓ हाँ, ड्यूटी समाप्त (Punch Out)"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/white"
+            app:backgroundTint="#10B981"
+            app:cornerRadius="10dp" />
+
+        <!-- Continue Duty Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnContinueDuty"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="8dp"
+            android:text="▶️ नहीं, ड्यूटी जारी रखें (Continue)"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#1E40AF"
+            app:backgroundTint="#EFF6FF"
+            app:strokeColor="#93C5FD"
+            app:strokeWidth="1.5dp"
+            app:cornerRadius="10dp" />
+    </LinearLayout>
+</LinearLayout>
