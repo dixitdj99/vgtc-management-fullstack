@@ -12,10 +12,19 @@ function stub(modulePath, exports) {
 
 const aiCalls = [];
 const sent = [];
+const activity = [];
+const deliveryRecords = [];
+let failDeliveryWrite = false;
 stub('../firebase', { db: {}, isAvailable: () => false, admin: {} });
 stub('../utils/collectionUtils', { getCol: name => name, getEnvCol: name => name });
 stub('../utils/localStore', { getAll: () => [], _store: {} });
 stub('../utils/notificationService', { createNotification: async () => {} });
+stub('../utils/whatsappDeliveryStore', {
+    recordStatus: async status => {
+        if (failDeliveryWrite) throw new Error('Storage unavailable');
+        deliveryRecords.push(status);
+    }
+});
 stub('../services/reportService', {
     generateVehicleMonthlyPdf: async () => {},
     generateVehicleMonthlyExcel: async () => {},
@@ -33,7 +42,7 @@ stub('../utils/whatsappService', {
     lookupProfilePhone: async () => '',
     lookupUserPhone: async () => '',
     getWhatsAppConfig: async () => ({ clerkPhone: '919999999999', labourPhones: '919999999999', adminPhones: [], webhookVerifyToken: 'test-verify-token' }),
-    logWhatsAppActivity: () => {},
+    logWhatsAppActivity: event => { activity.push(event); },
 });
 stub('../services/whatsappAiService', {
     isAiEnabled: () => true,
@@ -62,6 +71,9 @@ test.after(async () => {
 test.beforeEach(() => {
     aiCalls.length = 0;
     sent.length = 0;
+    activity.length = 0;
+    deliveryRecords.length = 0;
+    failDeliveryWrite = false;
 });
 
 async function post(body) {
@@ -192,12 +204,32 @@ test('interactive button payload never enters Gemini fallback', async () => {
 });
 
 test('Meta delivery status and legacy fromMe event receive no AI reply', async () => {
-    await post({ entry: [{ changes: [{ value: { statuses: [{ id: 'wamid-status-1', status: 'delivered' }] } }] }] });
+    await post({ entry: [{ changes: [{ value: { statuses: [
+        { id: 'wamid-status-1', recipient_id: '919999999999', status: 'delivered' },
+        { id: 'wamid-status-2', recipient_id: '919888888888', status: 'failed', errors: [{ code: 131026, title: 'Message undeliverable', error_data: { details: 'Recipient unavailable' } }] }
+    ] } }] }] });
     await post({ fromMe: true, from: '919999999999', body: 'What are your working hours?' });
     await settle();
 
     assert.equal(aiCalls.length, 0);
     assert.equal(sent.length, 0);
+    assert.deepEqual(activity.map(event => [event.messageId, event.status]), [
+        ['wamid-status-1', 'delivered'],
+        ['wamid-status-2', 'failed']
+    ]);
+    assert.match(activity[1].error, /Recipient unavailable/);
+    assert.deepEqual(deliveryRecords.map(item => item.id), ['wamid-status-1', 'wamid-status-2']);
+});
+
+test('Meta status callback retries when durable write fails', async () => {
+    failDeliveryWrite = true;
+    const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: 'wamid-retry', status: 'failed' }] } }] }] })
+    });
+    assert.equal(response.status, 500);
+    assert.equal(activity.length, 0);
 });
 
 test('duplicate Meta message ID receives one AI reply', async () => {

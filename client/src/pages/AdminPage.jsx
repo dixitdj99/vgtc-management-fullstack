@@ -124,9 +124,9 @@ export default function AdminPage() {
             target="_blank"
             rel="noopener noreferrer"
             className="adm-btn adm-btn--secondary adm-btn--sm"
-            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(16, 185, 129, 0.3)', background: 'rgba(16, 185, 129, 0.08)', color: '#10b981' }}
+            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border)', background: 'var(--adm-mint-wash)', color: 'var(--adm-mint)' }}
           >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--adm-mint)', display: 'inline-block' }} />
             <span style={{ fontWeight: 700 }}>System Observability &amp; Status ↗</span>
           </a>
         </header>

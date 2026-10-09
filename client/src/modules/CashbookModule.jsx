@@ -14,6 +14,7 @@ import useFormShortcuts, { markInvalidFields } from '../hooks/useFormShortcuts';
 import { getSticky, rememberSticky } from '../utils/stickyDefaults';
 import TableScroll from '../components/TableScroll';
 import TruckLoader from '../components/TruckLoader';
+import { allDocumentRenewals } from '../components/VehicleDocumentRenewals';
 
 const PAGE_SIZE = 20;
 
@@ -559,6 +560,11 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     return expenses.sort((a, b) => b.date > a.date ? 1 : -1);
   }, [allVouchers]);
 
+  const documentExpenses = useMemo(() => allDocumentRenewals(vehicles).map(record => ({
+    ...record, date: record.paidOn, amount: Number(record.amount) || 0,
+    remark: `${record.documentType?.toUpperCase()} renewal — ${record.truckNo}`,
+  })), [vehicles]);
+
   const onlineAdvList = useMemo(() =>
     allVouchers
       .filter(v => parseFloat(v.advanceOnline) > 0)
@@ -736,6 +742,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
     }))),
     [voucherVehicleExpenses, fFrom, fTo, fSearch],
   );
+  const filteredDocumentExpenses = useMemo(() => filterRows(documentExpenses), [documentExpenses, fFrom, fTo, fSearch]);
   const filteredOnline = useMemo(() => filterRows(onlineAdvList, true), [onlineAdvList, fFrom, fTo, fSearch, fPaid]);
 
   const activeRows = tab === 'ledger' ? filteredLedger :
@@ -1209,6 +1216,7 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
           { id: 'deposits', label: 'Deposits', count: deposits.length },
           { id: 'voucher_cash', label: 'Voucher Cash Adv', count: voucherCashAdv.length },
           { id: 'voucher_expense', label: 'Vehicle Expenses', count: voucherVehicleExpenses.length },
+          { id: 'document_expense', label: 'Document Expenses', count: documentExpenses.length },
           { id: 'cash_out', label: 'Cash Outs', count: cashOuts.length },
         ].map(({ id, label, count }) => (
           <button key={id} onClick={() => onTabChange(id)}
@@ -1226,7 +1234,15 @@ export default function CashbookModule({ initialTab, moduleType, role = 'user', 
       </div>
 
       {/* Table content */}
-      {tab === 'office_spend' ? (
+      {tab === 'document_expense' ? (
+        <div className="card" style={{ overflowX: 'auto' }}>
+          <div className="card-header"><div className="card-title-text"><h3>Vehicle document expenses</h3><p>Pollution, Fitness and Insurance payments · {filteredDocumentExpenses.length} records · Total {fmtRs(filteredDocumentExpenses.reduce((sum, row) => sum + row.amount, 0))}</p></div></div>
+          <table className="data-table" style={{ width: '100%' }}><thead><tr><th>Paid on</th><th>Truck</th><th>Document</th><th>Valid period</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>
+            {filteredDocumentExpenses.map(row => <tr key={`${row.vehicleId}-${row.id}`}><td>{fmtDate(row.paidOn)}</td><td>{row.truckNo}</td><td>{row.documentType?.toUpperCase()}</td><td>{fmtDate(row.validFrom)} → {fmtDate(row.expiresOn)}</td><td>{fmtRs(row.amount)}</td><td>{row.paymentMethod || '—'}</td><td>{[row.reference, row.notes].filter(Boolean).join(' · ') || '—'}</td></tr>)}
+            {!filteredDocumentExpenses.length && <tr><td colSpan="7" style={{ textAlign: 'center', padding: 24 }}>No document expenses in selected period</td></tr>}
+          </tbody></table>
+        </div>
+      ) : tab === 'office_spend' ? (
         <div className="card">
           <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
             <div className="card-title-block">

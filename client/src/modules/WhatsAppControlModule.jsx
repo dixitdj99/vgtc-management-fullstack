@@ -10,11 +10,12 @@ import {
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
+import './WhatsAppControlModule.css';
 
-const DEFAULT_PHONE_NUMBER_ID = '1216388781567509';
-const DEFAULT_WABA_ID = '1552863822720100';
-const DEFAULT_ACCESS_TOKEN = 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
-const DEFAULT_VERIFY_TOKEN = 'vgtc_meta_verify_token_2026';
+const DEFAULT_PHONE_NUMBER_ID = '';
+const DEFAULT_WABA_ID = '';
+const DEFAULT_ACCESS_TOKEN = '';
+const DEFAULT_VERIFY_TOKEN = '';
 const DEFAULT_ADMIN_PHONES = '8708032492, 9416319445, 9728954901, 9728284849';
 const DEFAULT_CLERK_PHONE = '8708032492';
 const DEFAULT_LABOUR_PHONE = '8708032492';
@@ -190,21 +191,20 @@ const getCategoryIcon = (category) => {
 };
 
 const getCategoryColor = (category) => {
-  switch (category) {
-    case 'Loading & Drivers':
-      return { bg: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: 'rgba(59, 130, 246, 0.25)', accent: '#3b82f6' };
-    case 'Freight Vouchers':
-    case 'Freight & Vouchers':
-      return { bg: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: 'rgba(16, 185, 129, 0.25)', accent: '#10b981' };
-    case 'Online Advances':
-      return { bg: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: 'rgba(245, 158, 11, 0.25)', accent: '#f59e0b' };
-    case 'Cashbook & Banking':
-      return { bg: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', border: 'rgba(139, 92, 246, 0.25)', accent: '#8b5cf6' };
-    case 'Challan & Staff Khata':
-      return { bg: 'rgba(236, 72, 153, 0.1)', color: '#ec4899', border: 'rgba(236, 72, 153, 0.25)', accent: '#ec4899' };
-    default:
-      return { bg: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', border: 'rgba(99, 102, 241, 0.25)', accent: '#6366f1' };
-  }
+  const palette = {
+    'Loading & Drivers': ['violet', 'var(--adm-violet, #6867ed)'],
+    'Freight Vouchers': ['cyan', 'var(--adm-cyan, #0bb6d5)'],
+    'Online Advances': ['amber', 'var(--adm-amber, #e9a00b)'],
+    'Cashbook & Banking': ['mint', 'var(--adm-mint, #17b98b)'],
+    'Challan & Staff Khata': ['violet', 'var(--adm-violet, #6867ed)']
+  };
+  const [name, accent] = palette[category] || palette['Loading & Drivers'];
+  return {
+    bg: `var(--adm-${name}-wash)`,
+    color: accent,
+    border: 'var(--border)',
+    accent
+  };
 };
 
 export default function WhatsAppControlModule() {
@@ -256,9 +256,12 @@ export default function WhatsAppControlModule() {
   // Test Dispatch Form
   const [testForm, setTestForm] = useState({
     phone: '8708032492',
+    mode: 'template', // 'template' | 'custom_text'
+    templateName: 'hello', // 'hello' | '3p_direct_integration_test_template'
     message: ''
   });
   const [testResult, setTestResult] = useState(null);
+  const [recentDeliveries, setRecentDeliveries] = useState([]);
 
   // Logs State
   const [logs, setLogs] = useState([]);
@@ -282,11 +285,55 @@ export default function WhatsAppControlModule() {
 
   useEffect(() => {
     fetchConfig();
+    fetchRecentDeliveries();
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') checkConnection();
     }, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchRecentDeliveries = async () => {
+    try {
+      const res = await ax.get('/whatsapp/deliveries?limit=20', { _skipCache: true });
+      setRecentDeliveries(res.data?.deliveries || []);
+    } catch (error) {
+      console.error('Failed to load WhatsApp delivery history', error);
+    }
+  };
+
+  const testMessageId = testResult?.data?.result?.messages?.[0]?.id;
+  useEffect(() => {
+    if (!testMessageId) return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const res = await ax.get(`/whatsapp/delivery/${encodeURIComponent(testMessageId)}`, { _skipCache: true });
+        if (cancelled) return;
+        setTestResult(prev => prev?.data?.result?.messages?.[0]?.id === testMessageId
+          ? { ...prev, delivery: res.data.delivery } : prev);
+        if (['delivered', 'read', 'failed'].includes(res.data.delivery?.status)) {
+          clearInterval(timer);
+          fetchRecentDeliveries();
+        }
+      } catch (error) {
+        if (!cancelled && error.response?.status !== 404) {
+          setTestResult(prev => prev?.data?.result?.messages?.[0]?.id === testMessageId
+            ? { ...prev, trackingError: 'Delivery status unavailable. Check server logs.' } : prev);
+        }
+      }
+      if (attempts >= 20) {
+        clearInterval(timer);
+        if (!cancelled) setTestResult(prev => prev?.data?.result?.messages?.[0]?.id === testMessageId
+          && !['delivered', 'read', 'failed'].includes(prev.delivery?.status)
+          ? { ...prev, trackingError: 'No final delivery callback after 60 seconds. Check webhook delivery and server logs using this message ID.' } : prev);
+      }
+    };
+    const timer = setInterval(poll, 3000);
+    poll();
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [testMessageId]);
 
   const fetchConfig = async (refreshStatus = true) => {
     setLoading(true);
@@ -400,8 +447,8 @@ export default function WhatsAppControlModule() {
       showToast(
         finalVal ? 'success' : 'info',
         finalVal
-          ? '🟢 WhatsApp Messages are now LIVE (Enabled)'
-          : '🔴 WhatsApp Messages TURNED OFF (Muted — Safe Mode)'
+          ? 'Automatic WhatsApp messages enabled.'
+          : 'Automatic WhatsApp messages paused.'
       );
       fetchLogs();
     } catch (err) {
@@ -464,18 +511,21 @@ export default function WhatsAppControlModule() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await ax.post('/whatsapp/test', {
+      const payload = {
         phone: testForm.phone,
+        templateName: testForm.mode === 'template' ? testForm.templateName : 'none',
         message: testForm.message
-      });
-      setTestResult({ success: true, data: res.data });
-      showToast('success', '✅ Test WhatsApp Message dispatched via Meta Cloud API!');
+      };
+      const res = await ax.post('/whatsapp/test', payload);
+      setTestResult({ success: true, data: res.data, message: res.data?.message });
+      showToast('info', res.data?.message || 'Meta accepted test request. Check delivery status.');
       checkConnection();
       fetchLogs();
+      fetchRecentDeliveries();
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Meta WhatsApp dispatch failed';
       setTestResult({ success: false, error: msg });
-      showToast('error', '❌ Dispatch Failed: ' + msg);
+      showToast('error', 'Dispatch failed: ' + msg);
     } finally {
       setTesting(false);
     }
@@ -495,7 +545,7 @@ export default function WhatsAppControlModule() {
       const res = await ax.get(`/whatsapp/preview/${eventKey}`);
       setPreviews(p => ({ ...p, [eventKey]: res.data.preview }));
     } catch (e) {
-      setPreviews(p => ({ ...p, [eventKey]: '⚠️ Preview failed: ' + (e.response?.data?.error || e.message) }));
+      setPreviews(p => ({ ...p, [eventKey]: 'Preview failed: ' + (e.response?.data?.error || e.message) }));
     } finally {
       setPreviewingKey(null);
     }
@@ -522,7 +572,7 @@ export default function WhatsAppControlModule() {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', width: '100%' }}>
-        <TruckLoader size={120} text="Loading Meta WhatsApp Control Center..." />
+        <TruckLoader size={120} text="Loading WhatsApp control..." />
       </div>
     );
   }
@@ -540,7 +590,7 @@ export default function WhatsAppControlModule() {
   }
 
   return (
-    <div className="adm adm-page" style={{ paddingBottom: '60px' }}>
+    <div className="adm adm-page wa-control">
       {/* Floating Toast Notification Banner */}
       <AnimatePresence>
         {notifyState && (
@@ -548,13 +598,7 @@ export default function WhatsAppControlModule() {
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            style={{
-              position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
-              background: notifyState.type === 'success' ? '#10b981' : notifyState.type === 'info' ? '#6366f1' : '#f43f5e',
-              color: '#ffffff', padding: '14px 22px', borderRadius: '12px',
-              fontSize: '13.5px', fontWeight: 700, boxShadow: '0 12px 35px rgba(0,0,0,0.35)',
-              display: 'flex', alignItems: 'center', gap: '10px'
-            }}
+            className="wa-toast"
           >
             {notifyState.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
             <span>{notifyState.message}</span>
@@ -562,204 +606,65 @@ export default function WhatsAppControlModule() {
         )}
       </AnimatePresence>
 
-      {/* Page Header */}
-      <div className="adm-head" style={{ alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '20px' }}>
+      <header className="wa-header">
         <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span className="adm-icon-tile" style={{ background: '#25D366', color: '#fff' }}>
-              <MessageSquare size={20} />
-            </span>
-            Meta WhatsApp Control Center
-          </h1>
-          <p style={{ marginTop: '4px' }}>
-            Production-grade Meta WhatsApp Cloud API automation for Loading Receipts, Vouchers, Advances &amp; Khata
-          </p>
+          <p className="wa-eyebrow">WhatsApp Cloud API</p>
+          <h1>WhatsApp control</h1>
+          <p>Connection, notifications, routing, and test messages.</p>
         </div>
-        <div className="adm-head-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            type="button"
-            className="adm-btn adm-btn--sm"
-            onClick={() => { checkConnection(); fetchLogs(); }}
-            disabled={status.checking}
-          >
-            <RefreshCw size={13} className={status.checking ? 'adm-spin' : ''} />
-            {status.checking ? 'Checking...' : 'Check Connection'}
-          </button>
-        </div>
-      </div>
+        <button type="button" className="adm-btn adm-btn--sm" onClick={() => { checkConnection(); fetchRecentDeliveries(); }} disabled={status.checking}>
+          <RefreshCw size={14} className={status.checking ? 'adm-spin' : ''} />
+          {status.checking ? 'Checking' : 'Check connection'}
+        </button>
+      </header>
 
-      {/* Live Meta summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '14px' }}>
-        <div style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', minHeight: '70px' }}>
-          <Globe size={17} style={{ color: status.connected ? '#10b981' : 'var(--text-muted)', flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>META ENVIRONMENT</div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
-              {status.checking ? 'Checking…' : status.connected ? 'Connected' : 'Not connected'}
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-              {status.accountMode ? `Mode: ${status.accountMode}` : status.reason === 'invalid_token' ? 'Token rejected' : 'Mode unavailable'}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', minHeight: '70px' }}>
-          <Phone size={17} style={{ color: status.displayPhoneNumber ? '#25D366' : 'var(--text-muted)', flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>META SENDING NUMBER</div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {status.displayPhoneNumber || 'Unavailable'}
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {status.verifiedName || 'Shown after Meta confirms number'}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', minHeight: '70px' }}>
-          <ShieldCheck size={17} style={{ color: status.connected ? '#10b981' : 'var(--text-muted)', flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>META CLOUD API</div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: status.reason === 'invalid_token' ? '#f59e0b' : 'var(--text)' }}>
-              {status.checking ? 'Checking…' : status.reason === 'invalid_token' ? 'Token rejected' : status.connected ? 'Connected' : 'Not connected'}
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={status.message}>
-              {status.reason === 'invalid_token' ? 'Replace token in Credentials' : status.reason === 'missing_credentials' ? 'Add token and Phone Number ID' : status.connected ? 'Meta API reachable' : 'Check credentials'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Outbound message setting */}
-      <div style={{
-        marginBottom: '20px',
-        borderRadius: '10px',
-        padding: '11px 14px',
-        background: 'var(--bg-th)',
-        border: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '10px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-          <div style={{ color: config.enabled ? '#10b981' : 'var(--text-muted)', display: 'flex' }}>
-            {config.enabled ? <CheckCircle2 size={17} /> : <MessageSquare size={17} />}
-          </div>
+      <section className={`wa-connection ${status.connected ? 'is-connected' : 'is-disconnected'}`} aria-label="WhatsApp connection status">
+        <div className="wa-connection-primary">
+          <span className="wa-status-mark" aria-hidden="true" />
           <div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
-              Outbound WhatsApp messages <span style={{ color: config.enabled ? '#10b981' : 'var(--text-muted)' }}>· {config.enabled ? 'On' : 'Off'}</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              {config.enabled
-                ? 'Automatic notifications enabled.'
-                : 'Automatic notifications paused.'}
-            </div>
+            <span className="wa-label">Connection status</span>
+            <strong>{status.checking ? 'Checking Meta' : status.connected ? 'Connected' : 'Not connected'}</strong>
+            <p>{status.message || (status.connected ? 'Meta Cloud API reachable' : 'Check credentials and connection')}</p>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {toggling && <Loader2 size={14} className="adm-spin" />}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={config.enabled}
-            aria-label="Outbound WhatsApp messages"
-            disabled={toggling}
-            className="adm-switch"
-            onClick={() => handleToggle()}
-            title={config.enabled ? 'Pause outbound messages' : 'Enable outbound messages'}
-          />
+        <dl className="wa-connection-details">
+          <div><dt>Sending number</dt><dd>{status.displayPhoneNumber || 'Unavailable'}</dd></div>
+          <div><dt>Business name</dt><dd>{status.verifiedName || 'Unavailable'}</dd></div>
+          <div><dt>Mode</dt><dd>{status.accountMode || 'Unavailable'}</dd></div>
+          <div><dt>Phone status</dt><dd>{status.phoneStatus || 'Unavailable'}</dd></div>
+          <div><dt>Quality</dt><dd>{status.qualityRating || 'Unavailable'}</dd></div>
+          <div><dt>Verification</dt><dd>{status.codeVerificationStatus || 'Unavailable'}</dd></div>
+        </dl>
+      </section>
+
+      <section className={`wa-outbound ${config.enabled ? 'is-enabled' : 'is-paused'}`} aria-label="Automatic messages">
+        <div>
+          <strong>Automatic messages: {config.enabled ? 'On' : 'Off'}</strong>
+          <p>{config.enabled ? 'Notifications are enabled.' : 'Notifications are paused.'}</p>
         </div>
-      </div>
+        <div className="wa-outbound-action">
+          {toggling && <Loader2 size={14} className="adm-spin" />}
+          <button type="button" role="switch" aria-checked={config.enabled} aria-label="Outbound WhatsApp messages" disabled={toggling} className="adm-switch" onClick={() => handleToggle()} title={config.enabled ? 'Pause outbound messages' : 'Enable outbound messages'} />
+        </div>
+      </section>
 
-      {/* ── TAB NAVIGATION BAR ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        borderBottom: '1px solid var(--border)',
-        marginBottom: '20px',
-        paddingBottom: '2px',
-        overflowX: 'auto'
-      }}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('templates')}
-          style={{
-            padding: '10px 18px',
-            fontSize: '13.5px',
-            fontWeight: 700,
-            borderRadius: '8px 8px 0 0',
-            border: 'none',
-            background: activeTab === 'templates' ? 'var(--bg-card)' : 'transparent',
-            color: activeTab === 'templates' ? 'var(--primary)' : 'var(--text-sub)',
-            borderBottom: activeTab === 'templates' ? '2.5px solid var(--primary)' : '2.5px solid transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <FileText size={16} />
-          <span>All Notification Templates ({ALL_EVENT_DEFINITIONS.length})</span>
+      <nav className="wa-tabs" aria-label="WhatsApp settings">
+        <button type="button" className={activeTab === 'templates' ? 'wa-tab is-active' : 'wa-tab'} aria-current={activeTab === 'templates' ? 'page' : undefined} onClick={() => setActiveTab('templates')}>
+          Templates <span>{ALL_EVENT_DEFINITIONS.length}</span>
         </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('credentials')}
-          style={{
-            padding: '10px 18px',
-            fontSize: '13.5px',
-            fontWeight: 700,
-            borderRadius: '8px 8px 0 0',
-            border: 'none',
-            background: activeTab === 'credentials' ? 'var(--bg-card)' : 'transparent',
-            color: activeTab === 'credentials' ? 'var(--primary)' : 'var(--text-sub)',
-            borderBottom: activeTab === 'credentials' ? '2.5px solid var(--primary)' : '2.5px solid transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Key size={16} />
-          <span>Credentials &amp; Routing Numbers</span>
+        <button type="button" className={activeTab === 'credentials' ? 'wa-tab is-active' : 'wa-tab'} aria-current={activeTab === 'credentials' ? 'page' : undefined} onClick={() => setActiveTab('credentials')}>
+          Connection &amp; test
         </button>
-
-        <a
-          href="/status"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            marginLeft: 'auto',
-            padding: '7px 16px',
-            fontSize: '12.5px',
-            fontWeight: 700,
-            borderRadius: '8px',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            background: 'rgba(16, 185, 129, 0.1)',
-            color: '#10b981',
-            textDecoration: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '7px'
-          }}
-          title="View live WhatsApp logs, delivery audit, and system telemetry"
-        >
-          <Activity size={14} />
-          <span>Observability &amp; Activity Logs ↗</span>
+        <a className="wa-tab wa-tab-link" href="/status" target="_blank" rel="noopener noreferrer" title="View message logs and delivery status">
+          Status &amp; logs <ExternalLink size={13} />
         </a>
-      </div>
+      </nav>
 
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ── TAB 1: ALL 22 NOTIFICATION TEMPLATES ─────────────────────────── */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'templates' && (
         <section className="adm-panel">
           <header className="adm-panel-hd" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-              <span className="adm-icon-tile" style={{ background: 'rgba(37, 211, 102, 0.12)', color: '#25D366' }}>
+              <span className="adm-icon-tile wa-icon-violet">
                 <Zap size={19} />
               </span>
               <div>
@@ -774,7 +679,6 @@ export default function WhatsAppControlModule() {
                   if (Object.keys(previews).length > 0) {
                     setPreviews({});
                   } else {
-                    const samplePreviews = {};
                     filteredTemplates.slice(0, 4).forEach(def => {
                       handleTogglePreview(def.key);
                     });
@@ -814,9 +718,9 @@ export default function WhatsAppControlModule() {
                         borderRadius: '20px',
                         fontSize: '12px',
                         fontWeight: 700,
-                        border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
-                        background: isSelected ? 'var(--primary)' : 'var(--bg-th)',
-                        color: isSelected ? '#ffffff' : 'var(--text-sub)',
+                        border: isSelected ? '1px solid var(--adm-violet, #6867ed)' : '1px solid var(--border)',
+                        background: isSelected ? 'var(--adm-violet-wash, #eeedff)' : 'var(--bg-card)',
+                        color: isSelected ? 'var(--adm-violet, #6867ed)' : 'var(--text-sub)',
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -829,8 +733,8 @@ export default function WhatsAppControlModule() {
                         fontSize: '10px',
                         padding: '1px 6px',
                         borderRadius: '999px',
-                        background: isSelected ? 'rgba(255,255,255,0.25)' : 'var(--bg-card)',
-                        color: isSelected ? '#ffffff' : 'var(--text-muted)'
+                        background: isSelected ? 'transparent' : 'var(--bg-th)',
+                        color: isSelected ? 'var(--adm-violet, #6867ed)' : 'var(--text-muted)'
                       }}>
                         {count}
                       </span>
@@ -893,11 +797,11 @@ export default function WhatsAppControlModule() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--adm-mint, #17b98b)' }} />
                   {ALL_EVENT_DEFINITIONS.filter(d => (config.events?.[d.key]?.enabled !== false)).length} Enabled
                 </span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#94a3b8' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-muted)' }} />
                   {ALL_EVENT_DEFINITIONS.filter(d => (config.events?.[d.key]?.enabled === false)).length} Paused
                 </span>
               </div>
@@ -929,7 +833,7 @@ export default function WhatsAppControlModule() {
             ) : (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))',
                 gap: '16px',
                 alignItems: 'stretch'
               }}>
@@ -949,8 +853,8 @@ export default function WhatsAppControlModule() {
                         background: 'var(--bg-card)',
                         border: '1px solid var(--border)',
                         borderTop: `3px solid ${isEnabled ? catColors.accent : 'var(--border)'}`,
-                        borderRadius: '14px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                        borderRadius: '16px',
+                        boxShadow: '0 2px 8px transparent',
                         display: 'flex',
                         flexDirection: 'column',
                         overflow: 'hidden',
@@ -1015,7 +919,7 @@ export default function WhatsAppControlModule() {
                                 }}
                               >
                                 <span>{def.key}</span>
-                                {copiedField === `Key ${def.key}` ? <Check size={9} color="#10b981" /> : <Copy size={9} />}
+                                {copiedField === `Key ${def.key}` ? <Check size={9} color="var(--text)" /> : <Copy size={9} />}
                               </button>
                             </div>
                             <h3 style={{
@@ -1048,9 +952,9 @@ export default function WhatsAppControlModule() {
                             fontWeight: 800,
                             padding: '1px 5px',
                             borderRadius: '4px',
-                            background: isEnabled ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
-                            color: isEnabled ? '#10b981' : 'var(--text-muted)',
-                            border: `1px solid ${isEnabled ? 'rgba(16, 185, 129, 0.25)' : 'var(--border)'}`,
+                            background: isEnabled ? 'var(--bg-th)' : 'var(--bg-card)',
+                            color: isEnabled ? 'var(--text)' : 'var(--text-muted)',
+                            border: `1px solid ${isEnabled ? 'var(--border)' : 'var(--border)'}`,
                             textTransform: 'uppercase',
                             letterSpacing: '0.04em'
                           }}>
@@ -1083,9 +987,9 @@ export default function WhatsAppControlModule() {
                                   style={{
                                     fontSize: '10.5px',
                                     fontFamily: 'monospace',
-                                    background: isTagCopied ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.08)',
-                                    color: isTagCopied ? '#10b981' : '#3b82f6',
-                                    border: `1px solid ${isTagCopied ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.2)'}`,
+                                    background: isTagCopied ? 'var(--bg-th)' : 'var(--bg-th)',
+                                    color: isTagCopied ? 'var(--text)' : 'var(--text)',
+                                    border: `1px solid ${isTagCopied ? 'var(--border)' : 'var(--border)'}`,
                                     padding: '2px 6px',
                                     borderRadius: '4px',
                                     cursor: 'pointer',
@@ -1112,7 +1016,7 @@ export default function WhatsAppControlModule() {
                                 padding: 0,
                                 fontSize: '10.5px',
                                 fontWeight: 700,
-                                color: 'var(--primary)',
+                                color: 'var(--text)',
                                 cursor: 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -1178,9 +1082,9 @@ export default function WhatsAppControlModule() {
                               display: 'flex',
                               alignItems: 'center',
                               gap: '5px',
-                              background: previewText ? 'rgba(7, 94, 84, 0.12)' : 'var(--bg-th)',
-                              borderColor: previewText ? '#075E54' : 'var(--border)',
-                              color: previewText ? '#075E54' : 'var(--text)'
+                              background: previewText ? 'var(--bg-th)' : 'var(--bg-th)',
+                              borderColor: previewText ? 'var(--text)' : 'var(--border)',
+                              color: previewText ? 'var(--text)' : 'var(--text)'
                             }}
                           >
                             {previewingKey === def.key ? (
@@ -1225,30 +1129,30 @@ export default function WhatsAppControlModule() {
                         {previewText && (
                           <div style={{
                             marginTop: '4px',
-                            background: '#075E54',
-                            border: '1px solid #128C7E',
+                            background: 'var(--bg-th)',
+                            border: '1px solid var(--border)',
                             borderRadius: '10px',
                             overflow: 'hidden',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                            boxShadow: '0 4px 12px transparent'
                           }}>
                             {/* WhatsApp Header Strip */}
                             <div style={{
                               padding: '6px 10px',
-                              background: '#075E54',
+                              background: 'var(--bg-th)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
-                              color: '#ffffff'
+                              color: 'var(--text)'
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700 }}>
-                                <MessageSquare size={12} color="#25D366" />
+                                <MessageSquare size={12} color="var(--text)" />
                                 <span>WhatsApp Preview</span>
-                                <span style={{ fontSize: '9px', background: '#25D366', color: '#075E54', padding: '0 4px', borderRadius: '3px', fontWeight: 800 }}>LIVE</span>
+                                <span style={{ fontSize: '9px', background: 'var(--bg-card)', color: 'var(--text)', padding: '0 4px', borderRadius: '3px', fontWeight: 800 }}>PREVIEW</span>
                               </div>
                               <button
                                 type="button"
                                 onClick={() => setPreviews(p => { const next = { ...p }; delete next[def.key]; return next; })}
-                                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '0 4px', fontSize: '11px' }}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 4px', fontSize: '11px' }}
                                 title="Close preview"
                               >
                                 ✕
@@ -1257,28 +1161,28 @@ export default function WhatsAppControlModule() {
 
                             {/* WhatsApp Chat Wallpaper & Bubble */}
                             <div style={{
-                              background: '#E5DDD5',
-                              backgroundImage: 'radial-gradient(#d4cbbe 1px, transparent 1px)',
+                              background: 'var(--bg-th)',
+                              backgroundImage: 'none',
                               backgroundSize: '16px 16px',
                               padding: '10px'
                             }}>
                               <div style={{
-                                background: '#DCF8C6',
-                                color: '#111827',
+                                background: 'var(--bg-card)',
+                                color: 'var(--text)',
                                 padding: '10px 12px',
                                 borderRadius: '8px 8px 2px 8px',
                                 fontSize: '11.5px',
                                 fontFamily: 'monospace',
                                 whiteSpace: 'pre-wrap',
                                 lineHeight: 1.55,
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                                boxShadow: '0 1px 2px transparent',
                                 maxWidth: '100%',
                                 wordBreak: 'break-word'
                               }}>
                                 {previewText}
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '9.5px', color: '#6b7280' }}>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '9.5px', color: 'var(--text-muted)' }}>
                                   <span>Just now</span>
-                                  <CheckCheck size={12} color="#34B7F1" />
+                                  <CheckCheck size={12} color="var(--text-muted)" />
                                 </div>
                               </div>
                             </div>
@@ -1310,12 +1214,12 @@ export default function WhatsAppControlModule() {
           <section className="adm-panel">
             <header className="adm-panel-hd">
               <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                <span className="adm-icon-tile" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>
+                <span className="adm-icon-tile wa-icon-cyan">
                   <Key size={18} />
                 </span>
                 <div>
                   <h2>Meta Cloud API Credentials</h2>
-                  <p className="adm-sub">Pre-filled credentials for Vikas Goods Transport Co.</p>
+                  <p className="adm-sub">Meta IDs, token, and routing numbers.</p>
                 </div>
               </div>
             </header>
@@ -1338,7 +1242,7 @@ export default function WhatsAppControlModule() {
                     className="adm-btn adm-btn--secondary adm-btn--sm"
                     onClick={() => copyToClipboard(config.phoneNumberId, 'Phone Number ID')}
                   >
-                    {copiedField === 'Phone Number ID' ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+                    {copiedField === 'Phone Number ID' ? <Check size={14} style={{ color: 'var(--text)' }} /> : <Copy size={14} />}
                   </button>
                 </div>
               </div>
@@ -1360,7 +1264,7 @@ export default function WhatsAppControlModule() {
                     className="adm-btn adm-btn--secondary adm-btn--sm"
                     onClick={() => copyToClipboard(config.wabaId, 'WABA ID')}
                   >
-                    {copiedField === 'WABA ID' ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+                    {copiedField === 'WABA ID' ? <Check size={14} style={{ color: 'var(--text)' }} /> : <Copy size={14} />}
                   </button>
                 </div>
               </div>
@@ -1391,7 +1295,7 @@ export default function WhatsAppControlModule() {
                     className="adm-btn adm-btn--secondary adm-btn--sm"
                     onClick={() => copyToClipboard(config.accessToken, 'Access Token')}
                   >
-                    {copiedField === 'Access Token' ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+                    {copiedField === 'Access Token' ? <Check size={14} style={{ color: 'var(--text)' }} /> : <Copy size={14} />}
                   </button>
                 </div>
               </div>
@@ -1413,7 +1317,7 @@ export default function WhatsAppControlModule() {
                     className="adm-btn adm-btn--secondary adm-btn--sm"
                     onClick={() => copyToClipboard(config.webhookVerifyToken || DEFAULT_VERIFY_TOKEN, 'Webhook Token')}
                   >
-                    {copiedField === 'Webhook Token' ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+                    {copiedField === 'Webhook Token' ? <Check size={14} style={{ color: 'var(--text)' }} /> : <Copy size={14} />}
                   </button>
                 </div>
               </div>
@@ -1470,54 +1374,159 @@ export default function WhatsAppControlModule() {
           <section className="adm-panel">
             <header className="adm-panel-hd">
               <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                <span className="adm-icon-tile" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>
+                <span className="adm-icon-tile wa-icon-amber">
                   <Send size={18} />
                 </span>
                 <div>
                   <h2>Send Test WhatsApp Message</h2>
-                  <p className="adm-sub">Direct delivery verification via Meta Cloud API</p>
+                    <p className="adm-sub">Meta acceptance first; delivery status follows in webhook logs.</p>
                 </div>
               </div>
             </header>
 
             <form onSubmit={handleSendTestMsg} className="adm-panel-bd adm-sec" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Bot Info Badge */}
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: '8px',
+                background: 'var(--bg-th)',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text)', display: 'inline-block' }} />
+                  <strong>Bot Sender:</strong>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{status.displayPhoneNumber || 'Number unavailable'}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>({status.verifiedName || 'Vikas Goods Transport Co'})</span>
+                </div>
+                <span style={{ fontSize: '10px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-th)', color: 'var(--text)', fontWeight: 700 }}>
+                  SENDER
+                </span>
+              </div>
+
+              {/* Recipient Phone */}
               <div className="adm-field">
-                <label htmlFor="wa-test-phone">Recipient Phone Number <span className="adm-req">*</span></label>
+                <label htmlFor="wa-test-phone">Recipient Mobile Number <span className="adm-req">*</span></label>
                 <input
                   id="wa-test-phone"
                   type="text"
                   className="adm-input"
-                  placeholder="e.g. 8708032492 or 9876543210"
+                  placeholder="e.g. 8708032492"
                   value={testForm.phone}
                   onChange={e => setTestForm({ ...testForm, phone: e.target.value })}
                   required
                 />
               </div>
 
+              {/* Dispatch Mode Selector */}
               <div className="adm-field">
-                <label htmlFor="wa-test-msg">Custom Test Message (Optional)</label>
-                <textarea
-                  id="wa-test-msg"
-                  className="adm-textarea"
-                  rows={4}
-                  placeholder="Leave blank to send standard VGTC test verification message..."
-                  value={testForm.message}
-                  onChange={e => setTestForm({ ...testForm, message: e.target.value })}
-                />
+                <label>Dispatch Mode</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setTestForm({ ...testForm, mode: 'template' })}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: testForm.mode === 'template' ? '2px solid var(--text)' : '1px solid var(--border)',
+                      background: testForm.mode === 'template' ? 'var(--bg-th)' : 'var(--bg-card)',
+                      color: 'var(--text)',
+                      fontWeight: testForm.mode === 'template' ? 700 : 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <div>Approved Meta template</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Can start a new conversation; delivery confirmed by callback</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTestForm({ ...testForm, mode: 'custom_text' })}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: testForm.mode === 'custom_text' ? '2px solid var(--text)' : '1px solid var(--border)',
+                      background: testForm.mode === 'custom_text' ? 'var(--bg-th)' : 'var(--bg-card)',
+                      color: 'var(--text)',
+                      fontWeight: testForm.mode === 'custom_text' ? 700 : 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <div>Free-form text</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Requires an open 24-hour customer service window</div>
+                  </button>
+                </div>
               </div>
+
+              {/* Template Selection */}
+              {testForm.mode === 'template' ? (
+                <div className="adm-field">
+                  <label htmlFor="wa-test-tpl">Select Approved Meta Template</label>
+                  <select
+                    id="wa-test-tpl"
+                    className="adm-input"
+                    value={testForm.templateName}
+                    onChange={e => setTestForm({ ...testForm, templateName: e.target.value })}
+                  >
+                    <option value="hello">hello — LR Loading Notification (Approved Utility)</option>
+                    <option value="3p_direct_integration_test_template">3p_direct_integration_test_template — Meta Integration Test Welcome</option>
+                  </select>
+                  <span className="adm-hint" style={{ color: 'var(--text)' }}>
+                    Approved on Meta. Check delivery status after sending.
+                  </span>
+                </div>
+              ) : (
+                <div className="adm-field">
+                  <label htmlFor="wa-test-msg">Custom Message Text</label>
+                  <textarea
+                    id="wa-test-msg"
+                    className="adm-textarea"
+                    rows={3}
+                    placeholder="Type test message here..."
+                    value={testForm.message}
+                    onChange={e => setTestForm({ ...testForm, message: e.target.value })}
+                  />
+                  <span className="adm-hint" style={{ color: 'var(--text)' }}>
+                    Free-form text requires an open 24-hour customer service window.
+                  </span>
+                </div>
+              )}
 
               <button type="submit" className="adm-btn adm-btn--primary adm-btn--block" disabled={testing}>
                 {testing ? <Loader2 size={15} className="adm-spin" /> : <><Send size={15} /> Dispatch Test Message</>}
               </button>
 
               {testResult && (
-                <div className={`adm-note ${testResult.success ? 'adm-note--success' : 'adm-note--danger'}`} style={{ marginTop: '8px' }}>
+                <div className={`adm-note ${testResult.success && testResult.delivery?.status !== 'failed' ? 'adm-note--success' : 'adm-note--danger'}`} style={{ marginTop: '8px' }}>
                   <div>
-                    <strong>{testResult.success ? '✅ Test Message Dispatched Successfully' : '❌ Message Dispatch Failed'}</strong>
+                    <strong>{testResult.success ? `Delivery: ${testResult.delivery?.status || 'pending'}` : 'Message dispatch failed'}</strong>
                     <div style={{ fontSize: '11px', fontFamily: 'monospace', marginTop: '3px' }}>
-                      {testResult.success ? 'Dispatched via Meta WhatsApp Cloud API' : testResult.error}
+                      {testResult.success
+                        ? `Message ID: ${testMessageId || 'unavailable'}`
+                        : testResult.error}
                     </div>
+                    {testResult.success && (testResult.delivery?.error || testResult.trackingError) && (
+                      <div style={{ marginTop: '5px' }}>{testResult.delivery?.errorCode ? `Meta ${testResult.delivery.errorCode}: ` : ''}{testResult.delivery?.error || testResult.trackingError}</div>
+                    )}
                   </div>
+                </div>
+              )}
+              {recentDeliveries.length > 0 && (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'grid', gap: '6px' }}>
+                  <strong>Recent delivery</strong>
+                  {recentDeliveries.slice(0, 5).map(item => (
+                    <div key={item.messageId} style={{ borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+                      <strong>{item.phone || 'Unknown recipient'} · {String(item.status || 'unknown').toUpperCase()}</strong>
+                      {item.error && <span style={{ color: 'var(--text)' }}> · Meta {item.errorCode || 'error'}: {item.error}</span>}
+                      <div style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{item.messageId}</div>
+                    </div>
+                  ))}
                 </div>
               )}
             </form>
@@ -1528,11 +1537,11 @@ export default function WhatsAppControlModule() {
       {/* Note about centralized Observability & Logs */}
       <div style={{ marginTop: '28px', padding: '16px 20px', borderRadius: '10px', background: 'var(--bg-th)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Activity size={20} style={{ color: '#10b981' }} />
+          <Activity size={20} style={{ color: 'var(--text)' }} />
           <div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Centralized WhatsApp Logs &amp; Observability</div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Status and message logs</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Real-time delivery logs, webhook audit trails, and server telemetry are now managed on the Status page.
+              View API responses, webhook delivery events, and recent activity on the Status page.
             </div>
           </div>
         </div>

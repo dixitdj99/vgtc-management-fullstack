@@ -35,7 +35,7 @@ export function plantConfig(plant, godown) {
  * Returns raw sources + computed KPIs + refetchers + the plant cfg.
  */
 export default function useDashboardData() {
-    const { plant, godown, user } = useAuth();
+    const { plant, godown } = useAuth();
     const isDump = plant === 'jksuper' || (godown && godown !== 'jkl');
     const cfg = useMemo(() => plantConfig(plant, godown), [plant, godown]);
 
@@ -45,14 +45,6 @@ export default function useDashboardData() {
     const [maintAlerts, setMaintAlerts] = useState({ loading: true, data: null, error: false });
     const [vehicles, setVehicles] = useState({ loading: true, data: null, error: false });
 
-    // Unfinished roll-calls are an admin's problem to chase, and the roster
-    // names staff — so it is not fetched at all for anyone else, rather than
-    // fetched and hidden.
-    const isAdmin = user?.role === 'admin';
-    // Today's roll-call, so the dashboard can mark it in place. Earlier days
-    // that were missed belong in the Attendance module, not here — the point of
-    // this card is that today gets done before it becomes one of them.
-    const [attendanceToday, setAttendanceToday] = useState({ loading: isAdmin, data: null, error: false });
 
     const fetchLrs = () => {
         setLrs(s => ({ ...s, loading: true, error: false }));
@@ -106,21 +98,10 @@ export default function useDashboardData() {
             .catch(() => setVehicles({ loading: false, data: null, error: true }));
     };
 
-    const fetchAttendanceToday = () => {
-        if (!isAdmin || isDump) { setAttendanceToday({ loading: false, data: null, error: false }); return; }
-        setAttendanceToday(s => ({ ...s, loading: true, error: false }));
-        // No date parameter: the server answers for the yard's calendar day, not
-        // the browser's, which differ before 05:30 IST.
-        ax.get('/attendance/roster')
-            .then(r => setAttendanceToday({ loading: false, data: r.data || null, error: false }))
-            .catch(() => setAttendanceToday({ loading: false, data: null, error: true }));
-    };
-
     useEffect(() => {
         fetchLrs(); fetchVouchers(); fetchCashbook(); fetchAlerts(); fetchVehicles();
-        fetchAttendanceToday();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cfg, isAdmin]);
+    }, [cfg]);
 
     const todayLrCount = useMemo(() => {
         if (!lrs.data) return null;
@@ -320,11 +301,11 @@ export default function useDashboardData() {
 
     return {
         cfg, isDump,
-        lrs, vouchers, cashbook, maintAlerts, vehicles, attendanceToday,
+        lrs, vouchers, cashbook, maintAlerts, vehicles,
         kpis: { todayLrCount, todayBillCount, todayBagsCount, marketVehicles, outstanding, cashInHand, fleetAlerts, ownVehiclesDuty },
         ownVehiclesDuty,
         marketVehicles,
         recentActivity,
-        refetch: { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles, fetchAttendanceToday },
+        refetch: { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles },
     };
 }

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wrench, Plus, Calendar, MapPin, DollarSign, X, ChevronDown, Droplets, Disc, Lightbulb, Package, Settings, Zap, AlertTriangle, Shield, Search, Truck as TruckIcon } from 'lucide-react';
-import TruckDiagram from './TruckDiagram';
+import { Wrench, Plus, X, ChevronDown, Droplets, Disc, Lightbulb, Package, Settings, Zap, AlertTriangle, Shield, Truck as TruckIcon } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
 const CATEGORY_META = {
@@ -36,14 +35,7 @@ const statusBadge = (status, recurring) => {
   );
 };
 
-const VIEWS = [
-  { id: 'side', label: 'Side Profile (Full Body)', img: '/assets/truck/side.png' },
-  { id: 'front', label: 'Front Profile (Cabin/Engine)', img: '/assets/truck/front.png' },
-  { id: 'rear', label: 'Rear Profile (Tail/Cargo)', img: '/assets/truck/rear.png' },
-  { id: 'undercarriage', label: 'Undercarriage (Mechanical)', img: '/assets/truck/undercarriage.png' },
-];
-
-export default function MaintenanceTracker({ truckNo, onClose }) {
+export default function MaintenanceTracker({ truckNo, onClose, canEdit = true }) {
   const [summary, setSummary] = useState({});
   const [records, setRecords] = useState([]);
   const [catalog, setCatalog] = useState({});
@@ -51,22 +43,28 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [expandedCat, setExpandedCat] = useState('');
-  const [viewIdx, setViewIdx] = useState(0);
-  const [form, setForm] = useState({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '', manualPart: false, customPartName: '' });
+  const [form, setForm] = useState({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '', manualPart: false, customPartName: '', nextServiceDate: '', nextServiceKm: '', serviceType: '', paymentMethod: '', invoiceNo: '' });
+  const [services, setServices] = useState([]);
+  const [serviceFormOpen, setServiceFormOpen] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState(null);
+  const [serviceForm, setServiceForm] = useState({ date: new Date().toISOString().slice(0, 10), odometer: '', serviceType: 'Periodic service', workshop: '', invoiceNo: '', paymentMethod: '', notes: '', labourCost: '', otherCost: '', nextServiceDate: '', nextServiceKm: '', intervalDays: '', intervalKm: '', parts: [{ partId: '', partName: '', quantity: 1, unitCost: '' }] });
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setErr('');
     try {
-      const [sumRes, recRes, catRes, vehRes] = await Promise.all([
+      const [sumRes, recRes, catRes, vehRes, serviceRes] = await Promise.all([
         ax.get(`/maintenance/summary/${truckNo}`),
         ax.get(`/maintenance/vehicle/${truckNo}`),
         ax.get('/maintenance/parts-catalog'),
-        ax.get('/vehicles')
+        ax.get('/vehicles'),
+        ax.get('/maintenance/services', { params: { truckNo } })
       ]);
       setSummary(sumRes.data || {});
       setRecords(recRes.data || []);
+      setServices(Array.isArray(serviceRes.data) ? serviceRes.data.filter(s => s.truckNo === truckNo) : []);
       setCatalog(catRes.data || {});
       const v = Array.isArray(vehRes.data) ? vehRes.data.find(v => v.truckNo === truckNo) : null;
       if (v) setVehicle(v);
@@ -86,7 +84,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
     try {
       await ax.post('/maintenance', { ...form, truckNo });
       setShowForm(false);
-      setForm({ partId: '', date: new Date().toISOString().slice(0, 10), kmAtChange: '', cost: '', labourCost: '', vendor: '', notes: '', warrantyExpiry: '', warrantyClaimed: false, quantity: '1', damageDescription: '', avgBefore: '', avgAfter: '' });
+      setForm(f => ({ ...f, partId: '', cost: '', labourCost: '', notes: '', customPartName: '', manualPart: false, nextServiceDate: '', nextServiceKm: '', serviceType: '', paymentMethod: '', invoiceNo: '' }));
       fetchData();
     } catch (err) { alert('Save failed: ' + (err.response?.data?.error || err.message)); }
   };
@@ -94,6 +92,37 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
   const handlePartClick = (partId) => {
     setForm(f => ({ ...f, partId }));
     setShowForm(true);
+  };
+
+  const saveService = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const payload = {
+        ...serviceForm, truckNo,
+        parts: serviceForm.parts.filter(p => p.partId || p.partName).map(p => ({ ...p, partName: p.partName || catalog[p.partId]?.name || '', quantity: Number(p.quantity), unitCost: Number(p.unitCost) }))
+      };
+      if (editingServiceId) await ax.patch(`/maintenance/services/${editingServiceId}`, payload);
+      else await ax.post('/maintenance/services', payload);
+      setServiceFormOpen(false);
+      setEditingServiceId(null);
+      setServiceForm({ date: new Date().toISOString().slice(0, 10), odometer: '', serviceType: 'Periodic service', workshop: '', invoiceNo: '', paymentMethod: '', notes: '', labourCost: '', otherCost: '', nextServiceDate: '', nextServiceKm: '', intervalDays: '', intervalKm: '', parts: [{ partId: '', partName: '', quantity: 1, unitCost: '' }] });
+      await fetchData();
+    } catch (error) { setErr(error.response?.data?.error || error.message); }
+    finally { setSaving(false); }
+  };
+
+  const editService = service => {
+    setEditingServiceId(service.id);
+    setServiceForm({ date: service.date || '', odometer: service.odometer ?? '', serviceType: service.serviceType || '', workshop: service.workshop || '', invoiceNo: service.invoiceNo || '', paymentMethod: service.paymentMethod || '', notes: service.notes || '', labourCost: service.labourCost ?? '', otherCost: service.otherCost ?? '', nextServiceDate: service.nextServiceDate || '', nextServiceKm: service.nextServiceKm ?? '', intervalDays: service.intervalDays ?? '', intervalKm: service.intervalKm ?? '', parts: service.parts?.length ? service.parts : [{ partId: '', partName: '', quantity: 1, unitCost: '' }] });
+    setServiceFormOpen(true);
+    setShowForm(false);
+  };
+
+  const deleteService = async service => {
+    if (!window.confirm(`Delete service record for ${service.truckNo} on ${service.date}?`)) return;
+    try { await ax.delete(`/maintenance/services/${service.id}`); await fetchData(); }
+    catch (error) { setErr(error.response?.data?.error || error.message); }
   };
 
   const [delTarget, setDelTarget] = useState(null);
@@ -132,7 +161,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
 
   const selectedPart = form.partId && catalog ? catalog[form.partId] : null;
 
-  const totalCost = records.reduce((s, r) => s + (r.cost || 0) + (r.labourCost || 0), 0);
+  const totalCost = records.reduce((s, r) => s + Number(r.cost || 0) + Number(r.labourCost || 0), 0) + services.reduce((s, r) => s + Number(r.totalCost || 0), 0);
   const warrantyClaims = records.filter(r => r.warrantyClaimed).length;
   const overdueCount = Object.values(summary || {}).filter(s => s?.status === 'overdue').length;
   const dueCount = Object.values(summary || {}).filter(s => s?.status === 'due_soon').length;
@@ -183,8 +212,8 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
             {[
               { label: 'Total Maintenance Spent', value: `₹${totalCost.toLocaleString()}`, color: '#10b981' },
-              { label: 'Parts Monitored', value: Object.keys(summary || {}).length, color: '#3b82f6' },
-              { label: 'Service Records', value: records.length, color: '#8b5cf6' },
+              { label: 'Parts Serviced', value: Object.keys(summary || {}).length, color: '#3b82f6' },
+              { label: 'Service Records', value: records.length + services.length, color: '#8b5cf6' },
               { label: 'Warranty Claims', value: warrantyClaims, color: '#06b6d4' },
               { label: 'Alert Status', value: overdueCount > 0 ? `${overdueCount} Overdue` : 'All Good', color: overdueCount > 0 ? '#ef4444' : '#10b981' },
             ].map((s, i) => (
@@ -195,18 +224,37 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
             ))}
           </div>
 
-          {/* Simple Truck Layout Visualizer */}
-          <div style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px', marginBottom: '20px' }}>
-            <TruckDiagram summary={summary} records={records} onPartClick={handlePartClick} vehicle={vehicle} viewIdx={viewIdx} setViewIdx={setViewIdx} />
-          </div>
-
           {/* Action Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>Maintenance & Diagnostic Categories</h3>
-            <button onClick={() => setShowForm(!showForm)} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '10px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Plus size={16} /> {showForm ? 'Cancel Entry' : 'Log Service Record'}
-            </button>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>Truck parts & maintenance</h3>
+            {canEdit && <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { setServiceFormOpen(!serviceFormOpen); setShowForm(false); }} className="btn btn-g"><Plus size={16} /> Record full service</button>
+              <button onClick={() => { setShowForm(!showForm); setServiceFormOpen(false); }} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '10px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={16} /> {showForm ? 'Cancel Entry' : 'Record part repair'}
+              </button>
+            </div>}
           </div>
+
+          {err && <div role="alert" style={{ color: 'var(--danger)', marginBottom: 12 }}>{err}</div>}
+          {serviceFormOpen && <form onSubmit={saveService} style={{ background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, marginBottom: 20 }}>
+            <h3 style={{ marginTop: 0 }}>{editingServiceId ? 'Edit full service' : 'Full service record'}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+              {[
+                ['date', 'Service date', 'date'], ['odometer', 'Odometer (km)', 'number'], ['serviceType', 'Service type', 'text'], ['workshop', 'Workshop', 'text'], ['invoiceNo', 'Invoice no.', 'text'], ['paymentMethod', 'Payment method', 'text'], ['labourCost', 'Labour cost ₹', 'number'], ['otherCost', 'Other cost ₹', 'number'], ['nextServiceDate', 'Next service date', 'date'], ['nextServiceKm', 'Next service odometer (km)', 'number'], ['intervalDays', 'Repeat every (days)', 'number'], ['intervalKm', 'Repeat every (km)', 'number']
+              ].map(([key, label, type]) => <label key={key} className="field"><span>{label}</span><input className="fi" type={type} min={type === 'number' ? 0 : undefined} step={key.endsWith('Cost') ? '0.01' : undefined} value={serviceForm[key]} onChange={e => setServiceForm(f => ({ ...f, [key]: e.target.value }))} required={key === 'date' || key === 'serviceType'} /></label>)}
+            </div>
+            <h4>Parts used</h4>
+            {serviceForm.parts.map((part, index) => <div key={index} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,2fr) minmax(70px,1fr) minmax(100px,1fr) auto', gap: 8, marginBottom: 8 }}>
+              <div><select className="fi" aria-label={`Part ${index + 1}`} value={catalog[part.partId] ? part.partId : ''} onChange={e => setServiceForm(f => ({ ...f, parts: f.parts.map((p, i) => i === index ? { ...p, partId: e.target.value, partName: catalog[e.target.value]?.name || '' } : p) }))}><option value="">Custom / select part</option>{Object.entries(categories).map(([cat, parts]) => <optgroup key={cat} label={CATEGORY_META[cat]?.label || cat}>{parts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>)}</select>{!catalog[part.partId] && <input className="fi" aria-label="Custom part name" placeholder="Custom part name" value={part.partName || ''} onChange={e => setServiceForm(f => ({ ...f, parts: f.parts.map((p, i) => i === index ? { ...p, partId: '', partName: e.target.value } : p) }))} />}</div>
+              <input className="fi" aria-label="Quantity" type="number" min="1" value={part.quantity} onChange={e => setServiceForm(f => ({ ...f, parts: f.parts.map((p, i) => i === index ? { ...p, quantity: e.target.value } : p) }))} />
+              <input className="fi" aria-label="Unit cost" type="number" min="0" step="0.01" placeholder="Unit cost ₹" value={part.unitCost} onChange={e => setServiceForm(f => ({ ...f, parts: f.parts.map((p, i) => i === index ? { ...p, unitCost: e.target.value } : p) }))} />
+              <button type="button" className="btn" onClick={() => setServiceForm(f => ({ ...f, parts: f.parts.filter((_, i) => i !== index) }))}>Remove</button>
+            </div>)}
+            <button type="button" className="btn" onClick={() => setServiceForm(f => ({ ...f, parts: [...f.parts, { partId: '', partName: '', quantity: 1, unitCost: '' }] }))}>Add part</button>
+            <div style={{ marginTop: 12, fontWeight: 800 }}>Estimated total: ₹{(serviceForm.parts.reduce((sum, part) => sum + Number(part.quantity || 0) * Number(part.unitCost || 0), 0) + Number(serviceForm.labourCost || 0) + Number(serviceForm.otherCost || 0)).toLocaleString('en-IN')}</div>
+            <label className="field" style={{ display: 'block', marginTop: 12 }}><span>Service notes</span><textarea className="fi" rows="3" value={serviceForm.notes} onChange={e => setServiceForm(f => ({ ...f, notes: e.target.value }))} /></label>
+            <div style={{ textAlign: 'right', marginTop: 12 }}><button type="submit" className="btn btn-g" disabled={saving}>{saving ? 'Saving…' : 'Save service'}</button></div>
+          </form>}
 
           {/* Service Entry Form */}
           <AnimatePresence>
@@ -214,7 +262,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
               <motion.form initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                 onSubmit={handleSubmit} style={{ overflow: 'hidden', background: 'var(--bg-th)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text)' }}>📝 Log Service Record</span>
+                  <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text)' }}>📝 Log Part Repair</span>
                   <button type="button" onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={16} /></button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
@@ -245,6 +293,11 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                   <div className="field"><label style={{ fontSize: '11px', fontWeight: 700 }}>Vendor / Workshop</label><input className="fi" type="text" placeholder="Vendor name" value={form.vendor} onChange={e => setForm({ ...form, vendor: e.target.value })} /></div>
                   <div className="field"><label style={{ fontSize: '11px', fontWeight: 700 }}>Quantity</label><input className="fi" type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></div>
                   <div className="field"><label style={{ fontSize: '11px', fontWeight: 700 }}>Warranty Expiry</label><input className="fi" type="date" value={form.warrantyExpiry} onChange={e => setForm({ ...form, warrantyExpiry: e.target.value })} /></div>
+                  <div className="field"><label>Next service date</label><input className="fi" type="date" value={form.nextServiceDate} onChange={e => setForm({ ...form, nextServiceDate: e.target.value })} /></div>
+                  <div className="field"><label>Next service odometer (km)</label><input className="fi" type="number" min="0" value={form.nextServiceKm} onChange={e => setForm({ ...form, nextServiceKm: e.target.value })} /></div>
+                  <div className="field"><label>Repair / service type</label><input className="fi" value={form.serviceType} onChange={e => setForm({ ...form, serviceType: e.target.value })} /></div>
+                  <div className="field"><label>Invoice no.</label><input className="fi" value={form.invoiceNo} onChange={e => setForm({ ...form, invoiceNo: e.target.value })} /></div>
+                  <div className="field"><label>Payment method</label><input className="fi" value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })} /></div>
                   
                   <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
@@ -286,8 +339,8 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                           {parts.map(p => {
                             const d = summary[p.id];
                             return (
-                              <div key={p.id} onClick={() => handlePartClick(p.id)}
-                                style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${d?.recurring ? 'rgba(239,68,68,0.4)' : d ? (d.status === 'overdue' ? 'rgba(239,68,68,0.3)' : 'var(--border)') : 'var(--border)'}`, cursor: 'pointer', background: d?.recurring ? 'rgba(239,68,68,0.03)' : 'var(--bg-input)', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div key={p.id} onClick={() => canEdit && handlePartClick(p.id)}
+                                style={{ padding: '12px', borderRadius: '10px', border: `1px solid ${d?.recurring ? 'rgba(239,68,68,0.4)' : d ? (d.status === 'overdue' ? 'rgba(239,68,68,0.3)' : 'var(--border)') : 'var(--border)'}`, cursor: canEdit ? 'pointer' : 'default', background: d?.recurring ? 'rgba(239,68,68,0.03)' : 'var(--bg-input)', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                   <div>
                                     <span style={{ fontWeight: 800, color: 'var(--text)' }}>{p.name}</span>
@@ -313,7 +366,12 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
             })}
           </div>
 
-          {/* Service History Table */}
+          <div style={{ marginBottom: 20 }}>
+            <h3 style={{ fontSize: 14, color: 'var(--text)' }}>Scheduled service history ({services.length})</h3>
+            {services.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No full services recorded yet.</p> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr style={{ background: 'var(--bg-th)' }}>{['Date', 'Service', 'Odometer', 'Parts', 'Workshop / invoice', 'Cost', 'Next due', 'Actions'].map(h => <th key={h} style={{ padding: 10, textAlign: 'left' }}>{h}</th>)}</tr></thead><tbody>{services.map(s => <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}><td style={{ padding: 10 }}>{s.date}</td><td>{s.serviceType}</td><td>{s.odometer ? `${Number(s.odometer).toLocaleString()} km` : '—'}</td><td>{(s.parts || []).map(p => `${p.partName} × ${p.quantity}`).join(', ') || '—'}</td><td>{[s.workshop, s.invoiceNo].filter(Boolean).join(' / ') || '—'}</td><td>₹{Number(s.totalCost || 0).toLocaleString('en-IN')}</td><td>{s.nextServiceDate || '—'}{s.nextServiceKm ? ` / ${Number(s.nextServiceKm).toLocaleString()} km` : ''}</td><td style={{ whiteSpace: 'nowrap' }}>{canEdit && <><button className="btn" onClick={() => editService(s)}>Edit</button> <button className="btn" onClick={() => deleteService(s)}>Delete</button></>}</td></tr>)}</tbody></table></div>}
+          </div>
+
+          {/* Part repair history */}
           {records.length > 0 && (
             <div>
               <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 10px 0', color: 'var(--text)' }}>📋 Service History ({records.length})</h3>
@@ -338,7 +396,7 @@ export default function MaintenanceTracker({ truckNo, onClose }) {
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: '#10b981', fontWeight: 700 }}>₹{(r.cost || 0).toLocaleString()}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f59e0b', fontWeight: 700 }}>₹{(r.labourCost || 0).toLocaleString()}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <button onClick={() => setDelTarget(r)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Delete</button>
+                          <button hidden={!canEdit} onClick={() => setDelTarget(r)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Delete</button>
                         </td>
                       </tr>
                     ))}

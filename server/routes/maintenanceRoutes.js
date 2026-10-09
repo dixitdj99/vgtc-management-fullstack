@@ -52,33 +52,53 @@ router.get('/alerts', async (req, res) => {
     }
 });
 
+router.get('/services', async (req, res) => {
+    try { res.json(await maintenanceService.getServices(req.orgId, req.query.truckNo)); }
+    catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+router.post('/services', async (req, res) => {
+    try { res.status(201).json(await maintenanceService.createService(req.orgId, req.body)); }
+    catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+router.patch('/services/:id', async (req, res) => {
+    try { res.json(await maintenanceService.updateService(req.orgId, req.params.id, req.body)); }
+    catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+router.delete('/services/:id', async (req, res) => {
+    try { await maintenanceService.deleteService(req.orgId, req.params.id); res.json({ message: 'Service record deleted' }); }
+    catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
 // Create maintenance record
 router.post('/', async (req, res) => {
     try {
         const result = await maintenanceService.createRecord(req.orgId, req.body);
         res.status(201).json(result);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
 // Update maintenance record
 router.patch('/:id', async (req, res) => {
     try {
-        await maintenanceService.updateRecord(req.params.id, req.body);
+        await maintenanceService.updateRecord(req.orgId, req.params.id, req.body);
         res.json({ message: 'Record updated' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
 // Delete maintenance record
 router.delete('/:id', async (req, res) => {
     try {
-        await maintenanceService.deleteRecord(req.params.id);
+        await maintenanceService.deleteRecord(req.orgId, req.params.id);
         res.json({ message: 'Record deleted' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 

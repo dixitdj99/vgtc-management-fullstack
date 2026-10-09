@@ -7,8 +7,8 @@ const { isProduction } = require('../utils/envConfig');
 /**
  * Enquiries from the public landing page.
  *
- * The page carries no JavaScript, so this is a plain HTML form POST: the
- * browser navigates here and we answer with a page. That is also why the
+ * The page uses a plain HTML form POST, so it also works without JavaScript.
+ * The browser navigates here and we answer with a page. That is why the
  * responses below are HTML rather than JSON — there is nothing on the other
  * end to render an error object.
  *
@@ -46,16 +46,16 @@ function page(heading, body, ok = true) {
 <title>${heading} — Vikas Goods Transport Co.</title>
 <meta name="robots" content="noindex">
 <style>
-  body{margin:0;background:#050507;color:#fff;min-height:100vh;display:flex;align-items:center;
+  body{margin:0;background:#102a26;color:#fff;min-height:100vh;display:flex;align-items:center;
     justify-content:center;padding:24px;
     font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .box{max-width:520px;text-align:center}
   .mark{width:64px;height:64px;border-radius:18px;margin:0 auto 24px;display:flex;
     align-items:center;justify-content:center;
-    background:linear-gradient(135deg,${ok ? '#4f7cff,#8b5cf6' : '#f59e0b,#ef4444'})}
+    background:linear-gradient(135deg,${ok ? '#e76733,#c95125' : '#f59e0b,#ef4444'})}
   h1{font-size:28px;letter-spacing:-.02em;margin:0 0 12px}
-  p{color:#98a0b4;margin:0 0 28px}
-  a{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#08080c;
+  p{color:#b8cabe;margin:0 0 28px}
+  a{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#102a26;
     text-decoration:none;font-weight:700;border-radius:999px;padding:13px 26px;font-size:14.5px;
     text-transform:uppercase;letter-spacing:.03em}
 </style></head>
@@ -126,7 +126,7 @@ router.post('/', limiter, express.urlencoded({ extended: false, limit: '32kb' })
         const record = {
             ...entry,
             phone: digits,
-            kind: entry.kind === 'transport' ? 'transport' : 'vehicle',
+            kind: ['driver', 'vehicle', 'transport'].includes(entry.kind) ? entry.kind : 'vehicle',
             orgId: 'vgtc',
             status: 'new',
             source: 'landing-page',

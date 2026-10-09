@@ -123,3 +123,35 @@ financial records by fuzzy name alone; show or report candidate for review.
 ## Prove terminal roster against real profile types and production auth (2026-10-03)
 
 User reported an empty staff list after prior Android terminal changes were called complete. A successful APK build only proves compilation. Never apply a narrow profile-type/name filter without checking real VGTC profile shapes, and never silently substitute a production URL or a built-in terminal token when local/prod configuration fails. Exercise the authenticated roster route with representative portal profiles and make setup display a real failure. For attendance controls, test server rejection and explicit stopped-scan events, not just visual toggle state.
+## Marketing visuals must suit the operation (2026-10-05)
+
+User rejected the repeated old truck photo, foreign cement bag close-up, and unclear network diagram. Choose distinct, sharp imagery for hero and service cards; favor vehicles and storage scenes suited to the business. Network visuals need every node labeled, sensible geographic placement, readable mobile labels, and a clear distinction between connections and driving directions. Verify scroll effects in motion, not only static screenshots.
+
+## Full redesign request after targeted polish (2026-10-06)
+
+User asked to recreate all page elements with animated UI after image and motion polish. When the requested scope is a full recreation, do not keep layering CSS overrides onto the old layout. Establish one visual system, refactor the page cleanly, and verify each section in motion at desktop and mobile widths while preserving the working enquiry contract.
+
+## Logo cutouts must fit their actual background (2026-10-06)
+
+User flagged the logo's white rectangular backing on the dark marketing header. A transparent cutout alone can leave near-black mark strokes unreadable. For a dark header, create a transparent high-contrast variant, keep the original brand asset for other contexts, and verify the result at the rendered header size on desktop and mobile.
+## Check connected tools before asking for access (2026-10-08)
+
+User corrected my request for a Meta connection: WhatsApp Business Tools was already available.
+Inspect callable tools first, then use the connected account to verify live state before
+asking for another connection. Distinguish setup checks from per-message delivery proof.
+
+## Preserve theme and page scrolling in UI simplification (2026-10-08)
+
+User corrected WhatsApp/status redesign: hardcoded grayscale ignored existing light, dark,
+and sepia themes; a capped WhatsApp width wasted module space; status page could not
+scroll because application root hides overflow. Use inherited theme variables and
+available parent width. Test scrolling inside the actual app shell, not only component
+CSS or build output.
+
+## Match the visual reference across every requested admin surface (2026-10-08)
+
+User supplied a concrete pastel admin dashboard reference after the neutral theme
+change. Extract its warm page, white panels, soft borders, dark text, and restrained
+violet/cyan/amber/mint accents. Apply consistently to standalone admin shell, login,
+embedded admin, WhatsApp, and status instead of assuming inherited theme variables
+alone satisfy a visual reference. Keep three saved themes working.

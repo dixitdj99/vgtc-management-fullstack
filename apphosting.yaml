@@ -108,8 +108,8 @@ env:
   #   firebase apphosting:secrets:set META_APP_SECRET --project vgtc-management
   # - variable: GEMINI_API_KEY
   #   secret: GEMINI_API_KEY
-  # - variable: META_APP_SECRET
-  #   secret: META_APP_SECRET
+  - variable: META_APP_SECRET
+    secret: META_APP_SECRET
   - variable: GEMINI_MODEL
     value: "gemini-3.5-flash-lite"
     availability:

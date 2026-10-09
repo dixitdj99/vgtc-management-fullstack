@@ -3,6 +3,8 @@ const { db, admin, isAvailable } = require('../firebase');
 const firebaseAvailable = () => isAvailable();
 const partyService = require('./partyService');
 const { isDummyPartyName } = require('../utils/partyNameUtils');
+const { normalizeRenewal } = require('./vehicleDocumentService');
+const { randomUUID } = require('crypto');
 
 const COLLECTION_VEHICLES = 'vehicles';
 const MARKET_LOCATIONS = new Set(['jharli', 'kosli', 'jhajjar', 'bahadurgarh']);
@@ -168,6 +170,16 @@ const syncParty = async (orgId, ownerName, ownerContact, bankDetails) => {
 
 const createVehicle = async (orgId, data, col = COLLECTION_VEHICLES) => {
     const payload = normalizeVehiclePayload(data);
+    delete payload.initialDocumentRenewals;
+    delete payload.documentRenewals;
+    const initial = Array.isArray(data.initialDocumentRenewals) ? data.initialDocumentRenewals : [];
+    const docs = typeof payload.docs === 'string' ? (() => { try { return JSON.parse(payload.docs); } catch { return {}; } })() : { ...(payload.docs || {}) };
+    payload.documentRenewals = initial.map(item => {
+        const record = { ...normalizeRenewal(item), id: randomUUID(), createdAt: new Date().toISOString() };
+        docs[record.documentType] = record.expiresOn;
+        return record;
+    });
+    payload.docs = JSON.stringify(docs);
     if (!payload.truckNo) throw new Error('Truck number required');
 
     const existing = await findVehicleByTruckNo(orgId, payload.truckNo, col);
@@ -228,6 +240,8 @@ const updateVehicle = async (orgId, id, data, col = COLLECTION_VEHICLES) => {
     const allowed = normalizeVehiclePatch(data);
     delete allowed.id;
     delete allowed.createdAt;
+    delete allowed.documentRenewals;
+    delete allowed.initialDocumentRenewals;
 
     if (allowed.truckNo) {
         const existing = await findVehicleByTruckNo(orgId, allowed.truckNo, col);

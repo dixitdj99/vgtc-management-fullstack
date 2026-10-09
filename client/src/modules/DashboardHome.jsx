@@ -4,9 +4,11 @@ import { useAuth } from '../auth/AuthContext';
 import {
     Receipt, FileText, BookOpen, Wallet, AlertTriangle, TrendingUp,
     Truck, ArrowRight, Plus, RefreshCw, Activity, Gauge, IndianRupee, LayoutGrid,
-    ClipboardList, CheckCircle2, Package, AlertCircle
+    CheckCircle2, Package, AlertCircle
 } from 'lucide-react';
 import useDashboardData from '../hooks/useDashboardData';
+import VehicleDocumentRenewals from '../components/VehicleDocumentRenewals';
+import { isOwnFleetVehicle } from '../utils/vehicleUtils';
 
 const fmtRs = n => '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN');
 
@@ -15,14 +17,6 @@ const dayLabel = (iso) => {
     const d = new Date(`${iso}T00:00:00`);
     return isNaN(d) ? iso : d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
 };
-
-/** Same four statuses, same colours, as the Attendance module. */
-const STATUSES = [
-    { id: 'present', label: 'Present', color: '#10b981' },
-    { id: 'absent', label: 'Absent', color: '#f43f5e' },
-    { id: 'half_day', label: 'Half Day', color: '#f59e0b' },
-    { id: 'leave', label: 'Leave', color: '#6366f1' },
-];
 
 const navTo = (active, subActive) =>
     window.dispatchEvent(new CustomEvent('nav-module', { detail: { active, subActive } }));
@@ -102,182 +96,27 @@ function ModuleGrid({ navItems, onOpen }) {
     );
 }
 
-/**
- * Today's roll-call, marked here rather than anywhere else.
- */
-function TodayRollCall({ source, onSaved, canEdit }) {
-    const [busy, setBusy] = useState(null);
-    const [done, setDone] = useState({});
-    const [error, setError] = useState(null);
-
-    const roster = source.data;
-    const pending = useMemo(
-        () => (roster?.rows || []).filter(r => !r.status && !done[r.profileId]),
-        [roster, done],
-    );
-
-    if (source.loading) {
-        return (
-            <div className="card" style={{ marginBottom: '18px', padding: '16px 18px' }}>
-                <span className="skeleton" style={{ height: '18px', width: '220px' }} />
-            </div>
-        );
-    }
-    if (source.error || !roster) return null;
-
-    const savedHere = Object.keys(done).length;
-
-    if (!pending.length) {
-        return (
-            <div className="card" style={{ marginBottom: '18px', padding: '12px 18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <CheckCircle2 size={16} color="#10b981" />
-                <span style={{ fontSize: '13px', color: 'var(--text-sub)' }}>
-                    {savedHere > 0
-                        ? `Attendance saved — ${savedHere} ${savedHere === 1 ? 'person' : 'people'} marked for today.`
-                        : `Today's attendance is marked. ${roster.counts?.saved ?? 0} of ${roster.counts?.total ?? 0} recorded.`}
-                </span>
-            </div>
-        );
-    }
-
-    const mark = async (row, status) => {
-        if (!canEdit || busy) return;
-        setBusy(row.profileId);
-        setError(null);
-        try {
-            await ax.post('/attendance/bulk', {
-                date: roster.date,
-                records: [{
-                    profileId: row.profileId,
-                    profileName: row.name,
-                    profileType: row.type,
-                    status,
-                    source: 'manual',
-                }],
-            });
-            setDone(d => ({ ...d, [row.profileId]: status }));
-            onSaved();
-        } catch (err) {
-            setError(err.response?.data?.error || err.message || 'Could not save.');
-        } finally {
-            setBusy(null);
-        }
-    };
-
-    return (
-        <div className="card" style={{ marginBottom: '18px', borderColor: 'rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.04)' }}>
-            <div className="card-header border-b" style={{ borderColor: 'rgba(245,158,11,0.2)' }}>
-                <div className="card-title-block">
-                    <div className="card-icon" style={{ background: 'rgba(245,158,11,0.12)' }}>
-                        <ClipboardList size={17} color="#f59e0b" />
-                    </div>
-                    <div className="card-title-text">
-                        <h3>Mark today's attendance</h3>
-                        <p>{dayLabel(roster.date)} · {pending.length} of {roster.counts?.total ?? pending.length} still to mark · saves as you tap</p>
-                    </div>
-                </div>
-                {canEdit && (
-                    <button className="btn btn-g btn-sm" disabled={!!busy}
-                        title="Mark everyone below present"
-                        onClick={async () => { for (const r of [...pending]) await mark(r, 'present'); }}>
-                        <CheckCircle2 size={13} /> All present
-                    </button>
-                )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {pending.map((r, i) => (
-                    <div key={r.profileId} style={{
-                        display: 'flex', alignItems: 'center', gap: '14px', padding: '11px 18px',
-                        borderTop: i === 0 ? 'none' : '1px solid var(--border-row)', flexWrap: 'wrap',
-                    }}>
-                        <div style={{ flex: 1, minWidth: '150px' }}>
-                            <div style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--text)' }}>{r.name || 'Unnamed'}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                {[r.type, r.department, r.vehicleNo].filter(Boolean).join(' · ') || '—'}
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', opacity: busy === r.profileId ? 0.5 : 1 }}>
-                            {STATUSES.map(s => (
-                                <button key={s.id} type="button" disabled={!canEdit || !!busy}
-                                    onClick={() => mark(r, s.id)}
-                                    style={{
-                                        padding: '5px 12px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800,
-                                        cursor: canEdit && !busy ? 'pointer' : 'not-allowed',
-                                        border: '1px solid var(--border)',
-                                        background: 'var(--bg-input)', color: s.color,
-                                        transition: 'all .12s',
-                                    }}
-                                    onMouseEnter={e => { if (canEdit && !busy) { e.currentTarget.style.background = `${s.color}22`; e.currentTarget.style.borderColor = s.color; } }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-input)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
-                                    {s.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border-row)' }}>
-                <span style={{ fontSize: '12.5px', color: error ? 'var(--danger)' : 'var(--text-muted)' }}>
-                    {error || (savedHere > 0
-                        ? `${savedHere} saved. ${pending.length} left.`
-                        : 'Tap a status and it is saved straight away.')}
-                </span>
-            </div>
-        </div>
-    );
-}
-
-function getDriverLiveStatus(v, attendanceRows = []) {
-    if (!v.driverName) {
-        return { label: 'No Driver Assigned', color: 'var(--text-muted)', bg: 'var(--bg)', border: 'var(--border)' };
-    }
-
-    if (v.status === 'ON_TRIP') {
-        return { label: 'Live On Trip', sub: `Driving to ${v.activeTrip?.destination || 'Destination'}`, color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', isLive: true };
-    }
-    if (v.status === 'LOADED') {
-        return { label: 'Assigned / Loaded', sub: `Loaded for ${v.activeTrip?.destination || 'Destination'}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)', isLive: true };
-    }
-
-    // Vehicle is FREE / IDLE: determine if driver is available in yard, on leave, or absent at home
-    const dName = (v.driverName || '').trim().toLowerCase();
-    const att = (attendanceRows || []).find(r => {
-        const rName = (r.name || r.profileName || '').trim().toLowerCase();
-        if (rName && (rName === dName || rName.includes(dName) || dName.includes(rName))) return true;
-        if (r.phone && v.driverContact && String(r.phone).replace(/\D/g, '').endsWith(String(v.driverContact).replace(/\D/g, '').slice(-10))) return true;
-        return false;
-    });
-
-    if (att) {
-        if (att.status === 'present') {
-            return { label: 'Present in Yard', sub: 'Available for trip assignment', color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', isLive: true };
-        }
-        if (att.status === 'leave') {
-            return { label: 'On Leave Today', sub: att.note || 'Excused leave recorded', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
-        }
-        if (att.status === 'absent') {
-            return { label: 'Absent / At Home', sub: 'Driver not reported to yard', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)' };
-        }
-        if (att.status === 'half_day') {
-            return { label: 'Half Day Duty', sub: 'Available half day only', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
-        }
-    }
-
-    return { label: 'Not Punched Today', sub: 'No check-in record for today', color: 'var(--text-muted)', bg: 'var(--bg)', border: 'var(--border)' };
+function getDriverLiveStatus(v) {
+    if (!v.driverName) return { label: 'No Driver Assigned', color: 'var(--text-muted)', bg: 'var(--bg)', border: 'var(--border)' };
+    if (v.status === 'ON_TRIP') return { label: 'Live On Trip', sub: `Driving to ${v.activeTrip?.destination || 'Destination'}`, color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)' };
+    if (v.status === 'LOADED') return { label: 'Assigned / Loaded', sub: `Loaded for ${v.activeTrip?.destination || 'Destination'}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)' };
+    return { label: 'Available', sub: 'Ready for assignment', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
 }
 
 export default function DashboardHome({ filteredNavIds = new Set(), navItems = [] }) {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
-    const { cfg, isDump, lrs, vouchers, cashbook, maintAlerts, vehicles, attendanceToday, kpis, recentActivity, ownVehiclesDuty, marketVehicles, refetch } = useDashboardData();
-    const { todayLrCount, outstanding, cashInHand, fleetAlerts } = kpis;
-    const { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles, fetchAttendanceToday } = refetch;
+    const { cfg, isDump, lrs, vouchers, cashbook, maintAlerts, vehicles, kpis, recentActivity, ownVehiclesDuty, marketVehicles, refetch } = useDashboardData();
+    const { todayLrCount, outstanding, cashInHand } = kpis;
+    const { fetchLrs, fetchVouchers, fetchCashbook, fetchAlerts, fetchVehicles } = refetch;
 
     const [dutyFilter, setDutyFilter] = useState('all'); // 'all' | 'free' | 'loaded' | 'trip'
     const [marketFilter, setMarketFilter] = useState('all'); // 'all' | 'truck' | 'tractor'
     const [marketSearch, setMarketSearch] = useState('');
+    const fleetModule = filteredNavIds.has('vehicles_jharli') ? 'vehicles_jharli' : 'vehicles_dump';
+    const ownTruckNos = new Set((vehicles.data || []).filter(isOwnFleetVehicle).map(vehicle => String(vehicle.truckNo || '').replace(/\s/g, '').toUpperCase()));
+    const serviceAlerts = (maintAlerts.data || []).filter(alert =>
+        (alert.status === 'OVERDUE' || alert.status === 'DUE_SOON') && ownTruckNos.has(String(alert.truckNo || '').replace(/\s/g, '').toUpperCase()));
 
     const filteredMarketList = useMemo(() => {
         if (!marketVehicles?.list) return [];
@@ -299,9 +138,6 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
         return list;
     }, [marketVehicles, marketFilter, marketSearch]);
 
-    // Same rule the Attendance module uses. The server checks it too — this
-    // only decides whether the buttons are live.
-    const canMarkAttendance = isAdmin || user?.permissions?.attendance === 'edit';
     const canSeeFleetDuty = isAdmin || user?.permissions?.vehicle === 'edit' || user?.permissions?.lr_dump === 'edit' || user?.permissions?.lr_jkl === 'edit';
 
     /* ── Quick actions (permission-aware) ── */
@@ -340,7 +176,6 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
                 </div>
             </div>
 
-            {/* Attendance marking card removed from dashboard as requested. Managed inside Terminal Hub */}
 
             {/* KPI row */}
             <div className="stat-grid">
@@ -395,6 +230,27 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
             </div>
 
             {/* Modules this account can open */}
+            {(isAdmin || filteredNavIds.has('vehicles_dump') || filteredNavIds.has('vehicles_jharli')) && <VehicleDocumentRenewals compact vehicles={(vehicles.data || []).filter(isOwnFleetVehicle)} onSaved={fetchVehicles} canEdit={isAdmin || ['edit', 'delete'].includes(user?.permissions?.vehicle)} />}
+            {(isAdmin || filteredNavIds.has(fleetModule)) && (
+                <div className="card" style={{ marginBottom: '16px' }}>
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div className="card-title-block">
+                            <div className="card-icon" style={{ color: '#f59e0b', background: 'rgba(245,158,11,.12)' }}><AlertTriangle size={17} /></div>
+                            <div className="card-title-text"><h3>Truck service checks</h3><p>{serviceAlerts.length} due or overdue · based on service date and odometer</p></div>
+                        </div>
+                        <button type="button" className="btn btn-g btn-sm" onClick={() => navTo(fleetModule, 'maintenance')}>Open maintenance list <ArrowRight size={13} /></button>
+                    </div>
+                    <div style={{ padding: '12px 18px' }}>
+                        {maintAlerts.loading ? <span className="skeleton" style={{ height: 18, width: 200 }} /> : maintAlerts.error ?
+                            <button type="button" className="btn btn-g btn-sm" onClick={fetchAlerts}>Could not load checks · Retry</button> :
+                            serviceAlerts.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {serviceAlerts.slice(0, 12).map((alert, index) => <span key={alert.id || `${alert.truckNo}-${alert.partId || alert.partName}-${index}`} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px', fontSize: 12, color: alert.status === 'OVERDUE' ? 'var(--danger)' : 'var(--text)' }}>
+                                    <strong>{alert.truckNo}</strong> · {alert.partName || alert.serviceType || 'Service'} · {alert.status === 'OVERDUE' ? 'Overdue' : 'Due soon'}{alert.nextServiceDate ? ` · ${alert.nextServiceDate}` : ''}{alert.nextServiceKm ? ` · ${Number(alert.nextServiceKm).toLocaleString('en-IN')} km` : ''}
+                                </span>)}
+                            </div> : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No service checks due.</span>}
+                    </div>
+                </div>
+            )}
             <div className="card" style={{ marginBottom: '16px' }}>
                 <div className="card-header">
                     <div className="card-title-block">
@@ -643,7 +499,7 @@ export default function DashboardHome({ filteredNavIds = new Set(), navItems = [
                                 };
                                 const StatusIcon = statusCfg.icon;
 
-                                const driverStatus = getDriverLiveStatus(v, attendanceToday?.data?.rows || []);
+                                const driverStatus = getDriverLiveStatus(v);
 
                                 return (
                                     <div

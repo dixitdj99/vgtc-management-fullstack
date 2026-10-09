@@ -77,6 +77,22 @@ secret store in production.
 4. Send `BALANCE <registered-truck-number>` from that vehicle's registered phone
    to check existing database-backed commands.
 
+### Confirm outbound delivery
+
+After deploying the backend and client changes, open WhatsApp Control and send
+an approved-template test to the intended recipient. The API response gives a
+Meta message ID. The test panel polls `/api/whatsapp/delivery/<message-id>` and
+shows `accepted`, `sent`, `delivered`, `read`, or `failed`. A `failed` result
+shows Meta's error code and detail. Recent results are also available from
+`GET /api/whatsapp/deliveries` for authenticated users. They are stored in the
+environment's Firestore `whatsapp_deliveries` collection; local development
+uses a JSON collection. If status remains `accepted`, inspect Meta's callback
+delivery and the backend logs for that message ID. Do not treat HTTP 200 from
+`/messages` as recipient delivery.
+
+Use an approved template when the recipient has not messaged the business in
+the customer service window. Freeform text may be rejected outside that window.
+
 Empty Gemini key disables AI replies. `WHATSAPP_AI_ENABLED=false` disables AI
 without changing existing commands. A live Meta/Gemini round-trip cannot be
 verified until valid credentials and a reachable callback are configured.
@@ -96,7 +112,9 @@ References: [Gemini API keys](https://ai.google.dev/gemini-api/docs/api-key),
   context expires after 30 minutes; deployment restarts clear it.
 - Five AI requests per sender per minute. Input is capped at 1,200 characters,
   output at 1,400 characters. Gemini timeout is 40 seconds.
-- Failure sends a short busy response. Webhook acknowledges Meta immediately.
+- Failure sends a short busy response. Inbound messages are acknowledged before
+  business processing; delivery callbacks are saved before acknowledgment so
+  Meta can retry if the database write fails.
 - Gemini free-tier prompts may be used by Google to improve its products.
   Do not send private business records to this free-tier assistant.
 
@@ -105,6 +123,7 @@ References: [Gemini API keys](https://ai.google.dev/gemini-api/docs/api-key),
 Run `node --test server/tests/whatsappAiService.test.js
 server/tests/whatsappAiWebhook.test.js
 server/tests/metaWebhookSignature.test.js` from repository root.
+Include `server/tests/whatsappDeliveryStore.test.js` for delivery-state checks.
 
 The AI gives general answers only. It does not execute actions or read live
 records on behalf of the sender. Some older interactive cashbook and document

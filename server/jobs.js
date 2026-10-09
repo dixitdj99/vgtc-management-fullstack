@@ -165,6 +165,14 @@ function checkVehicleDocExpiry(options = {}) {
     });
 }
 
+/** Create one notification per service due event and urgency state. */
+function checkMaintenanceDue() {
+    return runExclusive('maintenance-due', async () => {
+        const maintenanceService = require('./services/maintenanceService');
+        return maintenanceService.notifyServiceDue();
+    });
+}
+
 /**
  * Automatically mark elapsed vehicle loan EMIs as paid on due date.
  */
@@ -182,6 +190,7 @@ const JOBS = {
     'eway-sync': ewaySync,
     'pending-advances': checkPendingOnlineAdvances,
     'vehicle-doc-expiry': checkVehicleDocExpiry,
+    'maintenance-due': checkMaintenanceDue,
     'vehicle-emi-sync': syncVehicleEmis,
 };
 
@@ -193,6 +202,7 @@ module.exports = {
     ewaySync,
     checkPendingOnlineAdvances,
     checkVehicleDocExpiry,
+    checkMaintenanceDue,
     syncVehicleEmis
 };
 

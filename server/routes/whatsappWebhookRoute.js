@@ -39,6 +39,7 @@ const {
 const { createNotification } = require('../utils/notificationService');
 const { generateVehicleMonthlyPdf, generateVehicleMonthlyExcel, fetchVouchersForTruck, computeVoucherFinancials } = require('../services/reportService');
 const { isAiEnabled, generateAiReply } = require('../services/whatsappAiService');
+const { recordStatus } = require('../utils/whatsappDeliveryStore');
 
 const seenMessageIds = new Map();
 function isDuplicateMessage(id) {
@@ -490,11 +491,43 @@ router.options('/', (req, res) => res.sendStatus(200));
  * Receives incoming WhatsApp messages & button clicks from Meta Cloud API.
  */
 router.post('/', async (req, res) => {
-    // ACK immediately — Meta expects 200 within 20 seconds or it retries
-    res.sendStatus(200);
-
+    const body = req.body || {};
+    const deliveries = [];
+    for (const entry of Array.isArray(body.entry) ? body.entry : []) {
+        for (const change of Array.isArray(entry.changes) ? entry.changes : []) {
+            deliveries.push(...(Array.isArray(change.value?.statuses) ? change.value.statuses : []));
+        }
+    }
     try {
-        const body = req.body || {};
+        // Persist before acknowledging so Meta can retry a failed status write.
+        await Promise.all(deliveries.map(recordStatus));
+    } catch (error) {
+        console.error('[Meta-WA] Failed to persist delivery status:', error);
+        return res.sendStatus(500);
+    }
+    res.sendStatus(200);
+    try {
+        // Meta reports delivery asynchronously. Keep each status with its wamid;
+        // a successful /messages response alone only means Meta accepted it.
+        for (const delivery of deliveries) {
+                    const metaError = delivery.errors?.[0];
+                    logWhatsAppActivity({
+                        type: 'delivery_status',
+                        category: 'message_status',
+                        phone: delivery.recipient_id || '',
+                        messageId: delivery.id || '',
+                        status: delivery.status || 'unknown',
+                        title: `Meta delivery: ${delivery.status || 'unknown'}`,
+                        details: metaError ? `${metaError.code || ''} ${metaError.title || metaError.message || ''}`.trim() : '',
+                        error: metaError?.error_data?.details || metaError?.message || null
+                    });
+                    console.info('[Meta-WA] Delivery status', {
+                        messageId: delivery.id || '',
+                        status: delivery.status || 'unknown',
+                        errorCode: metaError?.code || null,
+                        error: metaError?.error_data?.details || metaError?.message || null
+                    });
+        }
 
         // 1. Meta Cloud API Payload Structure: entry[0].changes[0].value
         const entry = Array.isArray(body.entry) ? body.entry[0] : null;

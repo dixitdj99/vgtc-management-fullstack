@@ -26,6 +26,7 @@ const { createCanvas, GlobalFonts, loadImage } = require('@napi-rs/canvas');
 const { db, isAvailable } = require('../firebase');
 const { getCol, getEnvCol } = require('./collectionUtils');
 const localStore = require('./localStore');
+const { recordAccepted } = require('./whatsappDeliveryStore');
 
 // Register system Hindi / Devanagari fonts so Hindi text renders properly on canvas
 ['C:/Windows/Fonts/Nirmala.ttf', 'C:/Windows/Fonts/mangal.ttf', 'C:/Windows/Fonts/aparaj.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].forEach(p => {
@@ -117,7 +118,7 @@ try {
   inMemoryLogs = [];
 }
 
-function logWhatsAppActivity({ type = 'outbound', category = 'general', phone = '', recipient = '', status = 'sent', title = '', details = '', error = null }) {
+function logWhatsAppActivity({ type = 'outbound', category = 'general', phone = '', recipient = '', status = 'sent', title = '', details = '', error = null, messageId = '' }) {
   try {
     const entry = {
       id: `walog_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -125,6 +126,7 @@ function logWhatsAppActivity({ type = 'outbound', category = 'general', phone = 
       type, // 'outbound' | 'inbound_webhook'
       category: category || 'general',
       phone: phone || recipient || '',
+      messageId,
       status: status || 'sent', // 'sent' | 'failed' | 'received'
       title: title || `${category} event`,
       details: typeof details === 'object' ? JSON.stringify(details) : String(details || ''),
@@ -503,16 +505,12 @@ async function getWhatsAppConfig(req = null) {
     }
     const adminPhones = Array.from(new Set(adminList));
 
-const DEFAULT_PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID || '1216388781567509';
-const DEFAULT_WABA_ID = process.env.META_WABA_ID || '1552863822720100';
-const DEFAULT_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || 'EAAUUTeoUlMMBSYMeQWovzpVpJHEYRw1uZBRhTVbRDj3wVVA5mYZCAZBJvLTGKi2nS5T4tWawSwc8UZBrlI0L35CZAgwQZCag4GAkXmcm7Ftj1HoKLS9ZCl1tBJgUoqmO3UJN2juNMAfiF4zYlxAammX8SBFDVcS5JZCuU5PZAkv8oAM4zUMYfmhZB1jNZA9as9CcEZA21gZDZD';
-
     return {
       enabled: finalCfg.enabled !== undefined ? !!finalCfg.enabled : false,
       provider: 'meta',
-      phoneNumberId: (finalCfg.phoneNumberId || process.env.META_PHONE_NUMBER_ID || DEFAULT_PHONE_NUMBER_ID).trim(),
-      wabaId: (finalCfg.wabaId || process.env.META_WABA_ID || DEFAULT_WABA_ID).trim(),
-      accessToken: (token && token.length > 20 ? token : DEFAULT_ACCESS_TOKEN).trim(),
+      phoneNumberId: (finalCfg.phoneNumberId || process.env.META_PHONE_NUMBER_ID || '').trim(),
+      wabaId: (finalCfg.wabaId || process.env.META_WABA_ID || '').trim(),
+      accessToken: token,
       webhookVerifyToken: (finalCfg.webhookVerifyToken || process.env.META_WEBHOOK_VERIFY_TOKEN || DEFAULT_VERIFY_TOKEN).trim(),
       adminPhone: adminPhones[0] || HARDCODED_ADMIN,
       adminPhones,
@@ -914,10 +912,22 @@ async function lookupVehiclePhone(truckNo, req) {
 
 // ─── Meta WhatsApp Cloud API Core Senders ─────────────────────────────────────
 
-async function sendWhatsAppMessage(phone, message, req = null) {
+async function trackMetaAcceptance(result, phone, category, title) {
+  const messageId = result?.messages?.[0]?.id;
+  if (!messageId) return;
+  try {
+    await recordAccepted(messageId, { phone, category, title });
+  } catch (error) {
+    // Meta already accepted this message. Throwing here could cause callers to
+    // retry and send a duplicate, so surface the tracking failure in server logs.
+    console.error('[Meta-WA] Could not persist accepted message', { messageId, error: error.message });
+  }
+}
+
+async function sendWhatsAppMessage(phone, message, req = null, { bypassEnabledCheck = false } = {}) {
   const config = await getWhatsAppConfig(req);
-  if (!config.enabled) {
-    throw new Error('WhatsApp dispatch is disabled in Control Module settings');
+  if (!config.enabled && !bypassEnabledCheck) {
+    throw new Error('WhatsApp dispatch is disabled in Control Module settings. Please enable the Master Toggle at top-right.');
   }
   if (!config.phoneNumberId || !config.accessToken) {
     throw new Error('Meta Cloud API credentials (Phone Number ID / Permanent Access Token) not configured');
@@ -949,12 +959,14 @@ async function sendWhatsAppMessage(phone, message, req = null) {
       },
       timeout: 25000
     });
+    await trackMetaAcceptance(res.data, to, 'text_message', 'WhatsApp text');
     logWhatsAppActivity({
       type: 'outbound',
       category: 'text_message',
       phone: to,
-      status: 'sent',
-      title: 'WhatsApp Message Sent',
+      messageId: res.data?.messages?.[0]?.id || '',
+      status: 'accepted',
+      title: 'WhatsApp Message Accepted by Meta',
       details: cleanMsg.slice(0, 160)
     });
     return res.data;
@@ -1036,12 +1048,14 @@ async function sendWhatsAppButtons(phone, title, text, buttons = [], req = null)
       },
       timeout: 25000
     });
+    await trackMetaAcceptance(res.data, to, 'interactive_button', title || 'Interactive button');
     logWhatsAppActivity({
       type: 'outbound',
       category: 'interactive_button',
       phone: to,
-      status: 'sent',
-      title: `Button Message: ${title || 'Interactive'}`,
+      messageId: res.data?.messages?.[0]?.id || '',
+      status: 'accepted',
+      title: `Button Message Accepted: ${title || 'Interactive'}`,
       details: bodyText.slice(0, 160)
     });
     return res.data;
@@ -1072,9 +1086,9 @@ async function sendWhatsAppPoll(phone, name, options = [], req = null) {
 
 // ─── Meta Official Template Send Utility ───────────────────────────────────────
 
-async function sendMetaTemplate(phone, templateName, languageCode = 'en', components = [], req = null) {
+async function sendMetaTemplate(phone, templateName, languageCode = 'en', components = [], req = null, { bypassEnabledCheck = false } = {}) {
   const config = await getWhatsAppConfig(req);
-  if (!config.enabled || !config.phoneNumberId || !config.accessToken) {
+  if ((!config.enabled && !bypassEnabledCheck) || !config.phoneNumberId || !config.accessToken) {
     throw new Error('Meta Cloud API credentials not configured');
   }
 
@@ -1082,26 +1096,80 @@ async function sendMetaTemplate(phone, templateName, languageCode = 'en', compon
   if (!to) throw new Error('Invalid phone number for template dispatch');
 
   const url = `https://graph.facebook.com/v20.0/${encodeURIComponent(config.phoneNumberId)}/messages`;
-  const payload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'template',
-    template: {
-      name: templateName,
-      language: { code: languageCode },
-      components: components && components.length ? components : undefined
-    }
-  };
 
-  const res = await axios.post(url, payload, {
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    timeout: 25000
-  });
-  return res.data;
+  // Auto-supply default sample components for known template 'hello' if omitted
+  let finalComponents = components;
+  if (templateName === 'hello' && (!finalComponents || !finalComponents.length)) {
+    finalComponents = [{
+      type: 'body',
+      parameters: [
+        { type: 'text', text: '1001' },
+        { type: 'text', text: '501' },
+        { type: 'text', text: new Date().toLocaleDateString('en-IN') },
+        { type: 'text', text: 'HR55AA1234' },
+        { type: 'text', text: 'Jharli' },
+        { type: 'text', text: 'Rewari' },
+        { type: 'text', text: 'Cement' },
+        { type: 'text', text: '25' }
+      ]
+    }];
+  }
+
+  // Candidate languages to try in case template is registered in en vs en_US
+  const candidates = [languageCode || 'en'];
+  if (templateName === '3p_direct_integration_test_template' && !candidates.includes('en_US')) {
+    candidates.unshift('en_US'); // 3p template is registered in en_US
+  } else {
+    if (!candidates.includes('en_US')) candidates.push('en_US');
+    if (!candidates.includes('en')) candidates.push('en');
+  }
+
+  let lastErr = null;
+  for (const lang of candidates) {
+    const payload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: lang },
+        components: finalComponents && finalComponents.length ? finalComponents : undefined
+      }
+    };
+
+    try {
+      const res = await axios.post(url, payload, {
+        headers: {
+          'Authorization': `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 25000
+      });
+      await trackMetaAcceptance(res.data, to, 'template_message', templateName);
+      logWhatsAppActivity({
+        type: 'outbound',
+        category: 'template_message',
+        phone: to,
+        messageId: res.data?.messages?.[0]?.id || '',
+        status: 'accepted',
+        title: `Template Accepted: ${templateName}`,
+        details: `Language: ${lang}`
+      });
+      return res.data;
+    } catch (err) {
+      lastErr = err;
+      const metaCode = err.response?.data?.error?.code;
+      // Code 132001: Template name does not exist in the translation (wrong language code)
+      if (metaCode === 132001) {
+        console.warn(`[Meta-WA] Template "${templateName}" not found in language "${lang}", retrying with fallback...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastErr;
 }
 
 // Backwards-compatible alias for sendOpenWATemplate
@@ -1170,6 +1238,7 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
         timeout: 25000
       }
     );
+    await trackMetaAcceptance(msgRes.data, to, 'image_message', 'WhatsApp image');
     return msgRes.data;
   } catch (err) {
     console.warn(`[Meta-WA] Image dispatch failed (${err.response?.data?.error?.message || err.message}). Falling back to text caption...`);
@@ -1242,6 +1311,7 @@ async function sendWhatsAppDocument(phone, docBuffer, filename = 'document.pdf',
         timeout: 30000
       }
     );
+    await trackMetaAcceptance(msgRes.data, to, 'document_message', filename);
     return msgRes.data;
   } catch (err) {
     console.warn(`[Meta-WA] Document dispatch failed (${err.response?.data?.error?.message || err.message}). Falling back to text caption...`);
@@ -1808,14 +1878,40 @@ async function sendEventNotification(eventKey, data, phones, req) {
           ];
         }
 
-        const message = interpolateTemplate(eventCfg.template || '', data);
-
-        if (actionButtons && actionButtons.length > 0) {
-          await sendWhatsAppButtons(phone, 'ACTION REQUIRED', message, actionButtons, req);
-        } else {
-          await sendWhatsAppMessage(phone, message, req);
+        let dispatchedViaTemplate = false;
+        // If it's an LR creation event, try the approved Meta 'hello' template first
+        if (eventKey === 'lr_created_owner' || eventKey === 'lr_created_driver') {
+          try {
+            const helloComponents = [{
+              type: 'body',
+              parameters: [
+                { type: 'text', text: String(data.lrNo || 'N/A') },
+                { type: 'text', text: String(data.loadingNo || data.tokenNo || 'N/A') },
+                { type: 'text', text: String(data.date || new Date().toLocaleDateString('en-IN')) },
+                { type: 'text', text: String(data.truckNo || 'N/A') },
+                { type: 'text', text: String(data.source || 'Jharli') },
+                { type: 'text', text: String(data.destination || 'N/A') },
+                { type: 'text', text: String(data.materialsText || data.material || 'Cement') },
+                { type: 'text', text: String(data.totalWeight || data.weight || '0') }
+              ]
+            }];
+            await sendMetaTemplate(phone, 'hello', 'en', helloComponents, req);
+            dispatchedViaTemplate = true;
+            console.log(`[WA] ${eventKey} → ${phone}: sent via Meta Template 'hello'`);
+          } catch (tplErr) {
+            console.warn(`[WA] Template 'hello' dispatch notice (${tplErr.message}), falling back to text...`);
+          }
         }
-        console.log(`[WA] ${eventKey} → ${phone}: sent via Meta Cloud API`);
+
+        if (!dispatchedViaTemplate) {
+          const message = interpolateTemplate(eventCfg.template || '', data);
+          if (actionButtons && actionButtons.length > 0) {
+            await sendWhatsAppButtons(phone, 'ACTION REQUIRED', message, actionButtons, req);
+          } else {
+            await sendWhatsAppMessage(phone, message, req);
+          }
+          console.log(`[WA] ${eventKey} → ${phone}: sent via Meta Cloud API`);
+        }
       } catch (e) {
         console.error(`[WA] ${eventKey} → ${phone}: FAILED —`, e.message);
       }

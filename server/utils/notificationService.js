@@ -43,7 +43,7 @@ async function createNotification({
             const docRef = await db.collection(colName).add(record);
             return { id: docRef.id, ...record };
         } else {
-            const saved = localStore.add(colName, record);
+            const saved = localStore.insert(colName, record);
             return saved;
         }
     } catch (err) {
@@ -59,14 +59,14 @@ async function getNotifications(limitCount = 50, req = null) {
     try {
         const colName = req ? getCol(BASE_COL, req) : getEnvCol(BASE_COL);
         if (isAvailable()) {
-            const snap = await db.collection(colName)
-                .orderBy('createdAt', 'desc')
-                .limit(limitCount)
-                .get();
-            return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const query = req?.orgId ? db.collection(colName).where('orgId', '==', req.orgId) : db.collection(colName);
+            const snap = await query.get();
+            return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                .slice(0, limitCount);
         } else {
             const docs = localStore.getAll(colName) || [];
-            return docs
+            return docs.filter(doc => !req?.orgId || doc.orgId === req.orgId)
                 .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
                 .slice(0, limitCount);
         }
@@ -75,9 +75,11 @@ async function getNotifications(limitCount = 50, req = null) {
         try {
             const colName = req ? getCol(BASE_COL, req) : getEnvCol(BASE_COL);
             if (isAvailable()) {
-                const snap = await db.collection(colName).limit(limitCount * 2).get();
+                const query = req?.orgId ? db.collection(colName).where('orgId', '==', req.orgId) : db.collection(colName);
+                const snap = await query.get();
                 return snap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(doc => !req?.orgId || doc.orgId === req.orgId)
                     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
                     .slice(0, limitCount);
             }

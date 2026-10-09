@@ -6,6 +6,7 @@ const { isProduction } = require('../utils/envConfig');
 const localStore = require('../utils/localStore');
 const { cleanupEnrollmentImages } = require('../services/enrollmentImageCleanup');
 const { publishAttendanceChange } = require('../services/attendanceRealtime');
+const { requirePermission } = require('../middleware/auth');
 
 // Terminal kiosk token helper
 const terminalKeyStore = require('../utils/terminalKeyStore');
@@ -60,7 +61,10 @@ const ALLOWED_FIELDS = [
     'name', 'phone', 'mobile', 'role', 'profileType', 'vehicleNo', 'truckNo', 'assignedTruck', 'salary',
     'joiningDate', 'address', 'photo', 'photos', 'facePhoto', 'photoUrl', 'faceEmbedding', 'faceEmbedding512',
     'faceEnrolled', 'faceRegisteredAt', 'fingerprintEnrolled', 'fingerprintSlotId', 'paidLeaveEntitlement',
-    'department', 'type', 'status', 'rfidCardId'
+    'department', 'type', 'status', 'rfidCardId',
+    'fatherName', 'bankDetails', 'mobileNumbers', 'vehicleType', 'fixedSalary',
+    'dateJoined', 'dateExit', 'leaves', 'paidLeaves', 'description',
+    'licenseNumber', 'licenseExpiry'
 ];
 
 // GET all profiles
@@ -174,13 +178,67 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Driver Master edits the same profile, with vehicle edit permission and a
+// narrow field set. Existing admin profile editing remains on PUT /:id.
+router.patch('/:id/driver-master', (req, res, next) => {
+    if (req.user?.role === 'superadmin') return next();
+    return requirePermission('vehicle', 'edit')(req, res, next);
+}, async (req, res) => {
+    try {
+        const targetId = String(req.params.id).trim();
+        const fields = ['name', 'fatherName', 'address', 'mobileNumbers', 'mobile', 'phone', 'vehicleNo', 'vehicleType',
+            'licenseNumber', 'licenseExpiry', 'fixedSalary', 'dateJoined', 'dateExit'];
+        const payload = {};
+        fields.forEach(k => { if (req.body[k] !== undefined) payload[k] = req.body[k]; });
+        if (payload.name !== undefined && (typeof payload.name !== 'string' || !payload.name.trim())) {
+            return res.status(400).json({ error: 'Driver name is required' });
+        }
+        if (payload.fixedSalary !== undefined && (!Number.isFinite(Number(payload.fixedSalary)) || Number(payload.fixedSalary) < 0)) {
+            return res.status(400).json({ error: 'Salary must be a nonnegative number' });
+        }
+        if (payload.mobileNumbers !== undefined && !Array.isArray(payload.mobileNumbers)) {
+            return res.status(400).json({ error: 'Mobile numbers must be a list' });
+        }
+        if (payload.licenseExpiry) {
+            const expiry = String(payload.licenseExpiry);
+            const parsed = new Date(`${expiry}T00:00:00Z`);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== expiry) {
+                return res.status(400).json({ error: 'Licence expiry must be a valid date' });
+            }
+        }
+        if (payload.dateExit && payload.dateJoined && payload.dateExit < payload.dateJoined) {
+            return res.status(400).json({ error: 'Exit date cannot precede joining date' });
+        }
+        payload.updatedAt = new Date().toISOString();
+        if (!isAvailable()) {
+            const existing = localStore.getById(PROFILE_COL, targetId);
+            if (!existing || existing.type !== 'Driver') return res.status(404).json({ error: 'Driver not found' });
+            localStore.update(PROFILE_COL, targetId, payload);
+        } else {
+            const colRef = db.collection(getCol(PROFILE_COL, req));
+            let doc = await colRef.doc(targetId).get();
+            if (!doc.exists) {
+                const match = await colRef.where('id', '==', targetId).limit(1).get();
+                doc = match.docs[0];
+            }
+            if (!doc?.exists || doc.data().type !== 'Driver') return res.status(404).json({ error: 'Driver not found' });
+            await doc.ref.set(payload, { merge: true });
+        }
+        publishAttendanceChange({ type: 'profiles.changed', action: 'update', profileId: targetId });
+        res.json({ id: targetId, ...payload });
+    } catch (err) {
+        console.error('driver master update error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // PUT update a profile
 router.put('/:id', async (req, res) => {
     try {
         if (req.user?.id === 'vgtc-terminal') {
             // Strip out restricted fields so terminal requests that pass along profile metadata don't get rejected,
             // while ensuring terminal cannot alter core employment details.
-            const restrictedFields = ['name', 'phone', 'mobile', 'role', 'profileType', 'salary', 'bankDetails', 'panCard', 'aadharCard', 'paidLeaveEntitlement'];
+            const restrictedFields = ['name', 'phone', 'mobile', 'mobileNumbers', 'role', 'profileType', 'salary', 'fixedSalary', 'bankDetails', 'panCard', 'aadharCard', 'paidLeaveEntitlement', 'fatherName', 'address', 'department', 'type', 'vehicleNo', 'vehicleType', 'dateJoined', 'dateExit', 'leaves', 'paidLeaves', 'licenseNumber', 'licenseExpiry'];
             restrictedFields.forEach(f => { delete req.body[f]; });
         }
         const photoError = validatePhoto(req.body.photo || req.body.facePhoto);

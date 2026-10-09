@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const vehicleService = require('../services/vehicleService');
+const vehicleDocumentService = require('../services/vehicleDocumentService');
 const advanceService = require('../services/vehicleAdvanceService');
 const alertService = require('../services/alertService');
 const { getCol } = require('../utils/collectionUtils');
@@ -92,6 +93,15 @@ router.get('/', async (req, res) => {
         res.json(vehicles);
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/:id/document-renewals', requirePermission('vehicle', 'edit'), async (req, res) => {
+    try {
+        const renewal = await vehicleDocumentService.addRenewal(req.orgId, req.params.id, req.body, getCol(BASE_COL, req));
+        res.status(201).json(renewal);
+    } catch (error) {
+        res.status(/not found/i.test(error.message) ? 404 : 400).json({ error: error.message });
     }
 });
 

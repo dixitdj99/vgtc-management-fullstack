@@ -1,17 +1,19 @@
 // SAP Fiori UI Transformation - Force Re-compile
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ax from '../api';
-import { cleanTruckNo } from '../utils/vehicleUtils';
+import { cleanTruckNo, isOwnFleetVehicle } from '../utils/vehicleUtils';
 import { fmtRs, fmtDate } from '../utils/format';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Banknote, Bell, Briefcase, Car, Check, ChevronDown, ChevronRight, CreditCard, Edit3, FileText, Info, Phone, Plus, Search, Trash2, Truck, User, Wrench, X, Loader2, Receipt, Upload, Calendar, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ConfirmSaveModal from '../components/ConfirmSaveModal';
 import MaintenanceTracker from '../components/MaintenanceTracker';
+import FleetMaintenanceList from '../components/FleetMaintenanceList';
 import TruckLoader from '../components/TruckLoader';
 import VehicleRegistryCard from '../components/VehicleRegistryCard';
 import EmiScheduleTracker from '../components/EmiScheduleTracker';
 import TableScroll from '../components/TableScroll';
+import VehicleDocumentRenewals, { RenewalFields, emptyRenewal } from '../components/VehicleDocumentRenewals';
 
 const API = `/vehicles`;
 
@@ -36,6 +38,7 @@ const getEmptyForm = () => ({
     gpsType: 'none',
     emiDetails: JSON.stringify({ tenure: '', startDate: '', dueDate: '', loanNo: '', pending: '', total: '', due: '', interestRate: '', bankName: '', paidEmis: [], emiDay: '', schedule: [] }),
     docs: JSON.stringify({ rc: '', pollution: '', permit: '', insurance: '', fitness: '', tax: '' }),
+    initialDocumentRenewals: [],
     fastag: '',
     targetMileage: 0
 });
@@ -605,14 +608,15 @@ function TollTab({ tollRecords, tollLoading, tollFrom, setTollFrom, tollTo, setT
     );
 }
 
-export default function VehicleModule({ role = 'user', permissions = {} }) {
+export default function VehicleModule({ role = 'user', permissions = {}, initialTab = 'list' }) {
     const [vehicles, setVehicles] = useState([]);
     const [parties, setParties] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
     // UI State
-    const [tab, setTab] = useState('list'); // add new 'registry' option
+    const [tab, setTab] = useState(initialTab);
+    useEffect(() => { setTab(initialTab); }, [initialTab]);
     const [ownershipFilter, setOwnershipFilter] = useState('self'); 
     const [fSearch, setFSearch] = useState('');
     const [expandedOwners, setExpandedOwners] = useState({});
@@ -716,6 +720,9 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
     const [editId, setEditId] = useState(null);
     const [isConfirmingSave, setIsConfirmingSave] = useState(false);
     const [err, setErr] = useState('');
+    const [initialRenewal, setInitialRenewal] = useState(emptyRenewal);
+    const [editRenewal, setEditRenewal] = useState(emptyRenewal);
+    const [renewalSaving, setRenewalSaving] = useState(false);
 
     // All people from Driver & Staff Profiles (excluding non-staff like pumps and firms)
     const NON_STAFF_TYPES = ['pump', 'tyre', 'manual', 'firm'];
@@ -829,6 +836,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             }
             await fetchVehicleData();
             setForm(getEmptyForm());
+            setInitialRenewal(emptyRenewal());
             setEditId(null);
             setTab('list');
         } catch (error) {
@@ -836,6 +844,20 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
         } finally {
             setSaving(false);
         }
+    };
+
+    const saveEditRenewal = async () => {
+        if (!editId || !editRenewal.paidOn || !editRenewal.validFrom || !editRenewal.expiresOn || editRenewal.amount === '' || editRenewal.expiresOn <= editRenewal.validFrom) {
+            setErr('Enter payment amount, date and valid renewal period'); return;
+        }
+        setRenewalSaving(true); setErr('');
+        try {
+            await ax.post(`${API}/${editId}/document-renewals`, { ...editRenewal, amount: Number(editRenewal.amount) }, { _requireOnline: true });
+            setForm(current => ({ ...current, docs: JSON.stringify({ ...parseJson(current.docs), [editRenewal.documentType]: editRenewal.expiresOn }) }));
+            setEditRenewal(emptyRenewal());
+            await fetchVehicleData();
+        } catch (error) { setErr(error.response?.data?.error || 'Renewal save failed'); }
+        finally { setRenewalSaving(false); }
     };
 
     const toggleOwner = (name) => {
@@ -1014,7 +1036,7 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
             </AnimatePresence>
 
             <AnimatePresence>
-                {maintenanceTarget && <MaintenanceTracker truckNo={maintenanceTarget.truckNo} onClose={() => setMaintenanceTarget(null)} />}
+                {maintenanceTarget && <MaintenanceTracker truckNo={maintenanceTarget.truckNo} canEdit={role === 'admin' || role === 'superadmin' || ['edit', 'delete'].includes(permissions?.vehicle)} onClose={() => setMaintenanceTarget(null)} />}
             </AnimatePresence>
 
             <AnimatePresence>
@@ -1118,6 +1140,8 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button className={`tab-btn${tab === 'list' ? ' tab-indigo' : ''}`} onClick={() => setTab('list')}><Truck size={14} /> Vehicles</button>
                     <button className={`tab-btn${tab === 'toll' ? ' tab-amber' : ''}`} onClick={() => setTab('toll')}><Receipt size={14} /> Toll Records</button>
+                    <button className={`tab-btn${tab === 'documents' ? ' tab-amber' : ''}`} onClick={() => setTab('documents')}><FileText size={14} /> Document Payments</button>
+                    <button className={`tab-btn${tab === 'maintenance' ? ' tab-amber' : ''}`} onClick={() => setTab('maintenance')}><Wrench size={14} /> Maintenance</button>
                     <button className={`tab-btn${tab === 'registry' ? ' tab-amber' : ''}`} onClick={() => setTab('registry')}><Check size={14} /> Pending Trucks</button>
                     <button className={`tab-btn${tab === 'add' ? ' tab-indigo' : ''}`} onClick={toggleToNew}>{editId ? <><Edit3 size={14} /> Edit Vehicle</> : <><Plus size={14} /> Add Vehicle</>}</button>
                 </div>
@@ -1295,6 +1319,30 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                             <div className="field-h" style={{ marginTop: '12px' }}><label>Fastag ID</label><input className="fi" type="text" value={form.fastag || ''} onChange={e => setForm({ ...form, fastag: e.target.value })} /></div>
                         </div>
 
+                        <div style={{ marginTop: '20px', padding: '20px', background: 'var(--bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <h4 style={{ fontSize: '13px', fontWeight: 800 }}>Pollution, Fitness & Insurance payments</h4>
+                            {editId ? <>
+                                <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Save renewal directly to vehicle history and update expiry date.</p>
+                                <RenewalFields value={editRenewal} onChange={setEditRenewal} />
+                                <button type="button" className="btn btn-g btn-sm" style={{ marginTop: 12 }} disabled={renewalSaving} onClick={saveEditRenewal}>{renewalSaving ? 'Saving...' : 'Save renewal & payment'}</button>
+                            </> : <>
+                                <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Add payment when registering this vehicle. More renewals can be recorded in Document Payments.</p>
+                                <RenewalFields value={initialRenewal} onChange={setInitialRenewal} />
+                                <button type="button" className="btn btn-g btn-sm" style={{ marginTop: 12 }} onClick={() => {
+                                    if (!initialRenewal.paidOn || !initialRenewal.validFrom || !initialRenewal.expiresOn || initialRenewal.amount === '' || initialRenewal.expiresOn <= initialRenewal.validFrom) { setErr('Enter amount, payment date and valid renewal period'); return; }
+                                    setForm(current => ({ ...current, initialDocumentRenewals: [...current.initialDocumentRenewals, { ...initialRenewal, amount: Number(initialRenewal.amount) }], docs: JSON.stringify({ ...parseJson(current.docs), [initialRenewal.documentType]: initialRenewal.expiresOn }) }));
+                                    setInitialRenewal(emptyRenewal()); setErr('');
+                                }}>Add payment to registration</button>
+                                {(form.initialDocumentRenewals || []).map((record, index) => <div key={index} style={{ marginTop: 8, fontSize: 12 }}>{record.documentType.toUpperCase()} · {fmtRs(record.amount)} · {record.validFrom} → {record.expiresOn} <button type="button" className="btn btn-g btn-sm" onClick={() => setForm(current => {
+                                    const next = current.initialDocumentRenewals.filter((_, i) => i !== index);
+                                    const previous = [...next].reverse().find(item => item.documentType === record.documentType);
+                                    const docs = parseJson(current.docs);
+                                    docs[record.documentType] = previous?.expiresOn || '';
+                                    return { ...current, initialDocumentRenewals: next, docs: JSON.stringify(docs) };
+                                })}>Remove</button></div>)}
+                            </>}
+                        </div>
+
                         <div className="fg fg-2" style={{ marginTop: '20px' }}>
                             <div className="field-h">
                                 <label>Driver Name</label>
@@ -1367,6 +1415,9 @@ export default function VehicleModule({ role = 'user', permissions = {} }) {
                     truckBalanceMap={truckBalanceMap}
                 />
             )}
+
+            {tab === 'documents' && <VehicleDocumentRenewals vehicles={vehicles} onSaved={fetchVehicleData} canEdit={role === 'admin' || role === 'superadmin' || ['edit', 'delete'].includes(permissions?.vehicle)} />}
+            {tab === 'maintenance' && <FleetMaintenanceList vehicles={vehicles.filter(isOwnFleetVehicle)} canEdit={role === 'admin' || role === 'superadmin' || ['edit', 'delete'].includes(permissions?.vehicle)} />}
 
             {tab === 'registry' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

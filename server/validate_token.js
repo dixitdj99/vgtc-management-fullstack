@@ -4,6 +4,12 @@
  */
 const https = require('https');
 const readline = require('readline');
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
+if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
+  console.error('Set META_APP_ID and META_APP_SECRET before validating a token.');
+  process.exit(1);
+}
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -14,32 +20,14 @@ rl.question('Token: ', async (raw) => {
   rl.close();
   const token = raw.trim();
   console.log('\nToken length:', token.length);
-  console.log('Starts with:', token.substring(0, 10));
 
-  // Check for known corruption
-  const CORRUPT_SEG = 'TMkrg6UtaDyzH4TT3qnx6njnhEDBqsq4Hn';
-  const occurrences = (token.match(new RegExp(CORRUPT_SEG, 'g')) || []).length;
-  console.log('Corrupt segment occurrences:', occurrences);
-
-  let cleanToken = token;
-  if (occurrences > 1) {
-    // Remove all but keep the first (it's part of the real token start)
-    const idx = token.indexOf(CORRUPT_SEG, CORRUPT_SEG.length + 5);
-    if (idx !== -1) {
-      cleanToken = token.slice(0, idx) + token.slice(idx + CORRUPT_SEG.length);
-      console.log('Cleaned token (2nd occurrence removed):', cleanToken);
-    }
-  } else if (occurrences === 1 && !token.startsWith('EAAUU' + CORRUPT_SEG.substring(1))) {
-    cleanToken = token.replace(CORRUPT_SEG, '');
-    console.log('Cleaned token (segment removed):', cleanToken);
-  }
-
-  console.log('\nTesting against Meta API...');
+  const cleanToken = token;
+  console.log('Testing against Meta API...');
 
   // Test via debug_token
   const opts = {
     hostname: 'graph.facebook.com',
-    path: '/debug_token?input_token=' + encodeURIComponent(cleanToken) + '&access_token=1429699755807939|c7329693f8bcbc1bcafd936e9f5678eb',
+    path: '/debug_token?input_token=' + encodeURIComponent(cleanToken) + '&access_token=' + encodeURIComponent(process.env.META_APP_ID + '|' + process.env.META_APP_SECRET),
     method: 'GET'
   };
 
@@ -55,10 +43,9 @@ rl.question('Token: ', async (raw) => {
           console.log('Type:', j.data.type);
           console.log('Expires:', j.data.expires_at ? new Date(j.data.expires_at * 1000).toISOString() : 'Never');
           console.log('Scopes:', (j.data.scopes || []).join(', '));
-          console.log('\n>>> CLEAN TOKEN TO SAVE:\n' + cleanToken);
+          console.log('Token validated. Save it through WhatsApp Control.');
         } else {
           console.log('\n❌ TOKEN INVALID:', j.data?.error?.message);
-          console.log('\nRaw token for manual inspection:', token);
         }
       } catch (e) { console.log(d); }
     });

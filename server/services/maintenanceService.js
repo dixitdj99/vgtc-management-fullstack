@@ -1,7 +1,26 @@
 const { db, admin, isAvailable } = require('../firebase');
 const localStore = require('../utils/localStore');
+const crypto = require('crypto');
+const { getEnvCol } = require('../utils/collectionUtils');
 const firebaseAvailable = () => isAvailable();
 const COLLECTION = 'vehicle_maintenance';
+const SERVICE_COLLECTION = 'vehicle_service_records';
+
+const fail = (message, status = 400) => { const error = new Error(message); error.status = status; throw error; };
+const text = (value, max = 300) => String(value ?? '').trim().slice(0, max);
+const truck = (value) => text(value, 30).toUpperCase().replace(/\s/g, '');
+const date = (value, field, required = false) => {
+  if (!value && !required) return '';
+  const result = text(value, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || Number.isNaN(Date.parse(`${result}T00:00:00Z`))) fail(`${field} must be a valid YYYY-MM-DD date`);
+  return result;
+};
+const number = (value, field, { optional = false, integer = false } = {}) => {
+  if ((value === '' || value === null || value === undefined) && optional) return null;
+  const result = Number(value);
+  if (!Number.isFinite(result) || result < 0 || (integer && !Number.isInteger(result))) fail(`${field} must be a non-negative ${integer ? 'integer' : 'number'}`);
+  return result;
+};
 
 // Comprehensive Parts Catalog with Brands and default intervals
 const PARTS_CATALOG = {
@@ -174,6 +193,9 @@ const PARTS_CATALOG = {
 
 // ── CRUD Functions ──
 const createRecord = async (orgId, data) => {
+  if (!truck(data.truckNo) || !text(data.partId)) fail('truckNo and partId are required');
+  if (data.partId !== 'custom' && !PARTS_CATALOG[data.partId]) fail('Unknown partId');
+  if (data.partId === 'custom' && !text(data.customPartName)) fail('customPartName is required');
   const partName = data.partId === 'custom' ? data.customPartName : (PARTS_CATALOG[data.partId]?.name || 'Unknown Part');
 
   const payload = {
@@ -197,6 +219,11 @@ const createRecord = async (orgId, data) => {
     avgBefore: parseFloat(data.avgBefore) || 0,
     avgAfter: parseFloat(data.avgAfter) || 0,
     source: data.source || 'manual',
+    nextServiceDate: date(data.nextServiceDate, 'nextServiceDate'),
+    nextServiceKm: number(data.nextServiceKm, 'nextServiceKm', { optional: true, integer: true }),
+    serviceType: text(data.serviceType, 80),
+    paymentMethod: text(data.paymentMethod, 80),
+    invoiceNo: text(data.invoiceNo, 100),
   };
   if (!payload.truckNo || !payload.partId) throw new Error('truckNo and partId are required');
   if (firebaseAvailable()) {
@@ -235,14 +262,28 @@ const getAll = async (orgId) => {
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 
-const updateRecord = async (id, data) => {
-  const patch = { ...data }; delete patch.id; delete patch.createdAt;
+const getOwned = async (collection, orgId, id) => {
+  const doc = firebaseAvailable() ? await db.collection(collection).doc(id).get() : localStore.getById(collection, id);
+  const record = firebaseAvailable() ? (doc.exists ? { id: doc.id, ...doc.data() } : null) : doc;
+  if (!record || record.orgId !== orgId) fail('Record not found', 404);
+  return record;
+};
+
+const updateRecord = async (orgId, id, data) => {
+  await getOwned(COLLECTION, orgId, id);
+  const allowed = ['date', 'kmAtChange', 'cost', 'labourCost', 'customIntervalKm', 'customIntervalDays', 'vendor', 'notes', 'warrantyExpiry', 'warrantyClaimed', 'quantity', 'damageDescription', 'avgBefore', 'avgAfter', 'nextServiceDate', 'nextServiceKm', 'serviceType', 'paymentMethod', 'invoiceNo'];
+  const patch = Object.fromEntries(allowed.filter(key => Object.hasOwn(data, key)).map(key => [key, data[key]]));
+  if (Object.hasOwn(patch, 'nextServiceDate')) patch.nextServiceDate = date(patch.nextServiceDate, 'nextServiceDate');
+  if (Object.hasOwn(patch, 'nextServiceKm')) patch.nextServiceKm = number(patch.nextServiceKm, 'nextServiceKm', { optional: true, integer: true });
+  for (const field of ['cost', 'labourCost']) if (Object.hasOwn(patch, field)) patch[field] = number(patch[field], field);
+  if (Object.hasOwn(patch, 'date')) patch.date = date(patch.date, 'date', true);
   if (firebaseAvailable()) {
     await db.collection(COLLECTION).doc(id).update({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   } else { localStore.update(COLLECTION, id, patch); }
 };
 
-const deleteRecord = async (id) => {
+const deleteRecord = async (orgId, id) => {
+  await getOwned(COLLECTION, orgId, id);
   if (firebaseAvailable()) { await db.collection(COLLECTION).doc(id).delete(); }
   else { localStore.delete(COLLECTION, id); }
 };
@@ -271,6 +312,8 @@ const getMaintenanceSummary = async (orgId, truckNo) => {
         totalRecords: 0, recurring: false,
         avgBefore: r.avgBefore, avgAfter: r.avgAfter,
         damageDescription: r.damageDescription,
+        nextServiceDate: r.nextServiceDate || '', nextServiceKm: r.nextServiceKm ?? null,
+        serviceType: r.serviceType || '', paymentMethod: r.paymentMethod || '', invoiceNo: r.invoiceNo || '',
       };
     }
   }
@@ -284,41 +327,146 @@ const getMaintenanceSummary = async (orgId, truckNo) => {
   return summary;
 };
 
+const normalizeService = (data) => {
+  const truckNo = truck(data.truckNo);
+  if (!truckNo) fail('truckNo is required');
+  const serviceDate = date(data.date, 'date', true);
+  const odometer = number(data.odometer, 'odometer', { optional: true, integer: true });
+  const intervalDays = number(data.intervalDays, 'intervalDays', { optional: true, integer: true });
+  const intervalKm = number(data.intervalKm, 'intervalKm', { optional: true, integer: true });
+  const parts = (Array.isArray(data.parts) ? data.parts : []).map((part, index) => {
+    const catalog = PARTS_CATALOG[part.partId];
+    const partName = catalog?.name || text(part.partName, 150);
+    if (!partName) fail(`parts[${index}].partName is required`);
+    const quantity = number(part.quantity ?? 1, `parts[${index}].quantity`);
+    if (quantity <= 0) fail(`parts[${index}].quantity must be greater than zero`);
+    const unitCost = number(part.unitCost ?? 0, `parts[${index}].unitCost`);
+    return { partId: catalog ? text(part.partId, 80) : 'custom', partName, quantity, unitCost, cost: Math.round(quantity * unitCost * 100) / 100 };
+  });
+  const labourCost = number(data.labourCost ?? 0, 'labourCost');
+  const otherCost = number(data.otherCost ?? 0, 'otherCost');
+  const partsCost = Math.round(parts.reduce((sum, part) => sum + part.cost, 0) * 100) / 100;
+  let nextServiceDate = date(data.nextServiceDate, 'nextServiceDate');
+  if (!nextServiceDate && intervalDays) {
+    const next = new Date(`${serviceDate}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + intervalDays);
+    nextServiceDate = next.toISOString().slice(0, 10);
+  }
+  const nextServiceKm = number(data.nextServiceKm, 'nextServiceKm', { optional: true, integer: true }) ?? (odometer !== null && intervalKm ? odometer + intervalKm : null);
+  if (nextServiceDate && nextServiceDate <= serviceDate) fail('nextServiceDate must be after date');
+  if (nextServiceKm !== null && odometer !== null && nextServiceKm <= odometer) fail('nextServiceKm must exceed odometer');
+  return { truckNo, date: serviceDate, odometer, serviceType: text(data.serviceType, 80) || 'General service', workshop: text(data.workshop, 150), invoiceNo: text(data.invoiceNo, 100), paymentMethod: text(data.paymentMethod, 80), notes: text(data.notes, 2000), parts, partsCost, labourCost, otherCost, totalCost: Math.round((partsCost + labourCost + otherCost) * 100) / 100, intervalDays, intervalKm, nextServiceDate, nextServiceKm };
+};
+
+const getServices = async (orgId, truckNo = '') => {
+  const normalized = truckNo ? truck(truckNo) : '';
+  const records = firebaseAvailable()
+    ? (await db.collection(SERVICE_COLLECTION).where('orgId', '==', orgId).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    : localStore.getAll(SERVICE_COLLECTION).filter(record => record.orgId === orgId);
+  return records.filter(record => !normalized || record.truckNo === normalized).sort((a, b) => b.date.localeCompare(a.date));
+};
+
+const createService = async (orgId, data) => {
+  const payload = { ...normalizeService(data), orgId };
+  if (firebaseAvailable()) {
+    const ref = db.collection(SERVICE_COLLECTION).doc();
+    await ref.set({ ...payload, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return { id: ref.id, ...payload };
+  }
+  return localStore.insert(SERVICE_COLLECTION, payload);
+};
+
+const updateService = async (orgId, id, data) => {
+  const existing = await getOwned(SERVICE_COLLECTION, orgId, id);
+  const payload = normalizeService({ ...existing, ...data });
+  if (firebaseAvailable()) await db.collection(SERVICE_COLLECTION).doc(id).update({ ...payload, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  else localStore.update(SERVICE_COLLECTION, id, payload);
+  return { ...existing, ...payload };
+};
+
+const deleteService = async (orgId, id) => {
+  await getOwned(SERVICE_COLLECTION, orgId, id);
+  if (firebaseAvailable()) await db.collection(SERVICE_COLLECTION).doc(id).delete();
+  else localStore.delete(SERVICE_COLLECTION, id);
+};
+
 const getMaintenanceAlerts = async (orgId) => {
-  const allRecords = await getAll(orgId);
-  const alerts = {};
-  for (const r of allRecords) {
-    const key = `${r.truckNo}_${r.partId}`;
-    if (!alerts[key]) {
-      const partInfo = PARTS_CATALOG[r.partId];
-      if (!partInfo) continue;
+  const [partRecords, services] = await Promise.all([getAll(orgId), getServices(orgId)]);
+  const today = new Date().toISOString().slice(0, 10);
+  const alerts = [];
+  const latestParts = new Map();
+  for (const record of partRecords) {
+    const key = `${record.truckNo}:${record.partId}`;
+    if (!latestParts.has(key)) latestParts.set(key, record);
+  }
+  const latestServices = new Map();
+  for (const service of services) {
+    const key = `${service.truckNo}:${text(service.serviceType, 80).toLowerCase()}`;
+    if (!latestServices.has(key)) latestServices.set(key, service);
+  }
+  const latestOdometer = new Map();
+  for (const record of [...partRecords, ...services].sort((a, b) => b.date.localeCompare(a.date))) {
+    const odometer = record.odometer ?? record.kmAtChange;
+    if (!latestOdometer.has(record.truckNo) && Number.isFinite(Number(odometer)) && Number(odometer) > 0) latestOdometer.set(record.truckNo, Number(odometer));
+  }
+  const addAlert = (record, type, name, dueDate, dueKm, intervalDays) => {
+    if (!dueDate && dueKm == null) return;
+    const daysRemaining = dueDate ? Math.ceil((new Date(`${dueDate}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000) : null;
+    const currentKm = latestOdometer.get(record.truckNo) ?? null;
+    const kmRemaining = dueKm != null && currentKm != null ? dueKm - currentKm : null;
+    const status = (daysRemaining !== null && daysRemaining <= 0) || (kmRemaining !== null && kmRemaining <= 0)
+      ? 'OVERDUE'
+      : (daysRemaining !== null && daysRemaining <= Math.max(14, Math.ceil((intervalDays || 0) * 0.15))) || (kmRemaining !== null && kmRemaining <= 1000)
+        ? 'DUE_SOON' : null;
+    if (!status) return;
+    alerts.push({ id: `${type}:${record.id}`, type, truckNo: record.truckNo, partName: name, lastServiceDate: record.date, nextServiceDate: dueDate || '', nextServiceKm: dueKm ?? null, currentKm, kmRemaining, daysRemaining, status });
+  };
+  for (const record of latestParts.values()) {
+    const catalog = PARTS_CATALOG[record.partId] || {};
+    const intervalDays = record.customIntervalDays ?? catalog.defaultDayInterval ?? 0;
+    let dueDate = record.nextServiceDate || '';
+    if (!dueDate && intervalDays > 0) {
+      const computed = new Date(`${record.date}T00:00:00Z`);
+      computed.setUTCDate(computed.getUTCDate() + intervalDays);
+      dueDate = computed.toISOString().slice(0, 10);
+    }
+    const dueKm = record.nextServiceKm ?? ((record.kmAtChange || 0) && (record.customIntervalKm ?? catalog.defaultKmInterval) ? record.kmAtChange + (record.customIntervalKm ?? catalog.defaultKmInterval) : null);
+    addAlert(record, 'part', record.partName, dueDate, dueKm, intervalDays);
+  }
+  for (const service of latestServices.values()) addAlert(service, 'service', service.serviceType, service.nextServiceDate, service.nextServiceKm, service.intervalDays);
+  return alerts.sort((a, b) => (a.status === b.status ? (a.daysRemaining ?? 9999) - (b.daysRemaining ?? 9999) : a.status === 'OVERDUE' ? -1 : 1));
+};
 
-      // Check for custom intervals in the latest record
-      const kmInterval = r.customIntervalKm !== undefined && r.customIntervalKm !== null 
-        ? r.customIntervalKm 
-        : partInfo.defaultKmInterval;
-      
-      const dayInterval = r.customIntervalDays !== undefined && r.customIntervalDays !== null 
-        ? r.customIntervalDays 
-        : partInfo.defaultDayInterval;
-
-      let status = 'ok';
-      let daysRemaining = null;
-
-      const daysSince = Math.floor((Date.now() - new Date(r.date).getTime()) / (1000*60*60*24));
-      
-      if (dayInterval > 0) {
-        daysRemaining = dayInterval - daysSince;
-        if (daysRemaining <= 0) status = 'overdue';
-        else if (status !== 'overdue' && daysRemaining < dayInterval * 0.15) status = 'due_soon';
-      }
-      
-      if (status !== 'ok') {
-        alerts[key] = { truckNo: r.truckNo, partName: r.partName, lastServiceDate: r.date, daysRemaining, status: status.toUpperCase() };
+const notifyServiceDue = async (onlyOrgId = '') => {
+  const services = firebaseAvailable()
+    ? (await db.collection(SERVICE_COLLECTION).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    : localStore.getAll(SERVICE_COLLECTION);
+  const orgIds = [...new Set(services.map(service => service.orgId).filter(orgId => orgId && (!onlyOrgId || orgId === onlyOrgId)))];
+  const notificationCollection = getEnvCol('notifications');
+  let created = 0;
+  for (const orgId of orgIds) {
+    const alerts = (await getMaintenanceAlerts(orgId)).filter(alert => alert.type === 'service');
+    for (const alert of alerts) {
+      const id = `maintenance_${crypto.createHash('sha256').update(`${orgId}:${alert.id}:${alert.nextServiceDate}:${alert.nextServiceKm}:${alert.status}`).digest('hex').slice(0, 40)}`;
+      const due = [alert.nextServiceDate && `on ${alert.nextServiceDate}`, alert.nextServiceKm != null && `at ${alert.nextServiceKm.toLocaleString('en-IN')} km`].filter(Boolean).join(' or ');
+      const record = {
+        type: 'maintenance_due',
+        title: `Service ${alert.status === 'OVERDUE' ? 'overdue' : 'due soon'} — ${alert.truckNo}`,
+        message: `${alert.partName} for ${alert.truckNo} ${alert.status === 'OVERDUE' ? 'was due' : 'is due'} ${due}.`,
+        truckNo: alert.truckNo, status: alert.status, read: false, orgId,
+        metadata: { serviceRecordId: alert.id.slice('service:'.length), nextServiceDate: alert.nextServiceDate, nextServiceKm: alert.nextServiceKm, currentKm: alert.currentKm },
+        createdAt: new Date().toISOString(),
+      };
+      if (firebaseAvailable()) {
+        try { await db.collection(notificationCollection).doc(id).create(record); created++; }
+        catch (error) { if (error.code !== 6 && error.code !== 'already-exists') throw error; }
+      } else if (!localStore.getById(notificationCollection, id)) {
+        localStore.upsert(notificationCollection, id, record);
+        created++;
       }
     }
   }
-  return Object.values(alerts);
+  return { organizations: orgIds.length, notificationsCreated: created };
 };
 
-module.exports = { PARTS_CATALOG, createRecord, getByTruckNo, getAll, updateRecord, deleteRecord, getMaintenanceSummary, getMaintenanceAlerts };
+module.exports = { PARTS_CATALOG, createRecord, getByTruckNo, getAll, updateRecord, deleteRecord, getMaintenanceSummary, getMaintenanceAlerts, getServices, createService, updateService, deleteService, notifyServiceDue };

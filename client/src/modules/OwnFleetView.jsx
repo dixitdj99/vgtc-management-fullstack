@@ -3,6 +3,9 @@ import { Search, Truck } from 'lucide-react';
 import ax from '../api';
 import TruckLoader from '../components/TruckLoader';
 import { isOwnFleetVehicle } from '../utils/vehicleUtils';
+import VehicleDocumentRenewals from '../components/VehicleDocumentRenewals';
+import FleetMaintenanceList from '../components/FleetMaintenanceList';
+import { useAuth } from '../auth/AuthContext';
 
 const parseObject = (value) => {
   if (value && typeof value === 'object') return value;
@@ -13,11 +16,18 @@ const displayDate = (value) => value
   ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   : '—';
 
-export default function OwnFleetView() {
+export default function OwnFleetView({ initialTab = 'fleet' }) {
+  const { user } = useAuth();
   const [vehicles, setVehicles] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState(initialTab === 'maintenance' ? 'maintenance' : 'fleet');
+  useEffect(() => { setTab(initialTab === 'maintenance' ? 'maintenance' : 'fleet'); }, [initialTab]);
+  const refreshVehicles = async () => {
+    const { data } = await ax.get('/vehicles');
+    setVehicles((data || []).filter(isOwnFleetVehicle));
+  };
 
   useEffect(() => {
     let live = true;
@@ -42,11 +52,20 @@ export default function OwnFleetView() {
       <div className="page-hd">
         <div>
           <h1>Fleet Management</h1>
-          <p>Permanent read-only view of complete company-owned fleet.</p>
+          <p>Company-owned fleet, document status and renewal payments.</p>
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+
+      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 }}>
+        <button type="button" className={`tab-btn${tab === 'fleet' ? ' tab-amber' : ''}`} onClick={() => setTab('fleet')}>Vehicles & documents</button>
+        <button type="button" className={`tab-btn${tab === 'maintenance' ? ' tab-amber' : ''}`} onClick={() => setTab('maintenance')}>Maintenance</button>
+      </div>
+
+      {tab === 'maintenance' ? <FleetMaintenanceList vehicles={vehicles} canEdit={user?.role === 'admin' || ['edit', 'delete'].includes(user?.permissions?.vehicle)} /> : <>
+
+      <VehicleDocumentRenewals vehicles={vehicles} onSaved={refreshVehicles} canEdit={user?.role === 'admin' || user?.role === 'superadmin' || ['edit', 'delete'].includes(user?.permissions?.vehicle)} />
 
       <div className="card" style={{ padding: '16px', marginBottom: '16px' }}>
         <div style={{ position: 'relative', maxWidth: '460px' }}>
@@ -86,6 +105,7 @@ export default function OwnFleetView() {
         </table>
         {!visible.length && <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>No own-fleet vehicles found.</div>}
       </div>
+      </>}
     </div>
   );
 }

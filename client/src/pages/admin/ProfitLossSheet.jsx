@@ -35,6 +35,7 @@ const SOURCES = [
   ['vehicles', '/vehicles', 'Vehicles'],
   ['cashbook', '/cashbook', 'Cashbook'],
   ['maintenance', '/maintenance', 'Maintenance'],
+  ['services', '/maintenance/services', 'Vehicle services'],
   ['tyres', '/tyres', 'Tyres'],
   ['tolls', '/tolls', 'Tolls'],
   ['profiles', '/profiles', 'Profiles'],

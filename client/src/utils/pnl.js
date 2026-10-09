@@ -197,7 +197,7 @@ const addMonths = (startStr, n, day) => {
 export function buildPnlRecords(data = {}) {
   const {
     vouchers = [], vehicles = [], payments = [], cashbook = [],
-    maintenance = [], tyres = [], tolls = [],
+    maintenance = [], services = [], tyres = [], tolls = [],
     profiles = [],
     today = new Date().toISOString().slice(0, 10),
   } = data;
@@ -407,6 +407,20 @@ export function buildPnlRecords(data = {}) {
     }
   });
 
+  // Document renewals are stored on the vehicle, once per actual payment.
+  vehicles.forEach((veh, i) => {
+    const truck = upper(veh.truckNo);
+    (veh.documentRenewals || []).forEach((record, j) => {
+      push({ id: `doc-${veh.id || i}-${record.id || j}`, date: record.paidOn,
+        kind: 'expense', group: 'running', category: 'Vehicle document renewals',
+        truckNo: truck, fleet: own.has(truck) ? 'own' : 'market', source: 'vehicle_document',
+        ref: record.reference || record.paymentMethod || 'Renewal',
+        location: plantOf({ truckNo: truck }),
+        description: `${record.documentType || 'Document'} renewal on ${truck} (${record.validFrom || '—'} to ${record.expiresOn || '—'})`,
+        amount: num(record.amount) });
+    });
+  });
+
   // ── Workshop, tyres and tolls ────────────────────────────────────────────
   maintenance.forEach((m, i) => {
     const truck = upper(m.truckNo);
@@ -416,6 +430,16 @@ export function buildPnlRecords(data = {}) {
       ref: m.vendor || 'Workshop', location: plantOf({ truckNo: truck }),
       description: `${m.partName || 'Repair'} on ${truck}`,
       amount: num(m.cost) + num(m.labourCost) });
+  });
+
+  services.forEach((service, i) => {
+    const truck = upper(service.truckNo);
+    if (!own.has(truck)) return;
+    push({ id: `service-${service.id || i}`, date: service.date, kind: 'expense', group: 'running',
+      category: 'Maintenance service', truckNo: truck, fleet: 'own', source: 'maintenance_service',
+      ref: service.invoiceNo || service.workshop || 'Service', location: plantOf({ truckNo: truck }),
+      description: `${service.serviceType || 'Service'} on ${truck}`,
+      amount: num(service.totalCost) });
   });
 
   tyres.forEach((t, i) => {

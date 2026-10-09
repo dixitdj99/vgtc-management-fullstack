@@ -1247,3 +1247,221 @@ Implemented on `codex/android-terminal-live`. Android debug APK builds successfu
 ## Review
 
 Done on `codex/android-terminal-live`. Server terminal tests: 15 passed, including all-profile roster, document deletion, bulk and individual attendance stop/start, stopped face/fingerprint audit-only attempts, transaction race protection, fingerprint slot isolation, and private-image cleanup. Client Vite production build passed. Android `assembleDebug` passed and generated [app-debug.apk](../android-terminal/app/build/outputs/apk/debug/app-debug.apk). ADB install was not possible because the connected phone has an existing `com.vgtc.terminal` package signed with a different key; uninstalling it would erase its app data, so it was left untouched. Production verification still requires terminal key, Storage bucket, Firestore indexes, and R307/AS608 hardware.
+# Marketing website refresh (2026-10-05)
+
+- [x] Create `codex/marketing-website` branch and audit current public page, enquiry flow, and business facts.
+- [x] Build responsive `/home` page with real transport imagery, scroll-linked 2D movement, services, network, offices, and driver/vehicle-owner paths.
+- [x] Extend public enquiry handling for driver applications and keep forms usable without JavaScript.
+- [x] Verify build, enquiry route, mobile layout and reduced-motion behavior; review diff.
+
+## Review
+
+Responsive page checked in browser at narrow and desktop widths. Truck, driver, and cement bag photos load from local assets; the route indicator advances on scroll, and the vehicle-owner link selects the correct form fields. Motion has a reduced-motion fallback; content and all form fields remain visible without JavaScript.
+
+Client production build passed. Fresh-port API run: all 13 landing/enquiry checks passed, including stored driver kind. Eight unrelated pre-existing API suite failures remain (permission catalogue, archive path, three LR bill-number assertions, all-balance width, and two favicon checks). No deployment performed.
+# Marketing imagery, network and motion revision (2026-10-05)
+
+- [x] Replace hero, transport and storage photos with distinct licensed images.
+- [x] Rebuild network with five labeled operating locations, clear roles and usable map links.
+- [x] Add reversible scroll animation: photo parallax, staggered cards, route drawing and progress indicators.
+- [x] Verify desktop/mobile rendering, motion updates, reduced-motion fallback and production build.
+
+## Review
+
+Hero uses an Indian highway truck; services use a different Indian truck and warehouse stacks. Sources and licences are recorded in `client/public/marketing/photo-credits.md`. The network has labeled Jharli, Kosli, Jhajjar, Bahadurgarh and Rewari links, roles, and a note that connections are illustrative. Reworked the hero into a two-column first view and used CSS scroll timelines for progress, route drawing, parallax, and card entrances. IntersectionObserver covers browsers without scroll timelines; reduced-motion CSS removes movement and leaves content visible.
+
+Browser checked at 1254×828 and 390×844: no horizontal overflow, photos visible, service entrance responds to scroll, network visible, menu opens/closes, and vehicle-owner link selects vehicle fields. CSS scroll-timeline support confirmed in browser; scroll progress measured at 36.7% after scrolling to services. `npm run build -w vgtc-client` passed. `git diff --check` passed. Existing enquiry route tests passed in the prior marketing work; no new backend behavior in this revision.
+
+# Full animated marketing redesign (2026-10-06)
+
+- [x] Audit page and keep URLs, navigation, business facts, photos, enquiry contract, and accessibility.
+- [x] Rebuild full page with one industrial visual system and varied section compositions.
+- [x] Add meaningful scroll-linked motion to hero, process, services, network, partnership, and contact areas.
+- [x] Verify desktop, mobile, reduced motion, menu, forms, build, and diff.
+
+## Design plan
+
+Full visual overhaul approved by user. Design read: documentary industrial transport marketing for dealers, drivers, and truck owners. Dials: variance 8, motion 8, density 4. One dark forest/charcoal theme with safety-orange accent, sharp corners, bold sans typography, real local stock photography. Preserve `/home`, section anchors, nav labels, form field names/order/action, logo, SEO metadata, address and legal copy. Motion follows load from plant to delivery; all content stays readable without animation.
+
+## Review
+
+Replaced layered inline CSS with `client/public/marketing/home.css`, a single dark industrial theme, sharp controls and large sans type. Kept `/home`, anchors, logo, SEO metadata, source credits, operational facts and `/api/enquiry` form names/order. Desktop hero shows headline, truck and CTAs in the first viewport. Service grid has one large transport image and two stacked supporting panels. Mobile uses vertical compositions without horizontal overflow.
+
+Browser verified at 1254×828 and 390×844. At desktop scroll position 0, load route is empty; moving into the journey fills it, and scrolling upward reduced the fill to 82.2%, proving reversal. The network path observer starts with dash offset 1, animates toward 0 in staggered order on entry, and resets toward 1 on exit. Mobile menu and vehicle-owner selection work; selected vehicle fields become enabled. Map keeps five links. Reduced-motion CSS keeps text, route and map visible without movement; no `window` scroll listener. No browser console errors. Client production build, inline-script parse, asset checks and `git diff --check` pass. Existing client bundle-size warnings remain unrelated to the standalone public page.
+
+# Transparent marketing logo (2026-10-06)
+
+- [x] Inspect current header mark and produce transparent dark-header variant.
+- [x] Replace only `/home` header logo asset and remove white image backing.
+- [x] Verify alpha, desktop/mobile rendering, and production build.
+
+## Review
+
+Used the built-in imagegen background-extraction edit to create `client/public/marketing/vgtc-logo-transparent.png`, preserving the VGTC truck mark and orange T while making dark strokes light enough for the dark navigation. Downsampled final PNG to 420×140 and 44.8 KB for header use. Original `vgtc-logo.png` remains available for other uses. Browser checked at 1254×828 and 390×844: logo loads, white box is gone, header stays on one line, and mobile has no horizontal overflow. PNG corner alpha is 0; client build passes.
+# WhatsApp real-number delivery diagnosis (2026-10-08)
+
+- [x] Trace local send path, status check, webhook, and recent redacted logs.
+- [x] Query live Meta sender, WABA subscription, and template metadata without exposing credentials.
+- [x] Record accepted message IDs and matching delivery/failure webhook statuses for future tests.
+- [x] Run focused tests and document confirmed cause, remaining account-side checks.
+
+## Review
+
+Live Graph API returned connected/verified sender with green quality, same phone in WABA,
+subscribed app, and three approved templates. Local logs showed accepted outbound requests
+and inbound callbacks but stored no outbound message IDs or delivery status callbacks.
+Historical delivery outcome cannot be reconstructed from those logs. Updated send/test
+labels, message ID logging, status callback logging, and MCP diagnostics; removed
+embedded credential fallbacks. Focused WhatsApp tests passed (21/21), syntax checks
+passed, and client build passed. One fresh send after deployment is needed to capture
+its Meta message ID and corresponding delivered/failed webhook event. Any exposed
+token and app secret should be rotated in Meta and replaced in configured secrets.
+Connected WhatsApp Business Tools independently confirms business verification,
+registered sender, approved account, configured `messages` webhook, account
+subscription, published app, and payment method. It does not expose historical
+per-message delivery callbacks.
+# WhatsApp delivery proof in production (2026-10-08)
+
+- [x] Save accepted Meta message IDs and delivery callbacks in durable store.
+- [x] Expose per-message status API and show result in WhatsApp test flow.
+- [x] Ensure status-only webhook is persisted before HTTP acknowledgement.
+- [x] Verify race handling, webhook tests, and client build.
+- [ ] Deploy reviewed changes and send one approved-template message to confirm real delivery or capture Meta failure.
+
+## Review
+
+Added per-message Firestore delivery records with local JSON fallback, accepted-message
+tracking for text, buttons, templates, images, and documents, and webhook status
+persistence before ACK. Test UI polls by message ID, shows delivered/read/failed and
+Meta error details, and lists recent results. Removed embedded client credential
+defaults. Focused tests passed (25/25), client build passed, known embedded token
+prefix absent from current client source and build, and diff check passed. No live
+message was sent and production was not deployed. Current branch also contains
+unrelated uncommitted work; rollout must be reviewed to avoid deploying that work.
+# WhatsApp controls and status portal (2026-10-08)
+
+- [x] Audit current controls, status tabs, API contracts, and false data.
+- [x] Simplify WhatsApp Control into monochrome interface while retaining every function.
+- [x] Replace status portal fabricated values with live data and clear unavailable states.
+- [x] Enumerate real database collections with accurate count/error metadata and details.
+- [x] Improve API/WhatsApp logs and response diagnostics without exposing secrets.
+- [x] Verify backend tests, client build, live local API behavior, and review diff.
+
+## Review
+
+WhatsApp control now uses a grayscale connection summary, automatic-message switch,
+template search/category/preview/edit controls, credentials, recipient routing, and
+test send with durable delivery feedback. Status portal displays real service health,
+15-minute request outcome graph, latency and route metrics, searchable/exportable API
+and WhatsApp logs, delivery callbacks, active-environment collection counts/schema,
+and backup records. Unavailable data is labeled instead of invented. API logs and
+telemetry cover only the current server process; full HTTP response bodies are not
+recorded. Database field types come from up to five sampled documents.
+
+Focused backend tests passed (27/27). Client production build and `git diff --check`
+passed. Local server smoke test returned 200 for status, telemetry, API logs, all
+51 active Firestore collections, and inspected collection detail; 2,713 documents
+were counted with zero collection errors. No production deployment or live WhatsApp
+send was performed in this UI task.
+
+# Theme and status scrolling correction (2026-10-08)
+
+- [x] Trace three app themes, WhatsApp parent width, and status scroll container.
+- [x] Make WhatsApp controls use active theme and available module width.
+- [x] Restore vertical scrolling across all status tabs and retain horizontal table scrolling.
+- [x] Verify build, theme bindings, scroll stylesheet, and diff; record results.
+
+## Review
+
+Removed fixed grayscale overrides from WhatsApp controls and the 1280px width cap.
+The controls now inherit light, dark, sepia (and admin shell) tokens; the template
+grid also shrinks within narrow viewports. The standalone status route loads the
+saved theme, and its page owns a `100dvh` vertical scroll area because the global
+body suppresses scrolling. Tables retain horizontal scrolling.
+
+Client build and diff check passed. In the local browser, `/status` loaded the
+saved dark theme and the stylesheet exposed the new vertical scroll rule. The
+browser session stopped at login, so authenticated tab scrolling and visuals
+could not be exercised there.
+
+# Screenshot palette across admin surfaces (2026-10-08)
+
+- [x] Extract shared warm-neutral and pastel accent palette from supplied screenshot.
+- [x] Apply palette to standalone admin shell, dashboard, login, and shared admin controls.
+- [x] Apply same palette to status portal and WhatsApp controls without losing functions or scroll.
+- [x] Verify light, dark, and sepia theme behavior, responsive width, build, and diff.
+
+## Review
+
+Shared admin tokens now provide violet, cyan, amber, and mint accents with soft
+wash backgrounds. The standalone admin shell no longer forces a separate dark
+palette; it follows the saved light/dark/sepia theme. Admin login, WhatsApp, and
+status use the screenshot's warm canvas, white panels, subtle borders, rounded
+cards, dark text, and restrained accent colors in light theme. Dark and sepia
+variants remain available. Status keeps its own vertical scroll area and table
+horizontal scrolling. Graph time labels now tolerate both ISO and legacy
+time-only server buckets.
+
+Browser verified light admin dashboard, user management, WhatsApp connection,
+status metrics/graph, and status vertical scroll. Dark admin dashboard and login
+were also inspected; saved theme switch reached sepia and light. Client build
+and `git diff --check` passed. Existing chunk-size warnings remain.
+# Fleet document renewals and Driver Master (2026-10-09)
+
+## Plan
+
+- [x] Create `codex/fleet-documents-driver-master` from current checkout; preserve existing worktree changes.
+- [x] Trace vehicle, dashboard, expense, profile, and navigation data paths.
+- [x] Store Pollution, Fitness, and Insurance renewal dates, amounts, payment details, and history; expose fleet list and dashboard update.
+- [x] Include document payments in expense reporting without duplicate totals; remove dashboard punch controls.
+- [x] Add Driver Master list and edits backed by same driver/staff profiles; add licence number and expiry fields.
+- [x] Verify build, focused tests, API persistence, permissions, and UI wiring.
+
+## Review
+
+Renewal records live on each vehicle and update its expiry date in the same write.
+Fleet history, dashboard, Cashbook Document Expenses, and P&L read those records.
+Driver Master edits the existing profile record; Admin Staff Profiles adds licence fields.
+Dashboard no longer fetches attendance or presents punch/roll-call controls.
+
+Verification: client build passed; client test suite passed; five focused backend
+checks passed for renewal and Driver Master persistence, validation and permission.
+`api.test.js` confirms the updated dashboard contract (202 pass, 8 unrelated
+failures). Full server suite still has three terminal attendance failures and
+those eight API failures; they are outside this change and remain unresolved.
+
+---
+
+# Fleet maintenance service records (2026-10-09)
+
+## Plan
+
+- [x] Trace current maintenance UI, catalog, service API, alerts, and Fleet Management navigation.
+- [x] Remove 2D truck image and expose truck part catalog with custom part option.
+- [x] Record service date, odometer, parts, labour, vendor, total cost, notes, and next due period; keep old records readable.
+- [x] Add separate Maintenance list/tab inside Fleet Management with service history and edit controls.
+- [x] Show due/overdue service reminders in fleet/dashboard and notification path.
+- [x] Verify validation, org permissions, records and reminder dates, client build, and focused tests.
+
+## Review
+
+- Fleet Maintenance tab lists own-fleet trucks, due alerts, and service history. Per-truck form uses 135 catalog parts plus custom part, itemized costs, and next date/km.
+- Browser checked fleet list and full-service form; no test record submitted to live data.
+- Client production build passed. Focused server tests passed 10/10; syntax and diff checks passed.
+- Daily local cron runs service notification job. Serverless deployment needs Cloud Scheduler call to `/api/jobs/maintenance-due` using existing job authorization.
+- Full server suite has existing terminal attendance and API failures outside this change.
+
+---
+
+# Merge working changes into initial-branch (2026-10-09)
+
+## Plan
+
+- [x] Confirm branch ancestry, worktree state, and local files.
+- [ ] Commit source, assets, tests, and documentation on feature branch; keep runtime logs and machine-local diagnostics outside commit.
+- [ ] Fast-forward initial-branch and delete feature branch.
+- [ ] Verify branch head and committed file set.
+
+## Review
+
+Pending.

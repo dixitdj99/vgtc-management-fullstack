@@ -183,6 +183,8 @@ const StaffProfileModule = ({ role }) => {
         // Driver specific
         vehicleNo: '',
         vehicleType: 'Trailer',
+        licenseNumber: '',
+        licenseExpiry: '',
         dateJoined: '',
         dateExit: '',
         // Pump specific
@@ -306,6 +308,8 @@ const StaffProfileModule = ({ role }) => {
             mobileNumbers: [''],
             vehicleNo: '',
             vehicleType: 'Trailer',
+            licenseNumber: '',
+            licenseExpiry: '',
             fixedSalary: '',
             dateJoined: '',
             dateExit: '',
@@ -332,6 +336,8 @@ const StaffProfileModule = ({ role }) => {
                 mobileNumbers: p.mobileNumbers && p.mobileNumbers.length ? p.mobileNumbers : [''],
                 vehicleNo: p.vehicleNo || '',
                 vehicleType: p.vehicleType || 'Trailer',
+                licenseNumber: p.licenseNumber || '',
+                licenseExpiry: p.licenseExpiry || '',
                 fixedSalary: p.fixedSalary || '',
                 dateJoined: p.dateJoined || '',
                 dateExit: p.dateExit || '',
@@ -532,6 +538,12 @@ const StaffProfileModule = ({ role }) => {
                                             {p.vehicleNo || 'No Vehicle'}
                                         </span>
                                         {p.vehicleType && <span style={{ color: 'var(--text-muted)' }}>({p.vehicleType})</span>}
+                                    </div>
+                                )}
+                                {p.type === 'Driver' && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                                        <Shield size={16} color="var(--text-muted)" />
+                                        <span><span style={{ color: 'var(--text-muted)' }}>Licence:</span> {p.licenseNumber || 'N/A'} · Expires {p.licenseExpiry || 'N/A'}</span>
                                     </div>
                                 )}
                             </div>
@@ -752,6 +764,14 @@ const StaffProfileModule = ({ role }) => {
                                                 <option value="Trailer">Trailer</option>
                                                 <option value="Canter">Canter</option>
                                             </select>
+                                        </div>
+                                        <div className="field">
+                                            <label>Driver Licence Number</label>
+                                            <input value={form.licenseNumber} onChange={e => setForm({...form, licenseNumber: e.target.value.toUpperCase()})} className="fi" style={{ textTransform: 'uppercase' }} />
+                                        </div>
+                                        <div className="field">
+                                            <label>Driver Licence Expiry</label>
+                                            <input type="date" value={form.licenseExpiry} onChange={e => setForm({...form, licenseExpiry: e.target.value})} className="fi" />
                                         </div>
                                     </>
                                 )}

@@ -23,6 +23,7 @@ import SellModule from './modules/SellModule';
 import { Truck, Fuel, ShoppingCart, Gauge, Banknote, Users, Settings, Disc, CreditCard, HardHat, MessageSquare, ScanFace } from 'lucide-react';
 import MileageModule from './modules/MileageModule';
 import StaffProfileModule from './modules/StaffProfileModule';
+import DriverMasterModule from './modules/DriverMasterModule';
 import CinematicWeather from './components/CinematicWeather';
 import PayModule from './modules/PayModule';
 import WhatsAppControlModule from './modules/WhatsAppControlModule';
@@ -562,6 +563,7 @@ function AppInner() {
       ]
     },
     { id: 'vehicles_dump', label: 'Fleet Management', Icon: Truck, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
+    { id: 'driver_master_dump', label: 'Driver Master', Icon: Users, color: '#14b8a6', section: 'jksuper', permKey: 'vehicle' },
     { id: 'diesel_dump', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jksuper', permKey: 'diesel' },
     { id: 'mileage_dump', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jksuper', permKey: 'mileage' },
     { id: 'tyres_dump', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jksuper', permKey: 'vehicle' },
@@ -615,6 +617,7 @@ function AppInner() {
     },
     { id: 'vehicle_credit_debit_jharli', label: 'Vehicle Credit & Debit', Icon: CreditCard, color: '#10b981', section: 'jharli', permKey: 'pay' },
     { id: 'vehicles_jharli', label: 'Fleet Management', Icon: Truck, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
+    { id: 'driver_master_jharli', label: 'Driver Master', Icon: Users, color: '#14b8a6', section: 'jharli', permKey: 'vehicle' },
     { id: 'diesel_jharli', label: 'Diesel Control', Icon: Fuel, color: '#3b82f6', section: 'jharli', permKey: 'diesel' },
     { id: 'mileage_jharli', label: 'Mileage Tracker', Icon: Gauge, color: '#f59e0b', section: 'jharli', permKey: 'mileage' },
     { id: 'tyres_jharli', label: 'Tyre Management', Icon: Disc, color: '#f59e0b', section: 'jharli', permKey: 'vehicle' },
@@ -805,8 +808,9 @@ function AppInner() {
       {id === 'migo_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab="migo" standaloneTab="migo" brand="bahadurgarh" />}
       {id === 'challan_bahadurgarh' && <StockModule role={user.role} permissions={user.permissions} initialTab="challan" standaloneTab="challan" brand="bahadurgarh" />}
       {(id === 'stock_jkl' || id === 'stock_jharli') && <StockModule role={user.role} permissions={user.permissions} initialTab={sub || 'overview'} brand="jkl" />}
-      {id === 'vehicles_dump' && (DUMP_GODOWNS.has(godown) ? <OwnFleetView /> : <VehicleModule role={user.role} permissions={user.permissions} />)}
-      {(id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule role={user.role} permissions={user.permissions} />}
+      {id === 'vehicles_dump' && (DUMP_GODOWNS.has(godown) ? <OwnFleetView initialTab={sub || 'fleet'} /> : <VehicleModule role={user.role} permissions={user.permissions} initialTab={sub || 'list'} />)}
+      {(id === 'vehicles_jkl' || id === 'vehicles_jharli') && <VehicleModule role={user.role} permissions={user.permissions} initialTab={sub || 'list'} />}
+      {(id === 'driver_master_dump' || id === 'driver_master_jharli') && <DriverMasterModule role={user.role} permissions={user.permissions} />}
       {/* Diesel Control covers exactly the sheets its own location has — the
           same mapping the Balance Sheet nav uses above. Without this it pulled
           Jharli's 'Dump' vouchers into every location.
@@ -1074,7 +1078,7 @@ function AppInner() {
             const groupOf = (id) => {
               if (/^(lr_|voucher_|stock_|admin_loading_status_|sell_|realtime_|attendance_)/.test(id)) return 'Operations';
               if (/^(balance_|cashbook_|pay_|trip_profit_|vehicle_credit_debit_)/.test(id)) return 'Money';
-              if (/^(vehicles_|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
+              if (/^(vehicles_|driver_master_|diesel_|mileage_|tyres_|vendors_)/.test(id)) return 'Fleet';
               return null;
             };
             const GROUP_ORDER = ['Operations', 'Money', 'Fleet'];

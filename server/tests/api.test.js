@@ -2309,26 +2309,19 @@ test('attendance: pending days need attendance permission', async () => {
   assert(gate !== -1 && gate < route, 'the pending route sits outside the attendance permission gate');
 });
 
-test('attendance: the dashboard marks today in place, and only today', async () => {
+test('attendance: dashboard leaves marking in Attendance and offers document renewal', async () => {
   const fs2 = require('fs');
   const path2 = require('path');
   const dash = fs2.readFileSync(
     path2.join(__dirname, '..', '..', 'client', 'src', 'modules', 'DashboardHome.jsx'), 'utf8');
 
-  assert(/attendance\/bulk/.test(dash), 'the dashboard cannot save attendance');
-  assert(!/attendance\/pending/.test(dash),
-    'the dashboard still lists earlier days — those belong in the Attendance module');
-
-  const card = dash.slice(dash.indexOf('function TodayRollCall'), dash.indexOf('export default'));
-  assert(!/navTo\(/.test(card), 'the roll-call card navigates away instead of marking in place');
-  assert(/const mark = async/.test(card), 'the card no longer saves on tap');
-  assert(!/Save attendance/.test(card), 'a Save button is back on the card');
-  assert(/records: \[\{/.test(card), 'the card writes more than the person just tapped');
+  assert(!/attendance\/bulk|TodayRollCall|punch in|punch out/i.test(dash),
+    'dashboard still contains attendance marking or punch controls');
+  assert(/VehicleDocumentRenewals/.test(dash), 'dashboard cannot update fleet document renewals');
 
   const hook = fs2.readFileSync(
     path2.join(__dirname, '..', '..', 'client', 'src', 'hooks', 'useDashboardData.js'), 'utf8');
-  assert(/attendance\/roster/.test(hook), "the dashboard does not load today's roll-call");
-  assert(/role === 'admin'/.test(hook), 'the roll-call is fetched for non-admins too');
+  assert(!/attendance\/roster/.test(hook), 'dashboard still fetches attendance roster');
 });
 
 test('attendance: the module saves as you mark, without losing a mark in flight', async () => {
@@ -2413,13 +2406,14 @@ test('landing: the page carries what Google needs to rank it', async () => {
   assert(/rel="canonical" href="https:\/\/vgtc\.site\/home"/.test(html),
     'no canonical — /home.html would compete with /home as duplicate content');
   assert(/application\/ld\+json/.test(html), 'no structured data, which is what feeds local results');
-  assert(/"@type": "MovingCompany"/.test(html), 'the business is not typed for search');
+  assert(/"@type"\s*:\s*"MovingCompany"/.test(html), 'the business is not typed for search');
   assert(/og:title/.test(html) && /og:description/.test(html), 'no Open Graph tags for shares');
 
-  // Speed is a ranking factor, and this is read at a loading gate on a weak
-  // signal. Nothing may block the render.
-  assert(!/<script(?![^>]*application\/ld\+json)/.test(html), 'the page pulled in JavaScript');
+  // Animation is inline and deferred until the document is parsed. Keep the
+  // page independent of third-party scripts and web fonts on weak signals.
+  assert(!/<script[^>]+src=/.test(html), 'a blocking external script crept in');
   assert(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html), 'a render-blocking web font crept in');
+  assert(/prefers-reduced-motion/.test(html), 'scroll animation has no reduced-motion fallback');
 });
 
 test('landing: only true, checkable claims are on the page', async () => {
@@ -2474,6 +2468,16 @@ test('landing: the enquiry form records a vehicle owner and answers with a page'
   assert(res.status === 201, `expected 201, got ${res.status}`);
   assert(/text\/html/.test(res.type), `reply must be a page, got ${res.type}`);
   assert(/Thank you/i.test(res.body), 'no thank-you shown to the person who filled it in');
+});
+
+test('landing: a driver enquiry keeps its application type', async () => {
+  const res = await postForm('/api/enquiry',
+    'kind=driver&name=Test+Driver&phone=9876543211&city=Rewari&message=Heavy+vehicle+licence');
+  assert(res.status === 201, `driver application returned ${res.status}`);
+  const saved = await get('/enquiry/list');
+  assert(saved.status === 200, `office enquiry list returned ${saved.status}`);
+  assert(saved.data.some(row => row.name === 'Test Driver' && row.kind === 'driver'),
+    'driver application was not stored as a driver enquiry');
 });
 
 test('landing: an enquiry without a usable phone number is refused', async () => {

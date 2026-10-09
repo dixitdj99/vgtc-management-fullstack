@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Shield, LayoutDashboard, Users, Cloud, LogOut, ChevronLeft, Menu, X,
@@ -64,53 +64,7 @@ const NAV_GROUPS = [
 
 const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 
-/** The dark palette this shell runs in, written as the variables index.css uses. */
-const ADMIN_THEME = {
-  '--bg': '#0f172a',
-  '--bg-card': '#1e293b',
-  '--bg-card-muted': 'rgba(15, 23, 42, 0.6)',
-  '--bg-input': '#0f172a',
-  '--bg-inset': '#111c31',
-  '--bg-th': '#172033',
-  '--bg-tf': '#172033',
-  '--bg-filter': '#1e293b',
-  '--bg-hover': 'rgba(148, 163, 184, 0.10)',
-  '--bg-active': 'rgba(99, 102, 241, 0.16)',
-  '--bg-row-even': 'rgba(30, 41, 59, 0.3)',
-  '--bg-row-odd': 'rgba(15, 23, 42, 0.3)',
-  '--bg-row-hover': 'rgba(148, 163, 184, 0.12)',
-  '--topbar-bg': '#1e293b',
-  '--sidebar-bg': '#0b1220',
-  '--border': 'rgba(148, 163, 184, 0.20)',
-  '--border-row': 'rgba(148, 163, 184, 0.11)',
-  '--text': '#f1f5f9',
-  '--text-sub': '#cbd5e1',
-  '--text-muted': '#94a3b8',
-  '--primary': '#818cf8',
-  '--primary-2': '#a5b4fc',
-  '--primary-hover': '#6366f1',
-  '--primary-glow': 'rgba(129, 140, 248, 0.22)',
-  '--danger': '#fb7185',
-  '--danger-glow': 'rgba(251, 113, 133, 0.2)',
-  '--accent': '#34d399',
-  '--warn': '#fbbf24',
-  '--skeleton-hi': 'rgba(255, 255, 255, 0.06)',
-  '--shadow': '0 1px 3px rgba(0, 0, 0, 0.35)',
-  '--shadow-md': '0 6px 18px rgba(0, 0, 0, 0.45)',
-};
-
-/**
- * The admin shell at /admin/*.
- *
- * Two things changed here beyond the styling. The role guard used to assign
- * `window.location.href` in the middle of render, which React treats as a side
- * effect in a pure function and which fired again on every re-render before the
- * navigation landed; it is an effect now. And the scope below used to force
- * every bare `input`, `select` and `.btn-*` dark with `!important`, so any
- * component wanting its own surface — a switch, a chip, a coloured button —
- * lost. Setting the theme variables does the same job and lets components style
- * themselves.
- */
+/** The standalone admin shell follows the saved light, dark, or sepia theme. */
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const { mode } = useViewport();
@@ -124,6 +78,16 @@ export default function AdminLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isAdmin = user?.role === 'admin';
+
+  useLayoutEffect(() => {
+    const syncTheme = () => {
+      const saved = localStorage.getItem('vgtc-theme');
+      document.documentElement.setAttribute('data-theme', ['light', 'dark', 'sepia'].includes(saved) ? saved : 'light');
+    };
+    syncTheme();
+    window.addEventListener('storage', syncTheme);
+    return () => window.removeEventListener('storage', syncTheme);
+  }, []);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, active); }, [active]);
   useEffect(() => { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); }, [collapsed]);
@@ -156,22 +120,21 @@ export default function AdminLayout() {
     <div
       className="adm"
       style={{
-        ...ADMIN_THEME,
         display: 'flex',
         height: '100vh',
         width: '100vw',
         overflow: 'hidden',
         background: 'var(--bg)',
         color: 'var(--text)',
-        fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
+        fontFamily: '"Segoe UI", system-ui, sans-serif',
       }}
     >
-      {/* Options do not inherit CSS variables in every browser, so this one rule stays. */}
+      {/* Native options need their own surface colors in some browsers. */}
       <style>{`
-        .adm select option { background: #1e293b; color: #f1f5f9; }
+        .adm select option { background: var(--bg-card); color: var(--text); }
         .adm ::-webkit-scrollbar { width: 10px; height: 10px; }
-        .adm ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.28); border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
-        .adm ::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.45); background-clip: content-box; }
+        .adm ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
+        .adm ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: content-box; }
         .adm ::-webkit-scrollbar-track { background: transparent; }
       `}</style>
 
@@ -180,7 +143,7 @@ export default function AdminLayout() {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setMobileNavOpen(false)}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.6)', zIndex: 60 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 60 }}
           />
         )}
       </AnimatePresence>
@@ -190,8 +153,8 @@ export default function AdminLayout() {
         style={{
           width: railWidth,
           flexShrink: 0,
-          background: '#0b1220',
-          borderRight: '1px solid rgba(148,163,184,0.14)',
+          background: 'var(--sidebar-bg)',
+          borderRight: '1px solid var(--border)',
           display: showSidebar ? 'flex' : 'none',
           flexDirection: 'column',
           transition: 'width 0.24s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -200,20 +163,19 @@ export default function AdminLayout() {
           zIndex: 70,
         }}
       >
-        <div style={{ padding: collapsed && !isMobile ? '20px 0' : '20px', display: 'flex', alignItems: 'center', justifyContent: collapsed && !isMobile ? 'center' : 'space-between', gap: 12, borderBottom: '1px solid rgba(148,163,184,0.12)' }}>
+        <div style={{ padding: collapsed && !isMobile ? '20px 0' : '20px', display: 'flex', alignItems: 'center', justifyContent: collapsed && !isMobile ? 'center' : 'space-between', gap: 12, borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <span style={{
               width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-              background: 'linear-gradient(135deg, #818cf8, #6366f1)',
+              background: 'var(--adm-violet-wash)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(99,102,241,0.45)',
             }}>
-              <Shield size={19} color="#fff" />
+              <Shield size={19} color="var(--adm-violet)" />
             </span>
             {!(collapsed && !isMobile) && (
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em' }}>System Admin</span>
-                <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Control panel</span>
+                <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Control panel</span>
               </span>
             )}
           </div>
@@ -228,7 +190,7 @@ export default function AdminLayout() {
           {NAV_GROUPS.map(group => (
             <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {!(collapsed && !isMobile) && (
-                <span style={{ padding: '0 10px 4px', fontSize: 9.5, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b' }}>
+                <span style={{ padding: '0 10px 4px', fontSize: 9.5, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                   {group.label}
                 </span>
               )}
@@ -246,15 +208,15 @@ export default function AdminLayout() {
                       padding: collapsed && !isMobile ? '11px 0' : '10px 12px',
                       justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
                       borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: on ? 'rgba(129,140,248,0.16)' : 'transparent',
-                      color: on ? '#c7d2fe' : '#94a3b8',
-                      boxShadow: on ? 'inset 3px 0 0 #818cf8' : 'none',
+                      background: on ? 'var(--adm-violet-wash)' : 'transparent',
+                      color: on ? 'var(--text)' : 'var(--text-sub)',
+                      boxShadow: on ? 'inset 3px 0 0 var(--adm-violet)' : 'none',
                       font: 'inherit', fontSize: 13.5, fontWeight: on ? 800 : 600,
                       transition: 'background 0.15s, color 0.15s',
                       width: '100%', textAlign: 'left',
                     }}
                   >
-                    <Icon size={17} color={on ? '#a5b4fc' : '#64748b'} style={{ flexShrink: 0 }} />
+                    <Icon size={17} color={on ? 'var(--adm-violet)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
                     {!(collapsed && !isMobile) && <span style={{ flex: 1 }}>{label}</span>}
                   </button>
                 );
@@ -263,15 +225,15 @@ export default function AdminLayout() {
           ))}
         </nav>
 
-        <div style={{ padding: 10, borderTop: '1px solid rgba(148,163,184,0.12)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!(collapsed && !isMobile) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'rgba(148,163,184,0.07)' }}>
-              <span className="adm-avatar" style={{ width: 32, height: 32, fontSize: 12, background: 'rgba(129,140,248,0.2)', color: '#c7d2fe' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'var(--bg-th)' }}>
+              <span className="adm-avatar" style={{ width: 32, height: 32, fontSize: 12, background: 'var(--adm-violet-wash)', color: 'var(--adm-violet)' }}>
                 {(user.name || 'A').charAt(0).toUpperCase()}
               </span>
               <span style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}</span>
-                <span style={{ display: 'block', fontSize: 10.5, color: '#64748b' }}>Administrator</span>
+                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--text-muted)' }}>Administrator</span>
               </span>
             </div>
           )}
@@ -283,7 +245,7 @@ export default function AdminLayout() {
               justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
               padding: collapsed && !isMobile ? '11px 0' : '10px 12px',
               borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'rgba(251,113,133,0.1)', color: '#fb7185',
+              background: 'var(--bg-th)', color: 'var(--text-sub)',
               font: 'inherit', fontSize: 13, fontWeight: 700, width: '100%',
             }}
           >
@@ -298,8 +260,8 @@ export default function AdminLayout() {
         <header
           style={{
             height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 16, padding: '0 20px', background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(10px)',
-            borderBottom: '1px solid rgba(148,163,184,0.14)',
+            gap: 16, padding: '0 20px', background: 'var(--bg-card)',
+            borderBottom: '1px solid var(--border)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -319,8 +281,8 @@ export default function AdminLayout() {
               </button>
             )}
             <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-              <span style={{ fontSize: 12.5, color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>{currentGroup?.label}</span>
-              <ChevronRight size={13} color="#475569" />
+              <span style={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>{currentGroup?.label}</span>
+              <ChevronRight size={13} color="var(--text-muted)" />
               <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, letterSpacing: '-0.015em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {currentItem?.label}
               </h1>
@@ -335,9 +297,9 @@ export default function AdminLayout() {
               className="adm-chip"
               style={{
                 textDecoration: 'none',
-                background: 'rgba(16, 185, 129, 0.1)',
-                border: '1px solid rgba(16, 185, 129, 0.25)',
-                color: '#34d399',
+                background: 'var(--adm-mint-wash)',
+                border: '1px solid var(--border)',
+                color: 'var(--adm-mint)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
@@ -345,15 +307,15 @@ export default function AdminLayout() {
               }}
               title="Open System Observability & Telemetry Status"
             >
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34d399' }} />
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--adm-mint)' }} />
               Observability ↗
             </a>
             <span className="adm-chip adm-chip--success" title="The API responded on the last request">
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 8px #34d399' }} />
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--adm-mint)' }} />
               Online
             </span>
             {!isMobile && (
-              <span className="adm-avatar" style={{ width: 34, height: 34, fontSize: 13, background: 'rgba(129,140,248,0.2)', color: '#c7d2fe' }}>
+              <span className="adm-avatar" style={{ width: 34, height: 34, fontSize: 13, background: 'var(--adm-violet-wash)', color: 'var(--adm-violet)' }}>
                 {(user?.name || 'A').charAt(0).toUpperCase()}
               </span>
             )}

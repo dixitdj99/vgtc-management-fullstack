@@ -1,21 +1,48 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
+const { getDelivery, getRecentDeliveries } = require('../utils/whatsappDeliveryStore');
 const {
   getWhatsAppConfig,
   saveWhatsAppConfig,
   setWhatsAppEnabled,
   checkWhatsAppStatus,
   sendWhatsAppMessage,
+  sendMetaTemplate,
+  sendWhatsAppImage,
   sendEventNotification,
   previewTemplate,
   generateLrReceiptHtml,
   generateVoucherHtml,
+  generateVoucherImageBuffer,
+  lookupVehiclePhone,
   getWhatsAppLogs,
   clearWhatsAppLogs
 } = require('../utils/whatsappService');
 
 router.use(requireAuth);
+
+// Durable Meta message state; accepted is not proof of recipient delivery.
+router.get('/delivery/:messageId', async (req, res) => {
+  try {
+    if (req.params.messageId.length > 512) return res.status(400).json({ error: 'Invalid message ID' });
+    const delivery = await getDelivery(req.params.messageId);
+    if (!delivery) return res.status(404).json({ error: 'No delivery status recorded for this message ID' });
+    res.json({ ok: true, delivery });
+  } catch (err) {
+    console.error('get whatsapp delivery error:', err);
+    res.status(500).json({ error: 'Could not read delivery status' });
+  }
+});
+
+router.get('/deliveries', async (req, res) => {
+  try {
+    res.json({ ok: true, deliveries: await getRecentDeliveries(req.query.limit) });
+  } catch (err) {
+    console.error('get whatsapp deliveries error:', err);
+    res.status(500).json({ error: 'Could not read delivery statuses' });
+  }
+});
 
 // GET /api/whatsapp/logs
 router.get('/logs', async (req, res) => {
@@ -91,6 +118,136 @@ router.get('/status', async (req, res) => {
   } catch (err) {
     console.error('whatsapp status check error:', err);
     res.status(500).json({ connected: false, message: err.message });
+  }
+});
+
+// POST /api/whatsapp/test
+// Dispatch a test message to verify WhatsApp Meta Cloud API integration and credentials
+router.post('/test', async (req, res) => {
+  try {
+    const { phone, message, templateName, languageCode, components: rawComponents } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Recipient mobile number is required' });
+    }
+
+    let result;
+    const tName = templateName || 'hello'; // Default to the verified approved template
+    let lang = languageCode || 'en';
+    let comps = rawComponents;
+
+    if (tName === 'hello') {
+      lang = 'en';
+      if (!comps || !comps.length) {
+        comps = [{
+          type: 'body',
+          parameters: [
+            { type: 'text', text: '1001' },
+            { type: 'text', text: '501' },
+            { type: 'text', text: new Date().toLocaleDateString('en-IN') },
+            { type: 'text', text: 'HR55AA1234' },
+            { type: 'text', text: 'Jharli' },
+            { type: 'text', text: 'Rewari' },
+            { type: 'text', text: 'Cement' },
+            { type: 'text', text: '25' }
+          ]
+        }];
+      }
+    } else if (tName === '3p_direct_integration_test_template') {
+      lang = 'en_US';
+      comps = [];
+    }
+
+    if (tName && tName !== 'none' && tName !== 'custom_text') {
+      result = await sendMetaTemplate(
+        phone,
+        tName,
+        lang,
+        comps || [],
+        req,
+        { bypassEnabledCheck: true }
+      );
+    } else {
+      const text = message || 'Hello! Test WhatsApp message from Vikas Goods Transport Co. Your Meta Cloud API integration is connected!';
+      result = await sendWhatsAppMessage(phone, text, req, { bypassEnabledCheck: true });
+    }
+
+    res.json({
+      ok: true,
+      message: tName && tName !== 'none' && tName !== 'custom_text'
+        ? `Meta accepted template "${tName}". Check delivery status for confirmation.`
+        : 'Meta accepted the text request. Check delivery status for confirmation; freeform text requires an open customer service window.',
+      templateUsed: tName,
+      result
+    });
+  } catch (err) {
+    console.error('whatsapp test send error:', err);
+    const metaErr = err.response?.data?.error;
+    const errMsg = metaErr?.message || err.message || 'Failed to dispatch test WhatsApp message';
+    res.status(500).json({ error: errMsg });
+  }
+});
+
+// POST /api/whatsapp/send
+// Direct outbound WhatsApp message dispatch
+router.post('/send', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone || !message) {
+      return res.status(400).json({ error: 'Phone and message are required' });
+    }
+    const result = await sendWhatsAppMessage(phone, message, req);
+    res.json({ ok: true, result });
+  } catch (err) {
+    console.error('whatsapp send error:', err);
+    const metaErr = err.response?.data?.error;
+    const errMsg = metaErr?.message || err.message || 'Failed to dispatch message';
+    res.status(500).json({ error: errMsg });
+  }
+});
+
+// POST /api/whatsapp/send-voucher-receipt
+// Send rendered voucher slip / image to driver or truck owner
+router.post('/send-voucher-receipt', async (req, res) => {
+  try {
+    const { voucher, imageDataUrl, phone: directPhone } = req.body;
+    if (!voucher && !imageDataUrl) {
+      return res.status(400).json({ error: 'Voucher and imageDataUrl are required' });
+    }
+
+    let targetPhone = directPhone;
+    if (!targetPhone && voucher) {
+      targetPhone = voucher.driverContact || voucher.ownerContact || voucher.phone;
+      if (!targetPhone && voucher.truckNo) {
+        targetPhone = await lookupVehiclePhone(voucher.truckNo, req);
+      }
+    }
+
+    if (!targetPhone) {
+      return res.status(400).json({ error: 'Could not find a recipient phone number for voucher' });
+    }
+
+    let imageBuffer = null;
+    if (imageDataUrl && imageDataUrl.startsWith('data:image')) {
+      const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
+      imageBuffer = Buffer.from(base64Data, 'base64');
+    } else if (voucher) {
+      imageBuffer = await generateVoucherImageBuffer(voucher);
+    }
+
+    const caption = `📋 *Freight Voucher #${voucher?.voucherNo || ''}*\n🚚 *Truck:* ${voucher?.truckNo || ''}\n📍 *Route:* ${voucher?.destination || ''}\n💰 *Net Balance:* ₹${voucher?.netBalance || 0}\nVIKAS GOODS TRANSPORT CO.`;
+
+    if (imageBuffer) {
+      const result = await sendWhatsAppImage(targetPhone, imageBuffer, caption, req);
+      return res.json({ ok: true, status: 'sent', result });
+    } else {
+      const result = await sendWhatsAppMessage(targetPhone, caption, req);
+      return res.json({ ok: true, status: 'sent', result });
+    }
+  } catch (err) {
+    console.error('send-voucher-receipt error:', err);
+    const metaErr = err.response?.data?.error;
+    const errMsg = metaErr?.message || err.message || 'Failed to send voucher receipt';
+    res.status(500).json({ error: errMsg });
   }
 });
 

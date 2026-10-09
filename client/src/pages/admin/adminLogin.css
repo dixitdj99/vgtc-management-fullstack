@@ -1,0 +1,67 @@
+.adm-login {
+  min-height: 100dvh;
+  overflow-y: auto;
+  display: grid;
+  place-items: center;
+  padding: 36px 20px;
+  background: var(--bg);
+  color: var(--text);
+}
+.adm-login-wrap { width: min(100%, 420px); }
+.adm-login-brand { margin-bottom: 24px; text-align: center; }
+.adm-login-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 54px; height: 54px; margin-bottom: 16px; border-radius: 15px;
+  color: var(--adm-violet); background: var(--adm-violet-wash);
+}
+.adm-login-eyebrow {
+  margin: 0 0 5px; color: var(--text-muted); font-size: 10px; font-weight: 800;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.adm-login-brand h1 { margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -.04em; }
+.adm-login-brand > p:last-child { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
+.adm-login-panel {
+  padding: 26px; border: 1px solid var(--border); border-radius: 18px;
+  background: var(--bg-card);
+}
+.adm-login-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.adm-login-panel-head h2 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.adm-login-panel-head p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.adm-login-back {
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
+  padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text-sub); background: var(--bg-card); font-size: 12px; font-weight: 700;
+}
+.adm-login-back:hover { background: var(--bg-hover); }
+.adm-login-field { margin-bottom: 18px; }
+.adm-login-field label { display: block; margin-bottom: 8px; color: var(--text-sub); font-size: 12px; font-weight: 700; }
+.adm-login-input-wrap { position: relative; }
+.adm-login-input-wrap svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.adm-login-input-wrap input {
+  width: 100%; min-height: 44px; padding: 10px 13px 10px 41px;
+  border: 1px solid var(--border); border-radius: 9px;
+  outline: none; color: var(--text); background: var(--bg-input);
+  font: inherit; font-size: 14px; transition: border-color .18s, box-shadow .18s;
+}
+.adm-login-input-wrap input::placeholder { color: var(--text-muted); opacity: .75; }
+.adm-login-input-wrap input:focus { border-color: var(--adm-violet); box-shadow: 0 0 0 3px var(--adm-violet-wash); }
+.adm-login-input-wrap .adm-login-otp { font-size: 20px; font-weight: 800; letter-spacing: .18em; font-variant-numeric: tabular-nums; }
+.adm-login-message { margin: 0 0 16px; padding: 10px 12px; border: 1px solid; border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.adm-login-message--error { color: var(--danger); background: var(--danger-glow); border-color: var(--danger); }
+.adm-login-message--success { color: var(--adm-mint); background: var(--adm-mint-wash); border-color: var(--adm-mint); }
+.adm-login-submit {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 44px; margin-top: 4px;
+  border: 1px solid var(--adm-violet); border-radius: 9px;
+  color: var(--text); background: var(--adm-violet-wash);
+  font-size: 14px; font-weight: 800; transition: background .18s, transform .18s;
+}
+.adm-login-submit:hover:not(:disabled) { background: var(--bg-hover); }
+.adm-login-submit:active:not(:disabled) { transform: translateY(1px); }
+.adm-login-submit:disabled, .adm-login-resend:disabled { opacity: .6; cursor: wait; }
+.adm-login-resend { display: block; margin: 18px auto 0; border: 0; background: none; color: var(--adm-violet); font-size: 12px; font-weight: 700; text-decoration: underline; }
+.adm-login :is(button, input):focus-visible { outline: 2px solid var(--adm-violet); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .adm-login { place-items: start center; padding: 28px 16px; }
+  .adm-login-panel { padding: 22px 18px; }
+}
