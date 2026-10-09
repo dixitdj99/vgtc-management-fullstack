@@ -1458,10 +1458,12 @@ those eight API failures; they are outside this change and remain unresolved.
 ## Plan
 
 - [x] Confirm branch ancestry, worktree state, and local files.
-- [ ] Commit source, assets, tests, and documentation on feature branch; keep runtime logs and machine-local diagnostics outside commit.
-- [ ] Fast-forward initial-branch and delete feature branch.
-- [ ] Verify branch head and committed file set.
+- [x] Commit source, assets, tests, and documentation on feature branch; keep runtime logs and machine-local diagnostics outside commit.
+- [x] Fast-forward initial-branch and delete feature branch.
+- [x] Verify branch head and committed file set.
 
 ## Review
 
-Pending.
+- Commit `f6abd3f` fast-forwarded into `initial-branch`; feature branch deleted.
+- Tracked WhatsApp runtime log and untracked local MCP config/diagnostic files remain in working tree, outside commit.
+- `initial-branch` contains 63 changed source, asset, test, and documentation files.
