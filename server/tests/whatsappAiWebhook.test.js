@@ -17,7 +17,24 @@ const deliveryRecords = [];
 let failDeliveryWrite = false;
 stub('../firebase', { db: {}, isAvailable: () => false, admin: {} });
 stub('../utils/collectionUtils', { getCol: name => name, getEnvCol: name => name });
-stub('../utils/localStore', { getAll: () => [], _store: {} });
+const localDocs = new Map();
+const docs = name => localDocs.get(name) || new Map();
+stub('../utils/localStore', {
+    getAll: name => [...docs(name).values()],
+    getById: (name, id) => docs(name).get(id) || null,
+    upsert: (name, id, value) => {
+        if (!localDocs.has(name)) localDocs.set(name, new Map());
+        const next = { ...docs(name).get(id), ...value, id };
+        docs(name).set(id, next);
+        return next;
+    },
+    update: (name, id, value) => {
+        const next = { ...docs(name).get(id), ...value, id };
+        docs(name).set(id, next);
+        return next;
+    },
+    _store: {}
+});
 stub('../utils/notificationService', { createNotification: async () => {} });
 stub('../utils/whatsappDeliveryStore', {
     recordStatus: async status => {
@@ -69,6 +86,7 @@ test.after(async () => {
 });
 
 test.beforeEach(() => {
+    localDocs.clear();
     aiCalls.length = 0;
     sent.length = 0;
     activity.length = 0;

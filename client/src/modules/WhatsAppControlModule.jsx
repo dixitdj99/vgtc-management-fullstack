@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ax from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -6,7 +6,7 @@ import {
   Loader2, Sparkles, Zap, Eye, EyeOff, Phone, Key,
   Copy, Check, FileText, Search, UserCheck, Activity,
   Trash2, Globe, ShieldCheck, CheckCheck, Truck, Receipt,
-  CreditCard, Landmark, Users, RotateCcw, ChevronDown, ChevronUp, ExternalLink
+  CreditCard, Landmark, Users, RotateCcw, ChevronDown, ChevronUp, ExternalLink, ArrowLeft
 } from 'lucide-react';
 import TruckLoader from '../components/TruckLoader';
 import '../pages/admin/admin.css';
@@ -207,8 +207,173 @@ const getCategoryColor = (category) => {
   };
 };
 
+const inboxDate = value => {
+  if (!value) return null;
+  const date = new Date(typeof value === 'number' && value < 1e12 ? value * 1000 : value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const inboxTime = value => {
+  const date = inboxDate(value);
+  if (!date) return '';
+  return date.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+};
+
+const inboxError = error => error.response?.data?.error || error.response?.data?.message || error.message || 'Request failed';
+
+function WhatsAppInbox({ active }) {
+  const [conversations, setConversations] = useState([]);
+  const [selectedPhone, setSelectedPhone] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [query, setQuery] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingThread, setLoadingThread] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [listError, setListError] = useState('');
+  const [threadError, setThreadError] = useState('');
+  const [sendError, setSendError] = useState('');
+  const [mobileThread, setMobileThread] = useState(false);
+  const selectedRef = useRef('');
+  const endRef = useRef(null);
+
+  const refreshList = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setLoadingList(true);
+    try {
+      const res = await ax.get('/whatsapp/conversations', { _skipCache: true });
+      const rows = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
+      setConversations(rows);
+      setListError('');
+    } catch (error) {
+      setListError(inboxError(error));
+    } finally {
+      setLoadingList(false);
+    }
+  }, []);
+
+  const refreshThread = useCallback(async (phone, { quiet = false, markRead = false } = {}) => {
+    if (!phone) return;
+    if (!quiet) setLoadingThread(true);
+    try {
+      const url = `/whatsapp/conversations/${encodeURIComponent(phone)}`;
+      const res = await ax.get(`${url}/messages`, { _skipCache: true });
+      if (selectedRef.current !== phone) return;
+      setMessages(Array.isArray(res.data?.messages) ? res.data.messages : []);
+      setThreadError('');
+      if (markRead) {
+        try {
+          await ax.post(`${url}/read`);
+          setConversations(prev => prev.map(row => row.phone === phone ? { ...row, unreadCount: 0 } : row));
+        } catch (error) {
+          setThreadError(`Messages loaded, but read status could not be saved: ${inboxError(error)}`);
+        }
+      }
+    } catch (error) {
+      if (selectedRef.current === phone) setThreadError(inboxError(error));
+    } finally {
+      if (selectedRef.current === phone) setLoadingThread(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    refreshList();
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      refreshList({ quiet: true });
+      if (selectedRef.current) refreshThread(selectedRef.current, { quiet: true, markRead: true });
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [active, refreshList, refreshThread]);
+
+  useEffect(() => {
+    selectedRef.current = selectedPhone;
+    setMessages([]);
+    setThreadError('');
+    setSendError('');
+    if (active && selectedPhone) refreshThread(selectedPhone, { markRead: true });
+  }, [active, selectedPhone, refreshThread]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
+
+  const sendReply = async event => {
+    event.preventDefault();
+    const message = draft.trim();
+    if (!selectedPhone || !message || sending) return;
+    setSending(true);
+    setSendError('');
+    try {
+      await ax.post(`/whatsapp/conversations/${encodeURIComponent(selectedPhone)}/reply`, { message });
+      setDraft('');
+      await Promise.all([
+        refreshThread(selectedPhone, { quiet: true }),
+        refreshList({ quiet: true })
+      ]);
+    } catch (error) {
+      setSendError(inboxError(error));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const filtered = conversations.filter(row => {
+    if (unreadOnly && !Number(row.unreadCount)) return false;
+    const term = query.trim().toLowerCase();
+    return !term || [row.name, row.phone, row.lastMessage].some(value => String(value || '').toLowerCase().includes(term));
+  });
+  const selected = conversations.find(row => row.phone === selectedPhone);
+  const lastInbound = inboxDate(selected?.lastInboundAt);
+  const replyWindowOpen = lastInbound && Date.now() - lastInbound.getTime() < 24 * 60 * 60 * 1000;
+
+  if (!active) return null;
+
+  return (
+    <section className="wa-inbox" aria-label="WhatsApp inbox">
+      <div className={`wa-inbox-list ${mobileThread ? 'wa-inbox-mobile-hidden' : ''}`}>
+        <div className="wa-inbox-list-head">
+          <div><h2>Inbox</h2><p>Customer replies and message history</p></div>
+          <button type="button" className="wa-inbox-icon-button" aria-label="Refresh conversations" title="Refresh conversations" onClick={() => refreshList()} disabled={loadingList}><RefreshCw size={17} className={loadingList ? 'adm-spin' : ''} /></button>
+        </div>
+        <label className="wa-inbox-search"><Search size={16} /><input type="search" placeholder="Search name, number or message" value={query} onChange={event => setQuery(event.target.value)} /></label>
+        <label className="wa-inbox-filter"><input type="checkbox" checked={unreadOnly} onChange={event => setUnreadOnly(event.target.checked)} /> Unread only</label>
+        {listError && <div className="wa-inbox-error" role="alert">Could not load conversations: {listError} <button type="button" onClick={() => refreshList()}>Retry</button></div>}
+        <div className="wa-inbox-contacts">
+          {loadingList && !conversations.length && <div className="wa-inbox-empty"><Loader2 size={20} className="adm-spin" /> Loading conversations…</div>}
+          {!loadingList && !listError && !conversations.length && <div className="wa-inbox-empty">No conversations yet. Replies to your WhatsApp number will appear here after webhook delivery.</div>}
+          {!loadingList && conversations.length > 0 && !filtered.length && <div className="wa-inbox-empty">No matching conversations.</div>}
+          {filtered.map(row => (
+            <button type="button" key={row.phone} className={`wa-inbox-contact ${selectedPhone === row.phone ? 'is-selected' : ''}`} onClick={() => { setSelectedPhone(row.phone); setMobileThread(true); }}>
+              <span className="wa-inbox-avatar" aria-hidden="true">{String(row.name || row.phone || '?').trim().charAt(0).toUpperCase()}</span>
+              <span className="wa-inbox-contact-body"><span className="wa-inbox-contact-top"><strong>{row.name || row.phone}</strong><time>{inboxTime(row.lastTimestamp)}</time></span><span className="wa-inbox-contact-bottom"><span>{row.lastMessage || 'Message'}</span>{Number(row.unreadCount) > 0 && <b aria-label={`${row.unreadCount} unread messages`}>{row.unreadCount}</b>}</span>{row.name && <small>{row.phone}</small>}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={`wa-inbox-thread ${!mobileThread ? 'wa-inbox-mobile-hidden' : ''}`}>
+        {!selectedPhone ? <div className="wa-inbox-no-selection"><MessageSquare size={35} /><h2>Select a conversation</h2><p>Incoming replies and your sent messages appear here.</p></div> : <>
+          <header className="wa-inbox-thread-head"><button type="button" className="wa-inbox-icon-button wa-inbox-back" aria-label="Back to conversations" onClick={() => setMobileThread(false)}><ArrowLeft size={19} /></button><span className="wa-inbox-avatar" aria-hidden="true">{String(selected?.name || selectedPhone).charAt(0).toUpperCase()}</span><span><strong>{selected?.name || selectedPhone}</strong><small>{selectedPhone}</small></span><button type="button" className="wa-inbox-icon-button wa-inbox-thread-refresh" aria-label="Refresh messages" onClick={() => refreshThread(selectedPhone)}><RefreshCw size={17} className={loadingThread ? 'adm-spin' : ''} /></button></header>
+          <div className="wa-inbox-messages">
+            {loadingThread && !messages.length && <div className="wa-inbox-empty"><Loader2 size={20} className="adm-spin" /> Loading messages…</div>}
+            {threadError && <div className="wa-inbox-error" role="alert">Could not load messages: {threadError} <button type="button" onClick={() => refreshThread(selectedPhone)}>Retry</button></div>}
+            {!loadingThread && !threadError && !messages.length && <div className="wa-inbox-empty">No messages in this conversation.</div>}
+            {messages.map((item, index) => {
+              const outbound = item.direction === 'outbound';
+              return <div key={item.id || `${item.timestamp}-${index}`} className={`wa-inbox-message ${outbound ? 'is-outbound' : 'is-inbound'}`}><div className="wa-inbox-bubble"><div>{item.text || (item.type ? `[${item.type} message]` : 'Message')}</div><span className="wa-inbox-message-meta"><time>{inboxTime(item.timestamp)}</time>{outbound && <span className={item.status === 'failed' ? 'wa-inbox-failed' : ''}>{item.status === 'failed' ? 'Failed' : item.status || 'Sent'}</span>}</span></div></div>;
+            })}
+            <div ref={endRef} />
+          </div>
+          <div className={`wa-inbox-window ${replyWindowOpen ? 'is-open' : ''}`}>{replyWindowOpen ? `Free-form replies available until ${inboxTime(lastInbound.getTime() + 24 * 60 * 60 * 1000)}.` : '24-hour reply window closed. Customer must message again before you can send free-form text.'}</div>
+          <form className="wa-inbox-compose" onSubmit={sendReply}><label className="wa-inbox-sr-only" htmlFor="wa-inbox-reply">Reply message</label><textarea id="wa-inbox-reply" rows={2} maxLength={4096} placeholder={replyWindowOpen ? 'Type a reply…' : 'Reply window closed'} value={draft} onChange={event => setDraft(event.target.value)} disabled={!replyWindowOpen || sending} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button type="submit" className="adm-btn adm-btn--primary" disabled={!replyWindowOpen || !draft.trim() || sending}>{sending ? <Loader2 size={16} className="adm-spin" /> : <Send size={16} />} Send</button></form>
+          {sendError && <div className="wa-inbox-error wa-inbox-send-error" role="alert">Reply failed: {sendError}. Message remains in composer; retry when ready.</div>}
+        </>}
+      </div>
+    </section>
+  );
+}
+
 export default function WhatsAppControlModule() {
-  const [activeTab, setActiveTab] = useState('templates'); // 'templates' | 'credentials' | 'logs'
+  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' | 'templates' | 'credentials'
   const [config, setConfig] = useState({
     enabled: false,
     provider: 'meta',
@@ -610,7 +775,7 @@ export default function WhatsAppControlModule() {
         <div>
           <p className="wa-eyebrow">WhatsApp Cloud API</p>
           <h1>WhatsApp control</h1>
-          <p>Connection, notifications, routing, and test messages.</p>
+          <p>Inbox, connection, notifications, routing, and test messages.</p>
         </div>
         <button type="button" className="adm-btn adm-btn--sm" onClick={() => { checkConnection(); fetchRecentDeliveries(); }} disabled={status.checking}>
           <RefreshCw size={14} className={status.checking ? 'adm-spin' : ''} />
@@ -648,7 +813,10 @@ export default function WhatsAppControlModule() {
         </div>
       </section>
 
-      <nav className="wa-tabs" aria-label="WhatsApp settings">
+      <nav className="wa-tabs" aria-label="WhatsApp sections">
+        <button type="button" className={activeTab === 'inbox' ? 'wa-tab is-active' : 'wa-tab'} aria-current={activeTab === 'inbox' ? 'page' : undefined} onClick={() => setActiveTab('inbox')}>
+          <MessageSquare size={15} /> Inbox
+        </button>
         <button type="button" className={activeTab === 'templates' ? 'wa-tab is-active' : 'wa-tab'} aria-current={activeTab === 'templates' ? 'page' : undefined} onClick={() => setActiveTab('templates')}>
           Templates <span>{ALL_EVENT_DEFINITIONS.length}</span>
         </button>
@@ -659,6 +827,8 @@ export default function WhatsAppControlModule() {
           Status &amp; logs <ExternalLink size={13} />
         </a>
       </nav>
+
+      <WhatsAppInbox active={activeTab === 'inbox'} />
 
       {activeTab === 'templates' && (
         <section className="adm-panel">

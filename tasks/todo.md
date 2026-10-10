@@ -1486,3 +1486,20 @@ those eight API failures; they are outside this change and remain unresolved.
 - All remote branches were already ancestors. Old local `backup-saas-last-week` held one obsolete SaaS commit; user chose current VGTC-only design, so its history was merged with `ours` strategy and no old authentication restored.
 - Client build, client tests, and 10 focused server tests passed before rollout.
 - App Hosting rollout `rollout-2026-10-10-001` for `f1966a6` succeeded; production traffic reached 100% on `build-2026-10-10-001`. `https://vgtc.site/` and `/api/auth/status` returned HTTP 200; served JavaScript contains Driver Master and Fleet Maintenance UI.
+
+---
+
+# WhatsApp conversation inbox (2026-10-10)
+
+## Plan
+
+- [x] Trace inbound webhook, outbound send, storage, permissions, and WhatsApp Control navigation.
+- [x] Persist inbound and outbound messages durably with deduplication, conversation summaries, read state, and delivery details.
+- [x] Add authenticated conversation list, message history, read action, and manual reply API.
+- [x] Add responsive Inbox tab in WhatsApp Control with search, unread state, refresh, message thread, and compose form.
+- [x] Restore production signed webhook callback by configuring existing Meta app secret securely.
+- [ ] Run focused tests and build, verify local UI/API, deploy, and check live rollout.
+
+## Review
+
+Pending.

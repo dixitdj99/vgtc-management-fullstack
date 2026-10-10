@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { getDelivery, getRecentDeliveries } = require('../utils/whatsappDeliveryStore');
+const { permits } = require('../middleware/auth');
+const inbox = require('../utils/whatsappInboxStore');
 const {
   getWhatsAppConfig,
   saveWhatsAppConfig,
@@ -21,6 +23,61 @@ const {
 } = require('../utils/whatsappService');
 
 router.use(requireAuth);
+
+const inboxPermission = action => (req, res, next) => {
+  if (['whatsapp', 'whatsapp_main', 'whatsapp_dump', 'whatsapp_jkl', 'whatsapp_jharli']
+    .some(key => permits(req.user, key, action))) return next();
+  return res.status(403).json({ error: 'WhatsApp inbox access required' });
+};
+const validInboxPhone = phone => /^\d{10,15}$/.test(inbox.normalizePhone(phone));
+
+router.get('/conversations', inboxPermission('view'), async (req, res) => {
+  try {
+    res.json({ conversations: await inbox.listConversations() });
+  } catch (error) {
+    console.error('WhatsApp inbox list error:', error);
+    res.status(500).json({ error: 'Could not load conversations' });
+  }
+});
+
+router.get('/conversations/:phone/messages', inboxPermission('view'), async (req, res) => {
+  if (!validInboxPhone(req.params.phone)) return res.status(400).json({ error: 'Invalid phone number' });
+  try {
+    res.json({ messages: await inbox.getMessages(req.params.phone) });
+  } catch (error) {
+    console.error('WhatsApp inbox messages error:', error);
+    res.status(500).json({ error: 'Could not load messages' });
+  }
+});
+
+router.post('/conversations/:phone/read', inboxPermission('edit'), async (req, res) => {
+  if (!validInboxPhone(req.params.phone)) return res.status(400).json({ error: 'Invalid phone number' });
+  try {
+    res.json({ ok: true, conversation: await inbox.markRead(req.params.phone) });
+  } catch (error) {
+    console.error('WhatsApp inbox read error:', error);
+    res.status(500).json({ error: 'Could not mark conversation read' });
+  }
+});
+
+router.post('/conversations/:phone/reply', inboxPermission('edit'), async (req, res) => {
+  if (!validInboxPhone(req.params.phone)) return res.status(400).json({ error: 'Invalid phone number' });
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!message || message.length > 4096) return res.status(400).json({ error: 'Message must contain 1 to 4096 characters' });
+  try {
+    const conversation = await inbox.getConversation(req.params.phone);
+    if (!inbox.canReply(conversation)) {
+      return res.status(409).json({ error: 'Freeform replies are available for 24 hours after the customer’s last message. Ask them to message again or use an approved template.' });
+    }
+    // Operator replies are independent of the automation master toggle.
+    const result = await sendWhatsAppMessage(req.params.phone, message, req, { bypassEnabledCheck: true });
+    res.json({ ok: true, result, message: 'Meta accepted the reply' });
+  } catch (error) {
+    const metaError = error.response?.data?.error;
+    const detail = metaError?.message || error.message || 'Could not send reply';
+    res.status(metaError ? 400 : 502).json({ error: detail });
+  }
+});
 
 // Durable Meta message state; accepted is not proof of recipient delivery.
 router.get('/delivery/:messageId', async (req, res) => {

@@ -51,13 +51,30 @@ to the `messages` webhook field. Meta must reach this HTTPS URL from the public
 internet. GET challenge uses the verify token. POST callbacks require the Meta
 App Secret and valid `X-Hub-Signature-256`; missing secret returns HTTP 503.
 
+## Reply inbox
+
+Open **Admin hub → WhatsApp Control → Inbox** to read customer replies and
+messages sent by the application. Search by name, number, or message; filter
+unread conversations; open a conversation to mark it read. The list refreshes
+every 15 seconds while the page is visible. Incoming messages and delivery
+updates are stored in Firestore. Text replies can be sent from the conversation
+while the customer service window is open (24 hours from the last inbound
+message). After that, ask the customer to message again or use an approved
+template through the existing template tools. Media messages appear as a
+caption or attachment label; the inbox does not currently download attachments.
+
+The Inbox requires a valid Meta Cloud API sender, a WhatsApp-enabled developer
+app, an account subscription, and the `messages` webhook field. The callback
+URL is `https://vgtc.site/api/whatsapp/webhook`. A connected status in WhatsApp
+Control confirms the sender token and phone ID are usable; saved configuration
+alone does not confirm message delivery.
+
 ## Firebase App Hosting
 
-`apphosting.yaml` already references `GEMINI_API_KEY` and `META_APP_SECRET` as
-Cloud Secret Manager secrets. Create them before deploying this revision:
+`apphosting.yaml` references `META_APP_SECRET` as a Cloud Secret Manager secret.
+Create it before deploying this revision:
 
 ```powershell
-firebase apphosting:secrets:set GEMINI_API_KEY --project vgtc-management
 firebase apphosting:secrets:set META_APP_SECRET --project vgtc-management
 ```
 

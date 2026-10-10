@@ -40,6 +40,7 @@ const { createNotification } = require('../utils/notificationService');
 const { generateVehicleMonthlyPdf, generateVehicleMonthlyExcel, fetchVouchersForTruck, computeVoucherFinancials } = require('../services/reportService');
 const { isAiEnabled, generateAiReply } = require('../services/whatsappAiService');
 const { recordStatus } = require('../utils/whatsappDeliveryStore');
+const inbox = require('../utils/whatsappInboxStore');
 
 const seenMessageIds = new Map();
 function isDuplicateMessage(id) {
@@ -493,16 +494,30 @@ router.options('/', (req, res) => res.sendStatus(200));
 router.post('/', async (req, res) => {
     const body = req.body || {};
     const deliveries = [];
+    const inbound = [];
     for (const entry of Array.isArray(body.entry) ? body.entry : []) {
         for (const change of Array.isArray(entry.changes) ? entry.changes : []) {
             deliveries.push(...(Array.isArray(change.value?.statuses) ? change.value.statuses : []));
+            const contacts = change.value?.contacts || [];
+            for (const message of Array.isArray(change.value?.messages) ? change.value.messages : []) {
+                const contact = contacts.find(item => inbox.normalizePhone(item.wa_id) === inbox.normalizePhone(message.from));
+                inbound.push({ message, contact });
+            }
         }
     }
+    const insertedIds = new Set();
     try {
-        // Persist before acknowledging so Meta can retry a failed status write.
-        await Promise.all(deliveries.map(recordStatus));
+        // Persist callback data before ACK. Meta retries if durable storage fails.
+        for (const delivery of deliveries) {
+            await recordStatus(delivery);
+            await inbox.updateStatus(delivery);
+        }
+        for (const item of inbound) {
+            const result = await inbox.saveInbound(item.message, item.contact);
+            if (result.inserted) insertedIds.add(item.message.id);
+        }
     } catch (error) {
-        console.error('[Meta-WA] Failed to persist delivery status:', error);
+        console.error('[Meta-WA] Failed to persist inbox callback:', error);
         return res.sendStatus(500);
     }
     res.sendStatus(200);
@@ -533,6 +548,7 @@ router.post('/', async (req, res) => {
         const entry = Array.isArray(body.entry) ? body.entry[0] : null;
         const change = entry && Array.isArray(entry.changes) ? entry.changes[0]?.value : null;
         const metaMessage = change && Array.isArray(change.messages) ? change.messages[0] : null;
+        if (metaMessage?.id && !insertedIds.has(metaMessage.id)) return;
 
         let msgBody = '';
         let from = '';

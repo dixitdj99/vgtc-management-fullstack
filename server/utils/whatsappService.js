@@ -27,6 +27,7 @@ const { db, isAvailable } = require('../firebase');
 const { getCol, getEnvCol } = require('./collectionUtils');
 const localStore = require('./localStore');
 const { recordAccepted } = require('./whatsappDeliveryStore');
+const { saveOutbound } = require('./whatsappInboxStore');
 
 // Register system Hindi / Devanagari fonts so Hindi text renders properly on canvas
 ['C:/Windows/Fonts/Nirmala.ttf', 'C:/Windows/Fonts/mangal.ttf', 'C:/Windows/Fonts/aparaj.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].forEach(p => {
@@ -912,15 +913,18 @@ async function lookupVehiclePhone(truckNo, req) {
 
 // ─── Meta WhatsApp Cloud API Core Senders ─────────────────────────────────────
 
-async function trackMetaAcceptance(result, phone, category, title) {
+async function trackMetaAcceptance(result, phone, category, title, inbox = {}) {
   const messageId = result?.messages?.[0]?.id;
   if (!messageId) return;
-  try {
-    await recordAccepted(messageId, { phone, category, title });
-  } catch (error) {
-    // Meta already accepted this message. Throwing here could cause callers to
-    // retry and send a duplicate, so surface the tracking failure in server logs.
-    console.error('[Meta-WA] Could not persist accepted message', { messageId, error: error.message });
+  const writes = await Promise.allSettled([
+    recordAccepted(messageId, { phone, category, title }),
+    saveOutbound(result, phone, inbox)
+  ]);
+  for (const write of writes) {
+    if (write.status === 'rejected') {
+      // Meta already accepted this message. Throwing here could cause a duplicate send.
+      console.error('[Meta-WA] Could not persist accepted message', { messageId, error: write.reason?.message });
+    }
   }
 }
 
@@ -959,7 +963,7 @@ async function sendWhatsAppMessage(phone, message, req = null, { bypassEnabledCh
       },
       timeout: 25000
     });
-    await trackMetaAcceptance(res.data, to, 'text_message', 'WhatsApp text');
+    await trackMetaAcceptance(res.data, to, 'text_message', 'WhatsApp text', { text: cleanMsg, type: 'text' });
     logWhatsAppActivity({
       type: 'outbound',
       category: 'text_message',
@@ -1048,7 +1052,7 @@ async function sendWhatsAppButtons(phone, title, text, buttons = [], req = null)
       },
       timeout: 25000
     });
-    await trackMetaAcceptance(res.data, to, 'interactive_button', title || 'Interactive button');
+    await trackMetaAcceptance(res.data, to, 'interactive_button', title || 'Interactive button', { text: bodyText, type: 'interactive' });
     logWhatsAppActivity({
       type: 'outbound',
       category: 'interactive_button',
@@ -1146,7 +1150,7 @@ async function sendMetaTemplate(phone, templateName, languageCode = 'en', compon
         },
         timeout: 25000
       });
-      await trackMetaAcceptance(res.data, to, 'template_message', templateName);
+      await trackMetaAcceptance(res.data, to, 'template_message', templateName, { text: `[Template: ${templateName}]`, type: 'template' });
       logWhatsAppActivity({
         type: 'outbound',
         category: 'template_message',
@@ -1238,7 +1242,7 @@ async function sendWhatsAppImage(phone, imageBuffer, caption = '', req = null) {
         timeout: 25000
       }
     );
-    await trackMetaAcceptance(msgRes.data, to, 'image_message', 'WhatsApp image');
+    await trackMetaAcceptance(msgRes.data, to, 'image_message', 'WhatsApp image', { text: caption || '[Image]', type: 'image', mediaId });
     return msgRes.data;
   } catch (err) {
     console.warn(`[Meta-WA] Image dispatch failed (${err.response?.data?.error?.message || err.message}). Falling back to text caption...`);
@@ -1311,7 +1315,7 @@ async function sendWhatsAppDocument(phone, docBuffer, filename = 'document.pdf',
         timeout: 30000
       }
     );
-    await trackMetaAcceptance(msgRes.data, to, 'document_message', filename);
+    await trackMetaAcceptance(msgRes.data, to, 'document_message', filename, { text: caption || `[Document: ${filename}]`, type: 'document', mediaId });
     return msgRes.data;
   } catch (err) {
     console.warn(`[Meta-WA] Document dispatch failed (${err.response?.data?.error?.message || err.message}). Falling back to text caption...`);
