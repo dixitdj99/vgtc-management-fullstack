@@ -25,11 +25,12 @@ env:
   # and uncomment when provisioning a kiosk; VGTC user login also works.
   # - variable: TERMINAL_KEY
   #   secret: TERMINAL_KEY
-  # Required for durable private face enrollment images.
-  - variable: FIREBASE_STORAGE_BUCKET
-    value: ""
-    availability:
-      - RUNTIME
+  # Enable with a real bucket for durable private face enrollment images.
+  # Empty values are rejected by App Hosting.
+  # - variable: FIREBASE_STORAGE_BUCKET
+  #   value: "your-private-bucket"
+  #   availability:
+  #     - RUNTIME
 
   # CORS allowlist — comma-separated exact origins. The server additionally
   # allows vgtc.site (and its subdomains) plus this backend's own *.hosted.app
