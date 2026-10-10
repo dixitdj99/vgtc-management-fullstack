@@ -1498,8 +1498,11 @@ those eight API failures; they are outside this change and remain unresolved.
 - [x] Add authenticated conversation list, message history, read action, and manual reply API.
 - [x] Add responsive Inbox tab in WhatsApp Control with search, unread state, refresh, message thread, and compose form.
 - [x] Restore production signed webhook callback by configuring existing Meta app secret securely.
-- [ ] Run focused tests and build, verify local UI/API, deploy, and check live rollout.
+- [x] Run focused tests and build, verify local UI/API, deploy, and check live rollout.
 
 ## Review
 
-Pending.
+- Inbox stores signed inbound callbacks and outbound Meta-accepted messages in Firestore, with deduplication, unread state, search, message status, and 24-hour text reply control. Admin hub → WhatsApp Control → Inbox is the UI path.
+- Client build passed; 27 focused backend tests passed. Local authenticated admin browser rendered WhatsApp Control and Inbox. No real customer message was sent.
+- Commit `8ad0a2d` deployed through App Hosting rollout `build-2026-10-10-004` (SUCCEEDED). `https://vgtc.site/` and auth status returned 200; served bundle contains Inbox. Unauthenticated conversation API returned 401; valid signed empty callback returned 200 and unsigned callback returned 403.
+- Current saved sender ID fails Meta connection check. Connected business inspection shows no WhatsApp-enabled developer app; real inbound delivery and outbound replies require Meta account/app setup. Media appears as text/caption placeholder; attachment download is not implemented.
