@@ -1478,10 +1478,11 @@ those eight API failures; they are outside this change and remain unresolved.
 - [x] Fetch and compare every local and remote branch against `initial-branch`; classify merged, divergent, and stale work.
 - [x] Reconcile sole divergent backup branch per user choice, preserving current VGTC-only design.
 - [x] Build and run focused checks on integrated result.
-- [ ] Push `initial-branch`, trigger or fix deployment path, and verify live version where access permits.
+- [x] Push `initial-branch`, trigger or fix deployment path, and verify live version where access permits.
 
 ## Review
 
 - `vgtc.site` maps to App Hosting backend tracking `initial-branch`; rollout for `360a810` failed. Cloud Build rejected empty `FIREBASE_STORAGE_BUCKET`; missing `META_APP_SECRET` was another blocker. Production still served `82838d9` while investigating.
 - All remote branches were already ancestors. Old local `backup-saas-last-week` held one obsolete SaaS commit; user chose current VGTC-only design, so its history was merged with `ours` strategy and no old authentication restored.
 - Client build, client tests, and 10 focused server tests passed before rollout.
+- App Hosting rollout `rollout-2026-10-10-001` for `f1966a6` succeeded; production traffic reached 100% on `build-2026-10-10-001`. `https://vgtc.site/` and `/api/auth/status` returned HTTP 200; served JavaScript contains Driver Master and Fleet Maintenance UI.
