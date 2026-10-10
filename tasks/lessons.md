@@ -155,3 +155,7 @@ change. Extract its warm page, white panels, soft borders, dark text, and restra
 violet/cyan/amber/mint accents. Apply consistently to standalone admin shell, login,
 embedded admin, WhatsApp, and status instead of assuming inherited theme variables
 alone satisfy a visual reference. Keep three saved themes working.
+
+## Verify deployment after merging (2026-10-10)
+
+User found changes merged into `initial-branch` but absent from deployed app. Branch push alone does not prove deployment. Check actual deploy source branch, build and rollout status, and live version before reporting work deployed. Audit remaining branches before claiming all work merged.

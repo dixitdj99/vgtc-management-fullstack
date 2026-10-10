@@ -1467,3 +1467,19 @@ those eight API failures; they are outside this change and remain unresolved.
 - Commit `f6abd3f` fast-forwarded into `initial-branch`; feature branch deleted.
 - Tracked WhatsApp runtime log and untracked local MCP config/diagnostic files remain in working tree, outside commit.
 - `initial-branch` contains 63 changed source, asset, test, and documentation files.
+
+---
+
+# Deployment and branch reconciliation (2026-10-10)
+
+## Plan
+
+- [ ] Identify actual frontend/backend deploy source and latest rollout; find why `initial-branch` changes are absent.
+- [ ] Fetch and compare every local and remote branch against `initial-branch`; classify merged, divergent, and stale work.
+- [ ] Merge unmerged branch work into `initial-branch`, resolve conflicts while preserving latest features.
+- [ ] Build and run focused checks on integrated result.
+- [ ] Push `initial-branch`, trigger or fix deployment path, and verify live version where access permits.
+
+## Review
+
+Pending.
